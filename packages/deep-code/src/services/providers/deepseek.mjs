@@ -1,8 +1,10 @@
-import { createHash } from 'node:crypto'
 import {
   MODEL_PROVIDER_CAPABILITIES,
   assertModelProvider,
 } from './types.mjs'
+import {
+  createDeepSeekCacheUserId,
+} from '../../cache/deepseek-cache.mjs'
 import {
   mapMessagesToDeepSeek,
   normalizeToolCalls,
@@ -14,6 +16,14 @@ import {
 } from '../../tools/deepseek-schema.mjs'
 
 export { mapMessagesToDeepSeek } from '../../messages/deepseek-normalizer.mjs'
+export {
+  calculateDeepSeekCacheHitRate,
+  createDeepSeekCacheDiagnostics,
+  createDeepSeekCacheUserId,
+  createDeepSeekPrefixHash,
+  createStableHash,
+  stableJsonStringify,
+} from '../../cache/deepseek-cache.mjs'
 export {
   sanitizeSchemaForDeepSeekStrict,
   toolToDeepSeekFunctionSchema,
@@ -30,14 +40,6 @@ export const DEEPSEEK_PROVIDER_CAPABILITIES = Object.freeze([
   MODEL_PROVIDER_CAPABILITIES.STREAMING,
   MODEL_PROVIDER_CAPABILITIES.TOOL_CALLS,
 ])
-
-export function createDeepSeekCacheUserId(workspacePath) {
-  const hash = createHash('sha256')
-    .update(String(workspacePath || process.cwd()))
-    .digest('base64url')
-    .slice(0, 32)
-  return `dc_${hash}`
-}
 
 export function resolveDeepSeekConfig({
   env = process.env,
@@ -393,13 +395,6 @@ export function mapDeepSeekUsage(usage = {}) {
       reasoning_tokens: usage.completion_tokens_details.reasoning_tokens,
     }),
   }
-}
-
-export function calculateDeepSeekCacheHitRate(usage = {}) {
-  const hit = usage.prompt_cache_hit_tokens ?? 0
-  const miss = usage.prompt_cache_miss_tokens ?? 0
-  const total = hit + miss
-  return total === 0 ? 0 : hit / total
 }
 
 function parseToolArguments(rawArguments) {

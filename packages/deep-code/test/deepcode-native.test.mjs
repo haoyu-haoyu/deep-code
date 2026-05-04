@@ -3,12 +3,15 @@ import assert from 'node:assert/strict'
 
 import {
   buildDeepSeekRequest,
+  createDeepSeekCacheDiagnostics,
   createDeepSeekProvider,
   createDeepSeekCacheUserId,
+  createDeepSeekPrefixHash,
   mapMessagesToDeepSeek,
   parseDeepSeekSSELines,
   runDeepSeekAgent,
   sanitizeSchemaForDeepSeekStrict,
+  stableJsonStringify,
   streamDeepSeekResponseBody,
   toolToDeepSeekFunctionSchema,
 } from '../src/deepcode/deepseek-native.mjs'
@@ -287,6 +290,35 @@ test('createDeepSeekCacheUserId is deterministic and safe for DeepSeek user_id',
     createDeepSeekCacheUserId('/tmp/my workspace'),
   )
   assert.match(createDeepSeekCacheUserId('/tmp/my workspace'), /^dc_[A-Za-z0-9_-]+$/)
+})
+
+test('DeepSeek cache diagnostics and prefix hash are stable', () => {
+  assert.deepEqual(createDeepSeekCacheDiagnostics({
+    prompt_cache_hit_tokens: 75,
+    prompt_cache_miss_tokens: 25,
+  }), {
+    promptCacheHitTokens: 75,
+    promptCacheMissTokens: 25,
+    promptCacheTotalTokens: 100,
+    promptCacheHitRate: 0.75,
+  })
+
+  assert.equal(
+    stableJsonStringify({ z: 1, a: { c: 3, b: 2 } }),
+    '{"a":{"b":2,"c":3},"z":1}',
+  )
+
+  const prefixA = createDeepSeekPrefixHash({
+    systemPrompt: ['fixed'],
+    tools: [{ name: 'Read', schema: { b: 1, a: 2 } }],
+    repoSummary: 'repo',
+  })
+  const prefixB = createDeepSeekPrefixHash({
+    repoSummary: 'repo',
+    tools: [{ schema: { a: 2, b: 1 }, name: 'Read' }],
+    systemPrompt: ['fixed'],
+  })
+  assert.equal(prefixA, prefixB)
 })
 
 test('runDeepSeekAgent executes tool calls and preserves reasoning_content across tool turns', async () => {
