@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   buildDeepSeekRequest,
+  calculateDeepSeekRetryDelayMs,
   collectDeepSeekStreamEvents,
   createDeepSeekWarmupContext,
   createDeepSeekCacheDiagnostics,
@@ -18,6 +19,7 @@ import {
   runDeepSeekAgent,
   sanitizeSchemaForDeepSeekStrict,
   stableJsonStringify,
+  streamDeepSeekQuery,
   streamDeepSeekResponseBody,
   toolToDeepSeekFunctionSchema,
   warmDeepSeekCache,
@@ -413,6 +415,47 @@ test('DeepSeek HTTP errors map to retry strategies', () => {
 
   assert.equal(mapDeepSeekHttpError({ status: 503 }).retryable, true)
   assert.equal(mapDeepSeekHttpError({ status: 400 }).retryable, false)
+  assert.equal(calculateDeepSeekRetryDelayMs({ retryAfterSeconds: 7 }, 0), 7000)
+  assert.equal(calculateDeepSeekRetryDelayMs({}, 2, { retryBaseDelayMs: 100 }), 400)
+})
+
+test('streamDeepSeekQuery retries retryable HTTP failures before streaming', async () => {
+  const delays = []
+  let attempts = 0
+  const events = []
+  for await (const event of streamDeepSeekQuery({
+    url: 'https://api.deepseek.com/chat/completions',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { model: 'deepseek-v4-pro', messages: [] },
+    maxRetries: 1,
+    sleep(ms) {
+      delays.push(ms)
+      return Promise.resolve()
+    },
+    async fetch() {
+      attempts += 1
+      if (attempts === 1) {
+        return new Response('limited', {
+          status: 429,
+          headers: { 'retry-after': '0' },
+        })
+      }
+      return new Response(sseBody([
+        'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}',
+        'data: [DONE]',
+      ]), { status: 200 })
+    },
+  })) {
+    events.push(event)
+  }
+
+  assert.equal(attempts, 2)
+  assert.deepEqual(delays, [0])
+  assert.deepEqual(events, [
+    { type: 'content_delta', text: 'ok' },
+    { type: 'done' },
+  ])
 })
 
 test('createDeepSeekCacheUserId is deterministic and safe for DeepSeek user_id', () => {
@@ -831,3 +874,15 @@ test('createDeepSeekDoctorReport validates live stream and cache telemetry with 
   assert.ok(report.checks.some(check => check.id === 'live.api' && check.status === 'pass'))
   assert.ok(report.checks.some(check => check.id === 'live.cacheTelemetry' && check.status === 'pass'))
 })
+
+function sseBody(lines) {
+  const encoder = new TextEncoder()
+  return new ReadableStream({
+    start(controller) {
+      for (const line of lines) {
+        controller.enqueue(encoder.encode(`${line}\n`))
+      }
+      controller.close()
+    },
+  })
+}

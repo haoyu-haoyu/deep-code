@@ -14,6 +14,7 @@ import {
   sanitizeSchemaForDeepSeekStrict,
   toolToDeepSeekFunctionSchema,
 } from '../../tools/deepseek-schema.mjs'
+import { mapDeepSeekHttpError } from './deepseek-recovery.mjs'
 
 export { mapMessagesToDeepSeek } from '../../messages/deepseek-normalizer.mjs'
 export {
@@ -289,14 +290,35 @@ export async function* streamDeepSeekQuery(context = {}) {
     context.url && context.method && context.headers && context.body
       ? context
       : await buildDeepSeekRequest(context)
-  const response = await fetch(request.url, {
-    method: request.method,
-    headers: request.headers,
-    body:
-      typeof request.body === 'string'
-        ? request.body
-        : JSON.stringify(request.body),
-  })
+  const fetchFn = context.fetch ?? globalThis.fetch
+  const sleep = context.sleep ?? sleepMs
+  const maxRetries = context.maxRetries ?? 2
+  let response
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    response = await fetchFn(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body:
+        typeof request.body === 'string'
+          ? request.body
+          : JSON.stringify(request.body),
+    })
+
+    if (response.ok) break
+
+    const text = await response.text()
+    const recovery = mapDeepSeekHttpError({
+      status: response.status,
+      headers: response.headers,
+      message: text,
+    })
+    if (!recovery.retryable || attempt === maxRetries) {
+      throw createDeepSeekApiError(response.status, text, recovery)
+    }
+
+    await sleep(calculateDeepSeekRetryDelayMs(recovery, attempt, context))
+  }
 
   if (!response.ok) {
     const text = await response.text()
@@ -304,6 +326,17 @@ export async function* streamDeepSeekQuery(context = {}) {
   }
 
   yield* streamDeepSeekResponseBody(response.body)
+}
+
+export function calculateDeepSeekRetryDelayMs(
+  recovery,
+  attempt,
+  { retryBaseDelayMs = 500, retryMaxDelayMs = 8000 } = {},
+) {
+  if (recovery.retryAfterSeconds !== undefined) {
+    return recovery.retryAfterSeconds * 1000
+  }
+  return Math.min(retryMaxDelayMs, retryBaseDelayMs * 2 ** attempt)
 }
 
 export async function* streamDeepSeekResponseBody(body) {
@@ -491,4 +524,15 @@ function omitUndefined(object) {
   return Object.fromEntries(
     Object.entries(object).filter(([, value]) => value !== undefined),
   )
+}
+
+function sleepMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function createDeepSeekApiError(status, message, recovery) {
+  const error = new Error(`DeepSeek API ${status}: ${message}`)
+  error.status = status
+  error.recovery = recovery
+  return error
 }
