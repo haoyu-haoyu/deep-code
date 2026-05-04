@@ -28,6 +28,11 @@ import {
   deepSeekResponseToAssistantMessage,
   resolveDeepSeekRuntimeModel,
 } from '../src/query/deepseek-call-model.mjs'
+import {
+  createDeepSeekDoctorReport,
+  formatDeepSeekDoctorReport,
+  hasFailingDoctorChecks,
+} from '../src/deepcode/doctor.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -682,4 +687,58 @@ test('resolveDeepSeekRuntimeModel avoids forwarding Claude model names to DeepSe
       process.env.DEEPSEEK_MODEL = previousModel
     }
   }
+})
+
+test('createDeepSeekDoctorReport validates DeepSeek-native request shape offline', async () => {
+  const report = await createDeepSeekDoctorReport({
+    env: {
+      DEEPSEEK_API_KEY: 'sk-test',
+      DEEPSEEK_CACHE_USER_ID: 'workspace-1',
+    },
+    cwd: '/tmp/workspace',
+    live: false,
+  })
+
+  assert.equal(hasFailingDoctorChecks(report), false)
+  assert.equal(report.summary.skip, 1)
+  assert.equal(report.config.provider, 'deepseek')
+  assert.equal(report.config.cacheUserId, 'workspace-1')
+  assert.match(formatDeepSeekDoctorReport(report), /Deep Code Doctor/)
+  assert.ok(report.checks.some(check => check.id === 'request.noAnthropicFields'))
+  assert.ok(report.checks.some(check => check.id === 'cache.diagnostics'))
+})
+
+test('createDeepSeekDoctorReport validates live stream and cache telemetry with provider injection', async () => {
+  const requests = []
+  const report = await createDeepSeekDoctorReport({
+    env: {
+      DEEPSEEK_API_KEY: 'sk-test',
+      DEEPSEEK_CACHE_USER_ID: 'workspace-1',
+    },
+    cwd: '/tmp/workspace',
+    live: true,
+    provider: {
+      streamQuery(request) {
+        requests.push(request)
+        return (async function* stream() {
+          yield { type: 'content_delta', text: 'ok' }
+          yield { type: 'finish', finishReason: 'stop' }
+          yield {
+            type: 'usage',
+            usage: {
+              prompt_cache_hit_tokens: 8,
+              prompt_cache_miss_tokens: 2,
+            },
+          }
+        })()
+      },
+    },
+  })
+
+  assert.equal(hasFailingDoctorChecks(report), false)
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].body.thinking.type, 'disabled')
+  assert.equal(requests[0].body.max_tokens, 16)
+  assert.ok(report.checks.some(check => check.id === 'live.api' && check.status === 'pass'))
+  assert.ok(report.checks.some(check => check.id === 'live.cacheTelemetry' && check.status === 'pass'))
 })

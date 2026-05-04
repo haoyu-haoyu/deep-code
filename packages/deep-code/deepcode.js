@@ -11,6 +11,11 @@ import {
   createDeepSeekCacheUserId,
   resolveDeepSeekConfig,
 } from './src/deepcode/deepseek-native.mjs'
+import {
+  createDeepSeekDoctorReport,
+  formatDeepSeekDoctorReport,
+  hasFailingDoctorChecks,
+} from './src/deepcode/doctor.mjs'
 import { resolveModelProvider } from './src/services/providers/index.mjs'
 
 const VERSION = '0.1.0-deepseek-native'
@@ -32,6 +37,18 @@ async function main() {
 
   if (args.includes('--status')) {
     printStatus(config)
+    return
+  }
+  if (args.includes('--doctor')) {
+    const report = await createDeepSeekDoctorReport({
+      env,
+      cwd: process.cwd(),
+      live: args.includes('--no-live') ? false : undefined,
+    })
+    console.log(formatDeepSeekDoctorReport(report))
+    if (hasFailingDoctorChecks(report)) {
+      process.exitCode = 1
+    }
     return
   }
 
@@ -183,6 +200,7 @@ Usage:
   deepcode "explain this repo"
   echo "summarize" | deepcode
   deepcode --status
+  deepcode --doctor [--no-live]
 
 Configuration:
   ~/.deepcode/settings.json
