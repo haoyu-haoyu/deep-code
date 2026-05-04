@@ -7,7 +7,10 @@ import {
   createDeepSeekProvider,
   createDeepSeekCacheUserId,
   createDeepSeekPrefixHash,
+  DEEPSEEK_FINISH_ACTIONS,
   mapMessagesToDeepSeek,
+  mapDeepSeekFinishReason,
+  mapDeepSeekHttpError,
   parseDeepSeekSSELines,
   runDeepSeekAgent,
   sanitizeSchemaForDeepSeekStrict,
@@ -282,6 +285,50 @@ test('streamDeepSeekResponseBody buffers split SSE lines', async () => {
     { type: 'content_delta', text: 'lo' },
     { type: 'done' },
   ])
+})
+
+test('DeepSeek finish reasons map to agent loop actions', () => {
+  assert.deepEqual(mapDeepSeekFinishReason('stop'), {
+    finishReason: 'stop',
+    action: DEEPSEEK_FINISH_ACTIONS.STOP,
+    retryable: false,
+  })
+  assert.deepEqual(mapDeepSeekFinishReason('tool_calls'), {
+    finishReason: 'tool_calls',
+    action: DEEPSEEK_FINISH_ACTIONS.RUN_TOOLS,
+    retryable: false,
+  })
+  assert.equal(
+    mapDeepSeekFinishReason('length').action,
+    DEEPSEEK_FINISH_ACTIONS.COMPACT_OR_RESUME,
+  )
+  assert.equal(
+    mapDeepSeekFinishReason('content_filter').action,
+    DEEPSEEK_FINISH_ACTIONS.CONTENT_FILTER,
+  )
+  assert.deepEqual(mapDeepSeekFinishReason('insufficient_system_resource'), {
+    finishReason: 'insufficient_system_resource',
+    action: DEEPSEEK_FINISH_ACTIONS.DOWNGRADE_OR_RETRY,
+    retryable: true,
+    retryStrategy: 'lower_reasoning_effort_or_use_flash',
+  })
+})
+
+test('DeepSeek HTTP errors map to retry strategies', () => {
+  assert.deepEqual(mapDeepSeekHttpError({
+    status: 429,
+    headers: { 'retry-after': '7' },
+  }), {
+    status: 429,
+    code: undefined,
+    message: '',
+    retryable: true,
+    retryAfterSeconds: 7,
+    retryStrategy: 'exponential_backoff',
+  })
+
+  assert.equal(mapDeepSeekHttpError({ status: 503 }).retryable, true)
+  assert.equal(mapDeepSeekHttpError({ status: 400 }).retryable, false)
 })
 
 test('createDeepSeekCacheUserId is deterministic and safe for DeepSeek user_id', () => {

@@ -14,3 +14,9 @@ export {
   DEFAULT_MODEL_PROVIDER,
   resolveModelProvider,
 } from './registry.mjs'
+
+export {
+  DEEPSEEK_FINISH_ACTIONS,
+  mapDeepSeekFinishReason,
+  mapDeepSeekHttpError,
+} from './deepseek-recovery.mjs'

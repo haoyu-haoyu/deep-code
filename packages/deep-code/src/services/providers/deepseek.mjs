@@ -28,6 +28,11 @@ export {
   sanitizeSchemaForDeepSeekStrict,
   toolToDeepSeekFunctionSchema,
 } from '../../tools/deepseek-schema.mjs'
+export {
+  DEEPSEEK_FINISH_ACTIONS,
+  mapDeepSeekFinishReason,
+  mapDeepSeekHttpError,
+} from './deepseek-recovery.mjs'
 
 export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-pro'
