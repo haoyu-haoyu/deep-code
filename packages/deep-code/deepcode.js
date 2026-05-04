@@ -6,12 +6,11 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import readline from 'node:readline/promises'
 import {
-  buildDeepSeekRequest,
   calculateDeepSeekCacheHitRate,
   createDeepSeekCacheUserId,
-  parseDeepSeekSSELines,
   resolveDeepSeekConfig,
 } from './src/deepcode/deepseek-native.mjs'
+import { resolveModelProvider } from './src/services/providers/index.mjs'
 
 const VERSION = '0.1.0-deepseek-native'
 
@@ -80,7 +79,8 @@ async function runInteractive(env) {
 }
 
 async function requestDeepSeek(messages, env, { streamToStdout = false } = {}) {
-  const request = await buildDeepSeekRequest({
+  const provider = resolveModelProvider({ env })
+  return await consumeDeepSeekEvents(provider.streamQuery({
     systemPrompt: [
       'You are Deep Code, a terminal AI coding assistant optimized for DeepSeek. Answer concisely and do not call tools unless tools are provided.',
     ],
@@ -88,53 +88,27 @@ async function requestDeepSeek(messages, env, { streamToStdout = false } = {}) {
     env,
     cwd: process.cwd(),
     maxTokens: Number(env.DEEPCODE_MAX_TOKENS ?? env.DEEPSEEK_MAX_TOKENS ?? 4096),
-  })
-
-  const response = await fetch(request.url, {
-    method: request.method,
-    headers: request.headers,
-    body: JSON.stringify(request.body),
-  })
-
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`DeepSeek API ${response.status}: ${text}`)
-  }
-
-  return await consumeDeepSeekStream(response.body, {
+  }), {
     onContent: streamToStdout ? text => process.stdout.write(text) : undefined,
   })
 }
 
-async function consumeDeepSeekStream(body, { onContent } = {}) {
-  const decoder = new TextDecoder()
-  let buffer = ''
+async function consumeDeepSeekEvents(events, { onContent } = {}) {
   let content = ''
   let reasoning = ''
   let usage = null
   const toolCalls = new Map()
 
-  for await (const chunk of body) {
-    buffer += decoder.decode(chunk, { stream: true })
-    const lines = buffer.split(/\r?\n/)
-    buffer = lines.pop() ?? ''
-    for (const event of parseDeepSeekSSELines(lines)) {
-      if (event.type === 'reasoning_delta') {
-        reasoning += event.text
-      } else if (event.type === 'content_delta') {
-        content += event.text
-        onContent?.(event.text)
-      } else if (event.type === 'tool_call_delta') {
-        mergeToolCallDelta(toolCalls, event)
-      } else if (event.type === 'usage') {
-        usage = event.usage
-      }
-    }
-  }
-
-  if (buffer.trim()) {
-    for (const event of parseDeepSeekSSELines([buffer])) {
-      if (event.type === 'usage') usage = event.usage
+  for await (const event of events) {
+    if (event.type === 'reasoning_delta') {
+      reasoning += event.text
+    } else if (event.type === 'content_delta') {
+      content += event.text
+      onContent?.(event.text)
+    } else if (event.type === 'tool_call_delta') {
+      mergeToolCallDelta(toolCalls, event)
+    } else if (event.type === 'usage') {
+      usage = event.usage
     }
   }
 
