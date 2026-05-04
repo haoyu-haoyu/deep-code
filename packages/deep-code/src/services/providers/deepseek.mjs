@@ -176,12 +176,14 @@ export async function runDeepSeekAgent({
   tools = [],
   env = process.env,
   cwd = process.cwd(),
+  provider,
   complete,
   maxTurns = 8,
   strictTools = false,
 } = {}) {
-  if (typeof complete !== 'function') {
-    throw new TypeError('runDeepSeekAgent requires a complete(request) function')
+  const modelProvider = provider ?? createDeepSeekProvider()
+  if (complete !== undefined && typeof complete !== 'function') {
+    throw new TypeError('runDeepSeekAgent complete must be a function when provided')
   }
 
   const conversation = [...messages]
@@ -200,7 +202,10 @@ export async function runDeepSeekAgent({
       cwd,
       strictTools,
     })
-    const response = await complete(request)
+    const response =
+      typeof complete === 'function'
+        ? await complete(request)
+        : await collectDeepSeekStreamEvents(modelProvider.streamQuery(request))
     lastResponse = response
     const toolCalls = normalizeToolCalls(response.toolCalls)
 

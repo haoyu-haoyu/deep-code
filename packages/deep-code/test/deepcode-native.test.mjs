@@ -512,3 +512,61 @@ test('runDeepSeekAgent executes tool calls and preserves reasoning_content acros
     content: 'contents:README.md',
   })
 })
+
+test('runDeepSeekAgent can drive tool loop through provider streams', async () => {
+  const requests = []
+  const provider = {
+    streamQuery(request) {
+      requests.push(request.body.messages)
+      if (requests.length === 1) {
+        return (async function* firstTurn() {
+          yield { type: 'reasoning_delta', text: 'Need the virtual file.' }
+          yield {
+            type: 'tool_call_delta',
+            index: 0,
+            id: 'call_read',
+            name: 'Read',
+            argumentsDelta: '{"file_path":"package.json"}',
+            finishReason: 'tool_calls',
+          }
+        })()
+      }
+      return (async function* secondTurn() {
+        yield { type: 'content_delta', text: 'virtual-content:package.json' }
+        yield { type: 'finish', finishReason: 'stop' }
+      })()
+    },
+  }
+
+  const result = await runDeepSeekAgent({
+    prompt: 'Read package.json',
+    env: {
+      DEEPSEEK_API_KEY: 'sk-test',
+      DEEPSEEK_CACHE_USER_ID: 'workspace-1',
+    },
+    provider,
+    tools: [
+      {
+        name: 'Read',
+        description: 'Read a virtual file',
+        inputJSONSchema: {
+          type: 'object',
+          properties: { file_path: { type: 'string' } },
+          required: ['file_path'],
+        },
+        async execute(input) {
+          return `virtual-content:${input.file_path}`
+        },
+      },
+    ],
+  })
+
+  assert.equal(result.content, 'virtual-content:package.json')
+  assert.equal(requests.length, 2)
+  assert.equal(requests[1].at(-2).reasoning_content, 'Need the virtual file.')
+  assert.deepEqual(requests[1].at(-1), {
+    role: 'tool',
+    tool_call_id: 'call_read',
+    content: 'virtual-content:package.json',
+  })
+})
