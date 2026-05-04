@@ -1,0 +1,7 @@
+.DS_Store
+.npm-cache/
+.deepcode/cache-stats.json
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

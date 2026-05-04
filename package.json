@@ -1,0 +1,18 @@
+{
+  "name": "deep-code",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DeepSeek-native Deep Code terminal coding assistant wrapper.",
+  "bin": {
+    "deepcode": "node_modules/@deepcode-ai/deep-code/deepcode.js",
+    "deep-code": "node_modules/@deepcode-ai/deep-code/deepcode.js"
+  },
+  "scripts": {
+    "test": "npm run test:deepcode",
+    "test:deepcode": "npm run test:deepcode --prefix node_modules/@deepcode-ai/deep-code",
+    "deepcode": "node_modules/.bin/deepcode"
+  },
+  "dependencies": {
+    "@deepcode-ai/deep-code": "file:node_modules/@deepcode-ai/deep-code"
+  }
+}
