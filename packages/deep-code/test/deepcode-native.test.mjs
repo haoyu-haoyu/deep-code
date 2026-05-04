@@ -3,13 +3,19 @@ import assert from 'node:assert/strict'
 
 import {
   buildDeepSeekRequest,
+  createDeepSeekProvider,
   createDeepSeekCacheUserId,
   mapMessagesToDeepSeek,
   parseDeepSeekSSELines,
   runDeepSeekAgent,
   sanitizeSchemaForDeepSeekStrict,
+  streamDeepSeekResponseBody,
   toolToDeepSeekFunctionSchema,
 } from '../src/deepcode/deepseek-native.mjs'
+import {
+  MODEL_PROVIDER_CAPABILITIES,
+  resolveModelProvider,
+} from '../src/services/providers/index.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -47,6 +53,56 @@ test('buildDeepSeekRequest emits native DeepSeek chat-completions body without A
   assert.equal('anthropic_beta' in request.body, false)
   assert.equal('temperature' in request.body, false)
   assert.equal('top_p' in request.body, false)
+})
+
+test('resolveModelProvider defaults to DeepSeek native provider', async () => {
+  const provider = resolveModelProvider({
+    env: {},
+    defaults: {
+      env: {
+        DEEPSEEK_API_KEY: 'sk-test',
+        DEEPSEEK_CACHE_USER_ID: 'workspace-1',
+      },
+    },
+  })
+
+  assert.equal(provider.name, 'deepseek')
+  assert.equal(provider.supports(MODEL_PROVIDER_CAPABILITIES.TOOL_CALLS), true)
+  assert.equal(provider.supports(MODEL_PROVIDER_CAPABILITIES.REASONING_CONTENT), true)
+  assert.equal(provider.supports(MODEL_PROVIDER_CAPABILITIES.CACHE_DIAGNOSTICS), true)
+
+  const request = await provider.buildRequest({
+    systemPrompt: ['You are Deep Code.'],
+    messages: [{ role: 'user', content: 'hello' }],
+  })
+  assert.equal(request.url, 'https://api.deepseek.com/chat/completions')
+  assert.equal(request.headers.Authorization, 'Bearer sk-test')
+  assert.equal(request.body.user_id, 'workspace-1')
+})
+
+test('createDeepSeekProvider exposes stream parser and usage mapper', () => {
+  const provider = createDeepSeekProvider()
+  const events = provider.parseStreamChunk(
+    ': keep-alive\n' +
+      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":null}]}\n' +
+      'data: {"choices":[],"usage":{"prompt_cache_hit_tokens":2,"prompt_cache_miss_tokens":3}}\n',
+  )
+
+  assert.deepEqual(events, [
+    { type: 'content_delta', text: 'ok' },
+    {
+      type: 'usage',
+      usage: {
+        prompt_cache_hit_tokens: 2,
+        prompt_cache_miss_tokens: 3,
+      },
+    },
+  ])
+  assert.deepEqual(provider.mapUsage({
+    completion_tokens_details: { reasoning_tokens: 9 },
+  }), {
+    reasoning_tokens: 9,
+  })
 })
 
 test('sanitizeSchemaForDeepSeekStrict removes unsupported constraints and closes objects', () => {
@@ -197,6 +253,30 @@ test('parseDeepSeekSSELines extracts usage from DeepSeek final choice chunk', ()
         reasoning_tokens: 27,
       },
     },
+    { type: 'done' },
+  ])
+})
+
+test('streamDeepSeekResponseBody buffers split SSE lines', async () => {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"hel"}'))
+      controller.enqueue(encoder.encode(',"finish_reason":null}]}\n'))
+      controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"lo"},"finish_reason":null}]}\n'))
+      controller.enqueue(encoder.encode('data: [DONE]\n'))
+      controller.close()
+    },
+  })
+
+  const events = []
+  for await (const event of streamDeepSeekResponseBody(body)) {
+    events.push(event)
+  }
+
+  assert.deepEqual(events, [
+    { type: 'content_delta', text: 'hel' },
+    { type: 'content_delta', text: 'lo' },
     { type: 'done' },
   ])
 })
