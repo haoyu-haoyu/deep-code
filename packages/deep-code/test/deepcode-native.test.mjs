@@ -26,6 +26,7 @@ import {
 import {
   createDeepSeekCallModel,
   deepSeekResponseToAssistantMessage,
+  resolveDeepSeekRuntimeModel,
 } from '../src/query/deepseek-call-model.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
@@ -665,4 +666,20 @@ test('createDeepSeekCallModel yields assistant messages from provider events', a
     [{ type: 'text', text: 'done' }],
   ])
   assert.equal(messages[0].message.stop_reason, 'stop')
+})
+
+test('resolveDeepSeekRuntimeModel avoids forwarding Claude model names to DeepSeek', () => {
+  const previousModel = process.env.DEEPSEEK_MODEL
+  process.env.DEEPSEEK_MODEL = 'deepseek-v4-flash'
+  try {
+    assert.equal(resolveDeepSeekRuntimeModel('deepseek-v4-pro'), 'deepseek-v4-pro')
+    assert.equal(resolveDeepSeekRuntimeModel('claude-sonnet-4-5'), 'deepseek-v4-flash')
+    assert.equal(resolveDeepSeekRuntimeModel(undefined), 'deepseek-v4-flash')
+  } finally {
+    if (previousModel === undefined) {
+      delete process.env.DEEPSEEK_MODEL
+    } else {
+      process.env.DEEPSEEK_MODEL = previousModel
+    }
+  }
 })

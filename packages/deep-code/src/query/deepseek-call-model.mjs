@@ -27,17 +27,24 @@ export function createDeepSeekCallModel({
       tools,
       env: process.env,
       cwd: process.cwd(),
-      model: options.model,
+      model: resolveDeepSeekRuntimeModel(options.model),
       maxTokens: options.maxOutputTokensOverride,
       toolChoice: options.toolChoice,
     }))
 
     yield deepSeekResponseToAssistantMessage(response, {
-      model: options.model,
+      model: resolveDeepSeekRuntimeModel(options.model) ?? 'deepseek-v4-pro',
       now,
       uuid,
     })
   }
+}
+
+export function resolveDeepSeekRuntimeModel(model) {
+  if (typeof model === 'string' && model.startsWith('deepseek')) {
+    return model
+  }
+  return process.env.DEEPSEEK_MODEL ?? process.env.DEEPCODE_MODEL
 }
 
 export function deepSeekResponseToAssistantMessage(

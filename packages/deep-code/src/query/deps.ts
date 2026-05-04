@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto'
 import { queryModelWithStreaming } from '../services/api/claude.js'
 import { autoCompactIfNeeded } from '../services/compact/autoCompact.js'
 import { microcompactMessages } from '../services/compact/microCompact.js'
+// @ts-expect-error DeepSeek provider adapter is JS while the legacy query layer remains TypeScript.
+import { createDeepSeekCallModel } from './deepseek-call-model.mjs'
 
 // -- deps
 
@@ -31,8 +33,13 @@ export type QueryDeps = {
 }
 
 export function productionDeps(): QueryDeps {
+  const provider =
+    process.env.DEEPCODE_PROVIDER ?? process.env.DEEP_CODE_PROVIDER
   return {
-    callModel: queryModelWithStreaming,
+    callModel:
+      provider === 'deepseek'
+        ? (createDeepSeekCallModel() as typeof queryModelWithStreaming)
+        : queryModelWithStreaming,
     microcompact: microcompactMessages,
     autocompact: autoCompactIfNeeded,
     uuid: randomUUID,
