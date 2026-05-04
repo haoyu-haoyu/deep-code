@@ -321,6 +321,54 @@ export async function* streamDeepSeekResponseBody(body) {
   }
 }
 
+export async function collectDeepSeekStreamEvents(events, { onContent } = {}) {
+  let content = ''
+  let reasoning = ''
+  let usage = null
+  let finishReason = null
+  const toolCalls = new Map()
+
+  for await (const event of events) {
+    if (event.type === 'reasoning_delta') {
+      reasoning += event.text
+    } else if (event.type === 'content_delta') {
+      content += event.text
+      onContent?.(event.text)
+    } else if (event.type === 'tool_call_delta') {
+      mergeDeepSeekToolCallDelta(toolCalls, event)
+      if (event.finishReason) finishReason = event.finishReason
+    } else if (event.type === 'finish') {
+      finishReason = event.finishReason
+    } else if (event.type === 'usage') {
+      usage = event.usage
+    }
+  }
+
+  return {
+    content,
+    reasoning,
+    usage,
+    finishReason,
+    toolCalls: [...toolCalls.values()],
+  }
+}
+
+export function mergeDeepSeekToolCallDelta(toolCalls, event) {
+  const index = event.index ?? 0
+  const existing =
+    toolCalls.get(index) ??
+    {
+      id: event.id,
+      type: 'function',
+      function: { name: event.name, arguments: '' },
+    }
+  if (event.id) existing.id = event.id
+  if (event.name) existing.function.name = event.name
+  if (event.argumentsDelta) existing.function.arguments += event.argumentsDelta
+  toolCalls.set(index, existing)
+  return existing
+}
+
 export function parseDeepSeekStreamChunk(chunk) {
   const text =
     typeof chunk === 'string'

@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import readline from 'node:readline/promises'
 import {
   calculateDeepSeekCacheHitRate,
+  collectDeepSeekStreamEvents,
   createDeepSeekCacheUserId,
   resolveDeepSeekConfig,
 } from './src/deepcode/deepseek-native.mjs'
@@ -80,7 +81,7 @@ async function runInteractive(env) {
 
 async function requestDeepSeek(messages, env, { streamToStdout = false } = {}) {
   const provider = resolveModelProvider({ env })
-  return await consumeDeepSeekEvents(provider.streamQuery({
+  return await collectDeepSeekStreamEvents(provider.streamQuery({
     systemPrompt: [
       'You are Deep Code, a terminal AI coding assistant optimized for DeepSeek. Answer concisely and do not call tools unless tools are provided.',
     ],
@@ -91,48 +92,6 @@ async function requestDeepSeek(messages, env, { streamToStdout = false } = {}) {
   }), {
     onContent: streamToStdout ? text => process.stdout.write(text) : undefined,
   })
-}
-
-async function consumeDeepSeekEvents(events, { onContent } = {}) {
-  let content = ''
-  let reasoning = ''
-  let usage = null
-  const toolCalls = new Map()
-
-  for await (const event of events) {
-    if (event.type === 'reasoning_delta') {
-      reasoning += event.text
-    } else if (event.type === 'content_delta') {
-      content += event.text
-      onContent?.(event.text)
-    } else if (event.type === 'tool_call_delta') {
-      mergeToolCallDelta(toolCalls, event)
-    } else if (event.type === 'usage') {
-      usage = event.usage
-    }
-  }
-
-  return {
-    content,
-    reasoning,
-    usage,
-    toolCalls: [...toolCalls.values()],
-  }
-}
-
-function mergeToolCallDelta(toolCalls, event) {
-  const index = event.index ?? 0
-  const existing =
-    toolCalls.get(index) ??
-    {
-      id: event.id,
-      type: 'function',
-      function: { name: event.name, arguments: '' },
-    }
-  if (event.id) existing.id = event.id
-  if (event.name) existing.function.name = event.name
-  if (event.argumentsDelta) existing.function.arguments += event.argumentsDelta
-  toolCalls.set(index, existing)
 }
 
 async function resolvePrompt(args) {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   buildDeepSeekRequest,
+  collectDeepSeekStreamEvents,
   createDeepSeekCacheDiagnostics,
   createDeepSeekProvider,
   createDeepSeekCacheUserId,
@@ -285,6 +286,76 @@ test('streamDeepSeekResponseBody buffers split SSE lines', async () => {
     { type: 'content_delta', text: 'lo' },
     { type: 'done' },
   ])
+})
+
+test('collectDeepSeekStreamEvents assembles content, reasoning, tool calls, finish reason and usage', async () => {
+  async function* events() {
+    yield { type: 'reasoning_delta', text: 'think' }
+    yield { type: 'content_delta', text: 'hello' }
+    yield {
+      type: 'tool_call_delta',
+      index: 0,
+      id: 'call_1',
+      name: 'Read',
+      argumentsDelta: '{"file_path":',
+    }
+    yield {
+      type: 'tool_call_delta',
+      index: 0,
+      argumentsDelta: '"README.md"}',
+      finishReason: 'tool_calls',
+    }
+    yield {
+      type: 'usage',
+      usage: {
+        prompt_cache_hit_tokens: 1,
+        prompt_cache_miss_tokens: 2,
+      },
+    }
+  }
+
+  const streamed = []
+  const result = await collectDeepSeekStreamEvents(events(), {
+    onContent(text) {
+      streamed.push(text)
+    },
+  })
+
+  assert.deepEqual(streamed, ['hello'])
+  assert.deepEqual(result, {
+    content: 'hello',
+    reasoning: 'think',
+    usage: {
+      prompt_cache_hit_tokens: 1,
+      prompt_cache_miss_tokens: 2,
+    },
+    finishReason: 'tool_calls',
+    toolCalls: [
+      {
+        id: 'call_1',
+        type: 'function',
+        function: {
+          name: 'Read',
+          arguments: '{"file_path":"README.md"}',
+        },
+      },
+    ],
+  })
+})
+
+test('collectDeepSeekStreamEvents records stop finish reason without tool calls', async () => {
+  async function* events() {
+    yield { type: 'content_delta', text: 'done' }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  assert.deepEqual(await collectDeepSeekStreamEvents(events()), {
+    content: 'done',
+    reasoning: '',
+    usage: null,
+    finishReason: 'stop',
+    toolCalls: [],
+  })
 })
 
 test('DeepSeek finish reasons map to agent loop actions', () => {
