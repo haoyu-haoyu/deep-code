@@ -3,16 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "description": "DeepSeek-native Deep Code terminal coding assistant wrapper.",
+  "workspaces": [
+    "packages/deep-code"
+  ],
   "bin": {
-    "deepcode": "node_modules/@deepcode-ai/deep-code/deepcode.js",
-    "deep-code": "node_modules/@deepcode-ai/deep-code/deepcode.js"
+    "deepcode": "packages/deep-code/deepcode.js",
+    "deep-code": "packages/deep-code/deepcode.js"
   },
   "scripts": {
     "test": "npm run test:deepcode",
-    "test:deepcode": "npm run test:deepcode --prefix node_modules/@deepcode-ai/deep-code",
-    "deepcode": "node_modules/.bin/deepcode"
+    "test:deepcode": "npm run test:deepcode --workspace @deepcode-ai/deep-code",
+    "deepcode": "node packages/deep-code/deepcode.js"
   },
   "dependencies": {
-    "@deepcode-ai/deep-code": "file:node_modules/@deepcode-ai/deep-code"
+    "@deepcode-ai/deep-code": "workspace:*"
   }
 }

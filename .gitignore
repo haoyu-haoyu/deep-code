@@ -1,4 +1,5 @@
 .DS_Store
+node_modules/
 .npm-cache/
 .deepcode/cache-stats.json
 *.log

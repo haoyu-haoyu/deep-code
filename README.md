@@ -6,8 +6,8 @@ DeepSeek-native terminal coding assistant prototype.
 
 ```bash
 export DEEPSEEK_API_KEY=sk-...
-node_modules/.bin/deepcode --status
-node_modules/.bin/deepcode "Reply with exactly: deepcode-ok"
+npm run deepcode -- --status
+npm run deepcode -- "Reply with exactly: deepcode-ok"
 ```
 
 ## Test
