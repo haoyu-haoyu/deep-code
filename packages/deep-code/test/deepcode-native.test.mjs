@@ -23,6 +23,10 @@ import {
   MODEL_PROVIDER_CAPABILITIES,
   resolveModelProvider,
 } from '../src/services/providers/index.mjs'
+import {
+  createDeepSeekCallModel,
+  deepSeekResponseToAssistantMessage,
+} from '../src/query/deepseek-call-model.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -569,4 +573,96 @@ test('runDeepSeekAgent can drive tool loop through provider streams', async () =
     tool_call_id: 'call_read',
     content: 'virtual-content:package.json',
   })
+})
+
+test('deepSeekResponseToAssistantMessage emits Claude Code compatible tool_use blocks', () => {
+  const message = deepSeekResponseToAssistantMessage(
+    {
+      content: 'I will read it.',
+      reasoning: 'Need file contents first.',
+      finishReason: 'tool_calls',
+      toolCalls: [
+        {
+          id: 'call_read',
+          type: 'function',
+          function: {
+            name: 'Read',
+            arguments: '{"file_path":"README.md"}',
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        prompt_cache_hit_tokens: 7,
+        prompt_cache_miss_tokens: 3,
+      },
+    },
+    {
+      model: 'deepseek-v4-pro',
+      now: () => new Date('2026-05-04T00:00:00.000Z'),
+      uuid: () => 'uuid-fixed',
+    },
+  )
+
+  assert.equal(message.type, 'assistant')
+  assert.equal(message.message.stop_reason, 'tool_use')
+  assert.deepEqual(message.message.content, [
+    { type: 'thinking', thinking: 'Need file contents first.' },
+    { type: 'text', text: 'I will read it.' },
+    {
+      type: 'tool_use',
+      id: 'call_read',
+      name: 'Read',
+      input: { file_path: 'README.md' },
+    },
+  ])
+  assert.deepEqual(message.message.usage, {
+    input_tokens: 10,
+    output_tokens: 5,
+    cache_creation_input_tokens: 3,
+    cache_read_input_tokens: 7,
+  })
+})
+
+test('createDeepSeekCallModel yields assistant messages from provider events', async () => {
+  const requests = []
+  const callModel = createDeepSeekCallModel({
+    provider: {
+      streamQuery(request) {
+        requests.push(request)
+        return (async function* stream() {
+          yield { type: 'content_delta', text: 'done' }
+          yield { type: 'finish', finishReason: 'stop' }
+          yield {
+            type: 'usage',
+            usage: {
+              prompt_tokens: 4,
+              completion_tokens: 2,
+            },
+          }
+        })()
+      },
+    },
+    now: () => new Date('2026-05-04T00:00:00.000Z'),
+    uuid: () => 'uuid-fixed',
+  })
+
+  const messages = []
+  for await (const message of callModel({
+    messages: [{ role: 'user', content: 'hello' }],
+    systemPrompt: ['You are Deep Code.'],
+    tools: [],
+    signal: new AbortController().signal,
+    options: { model: 'deepseek-v4-pro' },
+  })) {
+    messages.push(message)
+  }
+
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].model, 'deepseek-v4-pro')
+  assert.deepEqual(messages.map(message => message.message.content), [
+    [{ type: 'text', text: 'done' }],
+  ])
+  assert.equal(messages[0].message.stop_reason, 'stop')
 })
