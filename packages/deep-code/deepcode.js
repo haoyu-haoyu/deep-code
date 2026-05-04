@@ -9,7 +9,9 @@ import {
   calculateDeepSeekCacheHitRate,
   collectDeepSeekStreamEvents,
   createDeepSeekCacheUserId,
+  formatDeepSeekWarmupResult,
   resolveDeepSeekConfig,
+  warmDeepSeekCache,
 } from './src/deepcode/deepseek-native.mjs'
 import {
   createDeepSeekDoctorReport,
@@ -49,6 +51,15 @@ async function main() {
     if (hasFailingDoctorChecks(report)) {
       process.exitCode = 1
     }
+    return
+  }
+  if (args.includes('--warm-cache')) {
+    const result = await warmDeepSeekCache({
+      env,
+      cwd: process.cwd(),
+      repoSummary: await loadRepoSummary(),
+    })
+    console.log(formatDeepSeekWarmupResult(result))
     return
   }
 
@@ -138,6 +149,23 @@ async function loadSettings() {
   }
 }
 
+async function loadRepoSummary() {
+  const packageJsonPath = join(process.cwd(), 'package.json')
+  if (!existsSync(packageJsonPath)) {
+    return 'Deep Code workspace without package.json summary.'
+  }
+  try {
+    const pkg = JSON.parse(await readFile(packageJsonPath, 'utf8'))
+    return JSON.stringify({
+      name: pkg.name,
+      version: pkg.version,
+      workspaces: pkg.workspaces,
+    })
+  } catch {
+    return 'Deep Code workspace package summary unavailable.'
+  }
+}
+
 function mergeSettingsEnv(env, settings) {
   const settingsEnv = settings.env ?? {}
   return {
@@ -201,6 +229,7 @@ Usage:
   echo "summarize" | deepcode
   deepcode --status
   deepcode --doctor [--no-live]
+  deepcode --warm-cache
 
 Configuration:
   ~/.deepcode/settings.json

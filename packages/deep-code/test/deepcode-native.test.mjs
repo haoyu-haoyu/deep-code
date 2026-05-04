@@ -4,11 +4,13 @@ import assert from 'node:assert/strict'
 import {
   buildDeepSeekRequest,
   collectDeepSeekStreamEvents,
+  createDeepSeekWarmupContext,
   createDeepSeekCacheDiagnostics,
   createDeepSeekProvider,
   createDeepSeekCacheUserId,
   createDeepSeekPrefixHash,
   DEEPSEEK_FINISH_ACTIONS,
+  formatDeepSeekWarmupResult,
   mapMessagesToDeepSeek,
   mapDeepSeekFinishReason,
   mapDeepSeekHttpError,
@@ -18,6 +20,7 @@ import {
   stableJsonStringify,
   streamDeepSeekResponseBody,
   toolToDeepSeekFunctionSchema,
+  warmDeepSeekCache,
 } from '../src/deepcode/deepseek-native.mjs'
 import {
   MODEL_PROVIDER_CAPABILITIES,
@@ -447,6 +450,92 @@ test('DeepSeek cache diagnostics and prefix hash are stable', () => {
     systemPrompt: ['fixed'],
   })
   assert.equal(prefixA, prefixB)
+})
+
+test('createDeepSeekWarmupContext builds stable prefix hashes for cache warm-up', async () => {
+  const first = await createDeepSeekWarmupContext({
+    systemPrompt: ['fixed'],
+    repoSummary: 'repo',
+    tools: [
+      {
+        name: 'Write',
+        description: 'Write a file',
+        inputJSONSchema: {
+          type: 'object',
+          properties: { path: { type: 'string' } },
+        },
+      },
+      {
+        name: 'Read',
+        description: 'Read a file',
+        inputJSONSchema: {
+          type: 'object',
+          properties: { file_path: { type: 'string' } },
+        },
+      },
+    ],
+  })
+  const second = await createDeepSeekWarmupContext({
+    repoSummary: 'repo',
+    systemPrompt: ['fixed'],
+    tools: [
+      {
+        description: 'Read a file',
+        name: 'Read',
+        inputJSONSchema: {
+          properties: { file_path: { type: 'string' } },
+          type: 'object',
+        },
+      },
+      {
+        description: 'Write a file',
+        name: 'Write',
+        inputJSONSchema: {
+          properties: { path: { type: 'string' } },
+          type: 'object',
+        },
+      },
+    ],
+  })
+
+  assert.equal(first.prefixHash, second.prefixHash)
+  assert.deepEqual(first.stableTools.map(tool => tool.name), ['Read', 'Write'])
+  assert.ok(first.systemPrompt.some(item => item.includes('Stable tool manifest')))
+})
+
+test('warmDeepSeekCache sends low-output warm-up requests and reports cache telemetry', async () => {
+  const requests = []
+  const result = await warmDeepSeekCache({
+    env: {
+      DEEPSEEK_API_KEY: 'sk-test',
+      DEEPSEEK_CACHE_USER_ID: 'workspace-1',
+    },
+    cwd: '/tmp/workspace',
+    systemPrompt: ['fixed'],
+    repoSummary: 'repo',
+    provider: {
+      streamQuery(request) {
+        requests.push(request)
+        return (async function* stream() {
+          yield { type: 'content_delta', text: 'ok' }
+          yield { type: 'finish', finishReason: 'stop' }
+          yield {
+            type: 'usage',
+            usage: {
+              prompt_cache_hit_tokens: 9,
+              prompt_cache_miss_tokens: 1,
+            },
+          }
+        })()
+      },
+    },
+  })
+
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].body.max_tokens, 8)
+  assert.equal(requests[0].body.thinking.type, 'disabled')
+  assert.equal(result.cacheDiagnostics.promptCacheHitRate, 0.9)
+  assert.match(formatDeepSeekWarmupResult(result), /hit=9 miss=1/)
 })
 
 test('runDeepSeekAgent executes tool calls and preserves reasoning_content across tool turns', async () => {
