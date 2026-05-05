@@ -11,6 +11,10 @@ const lockfile = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'ut
 const innerPackage = JSON.parse(
   readFileSync(resolve(root, 'packages/deep-code/package.json'), 'utf8'),
 )
+const readmeSource = readFileSync(
+  resolve(root, 'packages/deep-code/README.md'),
+  'utf8',
+)
 const mainSource = readFileSync(
   resolve(root, 'packages/deep-code/src/main.tsx'),
   'utf8',
@@ -116,6 +120,26 @@ const coreSchemasSource = readFileSync(
 )
 const doctorSource = readFileSync(
   resolve(root, 'packages/deep-code/src/deepcode/doctor.mjs'),
+  'utf8',
+)
+const condensedLogoSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/CondensedLogo.tsx'),
+  'utf8',
+)
+const logoV2Source = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/LogoV2.tsx'),
+  'utf8',
+)
+const guestPassesUpsellSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/GuestPassesUpsell.tsx'),
+  'utf8',
+)
+const logoFeedConfigsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/feedConfigs.tsx'),
+  'utf8',
+)
+const channelsNoticeSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/ChannelsNotice.tsx'),
   'utf8',
 )
 const themeSource = readFileSync(
@@ -668,6 +692,28 @@ test('TUI visible copy uses Deep Code and DeepSeek branding', () => {
   assert.doesNotMatch(visibleSources, /Anthropic Console/)
   assert.doesNotMatch(visibleSources, /code\.claude\.com/)
   assert.doesNotMatch(visibleSources, /anthropics\/claude-code-action/)
+})
+
+test('README and welcome surfaces use Deep Code and DeepSeek branding', () => {
+  const welcomeSources = [
+    condensedLogoSource,
+    logoV2Source,
+    guestPassesUpsellSource,
+    logoFeedConfigsSource,
+    channelsNoticeSource,
+  ].map(stripInlineSourceMap).join('\n')
+
+  assert.match(readmeSource, /^# Deep Code/m)
+  assert.match(readmeSource, /DeepSeek-native terminal coding assistant/)
+  assert.match(readmeSource, /npm install -g @deepcode-ai\/deep-code/)
+  assert.match(readmeSource, /run `deepcode`/)
+  assert.doesNotMatch(readmeSource, /Claude Code|Anthropic|@anthropic-ai|claude\.com|code\.claude\.com|anthropic\.com/)
+
+  assert.match(welcomeSources, /Deep Code/)
+  assert.match(welcomeSources, /DeepSeek/)
+  assert.doesNotMatch(welcomeSources, /Claude Code/)
+  assert.doesNotMatch(welcomeSources, /Anthropic/)
+  assert.doesNotMatch(welcomeSources, /claude\.ai/)
 })
 
 test('TUI slash command metadata uses Deep Code and DeepSeek branding', () => {
