@@ -43,6 +43,11 @@ import {
   hasFailingDoctorChecks,
 } from '../src/deepcode/doctor.mjs'
 import {
+  createDeepSeekCacheStats,
+  formatDeepSeekCacheStatus,
+  resolveDeepSeekCacheStatsPath,
+} from '../src/deepcode/cache-telemetry.mjs'
+import {
   applyDeepCodeCliEnvOverrides,
   parseDeepCodeArgs,
 } from '../src/deepcode/cli-args.mjs'
@@ -201,6 +206,64 @@ test('applyDeepCodeCliEnvOverrides keeps CLI values above inherited env', () => 
 
   assert.equal(env.DEEPSEEK_MODEL, 'deepseek-v4-flash')
   assert.equal(env.DEEPSEEK_THINKING, 'disabled')
+})
+
+test('createDeepSeekCacheStats accumulates last and total cache telemetry', () => {
+  const first = createDeepSeekCacheStats(null, {
+    prompt_cache_hit_tokens: 9,
+    prompt_cache_miss_tokens: 1,
+  }, { now: () => '2026-05-05T00:00:00.000Z' })
+  const second = createDeepSeekCacheStats(first, {
+    prompt_cache_hit_tokens: 30,
+    prompt_cache_miss_tokens: 10,
+  }, { now: () => '2026-05-05T00:01:00.000Z' })
+
+  assert.deepEqual(second, {
+    version: 1,
+    requestCount: 2,
+    totalPromptCacheHitTokens: 39,
+    totalPromptCacheMissTokens: 11,
+    totalPromptCacheHitRate: 0.78,
+    lastPromptCacheHitTokens: 30,
+    lastPromptCacheMissTokens: 10,
+    lastPromptCacheHitRate: 0.75,
+    updatedAt: '2026-05-05T00:01:00.000Z',
+  })
+})
+
+test('formatDeepSeekCacheStatus renders persisted cache telemetry for status', () => {
+  const formatted = formatDeepSeekCacheStatus({
+    requestCount: 3,
+    totalPromptCacheHitTokens: 120,
+    totalPromptCacheMissTokens: 30,
+    totalPromptCacheHitRate: 0.8,
+    lastPromptCacheHitTokens: 40,
+    lastPromptCacheMissTokens: 10,
+    lastPromptCacheHitRate: 0.8,
+    updatedAt: '2026-05-05T00:00:00.000Z',
+  })
+
+  assert.match(formatted, /Cache telemetry: last_hit=40 last_miss=10 last_hit_rate=80\.0%/)
+  assert.match(formatted, /Cache telemetry: total_hit=120 total_miss=30 total_hit_rate=80\.0% requests=3/)
+  assert.match(formatted, /Cache telemetry updated: 2026-05-05T00:00:00\.000Z/)
+})
+
+test('resolveDeepSeekCacheStatsPath supports explicit disabled and configured paths', () => {
+  assert.equal(resolveDeepSeekCacheStatsPath({
+    env: { DEEPCODE_CACHE_STATS: 'disabled' },
+    config: { cacheUserId: 'dc_workspace' },
+    homeDir: '/tmp/home',
+  }), null)
+  assert.equal(resolveDeepSeekCacheStatsPath({
+    env: { DEEPCODE_CACHE_STATS_PATH: '/tmp/deepcode-cache.json' },
+    config: { cacheUserId: 'dc_workspace' },
+    homeDir: '/tmp/home',
+  }), '/tmp/deepcode-cache.json')
+  assert.equal(resolveDeepSeekCacheStatsPath({
+    env: {},
+    config: { cacheUserId: 'dc/workspace' },
+    homeDir: '/tmp/home',
+  }), '/tmp/home/.deepcode/cache-stats/dc_workspace.json')
 })
 
 test('sanitizeSchemaForDeepSeekStrict removes unsupported constraints and closes objects', () => {

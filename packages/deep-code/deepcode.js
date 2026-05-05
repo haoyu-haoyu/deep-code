@@ -19,6 +19,12 @@ import {
   hasFailingDoctorChecks,
 } from './src/deepcode/doctor.mjs'
 import {
+  formatDeepSeekCacheStatus,
+  loadDeepSeekCacheStats,
+  recordDeepSeekCacheUsage,
+  resolveDeepSeekCacheStatsPath,
+} from './src/deepcode/cache-telemetry.mjs'
+import {
   applyDeepCodeCliEnvOverrides,
   parseDeepCodeArgs,
 } from './src/deepcode/cli-args.mjs'
@@ -44,9 +50,12 @@ async function main() {
     settings,
   )
   const config = resolveDeepSeekConfig({ env, cwd: process.cwd() })
+  const cacheStatsPath = resolveDeepSeekCacheStatsPath({ env, config })
 
   if (cli.command === 'status') {
-    printStatus(config)
+    printStatus(config, {
+      cacheStats: await loadDeepSeekCacheStats(cacheStatsPath),
+    })
     return
   }
   if (cli.command === 'doctor') {
@@ -71,13 +80,13 @@ async function main() {
     return
   }
   if (cli.command === 'tool-e2e') {
-    await runToolE2E(env)
+    await runToolE2E(env, cacheStatsPath)
     return
   }
 
   const prompt = await resolvePrompt(cli.promptArgs)
   if (prompt) {
-    await runSingleTurn(prompt, env)
+    await runSingleTurn(prompt, env, cacheStatsPath)
     return
   }
 
@@ -87,17 +96,17 @@ async function main() {
     return
   }
 
-  await runInteractive(env)
+  await runInteractive(env, cacheStatsPath)
 }
 
-async function runSingleTurn(prompt, env) {
+async function runSingleTurn(prompt, env, cacheStatsPath) {
   const messages = [{ role: 'user', content: prompt }]
   const response = await requestDeepSeek(messages, env, { streamToStdout: true })
   if (!response.content.endsWith('\n')) process.stdout.write('\n')
-  printUsage(response.usage)
+  await printAndRecordUsage(response.usage, cacheStatsPath)
 }
 
-async function runInteractive(env) {
+async function runInteractive(env, cacheStatsPath) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -120,7 +129,7 @@ async function runInteractive(env) {
       tool_calls: response.toolCalls.length > 0 ? response.toolCalls : undefined,
     })
     if (!response.content.endsWith('\n')) process.stdout.write('\n')
-    printUsage(response.usage)
+    await printAndRecordUsage(response.usage, cacheStatsPath)
   }
   rl.close()
 }
@@ -218,7 +227,7 @@ function mergeSettingsEnv(env, settings) {
   }
 }
 
-function printStatus(config) {
+function printStatus(config, { cacheStats = null } = {}) {
   console.log(`Provider: DeepSeek native`)
   console.log(`Base URL: ${config.baseUrl}`)
   console.log(`Model: ${config.model}`)
@@ -227,9 +236,10 @@ function printStatus(config) {
   console.log(`Reasoning effort: ${config.reasoningEffort}`)
   console.log(`Cache user_id: ${config.cacheUserId}`)
   console.log(`API key: ${config.apiKey ? 'configured' : 'missing'}`)
+  console.log(formatDeepSeekCacheStatus(cacheStats))
 }
 
-function printUsage(usage) {
+async function printAndRecordUsage(usage, cacheStatsPath) {
   if (!usage) return
   const hitRate = calculateDeepSeekCacheHitRate(usage)
   const hit = usage.prompt_cache_hit_tokens ?? 0
@@ -237,9 +247,10 @@ function printUsage(usage) {
   process.stderr.write(
     `\n[DeepSeek cache] hit=${hit} miss=${miss} hit_rate=${(hitRate * 100).toFixed(1)}%\n`,
   )
+  await recordDeepSeekCacheUsage({ path: cacheStatsPath, usage })
 }
 
-async function runToolE2E(env) {
+async function runToolE2E(env, cacheStatsPath) {
   const cwd = await mkdtemp(join(tmpdir(), 'deepcode-tool-e2e-'))
   const samplePath = join(cwd, 'sample.txt')
   await writeFile(samplePath, 'alpha\n')
@@ -265,6 +276,7 @@ async function runToolE2E(env) {
       `Cache: hit=${result.cacheDiagnostics.promptCacheHitTokens} miss=${result.cacheDiagnostics.promptCacheMissTokens} hit_rate=${(result.cacheDiagnostics.promptCacheHitRate * 100).toFixed(1)}%`,
     )
   }
+  await recordDeepSeekCacheUsage({ path: cacheStatsPath, usage: result.usage })
   if (!finalContent.includes('beta')) {
     process.exitCode = 1
   }

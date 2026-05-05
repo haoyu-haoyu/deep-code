@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const root = resolve(import.meta.dirname, '../../..')
@@ -85,6 +86,38 @@ test('Deep Code CLI advertises DeepSeek local toolchain E2E check', () => {
   assert.match(result.stdout, /--reasoning-effort high\|max/)
 })
 
+test('Deep Code status displays persisted DeepSeek cache telemetry', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-cache-status-'))
+  const statsPath = join(dir, 'stats.json')
+  writeFileSync(statsPath, JSON.stringify({
+    version: 1,
+    requestCount: 2,
+    totalPromptCacheHitTokens: 90,
+    totalPromptCacheMissTokens: 10,
+    totalPromptCacheHitRate: 0.9,
+    lastPromptCacheHitTokens: 9,
+    lastPromptCacheMissTokens: 1,
+    lastPromptCacheHitRate: 0.9,
+    updatedAt: '2026-05-05T00:00:00.000Z',
+  }))
+
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '--status',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_CACHE_STATS_PATH: statsPath,
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Cache telemetry: last_hit=9 last_miss=1 last_hit_rate=90\.0%/)
+  assert.match(result.stdout, /Cache telemetry: total_hit=90 total_miss=10 total_hit_rate=90\.0% requests=2/)
+})
+
 test('source CLI entrypoint is branded for Deep Code and DeepSeek model env', () => {
   assert.match(mainSource, /program\.name\('deepcode'\)/)
   assert.match(mainSource, /Deep Code - starts an interactive session/)
@@ -116,6 +149,9 @@ test('managed environment constants include DeepSeek native routing variables', 
     'DEEPSEEK_REASONING_EFFORT',
     'DEEPCODE_REASONING_EFFORT',
     'DEEPCODE_CACHE_USER_ID',
+    'DEEPCODE_CACHE_STATS',
+    'DEEPSEEK_CACHE_STATS',
+    'DEEPCODE_CACHE_STATS_PATH',
   ]) {
     assert.match(managedEnvSource, new RegExp(`'${key}'`))
   }
