@@ -35,10 +35,44 @@ const themeSource = readFileSync(
   resolve(root, 'packages/deep-code/src/utils/theme.ts'),
   'utf8',
 )
+const autoModeOptInSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/AutoModeOptInDialog.tsx'),
+  'utf8',
+)
+const mcpDialogCopySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/MCPServerDialogCopy.tsx'),
+  'utf8',
+)
+const workflowMultiselectSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/WorkflowMultiselectDialog.tsx'),
+  'utf8',
+)
+const themePickerSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/ThemePicker.tsx'),
+  'utf8',
+)
+const managedSettingsSecuritySource = readFileSync(
+  resolve(
+    root,
+    'packages/deep-code/src/components/ManagedSettingsSecurityDialog/ManagedSettingsSecurityDialog.tsx',
+  ),
+  'utf8',
+)
 const runSingleTurnSource = deepcodeEntrypointSource.slice(
   deepcodeEntrypointSource.indexOf('async function runSingleTurn'),
   deepcodeEntrypointSource.indexOf('async function runInteractive'),
 )
+
+function inlineSourceMapSources(source) {
+  const match = source.match(
+    /sourceMappingURL=data:application\/json;charset=utf-8;base64,([^\n]+)/,
+  )
+  if (!match) {
+    return ''
+  }
+  const map = JSON.parse(Buffer.from(match[1], 'base64').toString('utf8'))
+  return (map.sourcesContent ?? []).join('\n')
+}
 
 test('root package is branded as Deep Code', () => {
   assert.equal(rootPackage.name, 'deep-code')
@@ -134,6 +168,40 @@ test('Deep Code front controller delegates print mode to the full CLI bundle', (
   })
 })
 
+test('Deep Code front controller delegates interactive mode to the full CLI bundle', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-delegate-'))
+  const fakeFullCli = join(dir, 'deepcode-full.mjs')
+  const capturePath = join(dir, 'capture.json')
+  writeFileSync(fakeFullCli, [
+    '#!/usr/bin/env node',
+    'import { writeFileSync } from "node:fs"',
+    `writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), provider: process.env.DEEPCODE_PROVIDER ?? null }))`,
+    'console.log("delegated-full-cli-tui")',
+  ].join('\n'))
+
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '--model',
+    'deepseek-v4-flash',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_FULL_CLI_PATH: fakeFullCli,
+      DEEPCODE_PROVIDER: 'deepseek',
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), 'delegated-full-cli-tui')
+  assert.deepEqual(JSON.parse(readFileSync(capturePath, 'utf8')), {
+    argv: ['--model', 'deepseek-v4-flash'],
+    cwd: root,
+    provider: 'deepseek',
+  })
+})
+
 test('Deep Code front controller reports a clear error when the full CLI bundle is missing', () => {
   const result = spawnSync('node', [
     resolve(root, rootPackage.bin.deepcode),
@@ -198,6 +266,52 @@ test('Deep Code theme exposes DeepSeek blue brand tokens and aliases legacy bran
   assert.doesNotMatch(themeSource, /claude: 'rgb\(215,119,87\)'/)
   assert.doesNotMatch(themeSource, /briefLabelClaude: 'rgb\(215,119,87\)'/)
   assert.doesNotMatch(themeSource, /claude: 'ansi:redBright'/)
+})
+
+test('TUI visible copy uses Deep Code and DeepSeek branding', () => {
+  const visibleSources = [
+    autoModeOptInSource,
+    mcpDialogCopySource,
+    workflowMultiselectSource,
+    themePickerSource,
+    managedSettingsSecuritySource,
+  ].join('\n')
+
+  assert.match(autoModeOptInSource, /Deep Code checks each tool call/)
+  assert.match(autoModeOptInSource, /https:\/\/api-docs\.deepseek\.com/)
+  assert.match(mcpDialogCopySource, /Deep Code repository/)
+  assert.match(workflowMultiselectSource, /Deep Code - Tag @deepcode/)
+  assert.match(workflowMultiselectSource, /haoyu-haoyu\/deep-code/)
+  assert.match(themePickerSource, /Hello, Deep Code!/)
+  assert.match(managedSettingsSecuritySource, /No, exit Deep Code/)
+  assert.doesNotMatch(visibleSources, /Claude Code/)
+  assert.doesNotMatch(visibleSources, /Claude handle/)
+  assert.doesNotMatch(visibleSources, /Anthropic Console/)
+  assert.doesNotMatch(visibleSources, /code\.claude\.com/)
+  assert.doesNotMatch(visibleSources, /anthropics\/claude-code-action/)
+})
+
+test('TUI inline source maps use Deep Code and DeepSeek branding', () => {
+  const sourceMapSources = [
+    autoModeOptInSource,
+    mcpDialogCopySource,
+    workflowMultiselectSource,
+    themePickerSource,
+    managedSettingsSecuritySource,
+  ].map(inlineSourceMapSources).join('\n')
+
+  assert.match(sourceMapSources, /Deep Code checks each tool call/)
+  assert.match(sourceMapSources, /https:\/\/api-docs\.deepseek\.com/)
+  assert.match(sourceMapSources, /Deep Code repository/)
+  assert.match(sourceMapSources, /Deep Code - Tag @deepcode/)
+  assert.match(sourceMapSources, /haoyu-haoyu\/deep-code/)
+  assert.match(sourceMapSources, /Hello, Deep Code!/)
+  assert.match(sourceMapSources, /No, exit Deep Code/)
+  assert.doesNotMatch(sourceMapSources, /Claude Code/)
+  assert.doesNotMatch(sourceMapSources, /Claude handle/)
+  assert.doesNotMatch(sourceMapSources, /Anthropic Console/)
+  assert.doesNotMatch(sourceMapSources, /code\.claude\.com/)
+  assert.doesNotMatch(sourceMapSources, /anthropics\/claude-code-action/)
 })
 
 test('Deep Code status displays persisted DeepSeek cache telemetry', () => {
