@@ -1,4 +1,7 @@
 import { test, expect } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   buildDeepSeekModelHarness,
@@ -335,6 +338,72 @@ test('print model metadata resolves default model through DeepSeek-native defaul
   }
 })
 
+test('config home defaults to Deep Code paths and keeps Claude env only as legacy fallback', async () => {
+  const previousEnv = snapshotEnv([
+    'DEEPCODE_CONFIG_DIR',
+    'CLAUDE_CONFIG_DIR',
+  ])
+  const envUtils = await import('../src/utils/envUtils.ts')
+
+  try {
+    delete process.env.DEEPCODE_CONFIG_DIR
+    delete process.env.CLAUDE_CONFIG_DIR
+    clearConfigPathCaches(envUtils)
+
+    expect(envUtils.getDeepCodeConfigHomeDir()).toBe(join(homedir(), '.deepcode'))
+    expect(envUtils.getClaudeConfigHomeDir()).toBe(join(homedir(), '.deepcode'))
+    expect(envUtils.getLegacyClaudeConfigHomeDir()).toBe(join(homedir(), '.claude'))
+
+    process.env.CLAUDE_CONFIG_DIR = '/tmp/legacy-claude-config'
+    clearConfigPathCaches(envUtils)
+
+    expect(envUtils.getDeepCodeConfigHomeDir()).toBe('/tmp/legacy-claude-config')
+
+    process.env.DEEPCODE_CONFIG_DIR = '/tmp/deepcode-config'
+    clearConfigPathCaches(envUtils)
+
+    expect(envUtils.getDeepCodeConfigHomeDir()).toBe('/tmp/deepcode-config')
+    expect(envUtils.getClaudeConfigHomeDir()).toBe('/tmp/deepcode-config')
+    expect(envUtils.getLegacyClaudeConfigHomeDir()).toBe('/tmp/legacy-claude-config')
+  } finally {
+    restoreEnvSnapshot(previousEnv)
+    clearConfigPathCaches(envUtils)
+  }
+})
+
+test('global config file writes use Deep Code names while exposing legacy Claude candidates', async () => {
+  const previousEnv = snapshotEnv([
+    'DEEPCODE_CONFIG_DIR',
+    'CLAUDE_CONFIG_DIR',
+  ])
+  const envUtils = await import('../src/utils/envUtils.ts')
+  const envSource = readFileSync(
+    new URL('../src/utils/env.ts', import.meta.url),
+    'utf8',
+  )
+
+  try {
+    delete process.env.DEEPCODE_CONFIG_DIR
+    delete process.env.CLAUDE_CONFIG_DIR
+    clearConfigPathCaches(envUtils)
+
+    expect(envSource).toContain('getGlobalDeepCodeFile')
+    expect(envSource).toContain('.deepcode')
+    expect(envSource).toContain('getLegacyGlobalClaudeFileCandidates')
+    expect(envSource).toContain('.claude')
+
+    process.env.DEEPCODE_CONFIG_DIR = '/tmp/deepcode-config'
+    process.env.CLAUDE_CONFIG_DIR = '/tmp/legacy-claude-config'
+    clearConfigPathCaches(envUtils)
+
+    expect(envUtils.getDeepCodeConfigHomeDir()).toBe('/tmp/deepcode-config')
+    expect(envUtils.getLegacyClaudeConfigHomeDir()).toBe('/tmp/legacy-claude-config')
+  } finally {
+    restoreEnvSnapshot(previousEnv)
+    clearConfigPathCaches(envUtils)
+  }
+})
+
 async function drain(generator) {
   while (true) {
     const result = await generator.next()
@@ -494,5 +563,16 @@ function snapshotEnv(keys) {
 function restoreEnvSnapshot(snapshot) {
   for (const [key, value] of snapshot) {
     restoreEnv(key, value)
+  }
+}
+
+function clearConfigPathCaches(...modules) {
+  for (const module of modules) {
+    module.getDeepCodeConfigHomeDir?.cache?.clear?.()
+    module.getClaudeConfigHomeDir?.cache?.clear?.()
+    module.getLegacyClaudeConfigHomeDir?.cache?.clear?.()
+    module.getGlobalDeepCodeFile?.cache?.clear?.()
+    module.getGlobalClaudeFile?.cache?.clear?.()
+    module.getLegacyGlobalClaudeFileCandidates?.cache?.clear?.()
   }
 }

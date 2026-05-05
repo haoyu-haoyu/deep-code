@@ -2,16 +2,36 @@ import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { join } from 'path'
 
-// Memoized: 150+ callers, many on hot paths. Keyed off CLAUDE_CONFIG_DIR so
-// tests that change the env var get a fresh value without explicit cache.clear.
-export const getClaudeConfigHomeDir = memoize(
+const DEEPCODE_CONFIG_HOME_DIR = '.deepcode'
+const LEGACY_CLAUDE_CONFIG_HOME_DIR = '.claude'
+
+// Memoized: 150+ callers, many on hot paths. Keyed off both Deep Code and
+// legacy Claude env vars so tests that change either get a fresh value without
+// explicit cache.clear.
+export const getDeepCodeConfigHomeDir = memoize(
   (): string => {
     return (
-      process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')
+      process.env.DEEPCODE_CONFIG_DIR ??
+      process.env.CLAUDE_CONFIG_DIR ??
+      join(homedir(), DEEPCODE_CONFIG_HOME_DIR)
+    ).normalize('NFC')
+  },
+  () => `${process.env.DEEPCODE_CONFIG_DIR ?? ''}\0${process.env.CLAUDE_CONFIG_DIR ?? ''}`,
+)
+
+export const getLegacyClaudeConfigHomeDir = memoize(
+  (): string => {
+    return (
+      process.env.CLAUDE_CONFIG_DIR ??
+      join(homedir(), LEGACY_CLAUDE_CONFIG_HOME_DIR)
     ).normalize('NFC')
   },
   () => process.env.CLAUDE_CONFIG_DIR,
 )
+
+// Compatibility alias for existing call sites. The implementation is Deep Code
+// native now; old Claude paths are only used through explicit fallback helpers.
+export const getClaudeConfigHomeDir = getDeepCodeConfigHomeDir
 
 export function getTeamsDir(): string {
   return join(getClaudeConfigHomeDir(), 'teams')
