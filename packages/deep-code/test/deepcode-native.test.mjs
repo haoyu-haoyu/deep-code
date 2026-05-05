@@ -71,6 +71,11 @@ import {
   createProjectInstructionPathPlan,
   isInstructionMemoryFilePath,
 } from '../src/deepcode/instruction-paths.mjs'
+import {
+  getPreferredAgentMemoryDir,
+  getPreferredAgentMemorySnapshotDir,
+  isDeepCodeAgentMemoryPath,
+} from '../src/deepcode/agent-memory-paths.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -368,6 +373,102 @@ test('formatDeepSeekCacheStatus reports stable prefix miss diagnostics', async (
   assert.match(
     unchanged,
     new RegExp(`Cache prefix: current=${currentPrefix.prefixHash} last=${currentPrefix.prefixHash} status=unchanged`),
+  )
+})
+
+test('Deep Code agent memory paths prefer .deepcode with legacy fallback', () => {
+  const cwd = '/repo'
+  const memoryBaseDir = '/home/user/.deepcode'
+  const legacyMemoryBaseDir = '/home/user/.claude'
+  const legacyPaths = new Set([
+    join(legacyMemoryBaseDir, 'agent-memory', 'reviewer'),
+    join(cwd, '.claude', 'agent-memory', 'reviewer'),
+    join(cwd, '.claude', 'agent-memory-local', 'reviewer'),
+    join(cwd, '.claude', 'agent-memory-snapshots', 'reviewer'),
+  ])
+  const exists = path => legacyPaths.has(path)
+
+  assert.equal(
+    getPreferredAgentMemoryDir({
+      agentType: 'reviewer',
+      scope: 'user',
+      cwd,
+      memoryBaseDir,
+      legacyMemoryBaseDir,
+      exists,
+    }),
+    join(legacyMemoryBaseDir, 'agent-memory', 'reviewer') + '/',
+  )
+  assert.equal(
+    getPreferredAgentMemoryDir({
+      agentType: 'reviewer',
+      scope: 'project',
+      cwd,
+      memoryBaseDir,
+      legacyMemoryBaseDir,
+      exists,
+    }),
+    join(cwd, '.claude', 'agent-memory', 'reviewer') + '/',
+  )
+  assert.equal(
+    getPreferredAgentMemoryDir({
+      agentType: 'reviewer',
+      scope: 'local',
+      cwd,
+      memoryBaseDir,
+      legacyMemoryBaseDir,
+      exists,
+    }),
+    join(cwd, '.claude', 'agent-memory-local', 'reviewer') + '/',
+  )
+  assert.equal(
+    getPreferredAgentMemorySnapshotDir({
+      agentType: 'reviewer',
+      cwd,
+      exists,
+    }),
+    join(cwd, '.claude', 'agent-memory-snapshots', 'reviewer'),
+  )
+
+  assert.equal(
+    getPreferredAgentMemoryDir({
+      agentType: 'reviewer',
+      scope: 'project',
+      cwd,
+      memoryBaseDir,
+      legacyMemoryBaseDir,
+      exists: () => false,
+    }),
+    join(cwd, '.deepcode', 'agent-memory', 'reviewer') + '/',
+  )
+  assert.equal(
+    getPreferredAgentMemoryDir({
+      agentType: 'plugin:reviewer',
+      scope: 'local',
+      cwd,
+      memoryBaseDir,
+      legacyMemoryBaseDir,
+      exists: () => false,
+    }),
+    join(cwd, '.deepcode', 'agent-memory-local', 'plugin-reviewer') + '/',
+  )
+  assert.equal(
+    isDeepCodeAgentMemoryPath({
+      absolutePath: join(cwd, '.deepcode', 'agent-memory', 'reviewer', 'MEMORY.md'),
+      cwd,
+      memoryBaseDir,
+      legacyMemoryBaseDir,
+    }),
+    true,
+  )
+  assert.equal(
+    isDeepCodeAgentMemoryPath({
+      absolutePath: join(cwd, '.claude', 'agent-memory-local', 'reviewer', 'MEMORY.md'),
+      cwd,
+      memoryBaseDir,
+      legacyMemoryBaseDir,
+    }),
+    true,
   )
 })
 

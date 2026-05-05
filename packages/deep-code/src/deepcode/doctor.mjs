@@ -2,6 +2,11 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
+  AGENT_MEMORY_DIR,
+  AGENT_MEMORY_LOCAL_DIR,
+  AGENT_MEMORY_SNAPSHOT_DIR,
+} from './agent-memory-paths.mjs'
+import {
   buildDeepSeekRequest,
   collectDeepSeekStreamEvents,
   createDeepSeekCacheDiagnostics,
@@ -269,6 +274,11 @@ export function createDeepCodeMigrationDiagnostics({
       legacy: join(legacyHome, 'agents'),
     },
     {
+      label: 'Global agent memory',
+      primary: join(primaryHome, AGENT_MEMORY_DIR),
+      legacy: join(legacyHome, AGENT_MEMORY_DIR),
+    },
+    {
       label: 'Project instructions',
       primary: join(cwd, DEEPCODE_INSTRUCTION_FILE),
       legacy: join(cwd, LEGACY_CLAUDE_INSTRUCTION_FILE),
@@ -303,6 +313,21 @@ export function createDeepCodeMigrationDiagnostics({
       primary: join(cwd, DEEPCODE_PROJECT_DIR, 'rules'),
       legacy: join(cwd, LEGACY_CLAUDE_PROJECT_DIR, 'rules'),
     },
+    {
+      label: 'Project agent memory',
+      primary: join(cwd, DEEPCODE_PROJECT_DIR, AGENT_MEMORY_DIR),
+      legacy: join(cwd, LEGACY_CLAUDE_PROJECT_DIR, AGENT_MEMORY_DIR),
+    },
+    {
+      label: 'Local agent memory',
+      primary: join(cwd, DEEPCODE_PROJECT_DIR, AGENT_MEMORY_LOCAL_DIR),
+      legacy: join(cwd, LEGACY_CLAUDE_PROJECT_DIR, AGENT_MEMORY_LOCAL_DIR),
+    },
+    {
+      label: 'Project agent memory snapshots',
+      primary: join(cwd, DEEPCODE_PROJECT_DIR, AGENT_MEMORY_SNAPSHOT_DIR),
+      legacy: join(cwd, LEGACY_CLAUDE_PROJECT_DIR, AGENT_MEMORY_SNAPSHOT_DIR),
+    },
   ]
 
   const annotated = pathPairs.map(item => ({
@@ -332,7 +357,7 @@ export function createDeepCodeMigrationDiagnostics({
     detail,
     recommendation:
       legacyOnly.length > 0
-        ? `Move project memory to ${DEEPCODE_INSTRUCTION_FILE} and project config to ${DEEPCODE_PROJECT_DIR}/ when ready. Legacy ${LEGACY_CLAUDE_INSTRUCTION_FILE} and ${LEGACY_CLAUDE_PROJECT_DIR}/ remain readable as fallback.`
+        ? `Move project memory to ${DEEPCODE_INSTRUCTION_FILE}, project config and agent memory to ${DEEPCODE_PROJECT_DIR}/ when ready. Legacy ${LEGACY_CLAUDE_INSTRUCTION_FILE} and ${LEGACY_CLAUDE_PROJECT_DIR}/ remain readable as fallback.`
         : `Use ${DEEPCODE_INSTRUCTION_FILE} and ${DEEPCODE_PROJECT_DIR}/ for new Deep Code configuration.`,
     primaryHome,
     legacyHome,
