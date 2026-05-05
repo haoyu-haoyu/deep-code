@@ -2595,6 +2595,7 @@ async function run(): Promise<CommanderCommand> {
       // Initialize telemetry after env vars are applied so OTEL endpoint env vars and
       // otelHeadersHelper (which requires trust to execute) are available.
       initializeTelemetryAfterTrust();
+      logForDebugging('[DeepCode print] telemetry initialized');
 
       // Kick SessionStart hooks now so the subprocess spawn overlaps with
       // MCP connect + plugin init + print.ts import below. loadInitialMessages
@@ -2611,7 +2612,9 @@ async function run(): Promise<CommanderCommand> {
       sessionStartHooksPromise?.catch(() => {});
       profileCheckpoint('before_validateForceLoginOrg');
       // Validate org restriction for non-interactive sessions
+      logForDebugging('[DeepCode print] validating force-login org');
       const orgValidation = await validateForceLoginOrg();
+      logForDebugging('[DeepCode print] force-login org validated');
       if (!orgValidation.valid) {
         process.stderr.write(orgValidation.message + '\n');
         process.exit(1);
@@ -2726,7 +2729,9 @@ async function run(): Promise<CommanderCommand> {
       // fetch was kicked off early (line ~2558) so only residual time blocks
       // here. --bare skips claude.ai entirely for perf-sensitive scripts.
       profileCheckpoint('before_connectMcp');
+      logForDebugging('[DeepCode print] connecting regular MCP servers');
       await connectMcpBatch(regularMcpConfigs, 'regular');
+      logForDebugging('[DeepCode print] regular MCP servers connected');
       profileCheckpoint('after_connectMcp');
       // Dedup: suppress plugin MCP servers that duplicate a claude.ai
       // connector (connector wins), then connect claude.ai servers.
@@ -2807,6 +2812,7 @@ async function run(): Promise<CommanderCommand> {
         logForDebugging(`[MCP] claude.ai connectors not ready after ${CLAUDE_AI_MCP_TIMEOUT_MS}ms — proceeding; background connection continues`);
       }
       profileCheckpoint('after_connectMcp_claudeai');
+      logForDebugging('[DeepCode print] MCP setup complete');
 
       // In headless mode, start deferred prefetches immediately (no user typing delay)
       // --bare / SIMPLE: startDeferredPrefetches early-returns internally.
@@ -2821,11 +2827,13 @@ async function run(): Promise<CommanderCommand> {
         }
       }
       logSessionTelemetry();
+      logForDebugging('[DeepCode print] importing print runner');
       profileCheckpoint('before_print_import');
       const {
         runHeadless
       } = await import('src/cli/print.js');
       profileCheckpoint('after_print_import');
+      logForDebugging('[DeepCode print] starting runHeadless');
       void runHeadless(inputPrompt, () => headlessStore.getState(), headlessStore.setState, commandsHeadless, tools, sdkMcpConfigs, agentDefinitions.activeAgents, {
         continue: options.continue,
         resume: options.resume,
