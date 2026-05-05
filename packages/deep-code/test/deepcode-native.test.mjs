@@ -45,6 +45,7 @@ import {
 import {
   createDeepSeekCacheStats,
   formatDeepSeekCacheStatus,
+  recordDeepSeekCacheUsage,
   resolveDeepSeekCacheStatsPath,
 } from '../src/deepcode/cache-telemetry.mjs'
 import {
@@ -264,6 +265,22 @@ test('resolveDeepSeekCacheStatsPath supports explicit disabled and configured pa
     config: { cacheUserId: 'dc/workspace' },
     homeDir: '/tmp/home',
   }), '/tmp/home/.deepcode/cache-stats/dc_workspace.json')
+})
+
+test('recordDeepSeekCacheUsage is best-effort when stats path cannot be written', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-cache-unwritable-'))
+  const blockingFile = join(dir, 'not-a-directory')
+  await writeFile(blockingFile, 'x')
+
+  const result = await recordDeepSeekCacheUsage({
+    path: join(blockingFile, 'stats.json'),
+    usage: {
+      prompt_cache_hit_tokens: 1,
+      prompt_cache_miss_tokens: 1,
+    },
+  })
+
+  assert.equal(result, null)
 })
 
 test('sanitizeSchemaForDeepSeekStrict removes unsupported constraints and closes objects', () => {

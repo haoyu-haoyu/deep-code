@@ -59,11 +59,15 @@ export async function recordDeepSeekCacheUsage({
   now,
 } = {}) {
   if (!path || !usage) return null
-  const previous = await loadDeepSeekCacheStats(path)
-  const stats = createDeepSeekCacheStats(previous, usage, { now })
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, `${JSON.stringify(stats, null, 2)}\n`)
-  return stats
+  try {
+    const previous = await loadDeepSeekCacheStats(path)
+    const stats = createDeepSeekCacheStats(previous, usage, { now })
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, `${JSON.stringify(stats, null, 2)}\n`)
+    return stats
+  } catch {
+    return null
+  }
 }
 
 export function formatDeepSeekCacheStatus(stats) {
