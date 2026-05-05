@@ -106,6 +106,130 @@ const statuslineCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/statusline.tsx'),
   'utf8',
 )
+const desktopCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/desktop/index.ts'),
+  'utf8',
+)
+const mobileCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/mobile/index.ts'),
+  'utf8',
+)
+const chromeCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/chrome/index.ts'),
+  'utf8',
+)
+const installSlackAppCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/install-slack-app/index.ts'),
+  'utf8',
+)
+const installGitHubAppCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/install-github-app/index.ts'),
+  'utf8',
+)
+const feedbackCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/feedback/index.ts'),
+  'utf8',
+)
+const pluginCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/plugin/index.tsx'),
+  'utf8',
+)
+const memoryCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/memory/index.ts'),
+  'utf8',
+)
+const logoutCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/logout/index.ts'),
+  'utf8',
+)
+const passesCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/passes/index.ts'),
+  'utf8',
+)
+const stickersCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/stickers/index.ts'),
+  'utf8',
+)
+const statsCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/stats/index.ts'),
+  'utf8',
+)
+const reviewCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/review.ts'),
+  'utf8',
+)
+const thinkbackCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/thinkback/index.ts'),
+  'utf8',
+)
+const costCommandCopySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/cost/cost.ts'),
+  'utf8',
+)
+const ideCommandCopySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/ide/ide.tsx'),
+  'utf8',
+)
+const pluginTrustWarningSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/plugin/PluginTrustWarning.tsx'),
+  'utf8',
+)
+const pluginManageMarketplacesSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/plugin/ManageMarketplaces.tsx'),
+  'utf8',
+)
+const pluginDiscoverSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/plugin/DiscoverPlugins.tsx'),
+  'utf8',
+)
+const mcpAddCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/mcp/addCommand.ts'),
+  'utf8',
+)
+const initCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/init.ts'),
+  'utf8',
+)
+const insightsCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/insights.ts'),
+  'utf8',
+)
+const thinkbackBodySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/thinkback/thinkback.tsx'),
+  'utf8',
+)
+const installCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/install.tsx'),
+  'utf8',
+)
+const remoteSetupCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/remote-setup/index.ts'),
+  'utf8',
+)
+const mcpXaaIdpCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/mcp/xaaIdpCommand.ts'),
+  'utf8',
+)
+const memoryCommandCopySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/memory/memory.tsx'),
+  'utf8',
+)
+const copyCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/copy/index.ts'),
+  'utf8',
+)
+const modelCommandCopySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/model/model.tsx'),
+  'utf8',
+)
+const privacySettingsCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/privacy-settings/privacy-settings.tsx'),
+  'utf8',
+)
+const fastCommandCopySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/fast/fast.tsx'),
+  'utf8',
+)
 const settingsStatusSource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/Settings/Status.tsx'),
   'utf8',
@@ -452,6 +576,115 @@ test('high-visibility user copy uses Deep Code and DeepSeek branding', () => {
   assert.doesNotMatch(highVisibilitySources, /Claude needs/)
   assert.doesNotMatch(highVisibilitySources, /Claude explains/)
   assert.doesNotMatch(highVisibilitySources, /Claude pauses/)
+})
+
+test('DeepSeek-native slash commands hide legacy Claude service integrations by default', () => {
+  const commandRegistry = commandsSource.slice(
+    commandsSource.indexOf('const COMMANDS'),
+    commandsSource.indexOf('export const builtInCommandNames'),
+  )
+  const remoteSafeRegistry = commandsSource.slice(
+    commandsSource.indexOf('export const REMOTE_SAFE_COMMANDS'),
+    commandsSource.indexOf('export const BRIDGE_SAFE_COMMANDS'),
+  )
+  const publicCommandSources = [
+    feedbackCommandSource,
+    pluginCommandSource,
+    memoryCommandSource,
+  ].map(stripInlineSourceMap).join('\n')
+  const legacyCommandSources = [
+    desktopCommandSource,
+    mobileCommandSource,
+    chromeCommandSource,
+    installSlackAppCommandSource,
+    installGitHubAppCommandSource,
+    logoutCommandSource,
+  ].map(stripInlineSourceMap).join('\n')
+
+  for (const legacyCommand of [
+    'chrome',
+    'desktop',
+    'installGitHubApp',
+    'installSlackApp',
+    'mobile',
+  ]) {
+    const commandEntryPattern = new RegExp(`^\\s*${legacyCommand},`, 'm')
+    assert.doesNotMatch(commandRegistry, commandEntryPattern)
+    assert.doesNotMatch(remoteSafeRegistry, commandEntryPattern)
+  }
+  assert.doesNotMatch(commandRegistry, /webCmd \? \[webCmd\]/)
+  assert.doesNotMatch(commandRegistry, /voiceCommand \? \[voiceCommand\]/)
+
+  assert.match(commandsSource, /includeLegacyClaudeServiceCommands/)
+  assert.match(publicCommandSources, /Deep Code/)
+  assert.doesNotMatch(publicCommandSources, /Claude Code|Anthropic/)
+  assert.doesNotMatch(legacyCommandSources, /Continue the current session in Claude Desktop/)
+  assert.doesNotMatch(legacyCommandSources, /Claude mobile app/)
+  assert.doesNotMatch(legacyCommandSources, /Claude in Chrome/)
+  assert.doesNotMatch(legacyCommandSources, /Claude Slack app/)
+  assert.doesNotMatch(legacyCommandSources, /Claude GitHub Actions/)
+  assert.doesNotMatch(legacyCommandSources, /Anthropic account/)
+})
+
+test('default visible slash command descriptions use Deep Code branding', () => {
+  const defaultSlashCommandSources = [
+    passesCommandSource,
+    stickersCommandSource,
+    statsCommandSource,
+    reviewCommandSource,
+    thinkbackCommandSource,
+  ].map(stripInlineSourceMap).join('\n')
+
+  assert.match(defaultSlashCommandSources, /Deep Code/)
+  assert.doesNotMatch(defaultSlashCommandSources, /Claude Code|Anthropic/)
+})
+
+test('common public command copy uses Deep Code branding', () => {
+  const publicCommandCopySources = [
+    costCommandCopySource,
+    ideCommandCopySource,
+    pluginTrustWarningSource,
+    pluginManageMarketplacesSource,
+    pluginDiscoverSource,
+    mcpAddCommandSource,
+    memoryCommandCopySource,
+    copyCommandSource,
+    modelCommandCopySource,
+    privacySettingsCommandSource,
+    fastCommandCopySource,
+  ].map(stripInlineSourceMap).join('\n')
+
+  assert.match(publicCommandCopySources, /Deep Code/)
+  assert.doesNotMatch(publicCommandCopySources, /Claude Code/)
+  assert.doesNotMatch(publicCommandCopySources, /Copy Claude/)
+  assert.doesNotMatch(publicCommandCopySources, /Help improve Claude/)
+  assert.doesNotMatch(publicCommandCopySources, /Claude\.ai/)
+  assert.doesNotMatch(publicCommandCopySources, /Anthropic/)
+  assert.doesNotMatch(publicCommandCopySources, /docs\.claude\.com/)
+  assert.doesNotMatch(publicCommandCopySources, /code\.claude\.com/)
+  assert.doesNotMatch(publicCommandCopySources, /claude\.ai/)
+  assert.doesNotMatch(publicCommandCopySources, /\bclaude mcp add\b/)
+})
+
+test('secondary public command flows keep Deep Code branding while preserving CLAUDE.md compatibility names', () => {
+  const secondaryPublicSources = [
+    initCommandSource,
+    insightsCommandSource,
+    thinkbackBodySource,
+    installCommandSource,
+    remoteSetupCommandSource,
+    mcpXaaIdpCommandSource,
+  ].map(stripInlineSourceMap).join('\n')
+
+  assert.match(secondaryPublicSources, /Deep Code/)
+  assert.match(secondaryPublicSources, /CLAUDE\.md/)
+  assert.doesNotMatch(secondaryPublicSources, /\bClaude\b/)
+  assert.doesNotMatch(secondaryPublicSources, /Anthropic/)
+  assert.doesNotMatch(secondaryPublicSources, /claude\.ai/)
+  assert.doesNotMatch(secondaryPublicSources, /code\.claude\.com/)
+  assert.doesNotMatch(secondaryPublicSources, /DeepSeek-native Deep Code/)
+  assert.doesNotMatch(secondaryPublicSources, /\bclaude mcp add\b/)
+  assert.doesNotMatch(secondaryPublicSources, /\bclaude -p\b/)
 })
 
 test('TUI inline source maps use Deep Code and DeepSeek branding', () => {

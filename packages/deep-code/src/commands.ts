@@ -253,6 +253,24 @@ export const INTERNAL_ONLY_COMMANDS = [
   autofixPr,
 ].filter(Boolean)
 
+function includeLegacyClaudeServiceCommands(): boolean {
+  return (
+    process.env.DEEPCODE_ENABLE_LEGACY_CLAUDE_SERVICES === 'true' ||
+    process.env.CLAUDE_CODE_ENABLE_LEGACY_SERVICE_COMMANDS === 'true' ||
+    process.env.USER_TYPE === 'ant'
+  )
+}
+
+const LEGACY_CLAUDE_SERVICE_COMMANDS: Command[] = [
+  chrome,
+  desktop,
+  installGitHubApp,
+  installSlackApp,
+  mobile,
+  ...(webCmd ? [webCmd] : []),
+  ...(voiceCommand ? [voiceCommand] : []),
+]
+
 // Declared as a function so that we don't run this until getCommands is called,
 // since underlying functions read from config, which can't be read at module initialization time
 const COMMANDS = memoize((): Command[] => [
@@ -261,13 +279,11 @@ const COMMANDS = memoize((): Command[] => [
   agents,
   branch,
   btw,
-  chrome,
   clear,
   color,
   compact,
   config,
   copy,
-  desktop,
   context,
   contextNonInteractive,
   cost,
@@ -282,11 +298,8 @@ const COMMANDS = memoize((): Command[] => [
   ide,
   init,
   keybindings,
-  installGitHubApp,
-  installSlackApp,
   mcp,
   memory,
-  mobile,
   model,
   outputStyle,
   remoteEnv,
@@ -317,7 +330,6 @@ const COMMANDS = memoize((): Command[] => [
   usage,
   usageReport,
   vim,
-  ...(webCmd ? [webCmd] : []),
   ...(forkCmd ? [forkCmd] : []),
   ...(buddy ? [buddy] : []),
   ...(proactive ? [proactive] : []),
@@ -325,7 +337,6 @@ const COMMANDS = memoize((): Command[] => [
   ...(assistantCommand ? [assistantCommand] : []),
   ...(bridge ? [bridge] : []),
   ...(remoteControlServerCommand ? [remoteControlServerCommand] : []),
-  ...(voiceCommand ? [voiceCommand] : []),
   thinkback,
   thinkbackPlay,
   permissions,
@@ -334,7 +345,12 @@ const COMMANDS = memoize((): Command[] => [
   hooks,
   exportCommand,
   sandboxToggle,
-  ...(!isUsing3PServices() ? [logout, login()] : []),
+  ...(includeLegacyClaudeServiceCommands()
+    ? [
+        ...LEGACY_CLAUDE_SERVICE_COMMANDS,
+        ...(!isUsing3PServices() ? [logout, login()] : []),
+      ]
+    : []),
   passes,
   ...(peersCmd ? [peersCmd] : []),
   tasks,
@@ -633,7 +649,6 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   keybindings, // Keybinding management
   statusline, // Status line toggle
   stickers, // Stickers
-  mobile, // Mobile QR code
 ])
 
 /**
