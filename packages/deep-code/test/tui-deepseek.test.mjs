@@ -1,6 +1,7 @@
 import { test, expect } from 'bun:test'
 
 import {
+  buildDeepSeekModelHarness,
   buildDeepSeekQueryDepsHarness,
   buildDeepSeekTuiQueryHarness,
 } from './support/tui-query-harness.mjs'
@@ -80,6 +81,65 @@ test('production query deps default to DeepSeek native provider', async () => {
   } finally {
     restoreEnv('DEEPCODE_PROVIDER', previousDeepCodeProvider)
     restoreEnv('DEEP_CODE_PROVIDER', previousDeepCodeProviderAlt)
+  }
+})
+
+test('model utilities default to DeepSeek native models', async () => {
+  const previousEnv = snapshotEnv([
+    'DEEPCODE_PROVIDER',
+    'DEEP_CODE_PROVIDER',
+    'DEEPSEEK_MODEL',
+    'DEEPCODE_MODEL',
+    'DEEPSEEK_SMALL_MODEL',
+    'DEEPCODE_SMALL_MODEL',
+    'ANTHROPIC_MODEL',
+    'ANTHROPIC_SMALL_FAST_MODEL',
+  ])
+  delete process.env.DEEPCODE_PROVIDER
+  delete process.env.DEEP_CODE_PROVIDER
+  delete process.env.DEEPSEEK_MODEL
+  delete process.env.DEEPCODE_MODEL
+  delete process.env.DEEPSEEK_SMALL_MODEL
+  delete process.env.DEEPCODE_SMALL_MODEL
+  process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-6'
+  process.env.ANTHROPIC_SMALL_FAST_MODEL = 'claude-haiku-4-5'
+
+  try {
+    const model = await buildDeepSeekModelHarness()
+
+    expect(model.getDefaultMainLoopModelSetting()).toBe('deepseek-v4-pro')
+    expect(model.getDefaultMainLoopModel()).toBe('deepseek-v4-pro')
+    expect(model.getSmallFastModel()).toBe('deepseek-v4-flash')
+    expect(model.getUserSpecifiedModelSetting()).toBeUndefined()
+  } finally {
+    restoreEnvSnapshot(previousEnv)
+  }
+})
+
+test('model utilities honor DeepSeek model env overrides', async () => {
+  const previousEnv = snapshotEnv([
+    'DEEPCODE_PROVIDER',
+    'DEEP_CODE_PROVIDER',
+    'DEEPSEEK_MODEL',
+    'DEEPCODE_MODEL',
+    'DEEPSEEK_SMALL_MODEL',
+    'DEEPCODE_SMALL_MODEL',
+  ])
+  delete process.env.DEEPCODE_PROVIDER
+  delete process.env.DEEP_CODE_PROVIDER
+  process.env.DEEPCODE_MODEL = 'deepseek-v4-custom'
+  process.env.DEEPSEEK_MODEL = 'deepseek-v4-pro-env'
+  process.env.DEEPCODE_SMALL_MODEL = 'deepseek-v4-small-custom'
+  process.env.DEEPSEEK_SMALL_MODEL = 'deepseek-v4-flash-env'
+
+  try {
+    const model = await buildDeepSeekModelHarness()
+
+    expect(model.getUserSpecifiedModelSetting()).toBe('deepseek-v4-pro-env')
+    expect(model.getMainLoopModel()).toBe('deepseek-v4-pro-env')
+    expect(model.getSmallFastModel()).toBe('deepseek-v4-flash-env')
+  } finally {
+    restoreEnvSnapshot(previousEnv)
   }
 })
 
@@ -176,5 +236,15 @@ function restoreEnv(key, value) {
     delete process.env[key]
   } else {
     process.env[key] = value
+  }
+}
+
+function snapshotEnv(keys) {
+  return new Map(keys.map(key => [key, process.env[key]]))
+}
+
+function restoreEnvSnapshot(snapshot) {
+  for (const [key, value] of snapshot) {
+    restoreEnv(key, value)
   }
 }

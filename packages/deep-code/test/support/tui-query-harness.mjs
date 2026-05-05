@@ -181,6 +181,16 @@ export function tokenCountWithEstimation() {
 `)
 registerSourceStub('utils/context', `
 export const ESCALATED_MAX_TOKENS = 64000
+export function has1mContext(model) {
+  return String(model ?? '').toLowerCase().includes('[1m]')
+}
+export function is1mContextDisabled() {
+  return false
+}
+export function modelSupports1M(model) {
+  return String(model ?? '').toLowerCase().includes('sonnet') ||
+    String(model ?? '').toLowerCase().includes('opus')
+}
 `)
 registerSourceStub('services/analytics/growthbook', `
 export function getFeatureValue_CACHED_MAY_BE_STALE(_key, fallback) {
@@ -263,6 +273,9 @@ export function productionDeps() {
 }
 `)
 registerSourceStub('bootstrap/state', `
+export function getMainLoopModelOverride() {
+  return globalThis.__deepcodeTuiHarness?.mainLoopModelOverride
+}
 export function getCurrentTurnTokenBudget() {
   return 0
 }
@@ -284,6 +297,85 @@ export function count(items, predicate) {
   return (items ?? []).filter(predicate).length
 }
 `)
+registerSourceStub('utils/auth', `
+export function getSubscriptionType() {
+  return null
+}
+export function isClaudeAISubscriber() {
+  return false
+}
+export function isMaxSubscriber() {
+  return false
+}
+export function isProSubscriber() {
+  return false
+}
+export function isTeamPremiumSubscriber() {
+  return false
+}
+`)
+registerSourceStub('utils/envUtils', `
+export function isEnvTruthy(value) {
+  return value === '1' || value === 'true'
+}
+`)
+registerSourceStub('utils/model/modelStrings', `
+export function getModelStrings() {
+  return {
+    opus40: 'claude-opus-4-20250514',
+    opus41: 'claude-opus-4-1-20250805',
+    opus45: 'claude-opus-4-5-20251101',
+    opus46: 'claude-opus-4-6-20251201',
+    sonnet35: 'claude-3-5-sonnet-20241022',
+    sonnet37: 'claude-3-7-sonnet-20250219',
+    sonnet40: 'claude-sonnet-4-20250514',
+    sonnet45: 'claude-sonnet-4-5-20250929',
+    sonnet46: 'claude-sonnet-4-6-20251201',
+    haiku35: 'claude-3-5-haiku-20241022',
+    haiku45: 'claude-haiku-4-5-20251001',
+  }
+}
+export function resolveOverriddenModel(model) {
+  return model
+}
+`)
+registerSourceStub('utils/modelCost', `
+export function formatModelPricing() {
+  return ''
+}
+export function getOpus46CostTier() {
+  return ''
+}
+`)
+registerSourceStub('utils/settings/settings', `
+export function getSettings_DEPRECATED() {
+  return globalThis.__deepcodeTuiHarness?.settings ?? {}
+}
+`)
+registerSourceStub('utils/model/providers', `
+export function getAPIProvider() {
+  return globalThis.__deepcodeTuiHarness?.apiProvider ?? 'deepseek'
+}
+`)
+registerSourceStub('constants/figures', `
+export const LIGHTNING_BOLT = '⚡'
+`)
+registerSourceStub('utils/model/modelAllowlist', `
+export function isModelAllowed() {
+  return true
+}
+`)
+registerSourceStub('utils/model/aliases', `
+export function isModelAlias(model) {
+  return ['opusplan', 'sonnet', 'haiku', 'opus', 'best'].includes(String(model).toLowerCase())
+}
+`)
+registerSourceStub('utils/stringUtils', `
+export function capitalize(value) {
+  const text = String(value)
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+`)
 stubModules.set('bun:bundle', `
 export function feature() {
   return false
@@ -296,6 +388,10 @@ export async function buildDeepSeekTuiQueryHarness() {
 
 export async function buildDeepSeekQueryDepsHarness() {
   return await buildDeepCodeSourceHarness(join(srcRoot, 'query/deps.ts'))
+}
+
+export async function buildDeepSeekModelHarness() {
+  return await buildDeepCodeSourceHarness(join(srcRoot, 'utils/model/model.ts'))
 }
 
 async function buildDeepCodeSourceHarness(entrypoint) {
