@@ -34,6 +34,7 @@ import {
 import {
   createDeepSeekCallModel,
   deepSeekResponseToAssistantMessage,
+  resolveDeepSeekReasoningEffort,
   resolveDeepSeekRuntimeModel,
 } from '../src/query/deepseek-call-model.mjs'
 import {
@@ -812,6 +813,42 @@ test('createDeepSeekCallModel yields assistant messages from provider events', a
   assert.equal(messages[0].message.stop_reason, 'stop')
 })
 
+test('createDeepSeekCallModel forwards query runtime controls to DeepSeek provider', async () => {
+  const requests = []
+  const callModel = createDeepSeekCallModel({
+    provider: {
+      streamQuery(request) {
+        requests.push(request)
+        return (async function* stream() {
+          yield { type: 'content_delta', text: 'done' }
+          yield { type: 'finish', finishReason: 'stop' }
+        })()
+      },
+    },
+  })
+  const controller = new AbortController()
+  const fetchOverride = async () => new Response('')
+
+  for await (const _ of callModel({
+    messages: [{ role: 'user', content: 'hello' }],
+    systemPrompt: ['You are Deep Code.'],
+    tools: [],
+    signal: controller.signal,
+    options: {
+      model: 'claude-sonnet-4-5',
+      effortValue: 'xhigh',
+      fetchOverride,
+    },
+  })) {
+    // Drain the stream.
+  }
+
+  assert.equal(requests[0].model, process.env.DEEPSEEK_MODEL ?? process.env.DEEPCODE_MODEL)
+  assert.equal(requests[0].reasoningEffort, 'max')
+  assert.equal(requests[0].signal, controller.signal)
+  assert.equal(requests[0].fetch, fetchOverride)
+})
+
 test('resolveDeepSeekRuntimeModel avoids forwarding Claude model names to DeepSeek', () => {
   const previousModel = process.env.DEEPSEEK_MODEL
   process.env.DEEPSEEK_MODEL = 'deepseek-v4-flash'
@@ -826,6 +863,15 @@ test('resolveDeepSeekRuntimeModel avoids forwarding Claude model names to DeepSe
       process.env.DEEPSEEK_MODEL = previousModel
     }
   }
+})
+
+test('resolveDeepSeekReasoningEffort maps Claude Code effort levels to DeepSeek', () => {
+  assert.equal(resolveDeepSeekReasoningEffort('low'), 'high')
+  assert.equal(resolveDeepSeekReasoningEffort('medium'), 'high')
+  assert.equal(resolveDeepSeekReasoningEffort('high'), 'high')
+  assert.equal(resolveDeepSeekReasoningEffort('max'), 'max')
+  assert.equal(resolveDeepSeekReasoningEffort('xhigh'), 'max')
+  assert.equal(resolveDeepSeekReasoningEffort(undefined), undefined)
 })
 
 test('createDeepSeekDoctorReport validates DeepSeek-native request shape offline', async () => {

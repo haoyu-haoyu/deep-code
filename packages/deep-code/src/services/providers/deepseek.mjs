@@ -299,6 +299,7 @@ export async function* streamDeepSeekQuery(context = {}) {
     response = await fetchFn(request.url, {
       method: request.method,
       headers: request.headers,
+      signal: context.signal,
       body:
         typeof request.body === 'string'
           ? request.body

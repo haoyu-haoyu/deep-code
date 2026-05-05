@@ -28,8 +28,11 @@ export function createDeepSeekCallModel({
       env: process.env,
       cwd: process.cwd(),
       model: resolveDeepSeekRuntimeModel(options.model),
+      reasoningEffort: resolveDeepSeekReasoningEffort(options.effortValue),
       maxTokens: options.maxOutputTokensOverride,
       toolChoice: options.toolChoice,
+      signal,
+      fetch: options.fetchOverride,
     }))
 
     yield deepSeekResponseToAssistantMessage(response, {
@@ -45,6 +48,16 @@ export function resolveDeepSeekRuntimeModel(model) {
     return model
   }
   return process.env.DEEPSEEK_MODEL ?? process.env.DEEPCODE_MODEL
+}
+
+export function resolveDeepSeekReasoningEffort(effortValue) {
+  if (effortValue === undefined || effortValue === null) return undefined
+  const normalized =
+    typeof effortValue === 'string'
+      ? effortValue.toLowerCase()
+      : String(effortValue).toLowerCase()
+  if (normalized === 'max' || normalized === 'xhigh') return 'max'
+  return 'high'
 }
 
 export function deepSeekResponseToAssistantMessage(
@@ -104,6 +117,7 @@ function mapStopReasonForClaudeCode(finishReason) {
 }
 
 function mapUsageForClaudeCode(usage = {}) {
+  usage ??= {}
   const cacheHit = usage.prompt_cache_hit_tokens ?? 0
   const cacheMiss = usage.prompt_cache_miss_tokens ?? 0
   return {
