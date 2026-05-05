@@ -937,6 +937,21 @@ test('source CLI entrypoint is branded for Deep Code and DeepSeek model env', ()
   assert.doesNotMatch(mainSource, /const explicitModel = options\.model \|\| process\.env\.ANTHROPIC_MODEL/)
 })
 
+test('full CLI command help avoids legacy Claude and Anthropic branding', () => {
+  assert.match(mainSource, /Start a Deep Code session server/)
+  assert.match(mainSource, /Run Deep Code on a remote host over SSH/)
+  assert.match(mainSource, /Usage: deepcode ssh/)
+  assert.match(mainSource, /Connect to a Deep Code server/)
+  assert.match(mainSource, /Sign in to legacy account services/)
+  assert.match(mainSource, /Log out from legacy account services/)
+  assert.doesNotMatch(mainSource, /Start a Claude Code session server/)
+  assert.doesNotMatch(mainSource, /Run Claude Code on a remote host/)
+  assert.doesNotMatch(mainSource, /Usage: claude ssh/)
+  assert.doesNotMatch(mainSource, /Connect to a Claude Code server/)
+  assert.doesNotMatch(mainSource, /Sign in to your Anthropic account/)
+  assert.doesNotMatch(mainSource, /Log out from your Anthropic account/)
+})
+
 test('print mode model metadata delegates through DeepSeek-aware defaults', () => {
   assert.match(printSource, /import \{ buildPrintModelInfos \}/)
   assert.match(printSource, /const modelInfos = buildPrintModelInfos\(\)/)
