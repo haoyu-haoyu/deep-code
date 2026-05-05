@@ -346,7 +346,11 @@ async function runToolE2E(env, cacheStatsPath) {
       `Cache: hit=${result.cacheDiagnostics.promptCacheHitTokens} miss=${result.cacheDiagnostics.promptCacheMissTokens} hit_rate=${(result.cacheDiagnostics.promptCacheHitRate * 100).toFixed(1)}%`,
     )
   }
-  await recordDeepSeekCacheUsage({ path: cacheStatsPath, usage: result.usage })
+  await recordDeepSeekCacheUsage({
+    path: cacheStatsPath,
+    usage: result.usage,
+    stablePrefix: result.stablePrefix,
+  })
   if (!finalContent.includes('beta')) {
     process.exitCode = 1
   }

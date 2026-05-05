@@ -53,6 +53,7 @@ import {
   parseDeepCodeArgs,
 } from '../src/deepcode/cli-args.mjs'
 import {
+  createDeepCodeStableTools,
   createDeepSeekLocalTools,
   runDeepSeekLocalToolChain,
 } from '../src/deepcode/local-toolchain.mjs'
@@ -873,6 +874,19 @@ test('createDeepCodeStablePrefix sorts skill manifest for cache-stable requests'
   ])
 })
 
+test('createDeepCodeStableTools exposes real local tools for stable prefix manifests', async () => {
+  const tools = createDeepCodeStableTools({ cwd: '/tmp/workspace' })
+  const stable = await createDeepCodeStablePrefix({ tools })
+
+  assert.deepEqual(tools.map(tool => tool.name), ['Read', 'Edit', 'Bash'])
+  assert.deepEqual(stable.stableTools.map(tool => tool.name), ['Bash', 'Edit', 'Read'])
+  assert.ok(stable.systemPrompt.some(item => item.includes('Stable tool manifest')))
+  assert.equal(
+    stable.stableTools.find(tool => tool.name === 'Read').parameters.properties.file_path.type,
+    'string',
+  )
+})
+
 test('createDeepSeekWarmupContext uses the shared Deep Code stable prefix builder', async () => {
   const stable = await createDeepCodeStablePrefix({ repoSummary: 'repo-a' })
   const warmup = await createDeepSeekWarmupContext({ repoSummary: 'repo-a' })
@@ -1412,6 +1426,45 @@ test('runDeepSeekLocalToolChain executes Read -> Edit -> Bash -> Read through De
   assert.equal(requests[1].body.messages.at(-2).reasoning_content, 'Need to read the file first.')
   assert.equal(requests[4].body.messages.at(-1).role, 'tool')
   assert.equal(result.cacheDiagnostics.promptCacheHitRate, 0.8)
+})
+
+test('runDeepSeekLocalToolChain uses real tools in both stable prefix and DeepSeek request body', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'deepcode-stable-tools-'))
+  await writeFile(join(cwd, 'sample.txt'), 'alpha\n')
+  const requests = []
+
+  const result = await runDeepSeekLocalToolChain({
+    cwd,
+    prompt: 'Read sample.txt and answer.',
+    provider: {
+      streamQuery(request) {
+        requests.push(request)
+        return (async function* stream() {
+          yield { type: 'content_delta', text: 'done' }
+          yield { type: 'finish', finishReason: 'stop' }
+        })()
+      },
+    },
+  })
+
+  assert.equal(result.content, 'done')
+  assert.deepEqual(
+    result.stablePrefix.stableTools.map(tool => tool.name),
+    ['Bash', 'Edit', 'Read'],
+  )
+  assert.equal(requests.length, 1)
+  assert.deepEqual(
+    requests[0].body.tools.map(tool => tool.function.name),
+    ['Bash', 'Edit', 'Read'],
+  )
+  assert.match(
+    requests[0].body.messages[0].content,
+    /Stable tool manifest:/,
+  )
+  assert.match(
+    requests[0].body.messages[0].content,
+    /"name":"Read"/,
+  )
 })
 
 test('createDeepSeekLocalTools rejects paths outside cwd and unsafe bash commands', async () => {

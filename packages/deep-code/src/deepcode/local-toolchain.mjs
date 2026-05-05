@@ -6,8 +6,14 @@ import {
   createDeepSeekCacheDiagnostics,
   runDeepSeekAgent,
 } from './deepseek-native.mjs'
+import { createDeepCodeStablePrefix } from './stable-prefix.mjs'
 
 const execFileAsync = promisify(execFile)
+const DEEPCODE_LOCAL_TOOLCHAIN_SYSTEM_PROMPT = [
+  'You are Deep Code running a DeepSeek-native local tool chain.',
+  'Use the provided tools when the user asks you to inspect, edit, or verify files.',
+  'For file update workflows, prefer this sequence: Read, Edit, Bash, Read, then answer concisely.',
+]
 
 export async function runDeepSeekLocalToolChain({
   prompt,
@@ -15,27 +21,35 @@ export async function runDeepSeekLocalToolChain({
   env = process.env,
   provider,
   maxTurns = 10,
+  repoSummary = 'Deep Code local toolchain workspace.',
 } = {}) {
+  const tools = createDeepCodeStableTools({ cwd })
+  const stablePrefix = await createDeepCodeStablePrefix({
+    systemPrompt: DEEPCODE_LOCAL_TOOLCHAIN_SYSTEM_PROMPT,
+    tools,
+    repoSummary,
+  })
   const result = await runDeepSeekAgent({
     prompt,
     cwd,
     env,
     provider,
     maxTurns,
-    systemPrompt: [
-      'You are Deep Code running a DeepSeek-native local tool chain.',
-      'Use the provided tools when the user asks you to inspect, edit, or verify files.',
-      'For file update workflows, prefer this sequence: Read, Edit, Bash, Read, then answer concisely.',
-    ],
-    tools: createDeepSeekLocalTools({ cwd }),
+    systemPrompt: stablePrefix.systemPrompt,
+    tools,
   })
 
   return {
     ...result,
+    stablePrefix,
     cacheDiagnostics: result.usage
       ? createDeepSeekCacheDiagnostics(result.usage)
       : null,
   }
+}
+
+export function createDeepCodeStableTools({ cwd = process.cwd() } = {}) {
+  return createDeepSeekLocalTools({ cwd })
 }
 
 export function createDeepSeekLocalTools({ cwd = process.cwd() } = {}) {
