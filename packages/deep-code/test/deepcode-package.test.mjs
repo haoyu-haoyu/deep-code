@@ -11,6 +11,10 @@ const lockfile = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'ut
 const innerPackage = JSON.parse(
   readFileSync(resolve(root, 'packages/deep-code/package.json'), 'utf8'),
 )
+const readmeSource = readFileSync(
+  resolve(root, 'packages/deep-code/README.md'),
+  'utf8',
+)
 const mainSource = readFileSync(
   resolve(root, 'packages/deep-code/src/main.tsx'),
   'utf8',
@@ -116,6 +120,26 @@ const coreSchemasSource = readFileSync(
 )
 const doctorSource = readFileSync(
   resolve(root, 'packages/deep-code/src/deepcode/doctor.mjs'),
+  'utf8',
+)
+const condensedLogoSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/CondensedLogo.tsx'),
+  'utf8',
+)
+const logoV2Source = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/LogoV2.tsx'),
+  'utf8',
+)
+const guestPassesUpsellSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/GuestPassesUpsell.tsx'),
+  'utf8',
+)
+const logoFeedConfigsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/feedConfigs.tsx'),
+  'utf8',
+)
+const channelsNoticeSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/ChannelsNotice.tsx'),
   'utf8',
 )
 const themeSource = readFileSync(
@@ -559,6 +583,84 @@ test('Deep Code package can build the full CLI launcher artifact', () => {
   assert.match(helpResult.stdout, /DeepSeek native models/)
 })
 
+test('Deep Code package packs and installs a runnable production tarball', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-pack-smoke-'))
+  const packDir = join(dir, 'pack')
+  const installDir = join(dir, 'install')
+  const npmCacheDir = join(dir, 'npm-cache')
+  const npmEnv = {
+    ...process.env,
+    npm_config_audit: 'false',
+    npm_config_fund: 'false',
+    npm_config_cache: npmCacheDir,
+  }
+  const mkdirResult = spawnSync('mkdir', ['-p', packDir, installDir, npmCacheDir], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  assert.equal(mkdirResult.status, 0, mkdirResult.stderr)
+
+  const packResult = spawnSync('npm', [
+    'pack',
+    '--workspace',
+    '@deepcode-ai/deep-code',
+    '--pack-destination',
+    packDir,
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: npmEnv,
+  })
+
+  assert.equal(packResult.status, 0, packResult.stderr)
+  assert.doesNotMatch(packResult.stderr, /Direct publishing is not allowed/)
+  const tarball = join(packDir, packResult.stdout.trim().split(/\r?\n/).at(-1))
+
+  const listResult = spawnSync('tar', ['-tzf', tarball], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  assert.equal(listResult.status, 0, listResult.stderr)
+  assert.match(listResult.stdout, /package\/deepcode\.js/)
+  assert.match(listResult.stdout, /package\/dist\/deepcode-full\.mjs/)
+  assert.match(listResult.stdout, /package\/src\/deepcode\/deepseek-native\.mjs/)
+  assert.doesNotMatch(listResult.stdout, /package\/test\//)
+
+  const initResult = spawnSync('npm', ['init', '-y'], {
+    cwd: installDir,
+    encoding: 'utf8',
+  })
+  assert.equal(initResult.status, 0, initResult.stderr)
+  const installResult = spawnSync('npm', [
+    'install',
+    '--ignore-scripts',
+    '--omit=optional',
+    tarball,
+  ], {
+    cwd: installDir,
+    encoding: 'utf8',
+    env: npmEnv,
+  })
+  assert.equal(installResult.status, 0, installResult.stderr)
+
+  const binPath = join(installDir, 'node_modules', '.bin', 'deepcode')
+  const versionResult = spawnSync(binPath, ['--version'], {
+    cwd: installDir,
+    encoding: 'utf8',
+  })
+  assert.equal(versionResult.status, 0, versionResult.stderr)
+  assert.equal(versionResult.stdout.trim(), '0.1.0-deepseek-native (Deep Code)')
+
+  const helpResult = spawnSync(binPath, ['--help'], {
+    cwd: installDir,
+    encoding: 'utf8',
+  })
+  assert.equal(helpResult.status, 0, helpResult.stderr)
+  assert.match(helpResult.stdout, /Deep Code/)
+  assert.match(helpResult.stdout, /DeepSeek native models/)
+  assert.doesNotMatch(helpResult.stdout, /Claude Code|Anthropic/)
+})
+
 test('Deep Code theme exposes DeepSeek blue brand tokens and aliases legacy brand tokens to blue', () => {
   assert.match(themeSource, /deepseek: string/)
   assert.match(themeSource, /deepseekShimmer: string/)
@@ -590,6 +692,28 @@ test('TUI visible copy uses Deep Code and DeepSeek branding', () => {
   assert.doesNotMatch(visibleSources, /Anthropic Console/)
   assert.doesNotMatch(visibleSources, /code\.claude\.com/)
   assert.doesNotMatch(visibleSources, /anthropics\/claude-code-action/)
+})
+
+test('README and welcome surfaces use Deep Code and DeepSeek branding', () => {
+  const welcomeSources = [
+    condensedLogoSource,
+    logoV2Source,
+    guestPassesUpsellSource,
+    logoFeedConfigsSource,
+    channelsNoticeSource,
+  ].map(stripInlineSourceMap).join('\n')
+
+  assert.match(readmeSource, /^# Deep Code/m)
+  assert.match(readmeSource, /DeepSeek-native terminal coding assistant/)
+  assert.match(readmeSource, /npm install -g @deepcode-ai\/deep-code/)
+  assert.match(readmeSource, /run `deepcode`/)
+  assert.doesNotMatch(readmeSource, /Claude Code|Anthropic|@anthropic-ai|claude\.com|code\.claude\.com|anthropic\.com/)
+
+  assert.match(welcomeSources, /Deep Code/)
+  assert.match(welcomeSources, /DeepSeek/)
+  assert.doesNotMatch(welcomeSources, /Claude Code/)
+  assert.doesNotMatch(welcomeSources, /Anthropic/)
+  assert.doesNotMatch(welcomeSources, /claude\.ai/)
 })
 
 test('TUI slash command metadata uses Deep Code and DeepSeek branding', () => {
@@ -811,6 +935,21 @@ test('source CLI entrypoint is branded for Deep Code and DeepSeek model env', ()
   assert.match(mainSource, /DEEPSEEK_MODEL/)
   assert.match(mainSource, /DEEPCODE_MODEL/)
   assert.doesNotMatch(mainSource, /const explicitModel = options\.model \|\| process\.env\.ANTHROPIC_MODEL/)
+})
+
+test('full CLI command help avoids legacy Claude and Anthropic branding', () => {
+  assert.match(mainSource, /Start a Deep Code session server/)
+  assert.match(mainSource, /Run Deep Code on a remote host over SSH/)
+  assert.match(mainSource, /Usage: deepcode ssh/)
+  assert.match(mainSource, /Connect to a Deep Code server/)
+  assert.match(mainSource, /Sign in to legacy account services/)
+  assert.match(mainSource, /Log out from legacy account services/)
+  assert.doesNotMatch(mainSource, /Start a Claude Code session server/)
+  assert.doesNotMatch(mainSource, /Run Claude Code on a remote host/)
+  assert.doesNotMatch(mainSource, /Usage: claude ssh/)
+  assert.doesNotMatch(mainSource, /Connect to a Claude Code server/)
+  assert.doesNotMatch(mainSource, /Sign in to your Anthropic account/)
+  assert.doesNotMatch(mainSource, /Log out from your Anthropic account/)
 })
 
 test('print mode model metadata delegates through DeepSeek-aware defaults', () => {

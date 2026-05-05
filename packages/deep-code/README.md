@@ -1,43 +1,48 @@
-# Claude Code
+# Deep Code
 
-![](https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square) [![npm]](https://www.npmjs.com/package/@anthropic-ai/claude-code)
+![](https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square) [![npm]](https://www.npmjs.com/package/@deepcode-ai/deep-code)
 
-[npm]: https://img.shields.io/npm/v/@anthropic-ai/claude-code.svg?style=flat-square
+[npm]: https://img.shields.io/npm/v/@deepcode-ai/deep-code.svg?style=flat-square
 
-Claude Code is an agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster by executing routine tasks, explaining complex code, and handling git workflows -- all through natural language commands. Use it in your terminal, IDE, or tag @claude on Github.
+Deep Code is a DeepSeek-native terminal coding assistant. It keeps the mature terminal UI, local tools, permissions, sessions, skills, and subagent workflows while routing the default model path through DeepSeek native chat completions, reasoning content, tool calls, and context cache telemetry.
 
-**Learn more at [Claude Code Homepage](https://claude.com/product/claude-code)** | [Documentation](https://code.claude.com/docs/en/overview)
+## Get Started
 
-<img src="https://github.com/anthropics/claude-code/blob/main/demo.gif?raw=1" />
-
-## Get started
-
-1. Install Claude Code:
+1. Install Deep Code:
 
 ```sh
-npm install -g @anthropic-ai/claude-code
+npm install -g @deepcode-ai/deep-code
 ```
 
-2. Navigate to your project directory and run `claude`.
+2. Navigate to your project directory and run `deepcode`.
 
-## Reporting Bugs
+## DeepSeek Defaults
 
-We welcome your feedback. Use the `/bug` command to report issues directly within Claude Code, or file a [GitHub issue](https://github.com/anthropics/claude-code/issues).
+- Main model: `deepseek-v4-pro`
+- Small model: `deepseek-v4-flash`
+- Thinking: enabled
+- Reasoning effort: max
+- Config directory: `~/.deepcode`
 
-## Connect on Discord
+## Diagnostics
 
-Join the [Claude Developers Discord](https://anthropic.com/discord) to connect with other developers using Claude Code. Get help, share feedback, and discuss your projects with the community.
+Use these commands to verify a local install:
 
-## Data collection, usage, and retention
+```sh
+deepcode --doctor
+deepcode --status
+deepcode --tool-e2e
+```
 
-When you use Claude Code, we collect feedback, which includes usage data (such as code acceptance or rejections), associated conversation data, and user feedback submitted via the `/bug` command.
+## Configuration
 
-### How we use your data
+Deep Code reads DeepSeek settings from environment variables or `~/.deepcode/settings.json`:
 
-See our [data usage policies](https://code.claude.com/docs/en/data-usage).
-
-### Privacy safeguards
-
-We have implemented several safeguards to protect your data, including limited retention periods for sensitive information and restricted access to user session data.
-
-For full details, please review our [Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms) and [Privacy Policy](https://www.anthropic.com/legal/privacy).
+```sh
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-pro
+DEEPSEEK_SMALL_MODEL=deepseek-v4-flash
+DEEPSEEK_THINKING=enabled
+DEEPSEEK_REASONING_EFFORT=max
+```
