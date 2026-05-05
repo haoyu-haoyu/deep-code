@@ -74,11 +74,15 @@ async function createStableToolManifest(tools, toolSchemaOptions = {}) {
       ...toolSchemaOptions,
       tools: toolSchemaOptions.tools ?? tools,
     })
-    manifest.push({
+    const stableTool = {
       name: schema.function.name,
       description: schema.function.description,
       parameters: schema.function.parameters,
-    })
+    }
+    if (schema.function.strict === true) {
+      stableTool.strict = true
+    }
+    manifest.push(stableTool)
   }
 
   return manifest.sort((a, b) => a.name.localeCompare(b.name))

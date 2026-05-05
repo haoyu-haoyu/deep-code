@@ -68,6 +68,96 @@ test('TUI query loop executes a DeepSeek-style tool turn and continues', async (
   }
 })
 
+test('TUI query loop preserves DeepSeek reasoning across permission-gated tool turns', async () => {
+  const harness = await buildDeepSeekTuiQueryHarness()
+  const permissionModes = ['default', 'auto', 'bypassPermissions']
+
+  for (const permissionMode of permissionModes) {
+    const modelRequests = []
+    const permissionSnapshots = []
+    const toolExecutions = []
+    const toolResultMessage = {
+      type: 'user',
+      uuid: `tool-result-${permissionMode}`,
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: `toolu_${permissionMode}_read`,
+            content: `tool result in ${permissionMode}`,
+          },
+        ],
+      },
+    }
+
+    globalThis.__deepcodeTuiHarness = {
+      async *runTools(toolUseBlocks, assistantMessages, canUseTool, toolUseContext) {
+        toolExecutions.push({
+          permissionMode: toolUseContext.getAppState().toolPermissionContext.mode,
+          toolNames: toolUseBlocks.map(block => block.name),
+          assistantContent: assistantMessages.flatMap(message => message.message.content),
+          permissionDecision: await canUseTool(),
+        })
+        yield { message: toolResultMessage }
+      },
+    }
+
+    try {
+      const terminal = await drain(
+        harness.query({
+          messages: [userMessage(`exercise ${permissionMode} permissions`)],
+          systemPrompt: ['You are Deep Code.'],
+          userContext: {},
+          systemContext: {},
+          canUseTool: async () => ({
+            behavior: permissionMode === 'bypassPermissions' ? 'allow' : 'ask',
+            updatedInput: {},
+          }),
+          querySource: 'sdk',
+          maxTurns: 3,
+          toolUseContext: createToolUseContext({ permissionMode }),
+          deps: createDeepSeekPermissionDeps({
+            modelRequests,
+            permissionSnapshots,
+            permissionMode,
+          }),
+        }),
+      )
+
+      expect(terminal.reason).toBe('completed')
+      expect(permissionSnapshots).toEqual([
+        { mode: permissionMode },
+        { mode: permissionMode },
+      ])
+      expect(toolExecutions).toHaveLength(1)
+      expect(toolExecutions[0].permissionMode).toBe(permissionMode)
+      expect(toolExecutions[0].toolNames).toEqual(['Read', 'Edit', 'Bash'])
+      expect(toolExecutions[0].permissionDecision.behavior).toBe(
+        permissionMode === 'bypassPermissions' ? 'allow' : 'ask',
+      )
+      expect(
+        toolExecutions[0].assistantContent.some(
+          block =>
+            block.type === 'thinking' &&
+            block.thinking === `Need to inspect, edit, and verify in ${permissionMode}.`,
+        ),
+      ).toBe(true)
+      expect(modelRequests).toHaveLength(2)
+      const followUpAssistant = modelRequests[1].find(
+        message => message.uuid === `assistant-tools-${permissionMode}`,
+      )
+      expect(followUpAssistant.message.content).toContainEqual({
+        type: 'thinking',
+        thinking: `Need to inspect, edit, and verify in ${permissionMode}.`,
+      })
+      expect(modelRequests[1].some(message => message.uuid === `tool-result-${permissionMode}`)).toBe(true)
+    } finally {
+      delete globalThis.__deepcodeTuiHarness
+    }
+  }
+})
+
 test('production query deps default to DeepSeek native provider', async () => {
   const previousDeepCodeProvider = process.env.DEEPCODE_PROVIDER
   const previousDeepCodeProviderAlt = process.env.DEEP_CODE_PROVIDER
@@ -260,7 +350,7 @@ function userMessage(content) {
   }
 }
 
-function createToolUseContext() {
+function createToolUseContext({ permissionMode = 'default' } = {}) {
   const abortController = new AbortController()
   return {
     abortController,
@@ -268,7 +358,7 @@ function createToolUseContext() {
     addNotification() {},
     getAppState() {
       return {
-        toolPermissionContext: { mode: 'default' },
+        toolPermissionContext: { mode: permissionMode },
         fastMode: false,
         mcp: { tools: [], clients: [] },
         effortValue: 'max',
@@ -285,6 +375,62 @@ function createToolUseContext() {
         activeAgents: {},
         allowedAgentTypes: [],
       },
+    },
+  }
+}
+
+function createDeepSeekPermissionDeps({
+  modelRequests,
+  permissionSnapshots,
+  permissionMode,
+}) {
+  let callCount = 0
+  return {
+    uuid: () => `deepcode-permission-uuid-${permissionMode}-${callCount}`,
+    async microcompact(messages) {
+      return { messages }
+    },
+    async autocompact() {
+      return { compactionResult: null, consecutiveFailures: undefined }
+    },
+    async *callModel({ messages, options }) {
+      permissionSnapshots.push(await options.getToolPermissionContext())
+      modelRequests.push(messages)
+      callCount += 1
+      if (callCount === 1) {
+        yield assistantMessage(`assistant-tools-${permissionMode}`, [
+          {
+            type: 'thinking',
+            thinking: `Need to inspect, edit, and verify in ${permissionMode}.`,
+          },
+          {
+            type: 'tool_use',
+            id: `toolu_${permissionMode}_read`,
+            name: 'Read',
+            input: { file_path: 'sample.txt' },
+          },
+          {
+            type: 'tool_use',
+            id: `toolu_${permissionMode}_edit`,
+            name: 'Edit',
+            input: {
+              file_path: 'sample.txt',
+              old_string: 'alpha',
+              new_string: 'beta',
+            },
+          },
+          {
+            type: 'tool_use',
+            id: `toolu_${permissionMode}_bash`,
+            name: 'Bash',
+            input: { command: 'cat sample.txt' },
+          },
+        ])
+        return
+      }
+      yield assistantMessage(`assistant-final-${permissionMode}`, [
+        { type: 'text', text: `Done in ${permissionMode}.` },
+      ])
     },
   }
 }
