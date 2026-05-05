@@ -329,6 +329,30 @@ const enterPlanModePermissionSource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/permissions/EnterPlanModePermissionRequest/EnterPlanModePermissionRequest.tsx'),
   'utf8',
 )
+const tipRegistrySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/services/tips/tipRegistry.ts'),
+  'utf8',
+)
+const logSelectorSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogSelector.tsx'),
+  'utf8',
+)
+const permissionPromptCopySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/PermissionPrompt.tsx'),
+  'utf8',
+)
+const bashPermissionOptionsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/BashPermissionRequest/bashToolUseOptions.tsx'),
+  'utf8',
+)
+const powershellPermissionOptionsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/PowerShellPermissionRequest/powershellToolUseOptions.tsx'),
+  'utf8',
+)
+const filePermissionOptionsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/FilePermissionDialog/permissionOptions.tsx'),
+  'utf8',
+)
 const runSingleTurnSource = deepcodeEntrypointSource.slice(
   deepcodeEntrypointSource.indexOf('async function runSingleTurn'),
   deepcodeEntrypointSource.indexOf('async function runInteractive'),
@@ -583,6 +607,34 @@ test('Deep Code package can build the full CLI launcher artifact', () => {
   assert.match(helpResult.stdout, /DeepSeek native models/)
 })
 
+test('DeepSeek real cache E2E script is opt-in and skips safely by default', () => {
+  assert.equal(
+    innerPackage.scripts['test:real-cache-e2e'],
+    'node scripts/deepseek-cache-e2e.mjs',
+  )
+
+  const result = spawnSync('npm', [
+    'run',
+    'test:real-cache-e2e',
+    '--workspace',
+    '@deepcode-ai/deep-code',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_REAL_E2E: '',
+      DEEPSEEK_API_KEY: '',
+      DEEPCODE_API_KEY: '',
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /DeepSeek cache E2E skipped/)
+  assert.match(result.stdout, /DEEPCODE_REAL_E2E=1/)
+  assert.doesNotMatch(result.stdout, /sk-/)
+})
+
 test('Deep Code package packs and installs a runnable production tarball', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-pack-smoke-'))
   const packDir = join(dir, 'pack')
@@ -659,6 +711,45 @@ test('Deep Code package packs and installs a runnable production tarball', () =>
   assert.match(helpResult.stdout, /Deep Code/)
   assert.match(helpResult.stdout, /DeepSeek native models/)
   assert.doesNotMatch(helpResult.stdout, /Claude Code|Anthropic/)
+
+  const statsPath = join(dir, 'installed-cache-stats.json')
+  writeFileSync(statsPath, JSON.stringify({
+    version: 1,
+    requestCount: 1,
+    totalPromptCacheHitTokens: 24,
+    totalPromptCacheMissTokens: 6,
+    totalPromptCacheHitRate: 0.8,
+    lastPromptCacheHitTokens: 24,
+    lastPromptCacheMissTokens: 6,
+    lastPromptCacheHitRate: 0.8,
+    updatedAt: '2026-05-05T00:00:00.000Z',
+  }))
+  const installedEnv = {
+    ...process.env,
+    DEEPCODE_CACHE_STATS_PATH: statsPath,
+    DEEPCODE_CONFIG_DIR: join(dir, 'deepcode-home'),
+    CLAUDE_CONFIG_DIR: join(dir, 'legacy-claude-home'),
+  }
+
+  const statusResult = spawnSync(binPath, ['--status'], {
+    cwd: installDir,
+    encoding: 'utf8',
+    env: installedEnv,
+  })
+  assert.equal(statusResult.status, 0, statusResult.stderr)
+  assert.match(statusResult.stdout, /Provider: DeepSeek native/)
+  assert.match(statusResult.stdout, /Cache telemetry: last_hit=24 last_miss=6 last_hit_rate=80\.0%/)
+  assert.doesNotMatch(statusResult.stdout, /Claude Code|Anthropic/)
+
+  const doctorResult = spawnSync(binPath, ['--doctor', '--no-live'], {
+    cwd: installDir,
+    encoding: 'utf8',
+    env: installedEnv,
+  })
+  assert.equal(doctorResult.status, 0, doctorResult.stderr)
+  assert.match(doctorResult.stdout, /Deep Code Doctor/)
+  assert.match(doctorResult.stdout, /\[OK\] Full CLI bundle: available/)
+  assert.doesNotMatch(doctorResult.stdout, /Claude Code|Anthropic/)
 })
 
 test('Deep Code theme exposes DeepSeek blue brand tokens and aliases legacy brand tokens to blue', () => {
@@ -755,6 +846,32 @@ test('high-visibility user copy uses Deep Code and DeepSeek branding', () => {
   assert.doesNotMatch(highVisibilitySources, /Claude needs/)
   assert.doesNotMatch(highVisibilitySources, /Claude explains/)
   assert.doesNotMatch(highVisibilitySources, /Claude pauses/)
+})
+
+test('common interactive surfaces use Deep Code copy allowlist', () => {
+  const commonInteractiveSources = [
+    tipRegistrySource,
+    logSelectorSource,
+    permissionPromptCopySource,
+    bashPermissionOptionsSource,
+    powershellPermissionOptionsSource,
+    filePermissionOptionsSource,
+  ].map(stripInlineSourceMap).join('\n')
+
+  assert.match(tipRegistrySource, /tell Deep Code to propose a plan/)
+  assert.match(tipRegistrySource, /DeepSeek reasoning/)
+  assert.doesNotMatch(commonInteractiveSources, /tell Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /Ask Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /Use Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude found/)
+  assert.doesNotMatch(commonInteractiveSources, /Search deeply using Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /Searching with Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /while Claude is working/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude thinks/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude sends/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude memory/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude Code Desktop/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude app/)
 })
 
 test('DeepSeek-native slash commands hide legacy Claude service integrations by default', () => {

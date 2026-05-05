@@ -27,6 +27,7 @@
     "build:full-cli": "bun scripts/build-full-cli.mjs",
     "test:deepcode": "node --test test/deepcode-native.test.mjs test/deepcode-package.test.mjs",
     "test:tui-deepseek": "bun test test/tui-deepseek.test.mjs",
+    "test:real-cache-e2e": "node scripts/deepseek-cache-e2e.mjs",
     "prepublishOnly": "node -e \"if (!process.env.AUTHORIZED) { console.error('ERROR: Direct publishing is not allowed.\\nPlease see the release workflow documentation to publish this package.'); process.exit(1); }\""
   },
   "dependencies": {},

@@ -526,6 +526,11 @@ test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', a
   assert.equal(properties.find(item => item.label === 'Model')?.value, 'deepseek-v4-pro')
   assert.equal(properties.find(item => item.label === 'Reasoning effort')?.value, 'max')
   assert.equal(properties.find(item => item.label === 'Cache hit rate')?.value, '90.0%')
+  assert.equal(properties.find(item => item.label === 'Cache total hit/miss')?.value, '90/10')
+  assert.equal(
+    properties.find(item => item.label === 'Cache telemetry updated')?.value,
+    '2026-05-05T00:00:00.000Z',
+  )
   assert.equal(
     properties.find(item => item.label === 'Stable prefix hash')?.value,
     report.stablePrefix.prefixHash,
@@ -795,6 +800,49 @@ test('collectDeepSeekStreamEvents assembles content, reasoning, tool calls, fini
       },
     ],
   })
+})
+
+test('DeepSeek stream parser preserves fragmented multi-tool calls and final tool_calls finish', async () => {
+  const events = parseDeepSeekSSELines([
+    'data: {"choices":[{"delta":{"reasoning_content":"plan "},"finish_reason":null}]}',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_read","type":"function","function":{"name":"Read","arguments":"{\\"file_"}}]},"finish_reason":null}]}',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_bash","type":"function","function":{"name":"Bash","arguments":"{\\"com"}}]},"finish_reason":null}]}',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"path\\":\\"README.md\\"}"}}]},"finish_reason":null}]}',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"mand\\":\\"pwd\\"}"}}]},"finish_reason":null}]}',
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}',
+    'data: {"choices":[],"usage":{"prompt_cache_hit_tokens":13,"prompt_cache_miss_tokens":7}}',
+    'data: [DONE]',
+  ])
+  async function* stream() {
+    yield* events
+  }
+
+  const result = await collectDeepSeekStreamEvents(stream())
+
+  assert.equal(result.reasoning, 'plan ')
+  assert.equal(result.finishReason, 'tool_calls')
+  assert.deepEqual(result.usage, {
+    prompt_cache_hit_tokens: 13,
+    prompt_cache_miss_tokens: 7,
+  })
+  assert.deepEqual(result.toolCalls, [
+    {
+      id: 'call_read',
+      type: 'function',
+      function: {
+        name: 'Read',
+        arguments: '{"file_path":"README.md"}',
+      },
+    },
+    {
+      id: 'call_bash',
+      type: 'function',
+      function: {
+        name: 'Bash',
+        arguments: '{"command":"pwd"}',
+      },
+    },
+  ])
 })
 
 test('collectDeepSeekStreamEvents records stop finish reason without tool calls', async () => {
