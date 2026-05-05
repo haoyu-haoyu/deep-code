@@ -18,12 +18,10 @@ export type AgentModelOption = {
   description: string
 }
 
-/**
- * Get the default subagent model. Returns 'inherit' so subagents inherit
- * the model from the parent thread.
- */
 export function getDefaultSubagentModel(): string {
-  return 'inherit'
+  return process.env.DEEPCODE_HARNESS_DEFAULT_SMALL_MODEL ||
+    process.env.DEEPSEEK_SMALL_MODEL ||
+    'deepseek-v4-flash'
 }
 
 /**
@@ -122,8 +120,7 @@ function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
 }
 
 export function getAgentModelDisplay(model: string | undefined): string {
-  // When model is omitted, getDefaultSubagentModel() returns 'inherit' at runtime
-  if (!model) return 'Inherit from parent (default)'
+  if (!model) return getDefaultSubagentModel()
   if (model === 'inherit') return 'Inherit from parent'
   return capitalize(model)
 }

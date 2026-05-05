@@ -7,6 +7,10 @@ import {
   createDeepCodeStablePrefix,
   formatDeepCodePrefixStatus,
 } from './stable-prefix.mjs'
+import {
+  formatDeepCodeHarnessStatus,
+  resolveDeepCodeHarnessConfig,
+} from './harness-config.mjs'
 import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
 
 export async function buildDeepCodeStatusReport({
@@ -18,6 +22,7 @@ export async function buildDeepCodeStatusReport({
   cacheStatsPath,
 } = {}) {
   const config = resolveDeepSeekConfig({ env, cwd })
+  const harnessConfig = resolveDeepCodeHarnessConfig(env)
   const resolvedStablePrefix =
     stablePrefix ?? await createDeepCodeStablePrefix({ repoSummary })
   const resolvedCacheStatsPath =
@@ -28,6 +33,7 @@ export async function buildDeepCodeStatusReport({
   return {
     provider: 'DeepSeek native',
     config,
+    harnessConfig,
     cacheStats: resolvedCacheStats,
     cacheStatsPath: resolvedCacheStatsPath,
     stablePrefix: resolvedStablePrefix,
@@ -43,6 +49,7 @@ export function formatDeepCodeStatus(report) {
     `Small model: ${report.config.smallModel}`,
     `Thinking: ${report.config.thinking}`,
     `Reasoning effort: ${report.config.reasoningEffort}`,
+    formatDeepCodeHarnessStatus(report.harnessConfig),
     `Cache user_id: ${report.config.cacheUserId}`,
     formatDeepCodePrefixStatus(report.stablePrefix),
     `API key: ${report.apiKeyConfigured ? 'configured' : 'missing'}`,
@@ -61,6 +68,13 @@ export function deepCodeStatusReportToProperties(report) {
     { label: 'Small model', value: report.config.smallModel },
     { label: 'Thinking', value: report.config.thinking },
     { label: 'Reasoning effort', value: report.config.reasoningEffort },
+    { label: 'Harness mode', value: report.harnessConfig.mode },
+    {
+      label: 'Harness max agents',
+      value: String(report.harnessConfig.maxAgents),
+    },
+    { label: 'Prompt pack', value: report.harnessConfig.promptPack },
+    { label: 'Strict tools', value: report.harnessConfig.strictTools },
     { label: 'Cache user_id', value: report.config.cacheUserId },
     {
       label: 'Stable prefix hash',

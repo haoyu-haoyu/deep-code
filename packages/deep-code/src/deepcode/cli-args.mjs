@@ -8,6 +8,7 @@ const COMMAND_FLAGS = new Map([
   ['--warm-cache', 'warm-cache'],
   ['--tool-e2e', 'tool-e2e'],
   ['--compact', 'compact'],
+  ['--harness', 'harness'],
 ])
 
 const ENV_OPTION_FLAGS = new Map([
@@ -20,6 +21,10 @@ const ENV_OPTION_FLAGS = new Map([
   ['--reasoning-effort', 'DEEPSEEK_REASONING_EFFORT'],
   ['--small-model', 'DEEPSEEK_SMALL_MODEL'],
   ['--thinking', 'DEEPSEEK_THINKING'],
+  ['--harness-mode', 'DEEPCODE_HARNESS_MODE'],
+  ['--harness-max-agents', 'DEEPCODE_HARNESS_MAX_AGENTS'],
+  ['--prompt-pack', 'DEEPCODE_PROMPT_PACK'],
+  ['--strict-tools', 'DEEPCODE_STRICT_TOOLS'],
 ])
 
 export function parseDeepCodeArgs(args = []) {

@@ -4,9 +4,13 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/gr
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { CLAUDE_CODE_GUIDE_AGENT } from './built-in/claudeCodeGuideAgent.js'
 import { EXPLORE_AGENT } from './built-in/exploreAgent.js'
-import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
+import {
+  DEEPSEEK_WORKER_AGENT,
+  GENERAL_PURPOSE_AGENT,
+} from './built-in/generalPurposeAgent.js'
 import { PLAN_AGENT } from './built-in/planAgent.js'
 import { STATUSLINE_SETUP_AGENT } from './built-in/statuslineSetup.js'
+import { DEEPSEEK_SUMMARIZER_AGENT } from './built-in/summarizerAgent.js'
 import { VERIFICATION_AGENT } from './built-in/verificationAgent.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 
@@ -44,6 +48,8 @@ export function getBuiltInAgents(): AgentDefinition[] {
 
   const agents: AgentDefinition[] = [
     GENERAL_PURPOSE_AGENT,
+    DEEPSEEK_WORKER_AGENT,
+    DEEPSEEK_SUMMARIZER_AGENT,
     STATUSLINE_SETUP_AGENT,
   ]
 
@@ -62,8 +68,7 @@ export function getBuiltInAgents(): AgentDefinition[] {
   }
 
   if (
-    feature('VERIFICATION_AGENT') &&
-    getFeatureValue_CACHED_MAY_BE_STALE('tengu_hive_evidence', false)
+    !agents.some(agent => agent.agentType === VERIFICATION_AGENT.agentType)
   ) {
     agents.push(VERIFICATION_AGENT)
   }
