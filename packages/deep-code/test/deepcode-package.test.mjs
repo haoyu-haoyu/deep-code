@@ -27,6 +27,14 @@ const projectOnboardingSource = readFileSync(
   resolve(root, 'packages/deep-code/src/projectOnboardingState.ts'),
   'utf8',
 )
+const claudemdSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/utils/claudemd.ts'),
+  'utf8',
+)
+const configSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/utils/config.ts'),
+  'utf8',
+)
 const outputStylesSource = readFileSync(
   resolve(root, 'packages/deep-code/src/constants/outputStyles.ts'),
   'utf8',
@@ -797,4 +805,16 @@ test('managed environment constants include DeepSeek native routing variables', 
   ]) {
     assert.match(managedEnvSource, new RegExp(`'${key}'`))
   }
+})
+
+test('Deep Code instruction loading prefers DEEPCODE.md and .deepcode with legacy fallback', () => {
+  assert.match(claudemdSource, /createProjectInstructionPathPlan/)
+  assert.match(claudemdSource, /processPreferredInstructionFiles/)
+  assert.match(claudemdSource, /DEEPCODE\.md/)
+  assert.match(claudemdSource, /\.deepcode\/rules/)
+  assert.match(claudemdSource, /legacy Claude fallback/i)
+  assert.match(configSource, /DEEPCODE_INSTRUCTION_FILE/)
+  assert.match(configSource, /DEEPCODE_LOCAL_INSTRUCTION_FILE/)
+  assert.match(projectOnboardingSource, /DEEPCODE_INSTRUCTION_FILE/)
+  assert.doesNotMatch(projectOnboardingSource, /join\(getCwd\(\), 'CLAUDE\.md'\)/)
 })

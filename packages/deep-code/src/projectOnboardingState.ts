@@ -1,6 +1,10 @@
 import memoize from 'lodash-es/memoize.js'
 import { join } from 'path'
 import {
+  DEEPCODE_INSTRUCTION_FILE,
+  LEGACY_CLAUDE_INSTRUCTION_FILE,
+} from './deepcode/instruction-paths.mjs'
+import {
   getCurrentProjectConfig,
   saveCurrentProjectConfig,
 } from './utils/config.js'
@@ -17,9 +21,11 @@ export type Step = {
 }
 
 export function getSteps(): Step[] {
-  const hasClaudeMd = getFsImplementation().existsSync(
-    join(getCwd(), 'CLAUDE.md'),
-  )
+  const hasInstructionFile =
+    getFsImplementation().existsSync(join(getCwd(), DEEPCODE_INSTRUCTION_FILE)) ||
+    getFsImplementation().existsSync(
+      join(getCwd(), LEGACY_CLAUDE_INSTRUCTION_FILE),
+    )
   const isWorkspaceDirEmpty = isDirEmpty(getCwd())
 
   return [
@@ -31,9 +37,9 @@ export function getSteps(): Step[] {
       isEnabled: isWorkspaceDirEmpty,
     },
     {
-      key: 'claudemd',
+      key: 'deepcodemd',
       text: 'Run /init to create a project memory file with instructions for Deep Code',
-      isComplete: hasClaudeMd,
+      isComplete: hasInstructionFile,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,
     },

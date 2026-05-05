@@ -65,6 +65,11 @@ import {
   compactDeepCodeConversation,
   formatDeepCodeCompactResult,
 } from '../src/deepcode/compact.mjs'
+import {
+  createLocalInstructionPathPlan,
+  createProjectInstructionPathPlan,
+  isInstructionMemoryFilePath,
+} from '../src/deepcode/instruction-paths.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -102,6 +107,39 @@ test('buildDeepSeekRequest emits native DeepSeek chat-completions body without A
   assert.equal('anthropic_beta' in request.body, false)
   assert.equal('temperature' in request.body, false)
   assert.equal('top_p' in request.body, false)
+})
+
+test('Deep Code instruction path plans prefer DEEPCODE.md and .deepcode before Claude fallbacks', () => {
+  const project = createProjectInstructionPathPlan('/repo')
+  assert.deepEqual(project.primaryFiles, [
+    join('/repo', 'DEEPCODE.md'),
+    join('/repo', '.deepcode', 'DEEPCODE.md'),
+  ])
+  assert.equal(project.primaryRulesDir, join('/repo', '.deepcode', 'rules'))
+  assert.deepEqual(project.legacyFiles, [
+    join('/repo', 'CLAUDE.md'),
+    join('/repo', '.claude', 'CLAUDE.md'),
+  ])
+  assert.equal(project.legacyRulesDir, join('/repo', '.claude', 'rules'))
+
+  const local = createLocalInstructionPathPlan('/repo')
+  assert.equal(local.primaryFile, join('/repo', 'DEEPCODE.local.md'))
+  assert.equal(local.legacyFile, join('/repo', 'CLAUDE.local.md'))
+})
+
+test('Deep Code memory file detection includes DEEPCODE.md and .deepcode rules', () => {
+  assert.equal(isInstructionMemoryFilePath(join('/repo', 'DEEPCODE.md')), true)
+  assert.equal(isInstructionMemoryFilePath(join('/repo', 'DEEPCODE.local.md')), true)
+  assert.equal(
+    isInstructionMemoryFilePath(join('/repo', '.deepcode', 'rules', 'testing.md')),
+    true,
+  )
+  assert.equal(isInstructionMemoryFilePath(join('/repo', 'CLAUDE.md')), true)
+  assert.equal(
+    isInstructionMemoryFilePath(join('/repo', '.claude', 'rules', 'testing.md')),
+    true,
+  )
+  assert.equal(isInstructionMemoryFilePath(join('/repo', 'README.md')), false)
 })
 
 test('resolveModelProvider defaults to DeepSeek native provider', async () => {
