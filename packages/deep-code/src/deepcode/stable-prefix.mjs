@@ -14,11 +14,12 @@ export const DEEPCODE_STABLE_SYSTEM_PROMPT = [
 export async function createDeepCodeStablePrefix({
   systemPrompt = [DEEPCODE_STABLE_SYSTEM_PROMPT],
   tools = [],
+  toolSchemaOptions = {},
   skills = [],
   repoSummary = '',
   stableHistory = [],
 } = {}) {
-  const stableTools = await createStableToolManifest(tools)
+  const stableTools = await createStableToolManifest(tools, toolSchemaOptions)
   const stableSkills = skills
     .map(skill => stableSkillManifest(skill))
     .sort((a, b) => {
@@ -66,10 +67,13 @@ export function formatDeepCodePrefixStatus(prefix) {
   return `Stable prefix hash: ${prefix?.prefixHash ?? 'unknown'}`
 }
 
-async function createStableToolManifest(tools) {
+async function createStableToolManifest(tools, toolSchemaOptions = {}) {
   const manifest = []
   for (const tool of tools) {
-    const schema = await toolToDeepSeekFunctionSchema(tool)
+    const schema = await toolToDeepSeekFunctionSchema(tool, {
+      ...toolSchemaOptions,
+      tools: toolSchemaOptions.tools ?? tools,
+    })
     manifest.push({
       name: schema.function.name,
       description: schema.function.description,

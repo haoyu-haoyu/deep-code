@@ -85,6 +85,72 @@ test('production query deps default to DeepSeek native provider', async () => {
   }
 })
 
+test('production query deps build DeepSeek requests with stable real-tool prefix', async () => {
+  const harness = await buildDeepSeekQueryDepsHarness()
+  const deps = harness.productionDeps()
+  const capturedBodies = []
+  const tools = [
+    {
+      name: 'WriteFile',
+      inputJSONSchema: {
+        type: 'object',
+        properties: { file_path: { type: 'string' } },
+        required: ['file_path'],
+      },
+      async prompt({ getToolPermissionContext, tools: promptTools }) {
+        const permissionContext = await getToolPermissionContext()
+        return `Write with mode=${permissionContext.mode}; tools=${promptTools.map(tool => tool.name).join(',')}`
+      },
+    },
+    {
+      name: 'ReadFile',
+      description: 'Read a workspace file',
+      inputJSONSchema: {
+        type: 'object',
+        properties: { file_path: { type: 'string' } },
+        required: ['file_path'],
+      },
+    },
+  ]
+
+  for await (const _ of deps.callModel({
+    messages: [userMessage('inspect files')],
+    systemPrompt: ['You are Deep Code.'],
+    tools,
+    signal: new AbortController().signal,
+    options: {
+      model: 'deepseek-v4-pro',
+      getToolPermissionContext: async () => ({ mode: 'default' }),
+      fetchOverride: async (_url, init) => {
+        capturedBodies.push(JSON.parse(init.body))
+        return new Response(
+          [
+            'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}',
+            'data: {"usage":{"prompt_cache_hit_tokens":4,"prompt_cache_miss_tokens":2}}',
+            'data: [DONE]',
+            '',
+          ].join('\n'),
+          { status: 200 },
+        )
+      },
+    },
+  })) {
+    // Drain the stream.
+  }
+
+  expect(capturedBodies).toHaveLength(1)
+  expect(capturedBodies[0].messages[0].content).toContain('Stable tool manifest:')
+  expect(capturedBodies[0].messages[0].content).toContain('"name":"ReadFile"')
+  expect(capturedBodies[0].messages[0].content).toContain('mode=default; tools=WriteFile,ReadFile')
+  expect(capturedBodies[0].tools.map(tool => tool.function.name)).toEqual([
+    'ReadFile',
+    'WriteFile',
+  ])
+  expect(
+    capturedBodies[0].tools.find(tool => tool.function.name === 'WriteFile').function.description,
+  ).toContain('mode=default; tools=WriteFile,ReadFile')
+})
+
 test('model utilities default to DeepSeek native models', async () => {
   const previousEnv = snapshotEnv([
     'DEEPCODE_PROVIDER',

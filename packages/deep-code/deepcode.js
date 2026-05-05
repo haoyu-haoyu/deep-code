@@ -138,13 +138,15 @@ async function main() {
 }
 
 async function runSingleTurn(prompt, env, cacheStatsPath, stablePrefix) {
-  const messages = [{ role: 'user', content: prompt }]
-  const response = await requestDeepSeek(messages, env, {
-    streamToStdout: true,
-    stablePrefix,
+  const result = await runDeepSeekLocalToolChain({
+    prompt,
+    env,
+    cwd: process.cwd(),
+    repoSummary: stablePrefix?.repoSummary,
   })
-  if (!response.content.endsWith('\n')) process.stdout.write('\n')
-  await printAndRecordUsage(response.usage, cacheStatsPath, stablePrefix)
+  process.stdout.write(result.content)
+  if (!result.content.endsWith('\n')) process.stdout.write('\n')
+  await printAndRecordUsage(result.usage, cacheStatsPath, result.stablePrefix)
 }
 
 async function runInteractive(env, cacheStatsPath, stablePrefix) {

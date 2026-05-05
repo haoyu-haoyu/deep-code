@@ -27,6 +27,14 @@ const managedEnvSource = readFileSync(
   resolve(root, 'packages/deep-code/src/utils/managedEnvConstants.ts'),
   'utf8',
 )
+const deepcodeEntrypointSource = readFileSync(
+  resolve(root, 'packages/deep-code/deepcode.js'),
+  'utf8',
+)
+const runSingleTurnSource = deepcodeEntrypointSource.slice(
+  deepcodeEntrypointSource.indexOf('async function runSingleTurn'),
+  deepcodeEntrypointSource.indexOf('async function runInteractive'),
+)
 
 test('root package is branded as Deep Code', () => {
   assert.equal(rootPackage.name, 'deep-code')
@@ -85,6 +93,12 @@ test('Deep Code CLI advertises DeepSeek local toolchain E2E check', () => {
   assert.match(result.stdout, /deepcode --compact "summarize this transcript tail"/)
   assert.match(result.stdout, /--model deepseek-v4-pro/)
   assert.match(result.stdout, /--reasoning-effort high\|max/)
+})
+
+test('Deep Code print mode routes single-turn prompts through the local toolchain', () => {
+  assert.match(deepcodeEntrypointSource, /runSingleTurn\(prompt, env, cacheStatsPath, stablePrefix\)/)
+  assert.match(runSingleTurnSource, /runDeepSeekLocalToolChain\(\{/)
+  assert.match(runSingleTurnSource, /printAndRecordUsage\(result\.usage, cacheStatsPath, result\.stablePrefix\)/)
 })
 
 test('Deep Code status displays persisted DeepSeek cache telemetry', () => {

@@ -4,6 +4,7 @@ import {
   createDeepSeekProvider,
   mapDeepSeekFinishReason,
 } from '../deepcode/deepseek-native.mjs'
+import { createDeepCodeStablePrefix } from '../deepcode/stable-prefix.mjs'
 
 export function createDeepSeekCallModel({
   provider = createDeepSeekProvider(),
@@ -21,10 +22,24 @@ export function createDeepSeekCallModel({
       throw new Error('DeepSeek query aborted before start')
     }
 
-    const response = await collectDeepSeekStreamEvents(provider.streamQuery({
+    const toolSchemaOptions = {
+      getToolPermissionContext: options.getToolPermissionContext,
+      tools,
+      agents: options.agents,
+      allowedAgentTypes: options.allowedAgentTypes,
+    }
+    const stablePrefix = await createDeepCodeStablePrefix({
       systemPrompt,
+      tools,
+      toolSchemaOptions,
+    })
+
+    const response = await collectDeepSeekStreamEvents(provider.streamQuery({
+      systemPrompt: stablePrefix.systemPrompt,
       messages,
       tools,
+      toolSchemaOptions,
+      stablePrefix,
       env: process.env,
       cwd: process.cwd(),
       model: resolveDeepSeekRuntimeModel(options.model),

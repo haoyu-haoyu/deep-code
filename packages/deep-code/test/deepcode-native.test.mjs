@@ -1271,6 +1271,73 @@ test('createDeepSeekCallModel forwards query runtime controls to DeepSeek provid
   assert.equal(requests[0].fetch, fetchOverride)
 })
 
+test('createDeepSeekCallModel prepends a stable real-tool prefix using query permissions', async () => {
+  const requests = []
+  const callModel = createDeepSeekCallModel({
+    provider: {
+      streamQuery(request) {
+        requests.push(request)
+        return (async function* stream() {
+          yield { type: 'content_delta', text: 'done' }
+          yield { type: 'finish', finishReason: 'stop' }
+        })()
+      },
+    },
+  })
+  const tools = [
+    {
+      name: 'WriteFile',
+      inputJSONSchema: {
+        type: 'object',
+        properties: { file_path: { type: 'string' } },
+        required: ['file_path'],
+      },
+      async prompt({ getToolPermissionContext, tools: promptTools }) {
+        const permissionContext = await getToolPermissionContext()
+        return `Write with mode=${permissionContext.mode}; tools=${promptTools.map(tool => tool.name).join(',')}`
+      },
+    },
+    {
+      name: 'ReadFile',
+      description: 'Read a workspace file',
+      inputJSONSchema: {
+        type: 'object',
+        properties: { file_path: { type: 'string' } },
+        required: ['file_path'],
+      },
+    },
+  ]
+
+  for await (const _ of callModel({
+    messages: [{ role: 'user', content: 'inspect files' }],
+    systemPrompt: ['You are Deep Code.'],
+    tools,
+    signal: new AbortController().signal,
+    options: {
+      model: 'deepseek-v4-pro',
+      getToolPermissionContext: async () => ({ mode: 'bypassPermissions' }),
+      agents: {},
+      allowedAgentTypes: [],
+    },
+  })) {
+    // Drain the stream.
+  }
+
+  assert.equal(requests.length, 1)
+  assert.match(
+    requests[0].systemPrompt.join('\n\n'),
+    /Stable tool manifest:/,
+  )
+  assert.deepEqual(
+    requests[0].stablePrefix.stableTools.map(tool => tool.name),
+    ['ReadFile', 'WriteFile'],
+  )
+  assert.match(
+    requests[0].stablePrefix.stableTools.find(tool => tool.name === 'WriteFile').description,
+    /mode=bypassPermissions; tools=WriteFile,ReadFile/,
+  )
+})
+
 test('resolveDeepSeekRuntimeModel avoids forwarding Claude model names to DeepSeek', () => {
   const previousModel = process.env.DEEPSEEK_MODEL
   process.env.DEEPSEEK_MODEL = 'deepseek-v4-flash'

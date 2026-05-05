@@ -112,6 +112,7 @@ export async function buildDeepSeekRequest({
   temperature,
   topP,
   toolChoice,
+  toolSchemaOptions = {},
   responseFormat,
   userId,
   cacheUserId,
@@ -143,7 +144,11 @@ export async function buildDeepSeekRequest({
             [...tools]
               .sort((a, b) => String(a.name).localeCompare(String(b.name)))
               .map(tool =>
-                toolToDeepSeekFunctionSchema(tool, { strict: strictTools }),
+                toolToDeepSeekFunctionSchema(tool, {
+                  ...toolSchemaOptions,
+                  strict: strictTools,
+                  tools: toolSchemaOptions.tools ?? tools,
+                }),
               ),
           )
         : undefined,
