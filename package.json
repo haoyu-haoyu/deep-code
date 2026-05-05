@@ -11,7 +11,7 @@
     "deep-code": "packages/deep-code/deepcode.js"
   },
   "scripts": {
-    "test": "npm run test:deepcode",
+    "test": "npm run test:deepcode && npm run test:tui-deepseek --workspace @deepcode-ai/deep-code",
     "test:deepcode": "npm run test:deepcode --workspace @deepcode-ai/deep-code",
     "deepcode": "node packages/deep-code/deepcode.js"
   },

@@ -33,8 +33,11 @@ export type QueryDeps = {
 }
 
 export function productionDeps(): QueryDeps {
-  const provider =
-    process.env.DEEPCODE_PROVIDER ?? process.env.DEEP_CODE_PROVIDER
+  const provider = (
+    process.env.DEEPCODE_PROVIDER ??
+    process.env.DEEP_CODE_PROVIDER ??
+    'deepseek'
+  ).toLowerCase()
   return {
     callModel:
       provider === 'deepseek'
