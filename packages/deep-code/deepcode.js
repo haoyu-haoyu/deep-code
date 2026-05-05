@@ -18,35 +18,42 @@ import {
   formatDeepSeekDoctorReport,
   hasFailingDoctorChecks,
 } from './src/deepcode/doctor.mjs'
+import {
+  applyDeepCodeCliEnvOverrides,
+  parseDeepCodeArgs,
+} from './src/deepcode/cli-args.mjs'
 import { runDeepSeekLocalToolChain } from './src/deepcode/local-toolchain.mjs'
 import { resolveModelProvider } from './src/services/providers/index.mjs'
 
 const VERSION = '0.1.0-deepseek-native'
 
 async function main() {
-  const args = process.argv.slice(2)
-  if (args.includes('--help') || args.includes('-h')) {
+  const cli = parseDeepCodeArgs(process.argv.slice(2))
+  if (cli.command === 'help') {
     printHelp()
     return
   }
-  if (args.includes('--version') || args.includes('-v')) {
+  if (cli.command === 'version') {
     console.log(VERSION)
     return
   }
 
   const settings = await loadSettings()
-  const env = mergeSettingsEnv(process.env, settings)
+  const env = mergeSettingsEnv(
+    applyDeepCodeCliEnvOverrides(process.env, cli.envOverrides),
+    settings,
+  )
   const config = resolveDeepSeekConfig({ env, cwd: process.cwd() })
 
-  if (args.includes('--status')) {
+  if (cli.command === 'status') {
     printStatus(config)
     return
   }
-  if (args.includes('--doctor')) {
+  if (cli.command === 'doctor') {
     const report = await createDeepSeekDoctorReport({
       env,
       cwd: process.cwd(),
-      live: args.includes('--no-live') ? false : undefined,
+      live: cli.live ? undefined : false,
     })
     console.log(formatDeepSeekDoctorReport(report))
     if (hasFailingDoctorChecks(report)) {
@@ -54,7 +61,7 @@ async function main() {
     }
     return
   }
-  if (args.includes('--warm-cache')) {
+  if (cli.command === 'warm-cache') {
     const result = await warmDeepSeekCache({
       env,
       cwd: process.cwd(),
@@ -63,14 +70,20 @@ async function main() {
     console.log(formatDeepSeekWarmupResult(result))
     return
   }
-  if (args.includes('--tool-e2e')) {
+  if (cli.command === 'tool-e2e') {
     await runToolE2E(env)
     return
   }
 
-  const prompt = await resolvePrompt(args)
+  const prompt = await resolvePrompt(cli.promptArgs)
   if (prompt) {
     await runSingleTurn(prompt, env)
+    return
+  }
+
+  if (cli.printMode) {
+    console.error('Error: -p/--print requires a prompt or piped stdin')
+    process.exitCode = 1
     return
   }
 
@@ -262,6 +275,7 @@ function printHelp() {
 
 Usage:
   deepcode "explain this repo"
+  deepcode -p "explain this repo"
   echo "summarize" | deepcode
   deepcode --status
   deepcode --doctor [--no-live]
@@ -275,6 +289,18 @@ Configuration:
   DEEPSEEK_MODEL / DEEPCODE_MODEL
   DEEPSEEK_THINKING=enabled|disabled
   DEEPSEEK_REASONING_EFFORT=high|max
+
+Options:
+  -p, --print
+  --api-key sk-...
+  --provider deepseek
+  --model deepseek-v4-pro
+  --small-model deepseek-v4-flash
+  --base-url https://api.deepseek.com
+  --max-tokens 4096
+  --thinking enabled|disabled
+  --reasoning-effort high|max
+  --cache-user-id dc_workspace
 `)
 }
 

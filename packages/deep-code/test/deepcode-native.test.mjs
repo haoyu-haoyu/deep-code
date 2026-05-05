@@ -43,6 +43,10 @@ import {
   hasFailingDoctorChecks,
 } from '../src/deepcode/doctor.mjs'
 import {
+  applyDeepCodeCliEnvOverrides,
+  parseDeepCodeArgs,
+} from '../src/deepcode/cli-args.mjs'
+import {
   createDeepSeekLocalTools,
   runDeepSeekLocalToolChain,
 } from '../src/deepcode/local-toolchain.mjs'
@@ -133,6 +137,70 @@ test('createDeepSeekProvider exposes stream parser and usage mapper', () => {
   }), {
     reasoning_tokens: 9,
   })
+})
+
+test('parseDeepCodeArgs recognizes print mode and DeepSeek-native CLI overrides', () => {
+  const parsed = parseDeepCodeArgs([
+    '-p',
+    '--model',
+    'deepseek-v4-flash',
+    '--base-url=https://api.deepseek.com/beta',
+    '--max-tokens',
+    '123',
+    '--thinking',
+    'disabled',
+    '--reasoning-effort=max',
+    '--cache-user-id',
+    'dc_workspace',
+    'explain',
+    'repo',
+  ])
+
+  assert.equal(parsed.printMode, true)
+  assert.equal(parsed.command, null)
+  assert.deepEqual(parsed.promptArgs, ['explain', 'repo'])
+  assert.deepEqual(parsed.envOverrides, {
+    DEEPSEEK_MODEL: 'deepseek-v4-flash',
+    DEEPSEEK_BASE_URL: 'https://api.deepseek.com/beta',
+    DEEPCODE_MAX_TOKENS: '123',
+    DEEPSEEK_THINKING: 'disabled',
+    DEEPSEEK_REASONING_EFFORT: 'max',
+    DEEPCODE_CACHE_USER_ID: 'dc_workspace',
+  })
+})
+
+test('parseDeepCodeArgs gives commands precedence over print mode', () => {
+  const parsed = parseDeepCodeArgs([
+    '--print',
+    '--doctor',
+    '--no-live',
+    '--api-key',
+    'sk-test',
+  ])
+
+  assert.equal(parsed.printMode, true)
+  assert.equal(parsed.command, 'doctor')
+  assert.equal(parsed.live, false)
+  assert.deepEqual(parsed.promptArgs, [])
+  assert.deepEqual(parsed.envOverrides, {
+    DEEPSEEK_API_KEY: 'sk-test',
+  })
+})
+
+test('applyDeepCodeCliEnvOverrides keeps CLI values above inherited env', () => {
+  const env = applyDeepCodeCliEnvOverrides(
+    {
+      DEEPSEEK_MODEL: 'deepseek-v4-pro',
+      DEEPSEEK_THINKING: 'enabled',
+    },
+    {
+      DEEPSEEK_MODEL: 'deepseek-v4-flash',
+      DEEPSEEK_THINKING: 'disabled',
+    },
+  )
+
+  assert.equal(env.DEEPSEEK_MODEL, 'deepseek-v4-flash')
+  assert.equal(env.DEEPSEEK_THINKING, 'disabled')
 })
 
 test('sanitizeSchemaForDeepSeekStrict removes unsupported constraints and closes objects', () => {

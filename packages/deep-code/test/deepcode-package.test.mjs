@@ -80,6 +80,9 @@ test('Deep Code CLI advertises DeepSeek local toolchain E2E check', () => {
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /deepcode --tool-e2e/)
+  assert.match(result.stdout, /deepcode -p "explain this repo"/)
+  assert.match(result.stdout, /--model deepseek-v4-pro/)
+  assert.match(result.stdout, /--reasoning-effort high\|max/)
 })
 
 test('source CLI entrypoint is branded for Deep Code and DeepSeek model env', () => {
