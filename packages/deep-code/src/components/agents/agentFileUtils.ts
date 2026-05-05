@@ -109,7 +109,7 @@ export function getActualAgentFilePath(agent: AgentDefinition): string {
     throw new Error('Cannot get file path for plugin agents')
   }
 
-  const dirPath = getAgentDirectoryPath(agent.source)
+  const dirPath = agent.baseDir ?? getAgentDirectoryPath(agent.source)
   const filename = agent.filename || agent.agentType
   return join(dirPath, `${filename}.md`)
 }

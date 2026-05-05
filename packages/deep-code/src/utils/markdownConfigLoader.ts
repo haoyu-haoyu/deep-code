@@ -9,8 +9,16 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { getProjectRoot } from '../bootstrap/state.js'
+import {
+  DEEPCODE_PROJECT_DIR,
+  LEGACY_CLAUDE_PROJECT_DIR,
+} from '../deepcode/instruction-paths.mjs'
 import { logForDebugging } from './debug.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import {
+  getClaudeConfigHomeDir,
+  getLegacyClaudeConfigHomeDir,
+  isEnvTruthy,
+} from './envUtils.js'
 import { isFsInaccessible } from './errors.js'
 import { normalizePathForComparison } from './file.js'
 import type { FrontmatterData } from './frontmatterParser.js'
@@ -43,6 +51,43 @@ export type MarkdownFile = {
   frontmatter: FrontmatterData
   content: string
   source: SettingSource
+}
+
+function pathExists(path: string): boolean {
+  try {
+    statSync(path)
+    return true
+  } catch (e: unknown) {
+    if (!isFsInaccessible(e)) throw e
+    return false
+  }
+}
+
+function getExistingPreferredConfigSubdir(
+  root: string,
+  subdir: ClaudeConfigDirectory,
+): string | null {
+  const deepCodeSubdir = join(root, DEEPCODE_PROJECT_DIR, subdir)
+  if (pathExists(deepCodeSubdir)) {
+    return deepCodeSubdir
+  }
+
+  const legacySubdir = join(root, LEGACY_CLAUDE_PROJECT_DIR, subdir)
+  if (pathExists(legacySubdir)) {
+    return legacySubdir
+  }
+
+  return null
+}
+
+function getPreferredConfigSubdir(
+  root: string,
+  subdir: ClaudeConfigDirectory,
+): string {
+  return (
+    getExistingPreferredConfigSubdir(root, subdir) ??
+    join(root, DEEPCODE_PROJECT_DIR, subdir)
+  )
 }
 
 /**
@@ -250,18 +295,15 @@ export function getProjectDirsUpToHome(
       break
     }
 
-    const claudeSubdir = join(current, '.claude', subdir)
+    const configSubdir = getExistingPreferredConfigSubdir(current, subdir)
     // Filter to existing dirs. This is a perf filter (avoids spawning
     // ripgrep on non-existent dirs downstream) and the worktree fallback
     // in loadMarkdownFilesForSubdir relies on it. statSync + explicit error
     // handling instead of existsSync — re-throws unexpected errors rather
     // than silently swallowing them. Downstream loadMarkdownFiles handles
     // the TOCTOU window (dir disappearing before read) gracefully.
-    try {
-      statSync(claudeSubdir)
-      dirs.push(claudeSubdir)
-    } catch (e: unknown) {
-      if (!isFsInaccessible(e)) throw e
+    if (configSubdir) {
+      dirs.push(configSubdir)
     }
 
     // Stop after processing the git root directory - this prevents commands from parent
@@ -300,8 +342,10 @@ export const loadMarkdownFilesForSubdir = memoize(
     cwd: string,
   ): Promise<MarkdownFile[]> {
     const searchStartTime = Date.now()
-    const userDir = join(getClaudeConfigHomeDir(), subdir)
-    const managedDir = join(getManagedFilePath(), '.claude', subdir)
+    const userDir = pathExists(join(getClaudeConfigHomeDir(), subdir))
+      ? join(getClaudeConfigHomeDir(), subdir)
+      : join(getLegacyClaudeConfigHomeDir(), subdir)
+    const managedDir = getPreferredConfigSubdir(getManagedFilePath(), subdir)
     const projectDirs = getProjectDirsUpToHome(subdir, cwd)
 
     // For git worktrees where the worktree does NOT have .claude/<subdir> checked
@@ -321,15 +365,15 @@ export const loadMarkdownFilesForSubdir = memoize(
     const canonicalRoot = findCanonicalGitRoot(cwd)
     if (gitRoot && canonicalRoot && canonicalRoot !== gitRoot) {
       const worktreeSubdir = normalizePathForComparison(
-        join(gitRoot, '.claude', subdir),
+        getPreferredConfigSubdir(gitRoot, subdir),
       )
       const worktreeHasSubdir = projectDirs.some(
         dir => normalizePathForComparison(dir) === worktreeSubdir,
       )
       if (!worktreeHasSubdir) {
-        const mainClaudeSubdir = join(canonicalRoot, '.claude', subdir)
-        if (!projectDirs.includes(mainClaudeSubdir)) {
-          projectDirs.push(mainClaudeSubdir)
+        const mainConfigSubdir = getPreferredConfigSubdir(canonicalRoot, subdir)
+        if (!projectDirs.includes(mainConfigSubdir)) {
+          projectDirs.push(mainConfigSubdir)
         }
       }
     }
