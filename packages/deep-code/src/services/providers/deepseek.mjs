@@ -454,12 +454,12 @@ export function parseDeepSeekSSELines(lines) {
         })
         events.push(event)
       }
+      const hasToolCallDeltas = (delta.tool_calls?.length ?? 0) > 0
       if (
         choice.finish_reason &&
-        choice.finish_reason !== 'tool_calls' &&
         !delta.reasoning_content &&
         !delta.content &&
-        !delta.tool_calls
+        !hasToolCallDeltas
       ) {
         events.push({ type: 'finish', finishReason: choice.finish_reason })
       }
