@@ -583,6 +583,34 @@ test('Deep Code package can build the full CLI launcher artifact', () => {
   assert.match(helpResult.stdout, /DeepSeek native models/)
 })
 
+test('DeepSeek real cache E2E script is opt-in and skips safely by default', () => {
+  assert.equal(
+    innerPackage.scripts['test:real-cache-e2e'],
+    'node scripts/deepseek-cache-e2e.mjs',
+  )
+
+  const result = spawnSync('npm', [
+    'run',
+    'test:real-cache-e2e',
+    '--workspace',
+    '@deepcode-ai/deep-code',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_REAL_E2E: '',
+      DEEPSEEK_API_KEY: '',
+      DEEPCODE_API_KEY: '',
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /DeepSeek cache E2E skipped/)
+  assert.match(result.stdout, /DEEPCODE_REAL_E2E=1/)
+  assert.doesNotMatch(result.stdout, /sk-/)
+})
+
 test('Deep Code package packs and installs a runnable production tarball', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-pack-smoke-'))
   const packDir = join(dir, 'pack')
