@@ -399,6 +399,8 @@ async function runToolE2E(env, cacheStatsPath) {
 function printHelp() {
   console.log(`Deep Code native DeepSeek CLI
 
+DeepSeek native models are used by default for print mode, TUI mode, tool calls, reasoning content, and cache diagnostics.
+
 Usage:
   deepcode "explain this repo"
   deepcode -p "explain this repo"

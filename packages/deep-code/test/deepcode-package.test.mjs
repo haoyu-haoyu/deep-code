@@ -559,6 +559,84 @@ test('Deep Code package can build the full CLI launcher artifact', () => {
   assert.match(helpResult.stdout, /DeepSeek native models/)
 })
 
+test('Deep Code package packs and installs a runnable production tarball', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-pack-smoke-'))
+  const packDir = join(dir, 'pack')
+  const installDir = join(dir, 'install')
+  const npmCacheDir = join(dir, 'npm-cache')
+  const npmEnv = {
+    ...process.env,
+    npm_config_audit: 'false',
+    npm_config_fund: 'false',
+    npm_config_cache: npmCacheDir,
+  }
+  const mkdirResult = spawnSync('mkdir', ['-p', packDir, installDir, npmCacheDir], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  assert.equal(mkdirResult.status, 0, mkdirResult.stderr)
+
+  const packResult = spawnSync('npm', [
+    'pack',
+    '--workspace',
+    '@deepcode-ai/deep-code',
+    '--pack-destination',
+    packDir,
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: npmEnv,
+  })
+
+  assert.equal(packResult.status, 0, packResult.stderr)
+  assert.doesNotMatch(packResult.stderr, /Direct publishing is not allowed/)
+  const tarball = join(packDir, packResult.stdout.trim().split(/\r?\n/).at(-1))
+
+  const listResult = spawnSync('tar', ['-tzf', tarball], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  assert.equal(listResult.status, 0, listResult.stderr)
+  assert.match(listResult.stdout, /package\/deepcode\.js/)
+  assert.match(listResult.stdout, /package\/dist\/deepcode-full\.mjs/)
+  assert.match(listResult.stdout, /package\/src\/deepcode\/deepseek-native\.mjs/)
+  assert.doesNotMatch(listResult.stdout, /package\/test\//)
+
+  const initResult = spawnSync('npm', ['init', '-y'], {
+    cwd: installDir,
+    encoding: 'utf8',
+  })
+  assert.equal(initResult.status, 0, initResult.stderr)
+  const installResult = spawnSync('npm', [
+    'install',
+    '--ignore-scripts',
+    '--omit=optional',
+    tarball,
+  ], {
+    cwd: installDir,
+    encoding: 'utf8',
+    env: npmEnv,
+  })
+  assert.equal(installResult.status, 0, installResult.stderr)
+
+  const binPath = join(installDir, 'node_modules', '.bin', 'deepcode')
+  const versionResult = spawnSync(binPath, ['--version'], {
+    cwd: installDir,
+    encoding: 'utf8',
+  })
+  assert.equal(versionResult.status, 0, versionResult.stderr)
+  assert.equal(versionResult.stdout.trim(), '0.1.0-deepseek-native (Deep Code)')
+
+  const helpResult = spawnSync(binPath, ['--help'], {
+    cwd: installDir,
+    encoding: 'utf8',
+  })
+  assert.equal(helpResult.status, 0, helpResult.stderr)
+  assert.match(helpResult.stdout, /Deep Code/)
+  assert.match(helpResult.stdout, /DeepSeek native models/)
+  assert.doesNotMatch(helpResult.stdout, /Claude Code|Anthropic/)
+})
+
 test('Deep Code theme exposes DeepSeek blue brand tokens and aliases legacy brand tokens to blue', () => {
   assert.match(themeSource, /deepseek: string/)
   assert.match(themeSource, /deepseekShimmer: string/)
