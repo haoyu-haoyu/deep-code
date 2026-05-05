@@ -56,6 +56,10 @@ import {
   createDeepSeekLocalTools,
   runDeepSeekLocalToolChain,
 } from '../src/deepcode/local-toolchain.mjs'
+import {
+  createDeepCodeStablePrefix,
+  formatDeepCodePrefixStatus,
+} from '../src/deepcode/stable-prefix.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -700,6 +704,91 @@ test('createDeepSeekWarmupContext builds stable prefix hashes for cache warm-up'
   assert.equal(first.prefixHash, second.prefixHash)
   assert.deepEqual(first.stableTools.map(tool => tool.name), ['Read', 'Write'])
   assert.ok(first.systemPrompt.some(item => item.includes('Stable tool manifest')))
+})
+
+test('createDeepCodeStablePrefix ignores volatile prompts but changes on stable repo summary', async () => {
+  const first = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-a',
+    volatileUserPrompt: 'explain one file',
+  })
+  const second = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-a',
+    volatileUserPrompt: 'modify a different file',
+  })
+  const changed = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-b',
+  })
+
+  assert.equal(first.prefixHash, second.prefixHash)
+  assert.notEqual(first.prefixHash, changed.prefixHash)
+  assert.ok(first.systemPrompt.some(item => item.includes('Stable repo summary')))
+})
+
+test('createDeepCodeStablePrefix sorts tool manifest for cache-stable requests', async () => {
+  const writeTool = {
+    name: 'Write',
+    description: 'Write a file',
+    inputJSONSchema: {
+      type: 'object',
+      properties: { path: { type: 'string' } },
+    },
+  }
+  const readTool = {
+    name: 'Read',
+    description: 'Read a file',
+    inputJSONSchema: {
+      type: 'object',
+      properties: { file_path: { type: 'string' } },
+    },
+  }
+
+  const first = await createDeepCodeStablePrefix({
+    tools: [writeTool, readTool],
+  })
+  const second = await createDeepCodeStablePrefix({
+    tools: [readTool, writeTool],
+  })
+
+  assert.equal(first.prefixHash, second.prefixHash)
+  assert.deepEqual(first.stableTools.map(tool => tool.name), ['Read', 'Write'])
+})
+
+test('createDeepCodeStablePrefix sorts skill manifest for cache-stable requests', async () => {
+  const first = await createDeepCodeStablePrefix({
+    skills: [
+      { name: 'write-tests', description: 'Write tests', path: 'skills/tests' },
+      { name: 'debug', description: 'Debug failures', path: 'skills/debug' },
+    ],
+  })
+  const second = await createDeepCodeStablePrefix({
+    skills: [
+      { name: 'debug', description: 'Debug failures', path: 'skills/debug' },
+      { name: 'write-tests', description: 'Write tests', path: 'skills/tests' },
+    ],
+  })
+
+  assert.equal(first.prefixHash, second.prefixHash)
+  assert.deepEqual(first.stableSkills.map(skill => skill.name), [
+    'debug',
+    'write-tests',
+  ])
+})
+
+test('createDeepSeekWarmupContext uses the shared Deep Code stable prefix builder', async () => {
+  const stable = await createDeepCodeStablePrefix({ repoSummary: 'repo-a' })
+  const warmup = await createDeepSeekWarmupContext({ repoSummary: 'repo-a' })
+
+  assert.equal(warmup.prefixHash, stable.prefixHash)
+  assert.deepEqual(warmup.systemPrompt, stable.systemPrompt)
+})
+
+test('formatDeepCodePrefixStatus renders stable prefix hash', async () => {
+  const stable = await createDeepCodeStablePrefix({ repoSummary: 'repo-a' })
+
+  assert.equal(
+    formatDeepCodePrefixStatus(stable),
+    `Stable prefix hash: ${stable.prefixHash}`,
+  )
 })
 
 test('warmDeepSeekCache sends low-output warm-up requests and reports cache telemetry', async () => {
