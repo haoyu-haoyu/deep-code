@@ -9,6 +9,8 @@ import {
   calculateDeepSeekCacheHitRate,
   collectDeepSeekStreamEvents,
   createDeepSeekCacheUserId,
+  createDeepCodeStablePrefix,
+  formatDeepCodePrefixStatus,
   formatDeepSeekWarmupResult,
   resolveDeepSeekConfig,
   warmDeepSeekCache,
@@ -53,8 +55,11 @@ async function main() {
   const cacheStatsPath = resolveDeepSeekCacheStatsPath({ env, config })
 
   if (cli.command === 'status') {
+    const repoSummary = await loadRepoSummary()
+    const stablePrefix = await createDeepCodeStablePrefix({ repoSummary })
     printStatus(config, {
       cacheStats: await loadDeepSeekCacheStats(cacheStatsPath),
+      stablePrefix,
     })
     return
   }
@@ -71,10 +76,11 @@ async function main() {
     return
   }
   if (cli.command === 'warm-cache') {
+    const repoSummary = await loadRepoSummary()
     const result = await warmDeepSeekCache({
       env,
       cwd: process.cwd(),
-      repoSummary: await loadRepoSummary(),
+      repoSummary,
     })
     console.log(formatDeepSeekWarmupResult(result))
     return
@@ -84,9 +90,11 @@ async function main() {
     return
   }
 
+  const repoSummary = await loadRepoSummary()
+  const stablePrefix = await createDeepCodeStablePrefix({ repoSummary })
   const prompt = await resolvePrompt(cli.promptArgs)
   if (prompt) {
-    await runSingleTurn(prompt, env, cacheStatsPath)
+    await runSingleTurn(prompt, env, cacheStatsPath, stablePrefix)
     return
   }
 
@@ -96,17 +104,20 @@ async function main() {
     return
   }
 
-  await runInteractive(env, cacheStatsPath)
+  await runInteractive(env, cacheStatsPath, stablePrefix)
 }
 
-async function runSingleTurn(prompt, env, cacheStatsPath) {
+async function runSingleTurn(prompt, env, cacheStatsPath, stablePrefix) {
   const messages = [{ role: 'user', content: prompt }]
-  const response = await requestDeepSeek(messages, env, { streamToStdout: true })
+  const response = await requestDeepSeek(messages, env, {
+    streamToStdout: true,
+    stablePrefix,
+  })
   if (!response.content.endsWith('\n')) process.stdout.write('\n')
   await printAndRecordUsage(response.usage, cacheStatsPath)
 }
 
-async function runInteractive(env, cacheStatsPath) {
+async function runInteractive(env, cacheStatsPath, stablePrefix) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -120,6 +131,7 @@ async function runInteractive(env, cacheStatsPath) {
     messages.push({ role: 'user', content: prompt })
     const response = await requestDeepSeek(messages, env, {
       streamToStdout: true,
+      stablePrefix,
     })
     messages.push({
       role: 'assistant',
@@ -134,12 +146,15 @@ async function runInteractive(env, cacheStatsPath) {
   rl.close()
 }
 
-async function requestDeepSeek(messages, env, { streamToStdout = false } = {}) {
+async function requestDeepSeek(
+  messages,
+  env,
+  { streamToStdout = false, stablePrefix } = {},
+) {
   const provider = resolveModelProvider({ env })
+  const prefix = stablePrefix ?? (await createDeepCodeStablePrefix())
   return await collectDeepSeekStreamEvents(provider.streamQuery({
-    systemPrompt: [
-      'You are Deep Code, a terminal AI coding assistant optimized for DeepSeek. Answer concisely and do not call tools unless tools are provided.',
-    ],
+    systemPrompt: prefix.systemPrompt,
     messages,
     env,
     cwd: process.cwd(),
@@ -227,7 +242,7 @@ function mergeSettingsEnv(env, settings) {
   }
 }
 
-function printStatus(config, { cacheStats = null } = {}) {
+function printStatus(config, { cacheStats = null, stablePrefix = null } = {}) {
   console.log(`Provider: DeepSeek native`)
   console.log(`Base URL: ${config.baseUrl}`)
   console.log(`Model: ${config.model}`)
@@ -235,6 +250,7 @@ function printStatus(config, { cacheStats = null } = {}) {
   console.log(`Thinking: ${config.thinking}`)
   console.log(`Reasoning effort: ${config.reasoningEffort}`)
   console.log(`Cache user_id: ${config.cacheUserId}`)
+  console.log(formatDeepCodePrefixStatus(stablePrefix))
   console.log(`API key: ${config.apiKey ? 'configured' : 'missing'}`)
   console.log(formatDeepSeekCacheStatus(cacheStats))
 }

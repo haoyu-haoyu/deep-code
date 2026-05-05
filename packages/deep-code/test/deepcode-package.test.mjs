@@ -114,6 +114,7 @@ test('Deep Code status displays persisted DeepSeek cache telemetry', () => {
   })
 
   assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Stable prefix hash: [A-Za-z0-9_-]+/)
   assert.match(result.stdout, /Cache telemetry: last_hit=9 last_miss=1 last_hit_rate=90\.0%/)
   assert.match(result.stdout, /Cache telemetry: total_hit=90 total_miss=10 total_hit_rate=90\.0% requests=2/)
 })
