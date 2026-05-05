@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -39,6 +39,7 @@ import {
 } from '../src/query/deepseek-call-model.mjs'
 import {
   createDeepSeekDoctorReport,
+  createDeepCodeMigrationDiagnostics,
   formatDeepSeekDoctorReport,
   hasFailingDoctorChecks,
 } from '../src/deepcode/doctor.mjs'
@@ -1706,6 +1707,42 @@ test('createDeepSeekDoctorReport treats missing API key as skip in no-live mode'
       check => check.id === 'live.api' && check.status === 'skip',
     ),
   )
+})
+
+test('Deep Code migration diagnostics warn on legacy-only project config paths', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'deepcode-migration-'))
+  await mkdir(join(cwd, '.claude', 'skills', 'legacy-skill'), {
+    recursive: true,
+  })
+  await mkdir(join(cwd, '.claude', 'agents'), { recursive: true })
+  await writeFile(join(cwd, 'CLAUDE.md'), 'legacy instructions')
+  await writeFile(join(cwd, '.claude', 'settings.json'), '{}')
+  await writeFile(
+    join(cwd, '.claude', 'skills', 'legacy-skill', 'SKILL.md'),
+    '# skill',
+  )
+
+  const diagnostics = createDeepCodeMigrationDiagnostics({
+    env: {
+      DEEPCODE_CONFIG_DIR: join(cwd, 'home', '.deepcode'),
+      CLAUDE_CONFIG_DIR: join(cwd, 'home', '.claude'),
+    },
+    cwd,
+  })
+
+  assert.equal(diagnostics.status, 'warn')
+  assert.ok(
+    diagnostics.legacyOnly.some(item => item.label === 'Project instructions'),
+  )
+  assert.ok(
+    diagnostics.legacyOnly.some(item => item.label === 'Project settings'),
+  )
+  assert.ok(
+    diagnostics.legacyOnly.some(item => item.label === 'Project skills'),
+  )
+  assert.match(diagnostics.detail, /legacy fallback active/i)
+  assert.match(diagnostics.recommendation, /DEEPCODE\.md/)
+  assert.match(diagnostics.recommendation, /\.deepcode/)
 })
 
 test('createDeepSeekDoctorReport validates live stream and cache telemetry with provider injection', async () => {
