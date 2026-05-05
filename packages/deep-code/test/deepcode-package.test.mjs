@@ -329,6 +329,30 @@ const enterPlanModePermissionSource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/permissions/EnterPlanModePermissionRequest/EnterPlanModePermissionRequest.tsx'),
   'utf8',
 )
+const tipRegistrySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/services/tips/tipRegistry.ts'),
+  'utf8',
+)
+const logSelectorSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogSelector.tsx'),
+  'utf8',
+)
+const permissionPromptCopySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/PermissionPrompt.tsx'),
+  'utf8',
+)
+const bashPermissionOptionsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/BashPermissionRequest/bashToolUseOptions.tsx'),
+  'utf8',
+)
+const powershellPermissionOptionsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/PowerShellPermissionRequest/powershellToolUseOptions.tsx'),
+  'utf8',
+)
+const filePermissionOptionsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/FilePermissionDialog/permissionOptions.tsx'),
+  'utf8',
+)
 const runSingleTurnSource = deepcodeEntrypointSource.slice(
   deepcodeEntrypointSource.indexOf('async function runSingleTurn'),
   deepcodeEntrypointSource.indexOf('async function runInteractive'),
@@ -822,6 +846,32 @@ test('high-visibility user copy uses Deep Code and DeepSeek branding', () => {
   assert.doesNotMatch(highVisibilitySources, /Claude needs/)
   assert.doesNotMatch(highVisibilitySources, /Claude explains/)
   assert.doesNotMatch(highVisibilitySources, /Claude pauses/)
+})
+
+test('common interactive surfaces use Deep Code copy allowlist', () => {
+  const commonInteractiveSources = [
+    tipRegistrySource,
+    logSelectorSource,
+    permissionPromptCopySource,
+    bashPermissionOptionsSource,
+    powershellPermissionOptionsSource,
+    filePermissionOptionsSource,
+  ].map(stripInlineSourceMap).join('\n')
+
+  assert.match(tipRegistrySource, /tell Deep Code to propose a plan/)
+  assert.match(tipRegistrySource, /DeepSeek reasoning/)
+  assert.doesNotMatch(commonInteractiveSources, /tell Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /Ask Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /Use Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude found/)
+  assert.doesNotMatch(commonInteractiveSources, /Search deeply using Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /Searching with Claude/)
+  assert.doesNotMatch(commonInteractiveSources, /while Claude is working/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude thinks/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude sends/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude memory/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude Code Desktop/)
+  assert.doesNotMatch(commonInteractiveSources, /Claude app/)
 })
 
 test('DeepSeek-native slash commands hide legacy Claude service integrations by default', () => {
