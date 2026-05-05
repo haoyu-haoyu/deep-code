@@ -5,6 +5,7 @@ import { Suspense, use } from 'react';
 import { getSessionId } from '../../bootstrap/state.js';
 import type { LocalJSXCommandContext } from '../../commands.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
+import { buildDeepCodeStatusReport, deepCodeStatusReportToProperties } from '../../deepcode/status.mjs';
 import { Box, Text, useTheme } from '../../ink.js';
 import { type AppState, useAppState } from '../../state/AppState.js';
 import { getCwd } from '../../utils/cwd.js';
@@ -53,6 +54,12 @@ function buildSecondarySection({
 }
 export async function buildDiagnostics(): Promise<Diagnostic[]> {
   return [...(await buildInstallationDiagnostics()), ...(await buildInstallationHealthDiagnostics()), ...(await buildMemoryDiagnostics())];
+}
+async function buildDeepCodeStatusProperties(): Promise<Property[]> {
+  const report = await buildDeepCodeStatusReport({
+    cwd: getCwd()
+  });
+  return deepCodeStatusReportToProperties(report);
 }
 function PropertyValue(t0) {
   const $ = _c(8);
@@ -108,6 +115,8 @@ export function Status(t0) {
   const mainLoopModel = useAppState(_temp);
   const mcp = useAppState(_temp2);
   const [theme] = useTheme();
+  const deepCodeStatusPromise = React.useMemo(() => buildDeepCodeStatusProperties(), []);
+  const deepCodeStatusElement = <Suspense fallback={null}><DeepCodeStatus promise={deepCodeStatusPromise} /></Suspense>;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = buildPrimarySection();
@@ -159,7 +168,7 @@ export function Status(t0) {
   }
   let t6;
   if ($[12] !== grow || $[13] !== t4 || $[14] !== t5) {
-    t6 = <Box flexDirection="column" gap={1} flexGrow={grow}>{t4}{t5}</Box>;
+    t6 = <Box flexDirection="column" gap={1} flexGrow={grow}>{t4}{deepCodeStatusElement}{t5}</Box>;
     $[12] = grow;
     $[13] = t4;
     $[14] = t5;
@@ -200,6 +209,14 @@ function _temp2(s_0) {
 }
 function _temp(s) {
   return s.mainLoopModel;
+}
+function DeepCodeStatus(t0) {
+  const {
+    promise
+  } = t0;
+  const properties = use(promise);
+  if (properties.length === 0) return null;
+  return <Box flexDirection="column"><Text bold={true}>DeepSeek Status</Text>{properties.map(_temp3)}</Box>;
 }
 function Diagnostics(t0) {
   const $ = _c(5);

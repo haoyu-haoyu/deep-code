@@ -502,6 +502,9 @@ const result = await Bun.build({
   outdir: buildOutDir,
   target: 'node',
   format: 'esm',
+  define: {
+    'process.env.NODE_ENV': '"production"',
+  },
   splitting: false,
   sourcemap: 'none',
   minify: false,

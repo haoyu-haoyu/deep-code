@@ -332,6 +332,66 @@ test('formatDeepSeekCacheStatus reports stable prefix miss diagnostics', async (
   )
 })
 
+test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', async () => {
+  const {
+    buildDeepCodeStatusReport,
+    deepCodeStatusReportToProperties,
+    formatDeepCodeStatus,
+  } = await import('../src/deepcode/status.mjs')
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-status-adapter-'))
+  const statsPath = join(dir, 'stats.json')
+  await writeFile(statsPath, JSON.stringify({
+    version: 1,
+    requestCount: 2,
+    totalPromptCacheHitTokens: 90,
+    totalPromptCacheMissTokens: 10,
+    totalPromptCacheHitRate: 0.9,
+    lastPromptCacheHitTokens: 9,
+    lastPromptCacheMissTokens: 1,
+    lastPromptCacheHitRate: 0.9,
+    updatedAt: '2026-05-05T00:00:00.000Z',
+  }))
+
+  const report = await buildDeepCodeStatusReport({
+    cwd: '/tmp/deepcode-workspace',
+    env: {
+      DEEPCODE_CACHE_STATS_PATH: statsPath,
+      DEEPSEEK_API_KEY: 'sk-test',
+      DEEPSEEK_MODEL: 'deepseek-v4-pro',
+      DEEPSEEK_SMALL_MODEL: 'deepseek-v4-flash',
+      DEEPSEEK_REASONING_EFFORT: 'max',
+    },
+    repoSummary: 'stable repo summary',
+    volatileUserPrompt: 'first prompt',
+  })
+  const sameStablePrefix = await buildDeepCodeStatusReport({
+    cwd: '/tmp/deepcode-workspace',
+    env: {
+      DEEPCODE_CACHE_STATS_PATH: statsPath,
+      DEEPSEEK_API_KEY: 'sk-test',
+    },
+    repoSummary: 'stable repo summary',
+    volatileUserPrompt: 'different prompt',
+  })
+  const formatted = formatDeepCodeStatus(report)
+  const properties = deepCodeStatusReportToProperties(report)
+
+  assert.equal(report.stablePrefix.prefixHash, sameStablePrefix.stablePrefix.prefixHash)
+  assert.match(formatted, /Provider: DeepSeek native/)
+  assert.match(formatted, /Model: deepseek-v4-pro/)
+  assert.match(formatted, /Reasoning effort: max/)
+  assert.match(formatted, /Cache telemetry: last_hit=9 last_miss=1 last_hit_rate=90\.0%/)
+  assert.match(formatted, /Stable prefix hash: [A-Za-z0-9_-]+/)
+  assert.equal(properties.find(item => item.label === 'Provider')?.value, 'DeepSeek native')
+  assert.equal(properties.find(item => item.label === 'Model')?.value, 'deepseek-v4-pro')
+  assert.equal(properties.find(item => item.label === 'Reasoning effort')?.value, 'max')
+  assert.equal(properties.find(item => item.label === 'Cache hit rate')?.value, '90.0%')
+  assert.equal(
+    properties.find(item => item.label === 'Stable prefix hash')?.value,
+    report.stablePrefix.prefixHash,
+  )
+})
+
 test('resolveDeepSeekCacheStatsPath supports explicit disabled and configured paths', () => {
   assert.equal(resolveDeepSeekCacheStatsPath({
     env: { DEEPCODE_CACHE_STATS: 'disabled' },
@@ -853,6 +913,32 @@ test('createDeepCodeStablePrefix sorts tool manifest for cache-stable requests',
   assert.deepEqual(first.stableTools.map(tool => tool.name), ['Read', 'Write'])
 })
 
+test('createDeepCodeStablePrefix includes strict tool profile in cache-stable manifests', async () => {
+  const tool = {
+    name: 'Read',
+    description: 'Read a file',
+    inputJSONSchema: {
+      type: 'object',
+      properties: { file_path: { type: 'string' } },
+      required: ['file_path'],
+      additionalProperties: false,
+    },
+  }
+
+  const flexible = await createDeepCodeStablePrefix({
+    tools: [tool],
+    toolSchemaOptions: { strict: false },
+  })
+  const strict = await createDeepCodeStablePrefix({
+    tools: [tool],
+    toolSchemaOptions: { strict: true },
+  })
+
+  assert.notEqual(flexible.prefixHash, strict.prefixHash)
+  assert.equal('strict' in flexible.stableTools[0], false)
+  assert.equal(strict.stableTools[0].strict, true)
+})
+
 test('createDeepCodeStablePrefix sorts skill manifest for cache-stable requests', async () => {
   const first = await createDeepCodeStablePrefix({
     skills: [
@@ -884,6 +970,139 @@ test('createDeepCodeStableTools exposes real local tools for stable prefix manif
   assert.equal(
     stable.stableTools.find(tool => tool.name === 'Read').parameters.properties.file_path.type,
     'string',
+  )
+})
+
+test('createDeepCodeStablePrefix snapshots full CLI tool registry style schemas for DeepSeek', async () => {
+  const fullRegistryStyleTools = [
+    {
+      name: 'TodoWrite',
+      description: 'Create and update structured task lists',
+      inputJSONSchema: {
+        type: 'object',
+        properties: {
+          todos: {
+            type: 'array',
+            maxItems: 100,
+            items: {
+              type: 'object',
+              properties: {
+                content: { type: 'string', minLength: 1 },
+                id: { type: 'string' },
+                status: {
+                  type: 'string',
+                  enum: ['pending', 'in_progress', 'completed'],
+                },
+              },
+              required: ['content', 'status'],
+            },
+          },
+        },
+        required: ['todos'],
+      },
+    },
+    {
+      name: 'Read',
+      description: 'Read a file from the workspace',
+      inputJSONSchema: {
+        type: 'object',
+        properties: { file_path: { type: 'string' } },
+        required: ['file_path'],
+      },
+    },
+    {
+      name: 'Grep',
+      description: 'Search file contents',
+      inputJSONSchema: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string', minLength: 1 },
+          path: { type: 'string' },
+        },
+        required: ['pattern'],
+      },
+    },
+    {
+      name: 'Bash',
+      description: 'Run a shell command',
+      inputJSONSchema: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', maxLength: 20000 },
+          description: { type: 'string' },
+        },
+        required: ['command'],
+      },
+    },
+    {
+      name: 'Glob',
+      description: 'Find files by glob pattern',
+      inputJSONSchema: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string' },
+          path: { type: 'string' },
+        },
+        required: ['pattern'],
+      },
+    },
+    {
+      name: 'Edit',
+      description: 'Replace text in a file',
+      inputJSONSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string' },
+          old_string: { type: 'string', minLength: 1 },
+          new_string: { type: 'string' },
+        },
+        required: ['file_path', 'old_string', 'new_string'],
+      },
+    },
+  ]
+
+  const flexible = await createDeepCodeStablePrefix({
+    tools: fullRegistryStyleTools,
+  })
+  const reordered = await createDeepCodeStablePrefix({
+    tools: [...fullRegistryStyleTools].reverse(),
+  })
+  const strict = await createDeepCodeStablePrefix({
+    tools: fullRegistryStyleTools,
+    toolSchemaOptions: { strict: true },
+  })
+
+  assert.equal(flexible.prefixHash, reordered.prefixHash)
+  assert.deepEqual(
+    flexible.stableTools.map(tool => tool.name),
+    ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'TodoWrite'],
+  )
+  assert.equal(
+    flexible.stableTools.find(tool => tool.name === 'Bash').parameters.properties.command.maxLength,
+    20000,
+  )
+  assert.equal(
+    flexible.stableTools.find(tool => tool.name === 'TodoWrite').parameters.properties.todos.maxItems,
+    100,
+  )
+  assert.equal(
+    strict.stableTools.every(tool => tool.strict === true),
+    true,
+  )
+  assert.notEqual(flexible.prefixHash, strict.prefixHash)
+  assert.equal(
+    'maxLength' in strict.stableTools.find(tool => tool.name === 'Bash').parameters.properties.command,
+    false,
+  )
+  assert.equal(
+    'maxItems' in strict.stableTools.find(tool => tool.name === 'TodoWrite').parameters.properties.todos,
+    false,
+  )
+  assert.deepEqual(
+    strict.stableTools
+      .find(tool => tool.name === 'TodoWrite')
+      .parameters.properties.todos.items.required,
+    ['content', 'id', 'status'],
   )
 })
 

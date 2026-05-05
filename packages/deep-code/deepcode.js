@@ -14,7 +14,6 @@ import {
   createDeepSeekCacheUserId,
   createDeepCodeStablePrefix,
   formatDeepCodeCompactResult,
-  formatDeepCodePrefixStatus,
   formatDeepSeekWarmupResult,
   resolveDeepSeekConfig,
   warmDeepSeekCache,
@@ -25,11 +24,13 @@ import {
   hasFailingDoctorChecks,
 } from './src/deepcode/doctor.mjs'
 import {
-  formatDeepSeekCacheStatus,
-  loadDeepSeekCacheStats,
   recordDeepSeekCacheUsage,
   resolveDeepSeekCacheStatsPath,
 } from './src/deepcode/cache-telemetry.mjs'
+import {
+  buildDeepCodeStatusReport,
+  formatDeepCodeStatus,
+} from './src/deepcode/status.mjs'
 import {
   applyDeepCodeCliEnvOverrides,
   parseDeepCodeArgs,
@@ -61,11 +62,12 @@ async function main() {
 
   if (cli.command === 'status') {
     const repoSummary = await loadRepoSummary()
-    const stablePrefix = await createDeepCodeStablePrefix({ repoSummary })
-    printStatus(config, {
-      cacheStats: await loadDeepSeekCacheStats(cacheStatsPath),
-      stablePrefix,
-    })
+    console.log(formatDeepCodeStatus(await buildDeepCodeStatusReport({
+      env,
+      cwd: process.cwd(),
+      repoSummary,
+      cacheStatsPath,
+    })))
     return
   }
   if (cli.command === 'doctor') {
@@ -341,19 +343,6 @@ function mergeSettingsEnv(env, settings) {
       settings.cacheUserId ??
       createDeepSeekCacheUserId(process.cwd()),
   }
-}
-
-function printStatus(config, { cacheStats = null, stablePrefix = null } = {}) {
-  console.log(`Provider: DeepSeek native`)
-  console.log(`Base URL: ${config.baseUrl}`)
-  console.log(`Model: ${config.model}`)
-  console.log(`Small model: ${config.smallModel}`)
-  console.log(`Thinking: ${config.thinking}`)
-  console.log(`Reasoning effort: ${config.reasoningEffort}`)
-  console.log(`Cache user_id: ${config.cacheUserId}`)
-  console.log(formatDeepCodePrefixStatus(stablePrefix))
-  console.log(`API key: ${config.apiKey ? 'configured' : 'missing'}`)
-  console.log(formatDeepSeekCacheStatus(cacheStats, { stablePrefix }))
 }
 
 async function printAndRecordUsage(usage, cacheStatsPath, stablePrefix) {

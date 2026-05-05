@@ -15,8 +15,40 @@ const mainSource = readFileSync(
   resolve(root, 'packages/deep-code/src/main.tsx'),
   'utf8',
 )
+const commandsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands.ts'),
+  'utf8',
+)
+const systemPromptSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/constants/system.ts'),
+  'utf8',
+)
+const projectOnboardingSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/projectOnboardingState.ts'),
+  'utf8',
+)
+const outputStylesSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/constants/outputStyles.ts'),
+  'utf8',
+)
 const printSource = readFileSync(
   resolve(root, 'packages/deep-code/src/cli/print.ts'),
+  'utf8',
+)
+const replSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/screens/REPL.tsx'),
+  'utf8',
+)
+const useMergedToolsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/hooks/useMergedTools.ts'),
+  'utf8',
+)
+const toolsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools.ts'),
+  'utf8',
+)
+const deepSeekCallModelSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/query/deepseek-call-model.mjs'),
   'utf8',
 )
 const printModelInfoSource = readFileSync(
@@ -58,6 +90,42 @@ const managedSettingsSecuritySource = readFileSync(
   ),
   'utf8',
 )
+const statusCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/status/index.ts'),
+  'utf8',
+)
+const modelCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/model/index.ts'),
+  'utf8',
+)
+const doctorCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/doctor/index.ts'),
+  'utf8',
+)
+const statuslineCommandSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/commands/statusline.tsx'),
+  'utf8',
+)
+const settingsStatusSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/Settings/Status.tsx'),
+  'utf8',
+)
+const helpGeneralSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/HelpV2/General.tsx'),
+  'utf8',
+)
+const onboardingSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/Onboarding.tsx'),
+  'utf8',
+)
+const permissionRequestSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/PermissionRequest.tsx'),
+  'utf8',
+)
+const enterPlanModePermissionSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/permissions/EnterPlanModePermissionRequest/EnterPlanModePermissionRequest.tsx'),
+  'utf8',
+)
 const runSingleTurnSource = deepcodeEntrypointSource.slice(
   deepcodeEntrypointSource.indexOf('async function runSingleTurn'),
   deepcodeEntrypointSource.indexOf('async function runInteractive'),
@@ -72,6 +140,10 @@ function inlineSourceMapSources(source) {
   }
   const map = JSON.parse(Buffer.from(match[1], 'base64').toString('utf8'))
   return (map.sourcesContent ?? []).join('\n')
+}
+
+function stripInlineSourceMap(source) {
+  return source.replace(/\n\/\/# sourceMappingURL=data:application\/json;charset=utf-8;base64,[\s\S]*$/, '')
 }
 
 test('root package is branded as Deep Code', () => {
@@ -202,6 +274,54 @@ test('Deep Code front controller delegates interactive mode to the full CLI bund
   })
 })
 
+test('Deep Code front controller streams TUI stdin through the full CLI bundle', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-stdio-'))
+  const fakeFullCli = join(dir, 'deepcode-full.mjs')
+  const capturePath = join(dir, 'capture.json')
+  writeFileSync(fakeFullCli, [
+    '#!/usr/bin/env node',
+    'import { writeFileSync } from "node:fs"',
+    'let input = ""',
+    'process.stdin.setEncoding("utf8")',
+    'for await (const chunk of process.stdin) input += chunk',
+    'writeFileSync(process.env.DEEPCODE_TUI_CAPTURE_PATH, JSON.stringify({ argv: process.argv.slice(2), input, provider: process.env.DEEPCODE_PROVIDER }))',
+    'console.log("Deep Code TUI started")',
+    'for (const line of input.split(/\\r?\\n/).map(value => value.trim()).filter(Boolean)) {',
+    '  if (line === "/status") console.log("Provider: DeepSeek native\\nCache telemetry: last_hit=8 last_miss=2 last_hit_rate=80.0%")',
+    '  if (line === "/model") console.log("Current model: deepseek-v4-pro (effort: max)")',
+    '  if (line === "/doctor") console.log("Deep Code Doctor\\n[OK] DeepSeek provider capabilities")',
+    '  if (line === "/exit") console.log("Deep Code TUI exited")',
+    '}',
+  ].join('\n'))
+
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    input: '/status\n/model\n/doctor\n/exit\n',
+    env: {
+      ...process.env,
+      DEEPCODE_FULL_CLI_PATH: fakeFullCli,
+      DEEPCODE_PROVIDER: 'deepseek',
+      DEEPCODE_TUI_CAPTURE_PATH: capturePath,
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Deep Code TUI started/)
+  assert.match(result.stdout, /Provider: DeepSeek native/)
+  assert.match(result.stdout, /Current model: deepseek-v4-pro/)
+  assert.match(result.stdout, /Deep Code Doctor/)
+  assert.match(result.stdout, /Deep Code TUI exited/)
+  assert.doesNotMatch(result.stdout, /Claude|Anthropic/)
+  assert.deepEqual(JSON.parse(readFileSync(capturePath, 'utf8')), {
+    argv: [],
+    input: '/status\n/model\n/doctor\n/exit\n',
+    provider: 'deepseek',
+  })
+})
+
 test('Deep Code front controller reports a clear error when the full CLI bundle is missing', () => {
   const result = spawnSync('node', [
     resolve(root, rootPackage.bin.deepcode),
@@ -240,6 +360,8 @@ test('Deep Code package can build the full CLI launcher artifact', () => {
   assert.doesNotMatch(bundleSource, /src\/entrypoints\/cli\.tsx/)
   assert.doesNotMatch(bundleSource, /--preload/)
   assert.doesNotMatch(bundleSource, /Failed to launch Deep Code full CLI through Bun/)
+  assert.doesNotMatch(bundleSource, /import\("\.\/devtools\.js"\)/)
+  assert.doesNotMatch(bundleSource, /environment variable DEV is set to true/)
   assert.match(bundleSource, /Deep Code full CLI bundled artifact/)
 
   const versionResult = spawnSync('node', [bundlePath, '--version'], {
@@ -289,6 +411,47 @@ test('TUI visible copy uses Deep Code and DeepSeek branding', () => {
   assert.doesNotMatch(visibleSources, /Anthropic Console/)
   assert.doesNotMatch(visibleSources, /code\.claude\.com/)
   assert.doesNotMatch(visibleSources, /anthropics\/claude-code-action/)
+})
+
+test('TUI slash command metadata uses Deep Code and DeepSeek branding', () => {
+  const commandSources = [
+    statusCommandSource,
+    modelCommandSource,
+    doctorCommandSource,
+  ].join('\n')
+
+  assert.match(statusCommandSource, /Show Deep Code status/)
+  assert.match(modelCommandSource, /Set the AI model for Deep Code/)
+  assert.match(doctorCommandSource, /Diagnose and verify your Deep Code installation/)
+  assert.doesNotMatch(commandSources, /Claude Code/)
+  assert.doesNotMatch(commandSources, /Anthropic/)
+})
+
+test('high-visibility user copy uses Deep Code and DeepSeek branding', () => {
+  const highVisibilitySources = [
+    commandsSource,
+    systemPromptSource,
+    projectOnboardingSource,
+    outputStylesSource,
+    statuslineCommandSource,
+    helpGeneralSource,
+    onboardingSource,
+    permissionRequestSource,
+    enterPlanModePermissionSource,
+  ].map(stripInlineSourceMap).join('\n')
+
+  assert.match(systemPromptSource, /You are Deep Code/)
+  assert.match(helpGeneralSource, /Deep Code understands your codebase/)
+  assert.doesNotMatch(highVisibilitySources, /Claude Code/)
+  assert.doesNotMatch(highVisibilitySources, /Anthropic's official CLI/)
+  assert.doesNotMatch(highVisibilitySources, /Ask Claude/)
+  assert.doesNotMatch(highVisibilitySources, /instructions for Claude/)
+  assert.doesNotMatch(highVisibilitySources, /Claude understands/)
+  assert.doesNotMatch(highVisibilitySources, /Claude can make mistakes/)
+  assert.doesNotMatch(highVisibilitySources, /Claude wants/)
+  assert.doesNotMatch(highVisibilitySources, /Claude needs/)
+  assert.doesNotMatch(highVisibilitySources, /Claude explains/)
+  assert.doesNotMatch(highVisibilitySources, /Claude pauses/)
 })
 
 test('TUI inline source maps use Deep Code and DeepSeek branding', () => {
@@ -348,6 +511,12 @@ test('Deep Code status displays persisted DeepSeek cache telemetry', () => {
   assert.match(result.stdout, /Cache telemetry: total_hit=90 total_miss=10 total_hit_rate=90\.0% requests=2/)
 })
 
+test('TUI status panel uses the shared Deep Code status adapter', () => {
+  assert.match(settingsStatusSource, /buildDeepCodeStatusReport/)
+  assert.match(settingsStatusSource, /deepCodeStatusReportToProperties/)
+  assert.match(settingsStatusSource, /DeepSeek Status/)
+})
+
 test('source CLI entrypoint is branded for Deep Code and DeepSeek model env', () => {
   assert.match(mainSource, /program\.name\('deepcode'\)/)
   assert.match(mainSource, /Deep Code - starts an interactive session/)
@@ -362,6 +531,16 @@ test('print mode model metadata delegates through DeepSeek-aware defaults', () =
   assert.doesNotMatch(printSource, /const modelOptions = getModelOptions\(\)/)
   assert.match(printModelInfoSource, /getDefaultMainLoopModel\(\)/)
   assert.match(printModelInfoSource, /modelSupportsMaxEffort\(resolvedModel\)/)
+})
+
+test('full CLI and TUI assemble the real tool registry before DeepSeek requests', () => {
+  assert.match(toolsSource, /export function assembleToolPool/)
+  assert.match(toolsSource, /\[\.\.\.builtInTools\]\.sort\(byName\)\.concat\(allowedMcpTools\.sort\(byName\)\)/)
+  assert.match(printSource, /const assembledTools = assembleToolPool\(/)
+  assert.match(replSource, /const assembled = assembleToolPool\(state\.toolPermissionContext, state\.mcp\.tools\)/)
+  assert.match(useMergedToolsSource, /const assembled = assembleToolPool\(toolPermissionContext, mcpTools\)/)
+  assert.match(deepSeekCallModelSource, /const stablePrefix = await createDeepCodeStablePrefix\(\{/)
+  assert.match(deepSeekCallModelSource, /tools,\s*\n\s*toolSchemaOptions,/)
 })
 
 test('managed environment constants include DeepSeek native routing variables', () => {
