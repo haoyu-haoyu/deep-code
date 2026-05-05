@@ -168,6 +168,42 @@ export function renderModelName(model) {
   return model
 }
 `)
+registerSourceStub('utils/model/modelOptions', `
+export function getModelOptions() {
+  return [
+    { value: null, label: 'Default', description: 'Default Deep Code model' },
+    { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', description: 'DeepSeek main coding model' },
+    { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', description: 'DeepSeek fast coding model' },
+  ]
+}
+`)
+registerSourceStub('utils/effort', `
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'max']
+export function modelSupportsEffort(model) {
+  return String(model ?? '').toLowerCase().startsWith('deepseek')
+}
+export function modelSupportsMaxEffort(model) {
+  return String(model ?? '').toLowerCase().includes('pro')
+}
+export function resolveAppliedEffort(_model, effort) {
+  return effort ?? 'max'
+}
+`)
+registerSourceStub('utils/thinking', `
+export function modelSupportsAdaptiveThinking(model) {
+  return String(model ?? '').toLowerCase().startsWith('deepseek')
+}
+`)
+registerSourceStub('utils/betas', `
+export function modelSupportsAutoMode() {
+  return false
+}
+`)
+registerSourceStub('utils/fastMode', `
+export function isFastModeSupportedByModel(model) {
+  return String(model ?? '').toLowerCase().includes('flash')
+}
+`)
 registerSourceStub('utils/tokens', `
 export function doesMostRecentAssistantMessageExceed200k() {
   return false
@@ -394,7 +430,13 @@ export async function buildDeepSeekModelHarness() {
   return await buildDeepCodeSourceHarness(join(srcRoot, 'utils/model/model.ts'))
 }
 
-async function buildDeepCodeSourceHarness(entrypoint) {
+export async function buildDeepSeekPrintModelInfoHarness() {
+  return await buildDeepCodeSourceHarness(join(srcRoot, 'cli/printModelInfo.ts'), {
+    realSources: ['utils/model/model'],
+  })
+}
+
+async function buildDeepCodeSourceHarness(entrypoint, options = {}) {
   const outdir = await mkdtemp(join(tmpdir(), 'deepcode-tui-query-'))
   const outfile = join(outdir, 'query-harness.mjs')
   const build = await Bun.build({
@@ -402,7 +444,7 @@ async function buildDeepCodeSourceHarness(entrypoint) {
     format: 'esm',
     target: 'bun',
     sourcemap: 'none',
-    plugins: [deepCodeSourceResolutionPlugin()],
+    plugins: [deepCodeSourceResolutionPlugin(options)],
   })
 
   if (!build.success) {
@@ -418,7 +460,7 @@ async function buildDeepCodeSourceHarness(entrypoint) {
   return await import(pathToFileURL(outfile).href)
 }
 
-function deepCodeSourceResolutionPlugin() {
+function deepCodeSourceResolutionPlugin(options = {}) {
   return {
     name: 'deepcode-source-resolution',
     setup(build) {
@@ -427,10 +469,10 @@ function deepCodeSourceResolutionPlugin() {
         namespace: 'deepcode-stub',
       }))
       build.onResolve({ filter: /^src\// }, args =>
-        resolveProjectImport(join(packageRoot, args.path)),
+        resolveProjectImport(join(packageRoot, args.path), options),
       )
       build.onResolve({ filter: /^\./ }, args =>
-        resolveProjectImport(resolve(dirname(args.importer), args.path)),
+        resolveProjectImport(resolve(dirname(args.importer), args.path), options),
       )
       build.onLoad({ filter: /.*/, namespace: 'deepcode-stub' }, args => ({
         contents: stubModules.get(args.path),
@@ -455,13 +497,18 @@ function deepCodeSourceResolutionPlugin() {
   }
 }
 
-function resolveProjectImport(path) {
+function resolveProjectImport(path, options = {}) {
   const resolvedPath = resolveSourcePath(path)
   const stubKey = sourceRelativePath(resolvedPath)
-  if (stubModules.has(stubKey)) {
+  if (stubModules.has(stubKey) && !shouldUseRealSource(stubKey, options)) {
     return { path: stubKey, namespace: 'deepcode-stub' }
   }
   return { path: resolvedPath }
+}
+
+function shouldUseRealSource(stubKey, options) {
+  const baseKey = stubKey.replace(/\.(ts|tsx|js|mjs)$/, '')
+  return (options.realSources ?? []).includes(baseKey)
 }
 
 function registerSourceStub(basePath, contents) {

@@ -2,6 +2,7 @@ import { test, expect } from 'bun:test'
 
 import {
   buildDeepSeekModelHarness,
+  buildDeepSeekPrintModelInfoHarness,
   buildDeepSeekQueryDepsHarness,
   buildDeepSeekTuiQueryHarness,
 } from './support/tui-query-harness.mjs'
@@ -138,6 +139,41 @@ test('model utilities honor DeepSeek model env overrides', async () => {
     expect(model.getUserSpecifiedModelSetting()).toBe('deepseek-v4-pro-env')
     expect(model.getMainLoopModel()).toBe('deepseek-v4-pro-env')
     expect(model.getSmallFastModel()).toBe('deepseek-v4-flash-env')
+  } finally {
+    restoreEnvSnapshot(previousEnv)
+  }
+})
+
+test('print model metadata resolves default model through DeepSeek-native defaults', async () => {
+  const previousEnv = snapshotEnv([
+    'DEEPCODE_PROVIDER',
+    'DEEP_CODE_PROVIDER',
+    'DEEPSEEK_MODEL',
+    'DEEPCODE_MODEL',
+    'ANTHROPIC_MODEL',
+  ])
+  delete process.env.DEEPCODE_PROVIDER
+  delete process.env.DEEP_CODE_PROVIDER
+  delete process.env.DEEPSEEK_MODEL
+  delete process.env.DEEPCODE_MODEL
+  process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-6'
+
+  try {
+    const printModelInfo = await buildDeepSeekPrintModelInfoHarness()
+    const modelInfos = printModelInfo.buildPrintModelInfos()
+    const defaultInfo = modelInfos.find(info => info.value === 'default')
+
+    expect(defaultInfo).toMatchObject({
+      value: 'default',
+      supportsEffort: true,
+      supportsAdaptiveThinking: true,
+    })
+    expect(defaultInfo.supportedEffortLevels).toEqual([
+      'low',
+      'medium',
+      'high',
+      'max',
+    ])
   } finally {
     restoreEnvSnapshot(previousEnv)
   }

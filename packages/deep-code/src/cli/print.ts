@@ -9,6 +9,7 @@ import {
 import { waitForRemoteManagedSettingsToLoad } from 'src/services/remoteManagedSettings/index.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
 import { RemoteIO } from 'src/cli/remoteIO.js'
+import { buildPrintModelInfos } from 'src/cli/printModelInfo.js'
 import {
   type Command,
   formatDescriptionWithSource,
@@ -170,7 +171,6 @@ import { applySettingsChange } from 'src/utils/settings/applySettingsChange.js'
 import {
   isFastModeAvailable,
   isFastModeEnabled,
-  isFastModeSupportedByModel,
   getFastModeState,
 } from 'src/utils/fastMode.js'
 import {
@@ -270,15 +270,10 @@ import {
   modelDisplayString,
   parseUserSpecifiedModel,
 } from 'src/utils/model/model.js'
-import { getModelOptions } from 'src/utils/model/modelOptions.js'
 import {
   modelSupportsEffort,
-  modelSupportsMaxEffort,
-  EFFORT_LEVELS,
   resolveAppliedEffort,
 } from 'src/utils/effort.js'
-import { modelSupportsAdaptiveThinking } from 'src/utils/thinking.js'
-import { modelSupportsAutoMode } from 'src/utils/betas.js'
 import { ensureModelStringsInitialized } from 'src/utils/model/modelStrings.js'
 import {
   getSessionId,
@@ -1191,32 +1186,7 @@ function runHeadlessStreaming(
     })
   }
 
-  const modelOptions = getModelOptions()
-  const modelInfos = modelOptions.map(option => {
-    const modelId = option.value === null ? 'default' : option.value
-    const resolvedModel =
-      modelId === 'default'
-        ? getDefaultMainLoopModel()
-        : parseUserSpecifiedModel(modelId)
-    const hasEffort = modelSupportsEffort(resolvedModel)
-    const hasAdaptiveThinking = modelSupportsAdaptiveThinking(resolvedModel)
-    const hasFastMode = isFastModeSupportedByModel(option.value)
-    const hasAutoMode = modelSupportsAutoMode(resolvedModel)
-    return {
-      value: modelId,
-      displayName: option.label,
-      description: option.description,
-      ...(hasEffort && {
-        supportsEffort: true,
-        supportedEffortLevels: modelSupportsMaxEffort(resolvedModel)
-          ? [...EFFORT_LEVELS]
-          : EFFORT_LEVELS.filter(l => l !== 'max'),
-      }),
-      ...(hasAdaptiveThinking && { supportsAdaptiveThinking: true }),
-      ...(hasFastMode && { supportsFastMode: true }),
-      ...(hasAutoMode && { supportsAutoMode: true }),
-    }
-  })
+  const modelInfos = buildPrintModelInfos()
   let activeUserSpecifiedModel = options.userSpecifiedModel
 
   function injectModelSwitchBreadcrumbs(

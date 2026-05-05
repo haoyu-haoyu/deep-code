@@ -14,6 +14,14 @@ const mainSource = readFileSync(
   resolve(root, 'packages/deep-code/src/main.tsx'),
   'utf8',
 )
+const printSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/cli/print.ts'),
+  'utf8',
+)
+const printModelInfoSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/cli/printModelInfo.ts'),
+  'utf8',
+)
 const managedEnvSource = readFileSync(
   resolve(root, 'packages/deep-code/src/utils/managedEnvConstants.ts'),
   'utf8',
@@ -80,6 +88,14 @@ test('source CLI entrypoint is branded for Deep Code and DeepSeek model env', ()
   assert.match(mainSource, /DEEPSEEK_MODEL/)
   assert.match(mainSource, /DEEPCODE_MODEL/)
   assert.doesNotMatch(mainSource, /const explicitModel = options\.model \|\| process\.env\.ANTHROPIC_MODEL/)
+})
+
+test('print mode model metadata delegates through DeepSeek-aware defaults', () => {
+  assert.match(printSource, /import \{ buildPrintModelInfos \}/)
+  assert.match(printSource, /const modelInfos = buildPrintModelInfos\(\)/)
+  assert.doesNotMatch(printSource, /const modelOptions = getModelOptions\(\)/)
+  assert.match(printModelInfoSource, /getDefaultMainLoopModel\(\)/)
+  assert.match(printModelInfoSource, /modelSupportsMaxEffort\(resolvedModel\)/)
 })
 
 test('managed environment constants include DeepSeek native routing variables', () => {
