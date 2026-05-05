@@ -7,9 +7,11 @@ import { join } from 'node:path'
 import readline from 'node:readline/promises'
 import {
   calculateDeepSeekCacheHitRate,
+  compactDeepCodeConversation,
   collectDeepSeekStreamEvents,
   createDeepSeekCacheUserId,
   createDeepCodeStablePrefix,
+  formatDeepCodeCompactResult,
   formatDeepCodePrefixStatus,
   formatDeepSeekWarmupResult,
   resolveDeepSeekConfig,
@@ -85,6 +87,25 @@ async function main() {
     console.log(formatDeepSeekWarmupResult(result))
     return
   }
+  if (cli.command === 'compact') {
+    const repoSummary = await loadRepoSummary()
+    const stablePrefix = await createDeepCodeStablePrefix({ repoSummary })
+    const prompt = await resolvePrompt(cli.promptArgs)
+    if (!prompt) {
+      console.error('Error: --compact requires transcript text or piped stdin')
+      process.exitCode = 1
+      return
+    }
+    const result = await compactDeepCodeConversation({
+      env,
+      cwd: process.cwd(),
+      stablePrefix,
+      messages: [{ role: 'user', content: prompt }],
+    })
+    console.log(formatDeepCodeCompactResult(result))
+    await recordDeepSeekCacheUsage({ path: cacheStatsPath, usage: result.usage })
+    return
+  }
   if (cli.command === 'tool-e2e') {
     await runToolE2E(env, cacheStatsPath)
     return
@@ -127,6 +148,22 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
   while (true) {
     const prompt = await rl.question('deepcode> ')
     if (prompt.trim() === '/exit') break
+    if (prompt.trim() === '/compact') {
+      if (messages.length === 0) {
+        console.log('Nothing to compact.')
+        continue
+      }
+      const result = await compactDeepCodeConversation({
+        env,
+        cwd: process.cwd(),
+        stablePrefix,
+        messages,
+      })
+      messages.splice(0, messages.length, ...result.messages)
+      console.log(formatDeepCodeCompactResult(result))
+      await recordDeepSeekCacheUsage({ path: cacheStatsPath, usage: result.usage })
+      continue
+    }
     if (!prompt.trim()) continue
     messages.push({ role: 'user', content: prompt })
     const response = await requestDeepSeek(messages, env, {
@@ -308,6 +345,7 @@ Usage:
   deepcode --status
   deepcode --doctor [--no-live]
   deepcode --warm-cache
+  deepcode --compact "summarize this transcript tail"
   deepcode --tool-e2e
 
 Configuration:

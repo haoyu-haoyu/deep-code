@@ -60,6 +60,10 @@ import {
   createDeepCodeStablePrefix,
   formatDeepCodePrefixStatus,
 } from '../src/deepcode/stable-prefix.mjs'
+import {
+  compactDeepCodeConversation,
+  formatDeepCodeCompactResult,
+} from '../src/deepcode/compact.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -195,6 +199,18 @@ test('parseDeepCodeArgs gives commands precedence over print mode', () => {
   assert.deepEqual(parsed.envOverrides, {
     DEEPSEEK_API_KEY: 'sk-test',
   })
+})
+
+test('parseDeepCodeArgs recognizes prefix-preserving compact command', () => {
+  const parsed = parseDeepCodeArgs([
+    '--compact',
+    'summarize',
+    'this',
+    'tail',
+  ])
+
+  assert.equal(parsed.command, 'compact')
+  assert.deepEqual(parsed.promptArgs, ['summarize', 'this', 'tail'])
 })
 
 test('applyDeepCodeCliEnvOverrides keeps CLI values above inherited env', () => {
@@ -789,6 +805,78 @@ test('formatDeepCodePrefixStatus renders stable prefix hash', async () => {
     formatDeepCodePrefixStatus(stable),
     `Stable prefix hash: ${stable.prefixHash}`,
   )
+})
+
+test('compactDeepCodeConversation preserves stable prefix and summarizes only volatile tail', async () => {
+  const stablePrefix = await createDeepCodeStablePrefix({
+    repoSummary: 'stable repo summary',
+  })
+  const requests = []
+  const result = await compactDeepCodeConversation({
+    stablePrefix,
+    env: {
+      DEEPSEEK_API_KEY: 'sk-test',
+      DEEPSEEK_SMALL_MODEL: 'deepseek-v4-flash',
+    },
+    provider: {
+      streamQuery(request) {
+        requests.push(request)
+        return (async function* stream() {
+          yield {
+            type: 'content_delta',
+            text: 'User asked for repo inspection. Assistant explained cache behavior.',
+          }
+          yield { type: 'finish', finishReason: 'stop' }
+          yield {
+            type: 'usage',
+            usage: {
+              prompt_cache_hit_tokens: 64,
+              prompt_cache_miss_tokens: 16,
+            },
+          }
+        })()
+      },
+    },
+    messages: [
+      { role: 'user', content: 'inspect the repo' },
+      { role: 'assistant', content: 'cache details' },
+    ],
+  })
+
+  assert.equal(result.prefixBeforeHash, stablePrefix.prefixHash)
+  assert.equal(result.prefixAfterHash, stablePrefix.prefixHash)
+  assert.equal(requests[0].body.model, 'deepseek-v4-flash')
+  assert.deepEqual(
+    requests[0].body.messages[0],
+    { role: 'system', content: stablePrefix.systemPrompt.join('\n\n') },
+  )
+  assert.match(requests[0].body.messages.at(-1).content, /inspect the repo/)
+  assert.match(result.summary, /repo inspection/)
+  assert.deepEqual(result.messages, [
+    {
+      role: 'user',
+      content: 'Compacted conversation summary:\nUser asked for repo inspection. Assistant explained cache behavior.',
+    },
+  ])
+  assert.equal(result.cacheDiagnostics.promptCacheHitRate, 0.8)
+})
+
+test('formatDeepCodeCompactResult renders prefix hash and cache diagnostics', () => {
+  const formatted = formatDeepCodeCompactResult({
+    prefixBeforeHash: 'abc',
+    prefixAfterHash: 'abc',
+    summary: 'short summary',
+    messages: [{ role: 'user', content: 'Compacted conversation summary:\nshort summary' }],
+    cacheDiagnostics: {
+      promptCacheHitTokens: 8,
+      promptCacheMissTokens: 2,
+      promptCacheHitRate: 0.8,
+    },
+  })
+
+  assert.match(formatted, /DeepSeek prefix-preserving compact/)
+  assert.match(formatted, /Stable prefix hash: abc -> abc/)
+  assert.match(formatted, /Cache: hit=8 miss=2 hit_rate=80\.0%/)
 })
 
 test('warmDeepSeekCache sends low-output warm-up requests and reports cache telemetry', async () => {

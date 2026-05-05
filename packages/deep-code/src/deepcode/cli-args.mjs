@@ -7,6 +7,7 @@ const COMMAND_FLAGS = new Map([
   ['--doctor', 'doctor'],
   ['--warm-cache', 'warm-cache'],
   ['--tool-e2e', 'tool-e2e'],
+  ['--compact', 'compact'],
 ])
 
 const ENV_OPTION_FLAGS = new Map([
