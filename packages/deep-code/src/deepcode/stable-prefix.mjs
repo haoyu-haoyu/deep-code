@@ -1,5 +1,6 @@
 import {
   createDeepSeekPrefixHash,
+  createStableHash,
   stableJsonStringify,
 } from '../cache/deepseek-cache.mjs'
 import { toolToDeepSeekFunctionSchema } from '../tools/deepseek-schema.mjs'
@@ -32,6 +33,13 @@ export async function createDeepCodeStablePrefix({
     repoSummary,
     stableHistory,
   })
+  const componentHashes = {
+    systemPrompt: createStableHash(systemPrompt),
+    tools: createStableHash(stableTools),
+    skills: createStableHash(stableSkills),
+    repoSummary: createStableHash(repoSummary),
+    stableHistory: createStableHash(stableHistory),
+  }
 
   return {
     systemPrompt: [
@@ -46,6 +54,7 @@ export async function createDeepCodeStablePrefix({
     ].filter(Boolean),
     tools,
     prefixHash,
+    componentHashes,
     stableTools,
     stableSkills,
     repoSummary,

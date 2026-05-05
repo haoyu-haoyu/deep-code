@@ -85,6 +85,11 @@ async function main() {
       repoSummary,
     })
     console.log(formatDeepSeekWarmupResult(result))
+    await recordDeepSeekCacheUsage({
+      path: cacheStatsPath,
+      usage: result.usage,
+      stablePrefix: await createDeepCodeStablePrefix({ repoSummary }),
+    })
     return
   }
   if (cli.command === 'compact') {
@@ -103,7 +108,11 @@ async function main() {
       messages: [{ role: 'user', content: prompt }],
     })
     console.log(formatDeepCodeCompactResult(result))
-    await recordDeepSeekCacheUsage({ path: cacheStatsPath, usage: result.usage })
+    await recordDeepSeekCacheUsage({
+      path: cacheStatsPath,
+      usage: result.usage,
+      stablePrefix,
+    })
     return
   }
   if (cli.command === 'tool-e2e') {
@@ -135,7 +144,7 @@ async function runSingleTurn(prompt, env, cacheStatsPath, stablePrefix) {
     stablePrefix,
   })
   if (!response.content.endsWith('\n')) process.stdout.write('\n')
-  await printAndRecordUsage(response.usage, cacheStatsPath)
+  await printAndRecordUsage(response.usage, cacheStatsPath, stablePrefix)
 }
 
 async function runInteractive(env, cacheStatsPath, stablePrefix) {
@@ -161,7 +170,11 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
       })
       messages.splice(0, messages.length, ...result.messages)
       console.log(formatDeepCodeCompactResult(result))
-      await recordDeepSeekCacheUsage({ path: cacheStatsPath, usage: result.usage })
+      await recordDeepSeekCacheUsage({
+        path: cacheStatsPath,
+        usage: result.usage,
+        stablePrefix,
+      })
       continue
     }
     if (!prompt.trim()) continue
@@ -178,7 +191,7 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
       tool_calls: response.toolCalls.length > 0 ? response.toolCalls : undefined,
     })
     if (!response.content.endsWith('\n')) process.stdout.write('\n')
-    await printAndRecordUsage(response.usage, cacheStatsPath)
+    await printAndRecordUsage(response.usage, cacheStatsPath, stablePrefix)
   }
   rl.close()
 }
@@ -289,10 +302,10 @@ function printStatus(config, { cacheStats = null, stablePrefix = null } = {}) {
   console.log(`Cache user_id: ${config.cacheUserId}`)
   console.log(formatDeepCodePrefixStatus(stablePrefix))
   console.log(`API key: ${config.apiKey ? 'configured' : 'missing'}`)
-  console.log(formatDeepSeekCacheStatus(cacheStats))
+  console.log(formatDeepSeekCacheStatus(cacheStats, { stablePrefix }))
 }
 
-async function printAndRecordUsage(usage, cacheStatsPath) {
+async function printAndRecordUsage(usage, cacheStatsPath, stablePrefix) {
   if (!usage) return
   const hitRate = calculateDeepSeekCacheHitRate(usage)
   const hit = usage.prompt_cache_hit_tokens ?? 0
@@ -300,7 +313,11 @@ async function printAndRecordUsage(usage, cacheStatsPath) {
   process.stderr.write(
     `\n[DeepSeek cache] hit=${hit} miss=${miss} hit_rate=${(hitRate * 100).toFixed(1)}%\n`,
   )
-  await recordDeepSeekCacheUsage({ path: cacheStatsPath, usage })
+  await recordDeepSeekCacheUsage({
+    path: cacheStatsPath,
+    usage,
+    stablePrefix,
+  })
 }
 
 async function runToolE2E(env, cacheStatsPath) {
