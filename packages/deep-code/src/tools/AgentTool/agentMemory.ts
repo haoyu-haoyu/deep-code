@@ -1,35 +1,39 @@
-import { join, normalize, sep } from 'path'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import { getProjectRoot } from '../../bootstrap/state.js'
+import {
+  getPreferredAgentMemoryDir,
+  isDeepCodeAgentMemoryPath,
+  sanitizeAgentTypeForMemoryPath,
+} from '../../deepcode/agent-memory-paths.mjs'
 import {
   buildMemoryPrompt,
   ensureMemoryDirExists,
 } from '../../memdir/memdir.js'
 import { getMemoryBaseDir } from '../../memdir/paths.js'
 import { getCwd } from '../../utils/cwd.js'
+import { getLegacyClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { findCanonicalGitRoot } from '../../utils/git.js'
 import { sanitizePath } from '../../utils/path.js'
 
-// Persistent agent memory scope: 'user' (~/.claude/agent-memory/), 'project' (.claude/agent-memory/), or 'local' (.claude/agent-memory-local/)
+// Persistent agent memory scope: 'user' (~/.deepcode/agent-memory/), 'project' (.deepcode/agent-memory/), or 'local' (.deepcode/agent-memory-local/)
 export type AgentMemoryScope = 'user' | 'project' | 'local'
-
-/**
- * Sanitize an agent type name for use as a directory name.
- * Replaces colons (invalid on Windows, used in plugin-namespaced agent
- * types like "my-plugin:my-agent") with dashes.
- */
-function sanitizeAgentTypeForPath(agentType: string): string {
-  return agentType.replace(/:/g, '-')
-}
 
 /**
  * Returns the local agent memory directory, which is project-specific and not checked into VCS.
  * When CLAUDE_CODE_REMOTE_MEMORY_DIR is set, persists to the mount with project namespacing.
- * Otherwise, uses <cwd>/.claude/agent-memory-local/<agentType>/.
+ * Otherwise, uses <cwd>/.deepcode/agent-memory-local/<agentType>/.
  */
-function getLocalAgentMemoryDir(dirName: string): string {
+function getLocalAgentMemoryDir(agentType: string): string {
+  const dirName = sanitizeAgentTypeForMemoryPath(agentType)
   if (process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR) {
-    return (
-      join(
+    return getPreferredAgentMemoryDir({
+      agentType,
+      scope: 'local',
+      cwd: getCwd(),
+      memoryBaseDir: getMemoryBaseDir(),
+      legacyMemoryBaseDir: getLegacyClaudeConfigHomeDir(),
+      remoteLocalDir: join(
         process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR,
         'projects',
         sanitizePath(
@@ -37,70 +41,67 @@ function getLocalAgentMemoryDir(dirName: string): string {
         ),
         'agent-memory-local',
         dirName,
-      ) + sep
-    )
+      ),
+      exists: existsSync,
+    })
   }
-  return join(getCwd(), '.claude', 'agent-memory-local', dirName) + sep
+  return getPreferredAgentMemoryDir({
+    agentType,
+    scope: 'local',
+    cwd: getCwd(),
+    memoryBaseDir: getMemoryBaseDir(),
+    legacyMemoryBaseDir: getLegacyClaudeConfigHomeDir(),
+    exists: existsSync,
+  })
 }
 
 /**
  * Returns the agent memory directory for a given agent type and scope.
  * - 'user' scope: <memoryBase>/agent-memory/<agentType>/
- * - 'project' scope: <cwd>/.claude/agent-memory/<agentType>/
+ * - 'project' scope: <cwd>/.deepcode/agent-memory/<agentType>/
  * - 'local' scope: see getLocalAgentMemoryDir()
  */
 export function getAgentMemoryDir(
   agentType: string,
   scope: AgentMemoryScope,
 ): string {
-  const dirName = sanitizeAgentTypeForPath(agentType)
   switch (scope) {
     case 'project':
-      return join(getCwd(), '.claude', 'agent-memory', dirName) + sep
+      return getPreferredAgentMemoryDir({
+        agentType,
+        scope,
+        cwd: getCwd(),
+        memoryBaseDir: getMemoryBaseDir(),
+        legacyMemoryBaseDir: getLegacyClaudeConfigHomeDir(),
+        exists: existsSync,
+      })
     case 'local':
-      return getLocalAgentMemoryDir(dirName)
+      return getLocalAgentMemoryDir(agentType)
     case 'user':
-      return join(getMemoryBaseDir(), 'agent-memory', dirName) + sep
+      return getPreferredAgentMemoryDir({
+        agentType,
+        scope,
+        cwd: getCwd(),
+        memoryBaseDir: getMemoryBaseDir(),
+        legacyMemoryBaseDir: process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR
+          ? undefined
+          : getLegacyClaudeConfigHomeDir(),
+        exists: existsSync,
+      })
   }
 }
 
 // Check if file is within an agent memory directory (any scope).
 export function isAgentMemoryPath(absolutePath: string): boolean {
-  // SECURITY: Normalize to prevent path traversal bypasses via .. segments
-  const normalizedPath = normalize(absolutePath)
-  const memoryBase = getMemoryBaseDir()
-
-  // User scope: check memory base (may be custom dir or config home)
-  if (normalizedPath.startsWith(join(memoryBase, 'agent-memory') + sep)) {
-    return true
-  }
-
-  // Project scope: always cwd-based (not redirected)
-  if (
-    normalizedPath.startsWith(join(getCwd(), '.claude', 'agent-memory') + sep)
-  ) {
-    return true
-  }
-
-  // Local scope: persisted to mount when CLAUDE_CODE_REMOTE_MEMORY_DIR is set, otherwise cwd-based
-  if (process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR) {
-    if (
-      normalizedPath.includes(sep + 'agent-memory-local' + sep) &&
-      normalizedPath.startsWith(
-        join(process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR, 'projects') + sep,
-      )
-    ) {
-      return true
-    }
-  } else if (
-    normalizedPath.startsWith(
-      join(getCwd(), '.claude', 'agent-memory-local') + sep,
-    )
-  ) {
-    return true
-  }
-
-  return false
+  return isDeepCodeAgentMemoryPath({
+    absolutePath,
+    cwd: getCwd(),
+    memoryBaseDir: getMemoryBaseDir(),
+    legacyMemoryBaseDir: process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR
+      ? undefined
+      : getLegacyClaudeConfigHomeDir(),
+    remoteMemoryDir: process.env.CLAUDE_CODE_REMOTE_MEMORY_DIR,
+  })
 }
 
 /**
@@ -120,7 +121,7 @@ export function getMemoryScopeDisplay(
     case 'user':
       return `User (${join(getMemoryBaseDir(), 'agent-memory')}/)`
     case 'project':
-      return 'Project (.claude/agent-memory/)'
+      return 'Project (.deepcode/agent-memory/)'
     case 'local':
       return `Local (${getLocalAgentMemoryDir('...')})`
     default:
@@ -133,7 +134,7 @@ export function getMemoryScopeDisplay(
  * Creates the memory directory if needed and returns a prompt with memory contents.
  *
  * @param agentType The agent's type name (used as directory name)
- * @param scope 'user' for ~/.claude/agent-memory/ or 'project' for .claude/agent-memory/
+ * @param scope 'user' for ~/.deepcode/agent-memory/ or 'project' for .deepcode/agent-memory/
  */
 export function loadAgentMemoryPrompt(
   agentType: string,

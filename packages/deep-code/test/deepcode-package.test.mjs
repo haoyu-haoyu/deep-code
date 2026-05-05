@@ -51,6 +51,25 @@ const agentFileUtilsSource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/agents/agentFileUtils.ts'),
   'utf8',
 )
+const agentMemorySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/agentMemory.ts'),
+  'utf8',
+)
+const agentMemorySnapshotSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/agentMemorySnapshot.ts'),
+  'utf8',
+)
+const agentMemoryPathsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/deepcode/agent-memory-paths.mjs'),
+  'utf8',
+)
+const agentMemoryWizardSource = readFileSync(
+  resolve(
+    root,
+    'packages/deep-code/src/components/agents/new-agent-creation/wizard-steps/MemoryStep.tsx',
+  ),
+  'utf8',
+)
 const skillsLoaderSource = readFileSync(
   resolve(root, 'packages/deep-code/src/skills/loadSkillsDir.ts'),
   'utf8',
@@ -89,6 +108,14 @@ const managedEnvSource = readFileSync(
 )
 const deepcodeEntrypointSource = readFileSync(
   resolve(root, 'packages/deep-code/deepcode.js'),
+  'utf8',
+)
+const coreSchemasSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/entrypoints/sdk/coreSchemas.ts'),
+  'utf8',
+)
+const doctorSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/deepcode/doctor.mjs'),
   'utf8',
 )
 const themeSource = readFileSync(
@@ -849,4 +876,19 @@ test('Deep Code project config directories prefer .deepcode with .claude fallbac
   assert.match(agentFileUtilsSource, /agent\.baseDir/)
   assert.match(skillsLoaderSource, /DEEPCODE_PROJECT_DIR/)
   assert.match(skillsLoaderSource, /LEGACY_CLAUDE_PROJECT_DIR/)
+})
+
+test('Deep Code agent memory paths prefer .deepcode with .claude fallback', () => {
+  assert.match(agentMemoryPathsSource, /DEEPCODE_PROJECT_DIR/)
+  assert.match(agentMemoryPathsSource, /LEGACY_CLAUDE_PROJECT_DIR/)
+  assert.match(agentMemorySource, /getPreferredAgentMemoryDir/)
+  assert.match(agentMemorySnapshotSource, /getPreferredAgentMemorySnapshotDir/)
+  assert.match(agentMemoryWizardSource, /~\/\.deepcode\/agent-memory/)
+  assert.match(agentMemoryWizardSource, /\.deepcode\/agent-memory-local/)
+  assert.doesNotMatch(agentMemoryWizardSource, /~\/\.claude\/agent-memory/)
+  assert.match(coreSchemasSource, /~\/\.deepcode\/agent-memory/)
+  assert.match(coreSchemasSource, /\.deepcode\/agent-memory-local/)
+  assert.match(doctorSource, /Project agent memory/)
+  assert.match(doctorSource, /Local agent memory/)
+  assert.match(doctorSource, /Project agent memory snapshots/)
 })
