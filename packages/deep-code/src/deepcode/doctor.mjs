@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   AGENT_MEMORY_DIR,
   AGENT_MEMORY_LOCAL_DIR,
@@ -76,6 +77,14 @@ export async function createDeepSeekDoctorReport({
       ? 'streaming/tool_calls/reasoning/cache diagnostics enabled'
       : `missing=${missingCapabilities.join(',')}`,
   )
+  const fullCliBundlePath = resolveFullCliBundlePath()
+  add(
+    'runtime.fullCliBundle',
+    'Full CLI bundle',
+    existsSync(fullCliBundlePath) ? 'pass' : 'fail',
+    existsSync(fullCliBundlePath) ? 'available' : `missing at ${fullCliBundlePath}`,
+    { path: fullCliBundlePath },
+  )
 
   const shouldRunLive = live ?? Boolean(config.apiKey)
   const apiKeyStatus = config.apiKey ? 'pass' : shouldRunLive ? 'fail' : 'skip'
@@ -119,11 +128,11 @@ export async function createDeepSeekDoctorReport({
   const requestText = JSON.stringify(request.body)
   add(
     'request.noAnthropicFields',
-    'Request excludes Anthropic-only fields',
+    'Request excludes legacy provider fields',
     /cache_control|redacted_thinking|signature_delta|anthropic/i.test(requestText)
       ? 'fail'
       : 'pass',
-    'checked cache_control/redacted_thinking/signature_delta/anthropic markers',
+    'checked cache_control/redacted_thinking/signature_delta/legacy markers',
   )
   add(
     'request.streamUsage',
@@ -377,6 +386,16 @@ function resolveDeepCodeConfigHome(env) {
 
 function resolveLegacyClaudeConfigHome(env) {
   return env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
+}
+
+function resolveFullCliBundlePath() {
+  return join(
+    dirname(fileURLToPath(import.meta.url)),
+    '..',
+    '..',
+    'dist',
+    'deepcode-full.mjs',
+  )
 }
 
 export function formatDeepSeekDoctorReport(report) {

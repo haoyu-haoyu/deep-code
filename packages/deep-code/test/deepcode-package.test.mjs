@@ -659,6 +659,45 @@ test('Deep Code package packs and installs a runnable production tarball', () =>
   assert.match(helpResult.stdout, /Deep Code/)
   assert.match(helpResult.stdout, /DeepSeek native models/)
   assert.doesNotMatch(helpResult.stdout, /Claude Code|Anthropic/)
+
+  const statsPath = join(dir, 'installed-cache-stats.json')
+  writeFileSync(statsPath, JSON.stringify({
+    version: 1,
+    requestCount: 1,
+    totalPromptCacheHitTokens: 24,
+    totalPromptCacheMissTokens: 6,
+    totalPromptCacheHitRate: 0.8,
+    lastPromptCacheHitTokens: 24,
+    lastPromptCacheMissTokens: 6,
+    lastPromptCacheHitRate: 0.8,
+    updatedAt: '2026-05-05T00:00:00.000Z',
+  }))
+  const installedEnv = {
+    ...process.env,
+    DEEPCODE_CACHE_STATS_PATH: statsPath,
+    DEEPCODE_CONFIG_DIR: join(dir, 'deepcode-home'),
+    CLAUDE_CONFIG_DIR: join(dir, 'legacy-claude-home'),
+  }
+
+  const statusResult = spawnSync(binPath, ['--status'], {
+    cwd: installDir,
+    encoding: 'utf8',
+    env: installedEnv,
+  })
+  assert.equal(statusResult.status, 0, statusResult.stderr)
+  assert.match(statusResult.stdout, /Provider: DeepSeek native/)
+  assert.match(statusResult.stdout, /Cache telemetry: last_hit=24 last_miss=6 last_hit_rate=80\.0%/)
+  assert.doesNotMatch(statusResult.stdout, /Claude Code|Anthropic/)
+
+  const doctorResult = spawnSync(binPath, ['--doctor', '--no-live'], {
+    cwd: installDir,
+    encoding: 'utf8',
+    env: installedEnv,
+  })
+  assert.equal(doctorResult.status, 0, doctorResult.stderr)
+  assert.match(doctorResult.stdout, /Deep Code Doctor/)
+  assert.match(doctorResult.stdout, /\[OK\] Full CLI bundle: available/)
+  assert.doesNotMatch(doctorResult.stdout, /Claude Code|Anthropic/)
 })
 
 test('Deep Code theme exposes DeepSeek blue brand tokens and aliases legacy brand tokens to blue', () => {
