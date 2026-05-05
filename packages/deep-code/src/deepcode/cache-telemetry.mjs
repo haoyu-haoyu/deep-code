@@ -23,6 +23,7 @@ export function resolveDeepSeekCacheStatsPath({
 
 export function createDeepSeekCacheStats(previous, usage = {}, {
   now = () => new Date().toISOString(),
+  stablePrefix,
 } = {}) {
   const prior = previous ?? {}
   const lastHit = usage.prompt_cache_hit_tokens ?? 0
@@ -30,6 +31,14 @@ export function createDeepSeekCacheStats(previous, usage = {}, {
   const totalHit = (prior.totalPromptCacheHitTokens ?? 0) + lastHit
   const totalMiss = (prior.totalPromptCacheMissTokens ?? 0) + lastMiss
   const requestCount = (prior.requestCount ?? 0) + 1
+  const prefixFields = stablePrefix
+    ? {
+        previousStablePrefixHash: prior.lastStablePrefixHash,
+        previousStablePrefixComponentHashes: prior.lastStablePrefixComponentHashes,
+        lastStablePrefixHash: stablePrefix.prefixHash,
+        lastStablePrefixComponentHashes: stablePrefix.componentHashes,
+      }
+    : preservePrefixFields(prior)
 
   return {
     version: 1,
@@ -40,6 +49,7 @@ export function createDeepSeekCacheStats(previous, usage = {}, {
     lastPromptCacheHitTokens: lastHit,
     lastPromptCacheMissTokens: lastMiss,
     lastPromptCacheHitRate: cacheHitRate(lastHit, lastMiss),
+    ...prefixFields,
     updatedAt: now(),
   }
 }
@@ -57,11 +67,15 @@ export async function recordDeepSeekCacheUsage({
   path,
   usage,
   now,
+  stablePrefix,
 } = {}) {
   if (!path || !usage) return null
   try {
     const previous = await loadDeepSeekCacheStats(path)
-    const stats = createDeepSeekCacheStats(previous, usage, { now })
+    const stats = createDeepSeekCacheStats(previous, usage, {
+      now,
+      stablePrefix,
+    })
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, `${JSON.stringify(stats, null, 2)}\n`)
     return stats
@@ -70,14 +84,20 @@ export async function recordDeepSeekCacheUsage({
   }
 }
 
-export function formatDeepSeekCacheStatus(stats) {
-  if (!stats) return 'Cache telemetry: unavailable'
+export function formatDeepSeekCacheStatus(stats, { stablePrefix } = {}) {
+  if (!stats) {
+    return [
+      formatPrefixDiagnostics(null, stablePrefix),
+      'Cache telemetry: unavailable',
+    ].filter(Boolean).join('\n')
+  }
 
   return [
+    formatPrefixDiagnostics(stats, stablePrefix),
     `Cache telemetry: last_hit=${stats.lastPromptCacheHitTokens ?? 0} last_miss=${stats.lastPromptCacheMissTokens ?? 0} last_hit_rate=${formatRate(stats.lastPromptCacheHitRate)}`,
     `Cache telemetry: total_hit=${stats.totalPromptCacheHitTokens ?? 0} total_miss=${stats.totalPromptCacheMissTokens ?? 0} total_hit_rate=${formatRate(stats.totalPromptCacheHitRate)} requests=${stats.requestCount ?? 0}`,
     `Cache telemetry updated: ${stats.updatedAt ?? 'unknown'}`,
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 }
 
 function cacheHitRate(hit, miss) {
@@ -87,6 +107,52 @@ function cacheHitRate(hit, miss) {
 
 function formatRate(rate) {
   return `${(Number(rate ?? 0) * 100).toFixed(1)}%`
+}
+
+function formatPrefixDiagnostics(stats, stablePrefix) {
+  if (!stablePrefix) return ''
+  const currentHash = stablePrefix.prefixHash
+  const lastHash = stats?.lastStablePrefixHash
+  if (!lastHash) {
+    return `Cache prefix: current=${currentHash} last=unknown status=untracked`
+  }
+  if (lastHash === currentHash) {
+    return `Cache prefix: current=${currentHash} last=${lastHash} status=unchanged`
+  }
+  const changedComponents = findChangedPrefixComponents(
+    stats?.lastStablePrefixComponentHashes,
+    stablePrefix.componentHashes,
+  )
+  const componentsText =
+    changedComponents.length > 0
+      ? changedComponents.join(',')
+      : 'unknown'
+  return `Cache prefix: current=${currentHash} last=${lastHash} status=changed components=${componentsText}`
+}
+
+function findChangedPrefixComponents(previous = {}, current = {}) {
+  const keys = new Set([
+    ...Object.keys(previous ?? {}),
+    ...Object.keys(current ?? {}),
+  ])
+  return [...keys]
+    .filter(key => previous?.[key] !== current?.[key])
+    .sort()
+}
+
+function preservePrefixFields(prior) {
+  return omitUndefined({
+    previousStablePrefixHash: prior.previousStablePrefixHash,
+    previousStablePrefixComponentHashes: prior.previousStablePrefixComponentHashes,
+    lastStablePrefixHash: prior.lastStablePrefixHash,
+    lastStablePrefixComponentHashes: prior.lastStablePrefixComponentHashes,
+  })
+}
+
+function omitUndefined(object) {
+  return Object.fromEntries(
+    Object.entries(object).filter(([, value]) => value !== undefined),
+  )
 }
 
 function sanitizeCacheStatsName(name) {

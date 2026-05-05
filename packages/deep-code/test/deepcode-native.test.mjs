@@ -252,6 +252,36 @@ test('createDeepSeekCacheStats accumulates last and total cache telemetry', () =
   })
 })
 
+test('createDeepSeekCacheStats records stable prefix diagnostics', async () => {
+  const firstPrefix = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-a',
+  })
+  const secondPrefix = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-b',
+  })
+  const first = createDeepSeekCacheStats(null, {
+    prompt_cache_hit_tokens: 0,
+    prompt_cache_miss_tokens: 100,
+  }, {
+    now: () => '2026-05-05T00:00:00.000Z',
+    stablePrefix: firstPrefix,
+  })
+  const second = createDeepSeekCacheStats(first, {
+    prompt_cache_hit_tokens: 80,
+    prompt_cache_miss_tokens: 20,
+  }, {
+    now: () => '2026-05-05T00:01:00.000Z',
+    stablePrefix: secondPrefix,
+  })
+
+  assert.equal(first.lastStablePrefixHash, firstPrefix.prefixHash)
+  assert.deepEqual(first.lastStablePrefixComponentHashes, firstPrefix.componentHashes)
+  assert.equal(second.previousStablePrefixHash, firstPrefix.prefixHash)
+  assert.deepEqual(second.previousStablePrefixComponentHashes, firstPrefix.componentHashes)
+  assert.equal(second.lastStablePrefixHash, secondPrefix.prefixHash)
+  assert.deepEqual(second.lastStablePrefixComponentHashes, secondPrefix.componentHashes)
+})
+
 test('formatDeepSeekCacheStatus renders persisted cache telemetry for status', () => {
   const formatted = formatDeepSeekCacheStatus({
     requestCount: 3,
@@ -267,6 +297,38 @@ test('formatDeepSeekCacheStatus renders persisted cache telemetry for status', (
   assert.match(formatted, /Cache telemetry: last_hit=40 last_miss=10 last_hit_rate=80\.0%/)
   assert.match(formatted, /Cache telemetry: total_hit=120 total_miss=30 total_hit_rate=80\.0% requests=3/)
   assert.match(formatted, /Cache telemetry updated: 2026-05-05T00:00:00\.000Z/)
+})
+
+test('formatDeepSeekCacheStatus reports stable prefix miss diagnostics', async () => {
+  const previousPrefix = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-a',
+  })
+  const currentPrefix = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-b',
+  })
+  const changed = formatDeepSeekCacheStatus({
+    requestCount: 1,
+    lastStablePrefixHash: previousPrefix.prefixHash,
+    lastStablePrefixComponentHashes: previousPrefix.componentHashes,
+  }, {
+    stablePrefix: currentPrefix,
+  })
+  const unchanged = formatDeepSeekCacheStatus({
+    requestCount: 1,
+    lastStablePrefixHash: currentPrefix.prefixHash,
+    lastStablePrefixComponentHashes: currentPrefix.componentHashes,
+  }, {
+    stablePrefix: currentPrefix,
+  })
+
+  assert.match(
+    changed,
+    new RegExp(`Cache prefix: current=${currentPrefix.prefixHash} last=${previousPrefix.prefixHash} status=changed components=repoSummary`),
+  )
+  assert.match(
+    unchanged,
+    new RegExp(`Cache prefix: current=${currentPrefix.prefixHash} last=${currentPrefix.prefixHash} status=unchanged`),
+  )
 })
 
 test('resolveDeepSeekCacheStatsPath supports explicit disabled and configured paths', () => {
@@ -738,6 +800,27 @@ test('createDeepCodeStablePrefix ignores volatile prompts but changes on stable 
   assert.equal(first.prefixHash, second.prefixHash)
   assert.notEqual(first.prefixHash, changed.prefixHash)
   assert.ok(first.systemPrompt.some(item => item.includes('Stable repo summary')))
+})
+
+test('createDeepCodeStablePrefix exposes component hashes for cache miss diagnostics', async () => {
+  const first = await createDeepCodeStablePrefix({
+    systemPrompt: ['fixed'],
+    repoSummary: 'repo-a',
+  })
+  const second = await createDeepCodeStablePrefix({
+    systemPrompt: ['fixed'],
+    repoSummary: 'repo-b',
+  })
+
+  assert.deepEqual(Object.keys(first.componentHashes).sort(), [
+    'repoSummary',
+    'skills',
+    'stableHistory',
+    'systemPrompt',
+    'tools',
+  ])
+  assert.equal(first.componentHashes.systemPrompt, second.componentHashes.systemPrompt)
+  assert.notEqual(first.componentHashes.repoSummary, second.componentHashes.repoSummary)
 })
 
 test('createDeepCodeStablePrefix sorts tool manifest for cache-stable requests', async () => {
