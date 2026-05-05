@@ -81,8 +81,18 @@ export function deepCodeStatusReportToProperties(report) {
       value: stats ? formatRate(stats.lastPromptCacheHitRate) : 'unavailable',
     },
     {
+      label: 'Cache total hit/miss',
+      value: stats
+        ? `${stats.totalPromptCacheHitTokens ?? 0}/${stats.totalPromptCacheMissTokens ?? 0}`
+        : 'unavailable',
+    },
+    {
       label: 'Cache total hit rate',
       value: stats ? formatRate(stats.totalPromptCacheHitRate) : 'unavailable',
+    },
+    {
+      label: 'Cache telemetry updated',
+      value: stats?.updatedAt ?? 'unavailable',
     },
     {
       label: 'API key',

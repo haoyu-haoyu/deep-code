@@ -526,6 +526,11 @@ test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', a
   assert.equal(properties.find(item => item.label === 'Model')?.value, 'deepseek-v4-pro')
   assert.equal(properties.find(item => item.label === 'Reasoning effort')?.value, 'max')
   assert.equal(properties.find(item => item.label === 'Cache hit rate')?.value, '90.0%')
+  assert.equal(properties.find(item => item.label === 'Cache total hit/miss')?.value, '90/10')
+  assert.equal(
+    properties.find(item => item.label === 'Cache telemetry updated')?.value,
+    '2026-05-05T00:00:00.000Z',
+  )
   assert.equal(
     properties.find(item => item.label === 'Stable prefix hash')?.value,
     report.stablePrefix.prefixHash,
