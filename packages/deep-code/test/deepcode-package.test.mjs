@@ -110,6 +110,42 @@ const managedEnvSource = readFileSync(
   resolve(root, 'packages/deep-code/src/utils/managedEnvConstants.ts'),
   'utf8',
 )
+const promptsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/constants/prompts.ts'),
+  'utf8',
+)
+const deepSeekHarnessPromptsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/constants/deepseekHarnessPrompts.ts'),
+  'utf8',
+)
+const coordinatorModeSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/coordinator/coordinatorMode.ts'),
+  'utf8',
+)
+const generalPurposeAgentSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/built-in/generalPurposeAgent.ts'),
+  'utf8',
+)
+const exploreAgentSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/built-in/exploreAgent.ts'),
+  'utf8',
+)
+const verificationAgentSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/built-in/verificationAgent.ts'),
+  'utf8',
+)
+const planAgentSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/built-in/planAgent.ts'),
+  'utf8',
+)
+const statuslineSetupAgentSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/built-in/statuslineSetup.ts'),
+  'utf8',
+)
+const builtInAgentsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/builtInAgents.ts'),
+  'utf8',
+)
 const deepcodeEntrypointSource = readFileSync(
   resolve(root, 'packages/deep-code/deepcode.js'),
   'utf8',
@@ -872,6 +908,48 @@ test('common interactive surfaces use Deep Code copy allowlist', () => {
   assert.doesNotMatch(commonInteractiveSources, /Claude memory/)
   assert.doesNotMatch(commonInteractiveSources, /Claude Code Desktop/)
   assert.doesNotMatch(commonInteractiveSources, /Claude app/)
+})
+
+test('DeepSeek Harness prompt pack defines native reasoning, tool and cache rules', () => {
+  assert.match(deepSeekHarnessPromptsSource, /DeepSeek-native coding agent/)
+  assert.match(deepSeekHarnessPromptsSource, /reasoning_content/)
+  assert.match(deepSeekHarnessPromptsSource, /Tools are function calls/)
+  assert.match(deepSeekHarnessPromptsSource, /stable cache prefix/)
+  assert.match(deepSeekHarnessPromptsSource, /harness-coordinator/)
+
+  assert.match(promptsSource, /getDeepSeekHarnessIdentitySection/)
+  assert.match(promptsSource, /getDeepSeekReasoningSection/)
+  assert.match(promptsSource, /getDeepSeekToolHarnessSection/)
+  assert.match(promptsSource, /getDeepSeekCacheDisciplineSection/)
+  assert.doesNotMatch(promptsSource, /The most recent Claude model family/)
+  assert.doesNotMatch(promptsSource, /Claude Code is available as a CLI/)
+  assert.doesNotMatch(promptsSource, /Anthropic's official CLI/)
+})
+
+test('DeepSeek Harness built-in agents expose explorer worker verifier and summarizer profiles', () => {
+  const agentSources = [
+    coordinatorModeSource,
+    generalPurposeAgentSource,
+    exploreAgentSource,
+    verificationAgentSource,
+    planAgentSource,
+    statuslineSetupAgentSource,
+    builtInAgentsSource,
+  ].join('\n')
+
+  assert.match(coordinatorModeSource, /DeepSeek Harness coordinator/)
+  assert.match(coordinatorModeSource, /self-contained prompt/)
+  assert.match(exploreAgentSource, /READ-ONLY DeepSeek Harness exploration task/)
+  assert.match(generalPurposeAgentSource, /write ownership/)
+  assert.match(generalPurposeAgentSource, /verification commands/)
+  assert.match(verificationAgentSource, /VERDICT: PASS/)
+  assert.match(verificationAgentSource, /non happy-path probe/)
+  assert.match(planAgentSource, /Deep Code's DeepSeek Harness/)
+  assert.match(statuslineSetupAgentSource, /Deep Code settings/)
+  assert.match(builtInAgentsSource, /DEEPSEEK_SUMMARIZER_AGENT/)
+  assert.match(builtInAgentsSource, /DEEPSEEK_WORKER_AGENT/)
+  assert.doesNotMatch(agentSources, /Anthropic's official CLI/)
+  assert.doesNotMatch(agentSources, /for Claude Code/)
 })
 
 test('DeepSeek-native slash commands hide legacy Claude service integrations by default', () => {

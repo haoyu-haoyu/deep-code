@@ -32,6 +32,10 @@ import {
   formatDeepCodeStatus,
 } from './src/deepcode/status.mjs'
 import {
+  formatDeepCodeHarnessStatus,
+  resolveDeepCodeHarnessConfig,
+} from './src/deepcode/harness-config.mjs'
+import {
   applyDeepCodeCliEnvOverrides,
   parseDeepCodeArgs,
 } from './src/deepcode/cli-args.mjs'
@@ -80,6 +84,10 @@ async function main() {
     if (hasFailingDoctorChecks(report)) {
       process.exitCode = 1
     }
+    return
+  }
+  if (cli.command === 'harness') {
+    console.log(formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig(env)))
     return
   }
   if (cli.command === 'warm-cache') {
@@ -342,6 +350,14 @@ function mergeSettingsEnv(env, settings) {
       env.DEEPCODE_CACHE_USER_ID ??
       settings.cacheUserId ??
       createDeepSeekCacheUserId(process.cwd()),
+    DEEPCODE_HARNESS_MODE:
+      env.DEEPCODE_HARNESS_MODE ?? settings.harnessMode,
+    DEEPCODE_HARNESS_MAX_AGENTS:
+      env.DEEPCODE_HARNESS_MAX_AGENTS ?? settings.harnessMaxAgents,
+    DEEPCODE_PROMPT_PACK:
+      env.DEEPCODE_PROMPT_PACK ?? settings.promptPack,
+    DEEPCODE_STRICT_TOOLS:
+      env.DEEPCODE_STRICT_TOOLS ?? settings.strictTools,
   }
 }
 
@@ -407,6 +423,7 @@ Usage:
   echo "summarize" | deepcode
   deepcode --status
   deepcode --doctor [--no-live]
+  deepcode --harness
   deepcode --warm-cache
   deepcode --compact "summarize this transcript tail"
   deepcode --tool-e2e
@@ -418,6 +435,10 @@ Configuration:
   DEEPSEEK_MODEL / DEEPCODE_MODEL
   DEEPSEEK_THINKING=enabled|disabled
   DEEPSEEK_REASONING_EFFORT=high|max
+  DEEPCODE_HARNESS_MODE=auto|off|on|swarm
+  DEEPCODE_HARNESS_MAX_AGENTS=4
+  DEEPCODE_PROMPT_PACK=deepseek-v1
+  DEEPCODE_STRICT_TOOLS=off|safe|all
 
 Options:
   -p, --print
@@ -430,6 +451,11 @@ Options:
   --thinking enabled|disabled
   --reasoning-effort high|max
   --cache-user-id dc_workspace
+  --harness
+  --harness-mode auto|off|on|swarm
+  --harness-max-agents 4
+  --prompt-pack deepseek-v1
+  --strict-tools off|safe|all
 `)
 }
 

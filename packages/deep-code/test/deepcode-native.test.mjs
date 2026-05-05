@@ -54,6 +54,10 @@ import {
   parseDeepCodeArgs,
 } from '../src/deepcode/cli-args.mjs'
 import {
+  formatDeepCodeHarnessStatus,
+  resolveDeepCodeHarnessConfig,
+} from '../src/deepcode/harness-config.mjs'
+import {
   createDeepCodeStableTools,
   createDeepSeekLocalTools,
   runDeepSeekLocalToolChain,
@@ -256,6 +260,51 @@ test('parseDeepCodeArgs recognizes prefix-preserving compact command', () => {
 
   assert.equal(parsed.command, 'compact')
   assert.deepEqual(parsed.promptArgs, ['summarize', 'this', 'tail'])
+})
+
+test('parseDeepCodeArgs recognizes DeepSeek Harness controls', () => {
+  const parsed = parseDeepCodeArgs([
+    '--harness',
+    '--harness-mode=swarm',
+    '--harness-max-agents',
+    '3',
+    '--prompt-pack',
+    'deepseek-v1',
+    '--strict-tools=safe',
+  ])
+
+  assert.equal(parsed.command, 'harness')
+  assert.deepEqual(parsed.envOverrides, {
+    DEEPCODE_HARNESS_MODE: 'swarm',
+    DEEPCODE_HARNESS_MAX_AGENTS: '3',
+    DEEPCODE_PROMPT_PACK: 'deepseek-v1',
+    DEEPCODE_STRICT_TOOLS: 'safe',
+  })
+})
+
+test('resolveDeepCodeHarnessConfig applies safe DeepSeek defaults and env overrides', () => {
+  const config = resolveDeepCodeHarnessConfig({
+    DEEPCODE_HARNESS_MODE: 'on',
+    DEEPCODE_HARNESS_MAX_AGENTS: '6',
+    DEEPCODE_HARNESS_DEFAULT_SMALL_MODEL: 'deepseek-v4-flash-custom',
+    DEEPCODE_HARNESS_COORDINATOR_MODEL: 'deepseek-v4-pro-custom',
+    DEEPCODE_HARNESS_VERIFIER_MODEL: 'deepseek-v4-pro-verify',
+    DEEPCODE_PROMPT_PACK: 'deepseek-v1',
+    DEEPCODE_STRICT_TOOLS: 'safe',
+  })
+
+  assert.deepEqual(config, {
+    mode: 'on',
+    maxAgents: 6,
+    defaultSmallModel: 'deepseek-v4-flash-custom',
+    coordinatorModel: 'deepseek-v4-pro-custom',
+    verifierModel: 'deepseek-v4-pro-verify',
+    promptPack: 'deepseek-v1',
+    strictTools: 'safe',
+  })
+  assert.match(formatDeepCodeHarnessStatus(config), /Harness mode: on/)
+  assert.match(formatDeepCodeHarnessStatus(config), /Prompt pack: deepseek-v1/)
+  assert.match(formatDeepCodeHarnessStatus(config), /Strict tools: safe/)
 })
 
 test('applyDeepCodeCliEnvOverrides keeps CLI values above inherited env', () => {

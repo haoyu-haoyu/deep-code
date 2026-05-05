@@ -136,6 +136,7 @@ import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
+import harness from './commands/harness/index.js'
 import mockLimits from './commands/mock-limits/index.js'
 import bridgeKick from './commands/bridge-kick.js'
 import version from './commands/version.js'
@@ -294,6 +295,7 @@ const COMMANDS = memoize((): Command[] => [
   fast,
   files,
   heapDump,
+  harness,
   help,
   ide,
   init,
@@ -647,6 +649,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   feedback, // Send feedback
   plan, // Plan mode toggle
   keybindings, // Keybinding management
+  harness, // Show DeepSeek Harness configuration
   statusline, // Status line toggle
   stickers, // Stickers
 ])
@@ -670,6 +673,7 @@ export const BRIDGE_SAFE_COMMANDS: Set<Command> = new Set(
     cost, // Show session cost
     summary, // Summarize conversation
     releaseNotes, // Show changelog
+    harness, // Show DeepSeek Harness configuration
     files, // List tracked files
   ].filter((c): c is Command => c !== null),
 )

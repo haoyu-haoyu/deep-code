@@ -15,6 +15,7 @@ import {
   parseDeepSeekSSELines,
   resolveDeepSeekConfig,
 } from './deepseek-native.mjs'
+import { resolveDeepCodeHarnessConfig } from './harness-config.mjs'
 import {
   MODEL_PROVIDER_CAPABILITIES,
   resolveModelProvider,
@@ -47,6 +48,7 @@ export async function createDeepSeekDoctorReport({
   provider,
 } = {}) {
   const config = resolveDeepSeekConfig({ env, cwd })
+  const harnessConfig = resolveDeepCodeHarnessConfig(env)
   const checks = []
   const add = (id, label, status, detail, metadata) => {
     checks.push({ id, label, status, detail, metadata })
@@ -105,6 +107,21 @@ export async function createDeepSeekDoctorReport({
     'Cache user_id',
     config.cacheUserId ? 'pass' : 'fail',
     config.cacheUserId || 'missing',
+  )
+  add(
+    'harness.promptPack',
+    'DeepSeek Harness prompt pack',
+    harnessConfig.promptPack === 'deepseek-v1' ? 'pass' : 'warn',
+    `${harnessConfig.promptPack}; mode=${harnessConfig.mode}; max_agents=${harnessConfig.maxAgents}`,
+    harnessConfig,
+  )
+  add(
+    'harness.strictTools',
+    'DeepSeek Harness strict tools',
+    ['off', 'safe', 'all'].includes(harnessConfig.strictTools)
+      ? 'pass'
+      : 'fail',
+    harnessConfig.strictTools,
   )
 
   const migrationDiagnostics = createDeepCodeMigrationDiagnostics({ env, cwd })
@@ -251,6 +268,10 @@ export async function createDeepSeekDoctorReport({
       thinking: config.thinking,
       reasoningEffort: config.reasoningEffort,
       cacheUserId: config.cacheUserId,
+      harnessMode: harnessConfig.mode,
+      harnessMaxAgents: harnessConfig.maxAgents,
+      promptPack: harnessConfig.promptPack,
+      strictTools: harnessConfig.strictTools,
       apiKeyConfigured: Boolean(config.apiKey),
     },
     checks,
@@ -407,6 +428,10 @@ export function formatDeepSeekDoctorReport(report) {
     `Small model: ${report.config.smallModel}`,
     `Thinking: ${report.config.thinking}`,
     `Reasoning effort: ${report.config.reasoningEffort}`,
+    `Harness mode: ${report.config.harnessMode}`,
+    `Harness max agents: ${report.config.harnessMaxAgents}`,
+    `Prompt pack: ${report.config.promptPack}`,
+    `Strict tools: ${report.config.strictTools}`,
     `Cache user_id: ${report.config.cacheUserId}`,
     `API key: ${report.config.apiKeyConfigured ? 'configured' : 'missing'}`,
     '',
