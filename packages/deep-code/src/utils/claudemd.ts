@@ -1,10 +1,13 @@
 /**
  * Files are loaded in the following order:
  *
- * 1. Managed memory (eg. /etc/claude-code/CLAUDE.md) - Global instructions for all users
- * 2. User memory (~/.claude/CLAUDE.md) - Private global instructions for all projects
- * 3. Project memory (CLAUDE.md, .claude/CLAUDE.md, and .claude/rules/*.md in project roots) - Instructions checked into the codebase
- * 4. Local memory (CLAUDE.local.md in project roots) - Private project-specific instructions
+ * 1. Managed memory (eg. /etc/deepcode/DEEPCODE.md) - Global instructions for all users
+ * 2. User memory (~/.deepcode/DEEPCODE.md) - Private global instructions for all projects
+ * 3. Project memory (DEEPCODE.md, .deepcode/DEEPCODE.md, and .deepcode/rules/*.md in project roots) - Instructions checked into the codebase
+ * 4. Local memory (DEEPCODE.local.md in project roots) - Private project-specific instructions
+ *
+ * Legacy CLAUDE.md/.claude paths remain supported as fallback when the matching
+ * Deep Code-native file or directory does not exist.
  *
  * Files are loaded in reverse order of priority, i.e. the latest files are highest priority
  * with the model paying more attention to them.
@@ -13,7 +16,7 @@
  * - User memory is loaded from the user's home directory
  * - Project and Local files are discovered by traversing from the current directory up to root
  * - Files closer to the current directory have higher priority (loaded later)
- * - CLAUDE.md, .claude/CLAUDE.md, and all .md files in .claude/rules/ are checked in each directory for Project memory
+ * - DEEPCODE.md, .deepcode/DEEPCODE.md, and all .md files in .deepcode/rules/ are checked in each directory for Project memory
  *
  * Memory @include directive:
  * - Memory files can include other files using @ notation
@@ -30,14 +33,12 @@ import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'
 import { Lexer } from 'marked'
 import {
-  basename,
   dirname,
   extname,
   isAbsolute,
   join,
   parse,
   relative,
-  sep,
 } from 'path'
 import picomatch from 'picomatch'
 import { logEvent } from 'src/services/analytics/index.js'
@@ -45,6 +46,13 @@ import {
   getAdditionalDirectoriesForClaudeMd,
   getOriginalCwd,
 } from '../bootstrap/state.js'
+import {
+  createLocalInstructionPathPlan,
+  createProjectInstructionPathPlan,
+  isInstructionMemoryFilePath,
+  LEGACY_CLAUDE_INSTRUCTION_FILE,
+  LEGACY_CLAUDE_PROJECT_DIR,
+} from '../deepcode/instruction-paths.mjs'
 import { truncateEntrypointContent } from '../memdir/memdir.js'
 import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
@@ -56,7 +64,11 @@ import {
 } from './config.js'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import {
+  getClaudeConfigHomeDir,
+  getLegacyClaudeConfigHomeDir,
+  isEnvTruthy,
+} from './envUtils.js'
 import { getErrnoCode } from './errors.js'
 import { normalizePathForComparison } from './file.js'
 import { cacheKeys, type FileStateCache } from './fileStateCache.js'
@@ -77,6 +89,7 @@ import { expandPath } from './path.js'
 import { pathInWorkingPath } from './permissions/filesystem.js'
 import { isSettingSourceEnabled } from './settings/constants.js'
 import { getInitialSettings } from './settings/settings.js'
+import { getManagedFilePath } from './settings/managedPath.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const teamMemPaths = feature('TEAMMEM')
@@ -90,6 +103,64 @@ const MEMORY_INSTRUCTION_PROMPT =
   'Codebase and user instructions are shown below. Be sure to adhere to these instructions. IMPORTANT: These instructions OVERRIDE any default behavior and you MUST follow them exactly as written.'
 // Recommended max character count for a memory file
 export const MAX_MEMORY_CHARACTER_COUNT = 40000
+
+function pathExists(path: string): boolean {
+  try {
+    return getFsImplementation().existsSync(path)
+  } catch {
+    return false
+  }
+}
+
+async function processPreferredInstructionFiles(
+  primaryPaths: string[],
+  legacyPaths: string[],
+  type: MemoryType,
+  processedPaths: Set<string>,
+  includeExternal: boolean,
+): Promise<MemoryFileInfo[]> {
+  const paths = primaryPaths.some(pathExists) ? primaryPaths : legacyPaths
+  const result: MemoryFileInfo[] = []
+  for (const path of paths) {
+    result.push(
+      ...(await processMemoryFile(
+        path,
+        type,
+        processedPaths,
+        includeExternal,
+      )),
+    )
+  }
+  return result
+}
+
+async function processPreferredRules({
+  primaryRulesDir,
+  legacyRulesDir,
+  type,
+  processedPaths,
+  includeExternal,
+  conditionalRule,
+}: {
+  primaryRulesDir: string
+  legacyRulesDir: string
+  type: MemoryType
+  processedPaths: Set<string>
+  includeExternal: boolean
+  conditionalRule: boolean
+}): Promise<MemoryFileInfo[]> {
+  return processMdRules({
+    rulesDir: pathExists(primaryRulesDir) ? primaryRulesDir : legacyRulesDir,
+    type,
+    processedPaths,
+    includeExternal,
+    conditionalRule,
+  })
+}
+
+function preferredRulesDir(primaryRulesDir: string, legacyRulesDir: string) {
+  return pathExists(primaryRulesDir) ? primaryRulesDir : legacyRulesDir
+}
 
 // File extensions that are allowed for @include directives
 // This prevents binary files (images, PDFs, etc.) from being loaded into memory
@@ -801,20 +872,27 @@ export const getMemoryFiles = memoize(
       false
 
     // Process Managed file first (always loaded - policy settings)
-    const managedClaudeMd = getMemoryPath('Managed')
+    const managedDeepCodeMd = getMemoryPath('Managed')
     result.push(
-      ...(await processMemoryFile(
-        managedClaudeMd,
+      ...(await processPreferredInstructionFiles(
+        [managedDeepCodeMd],
+        [join(getManagedFilePath(), LEGACY_CLAUDE_INSTRUCTION_FILE)],
         'Managed',
         processedPaths,
         includeExternal,
       )),
     )
-    // Process Managed .claude/rules/*.md files
-    const managedClaudeRulesDir = getManagedClaudeRulesDir()
+
+    // Process Managed .deepcode/rules/*.md files, falling back to .claude/rules.
+    const managedDeepCodeRulesDir = getManagedClaudeRulesDir()
     result.push(
-      ...(await processMdRules({
-        rulesDir: managedClaudeRulesDir,
+      ...(await processPreferredRules({
+        primaryRulesDir: managedDeepCodeRulesDir,
+        legacyRulesDir: join(
+          getManagedFilePath(),
+          LEGACY_CLAUDE_PROJECT_DIR,
+          'rules',
+        ),
         type: 'Managed',
         processedPaths,
         includeExternal,
@@ -824,20 +902,22 @@ export const getMemoryFiles = memoize(
 
     // Process User file (only if userSettings is enabled)
     if (isSettingSourceEnabled('userSettings')) {
-      const userClaudeMd = getMemoryPath('User')
+      const userDeepCodeMd = getMemoryPath('User')
       result.push(
-        ...(await processMemoryFile(
-          userClaudeMd,
+        ...(await processPreferredInstructionFiles(
+          [userDeepCodeMd],
+          [join(getLegacyClaudeConfigHomeDir(), LEGACY_CLAUDE_INSTRUCTION_FILE)],
           'User',
           processedPaths,
           true, // User memory can always include external files
         )),
       )
-      // Process User ~/.claude/rules/*.md files
-      const userClaudeRulesDir = getUserClaudeRulesDir()
+      // Process User ~/.deepcode/rules/*.md files, falling back to ~/.claude/rules.
+      const userDeepCodeRulesDir = getUserClaudeRulesDir()
       result.push(
-        ...(await processMdRules({
-          rulesDir: userClaudeRulesDir,
+        ...(await processPreferredRules({
+          primaryRulesDir: userDeepCodeRulesDir,
+          legacyRulesDir: join(getLegacyClaudeConfigHomeDir(), 'rules'),
           type: 'User',
           processedPaths,
           includeExternal: true,
@@ -883,34 +963,24 @@ export const getMemoryFiles = memoize(
         pathInWorkingPath(dir, canonicalRoot) &&
         !pathInWorkingPath(dir, gitRoot)
 
-      // Try reading CLAUDE.md (Project) - only if projectSettings is enabled
+      // Try reading Deep Code project instructions, then legacy Claude fallback.
       if (isSettingSourceEnabled('projectSettings') && !skipProject) {
-        const projectPath = join(dir, 'CLAUDE.md')
+        const projectPlan = createProjectInstructionPathPlan(dir)
         result.push(
-          ...(await processMemoryFile(
-            projectPath,
+          ...(await processPreferredInstructionFiles(
+            projectPlan.primaryFiles,
+            projectPlan.legacyFiles,
             'Project',
             processedPaths,
             includeExternal,
           )),
         )
 
-        // Try reading .claude/CLAUDE.md (Project)
-        const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
+        // Try reading .deepcode/rules/*.md files, then .claude/rules fallback.
         result.push(
-          ...(await processMemoryFile(
-            dotClaudePath,
-            'Project',
-            processedPaths,
-            includeExternal,
-          )),
-        )
-
-        // Try reading .claude/rules/*.md files (Project)
-        const rulesDir = join(dir, '.claude', 'rules')
-        result.push(
-          ...(await processMdRules({
-            rulesDir,
+          ...(await processPreferredRules({
+            primaryRulesDir: projectPlan.primaryRulesDir,
+            legacyRulesDir: projectPlan.legacyRulesDir,
             type: 'Project',
             processedPaths,
             includeExternal,
@@ -919,12 +989,13 @@ export const getMemoryFiles = memoize(
         )
       }
 
-      // Try reading CLAUDE.local.md (Local) - only if localSettings is enabled
+      // Try reading DEEPCODE.local.md, then legacy CLAUDE.local.md fallback.
       if (isSettingSourceEnabled('localSettings')) {
-        const localPath = join(dir, 'CLAUDE.local.md')
+        const localPlan = createLocalInstructionPathPlan(dir)
         result.push(
-          ...(await processMemoryFile(
-            localPath,
+          ...(await processPreferredInstructionFiles(
+            [localPlan.primaryFile],
+            [localPlan.legacyFile],
             'Local',
             processedPaths,
             includeExternal,
@@ -933,40 +1004,28 @@ export const getMemoryFiles = memoize(
       }
     }
 
-    // Process CLAUDE.md from additional directories (--add-dir) if env var is enabled
+    // Process instruction files from additional directories (--add-dir) if env var is enabled
     // This is controlled by CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD and defaults to off
     // Note: we don't check isSettingSourceEnabled('projectSettings') here because --add-dir
     // is an explicit user action and the SDK defaults settingSources to [] when not specified
     if (isEnvTruthy(process.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD)) {
       const additionalDirs = getAdditionalDirectoriesForClaudeMd()
       for (const dir of additionalDirs) {
-        // Try reading CLAUDE.md from the additional directory
-        const projectPath = join(dir, 'CLAUDE.md')
+        const projectPlan = createProjectInstructionPathPlan(dir)
         result.push(
-          ...(await processMemoryFile(
-            projectPath,
+          ...(await processPreferredInstructionFiles(
+            projectPlan.primaryFiles,
+            projectPlan.legacyFiles,
             'Project',
             processedPaths,
             includeExternal,
           )),
         )
 
-        // Try reading .claude/CLAUDE.md from the additional directory
-        const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
         result.push(
-          ...(await processMemoryFile(
-            dotClaudePath,
-            'Project',
-            processedPaths,
-            includeExternal,
-          )),
-        )
-
-        // Try reading .claude/rules/*.md files from the additional directory
-        const rulesDir = join(dir, '.claude', 'rules')
-        result.push(
-          ...(await processMdRules({
-            rulesDir,
+          ...(await processPreferredRules({
+            primaryRulesDir: projectPlan.primaryRulesDir,
+            legacyRulesDir: projectPlan.legacyRulesDir,
             type: 'Project',
             processedPaths,
             includeExternal,
@@ -1208,8 +1267,11 @@ export async function getManagedAndUserConditionalRules(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process Managed conditional .claude/rules/*.md files
-  const managedClaudeRulesDir = getManagedClaudeRulesDir()
+  // Process Managed conditional .deepcode/rules/*.md files, with legacy fallback.
+  const managedClaudeRulesDir = preferredRulesDir(
+    getManagedClaudeRulesDir(),
+    join(getManagedFilePath(), LEGACY_CLAUDE_PROJECT_DIR, 'rules'),
+  )
   result.push(
     ...(await processConditionedMdRules(
       targetPath,
@@ -1221,8 +1283,11 @@ export async function getManagedAndUserConditionalRules(
   )
 
   if (isSettingSourceEnabled('userSettings')) {
-    // Process User conditional .claude/rules/*.md files
-    const userClaudeRulesDir = getUserClaudeRulesDir()
+    // Process User conditional ~/.deepcode/rules/*.md files, with legacy fallback.
+    const userClaudeRulesDir = preferredRulesDir(
+      getUserClaudeRulesDir(),
+      join(getLegacyClaudeConfigHomeDir(), 'rules'),
+    )
     result.push(
       ...(await processConditionedMdRules(
         targetPath,
@@ -1239,7 +1304,7 @@ export async function getManagedAndUserConditionalRules(
 
 /**
  * Gets memory files for a single nested directory (between CWD and target).
- * Loads CLAUDE.md, unconditional rules, and conditional rules for that directory.
+ * Loads DEEPCODE.md, unconditional rules, and conditional rules for that directory.
  *
  * @param dir The directory to process
  * @param targetPath The target file path (for conditional rule matching)
@@ -1253,21 +1318,14 @@ export async function getMemoryFilesForNestedDirectory(
 ): Promise<MemoryFileInfo[]> {
   const result: MemoryFileInfo[] = []
 
-  // Process project memory files (CLAUDE.md and .claude/CLAUDE.md)
+  const projectPlan = createProjectInstructionPathPlan(dir)
+
+  // Process project memory files (DEEPCODE.md and .deepcode/DEEPCODE.md)
   if (isSettingSourceEnabled('projectSettings')) {
-    const projectPath = join(dir, 'CLAUDE.md')
     result.push(
-      ...(await processMemoryFile(
-        projectPath,
-        'Project',
-        processedPaths,
-        false,
-      )),
-    )
-    const dotClaudePath = join(dir, '.claude', 'CLAUDE.md')
-    result.push(
-      ...(await processMemoryFile(
-        dotClaudePath,
+      ...(await processPreferredInstructionFiles(
+        projectPlan.primaryFiles,
+        projectPlan.legacyFiles,
         'Project',
         processedPaths,
         false,
@@ -1275,17 +1333,26 @@ export async function getMemoryFilesForNestedDirectory(
     )
   }
 
-  // Process local memory file (CLAUDE.local.md)
+  // Process local memory file (DEEPCODE.local.md)
   if (isSettingSourceEnabled('localSettings')) {
-    const localPath = join(dir, 'CLAUDE.local.md')
+    const localPlan = createLocalInstructionPathPlan(dir)
     result.push(
-      ...(await processMemoryFile(localPath, 'Local', processedPaths, false)),
+      ...(await processPreferredInstructionFiles(
+        [localPlan.primaryFile],
+        [localPlan.legacyFile],
+        'Local',
+        processedPaths,
+        false,
+      )),
     )
   }
 
-  const rulesDir = join(dir, '.claude', 'rules')
+  const rulesDir = preferredRulesDir(
+    projectPlan.primaryRulesDir,
+    projectPlan.legacyRulesDir,
+  )
 
-  // Process project unconditional .claude/rules/*.md files, which were not eagerly loaded
+  // Process project unconditional .deepcode/rules/*.md files, which were not eagerly loaded
   // Use a separate processedPaths set to avoid marking conditional rule files as processed
   const unconditionalProcessedPaths = new Set(processedPaths)
   result.push(
@@ -1298,7 +1365,7 @@ export async function getMemoryFilesForNestedDirectory(
     })),
   )
 
-  // Process project conditional .claude/rules/*.md files
+  // Process project conditional .deepcode/rules/*.md files
   result.push(
     ...(await processConditionedMdRules(
       targetPath,
@@ -1331,7 +1398,11 @@ export async function getConditionalRulesForCwdLevelDirectory(
   targetPath: string,
   processedPaths: Set<string>,
 ): Promise<MemoryFileInfo[]> {
-  const rulesDir = join(dir, '.claude', 'rules')
+  const projectPlan = createProjectInstructionPathPlan(dir)
+  const rulesDir = preferredRulesDir(
+    projectPlan.primaryRulesDir,
+    projectPlan.legacyRulesDir,
+  )
   return processConditionedMdRules(
     targetPath,
     rulesDir,
@@ -1430,25 +1501,10 @@ export async function shouldShowClaudeMdExternalIncludesWarning(): Promise<boole
 }
 
 /**
- * Check if a file path is a memory file (CLAUDE.md, CLAUDE.local.md, or .claude/rules/*.md)
+ * Check if a file path is an instruction memory file.
  */
 export function isMemoryFilePath(filePath: string): boolean {
-  const name = basename(filePath)
-
-  // CLAUDE.md or CLAUDE.local.md anywhere
-  if (name === 'CLAUDE.md' || name === 'CLAUDE.local.md') {
-    return true
-  }
-
-  // .md files in .claude/rules/ directories
-  if (
-    name.endsWith('.md') &&
-    filePath.includes(`${sep}.claude${sep}rules${sep}`)
-  ) {
-    return true
-  }
-
-  return false
+  return isInstructionMemoryFilePath(filePath)
 }
 
 /**

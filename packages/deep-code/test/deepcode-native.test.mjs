@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -39,6 +39,7 @@ import {
 } from '../src/query/deepseek-call-model.mjs'
 import {
   createDeepSeekDoctorReport,
+  createDeepCodeMigrationDiagnostics,
   formatDeepSeekDoctorReport,
   hasFailingDoctorChecks,
 } from '../src/deepcode/doctor.mjs'
@@ -65,6 +66,11 @@ import {
   compactDeepCodeConversation,
   formatDeepCodeCompactResult,
 } from '../src/deepcode/compact.mjs'
+import {
+  createLocalInstructionPathPlan,
+  createProjectInstructionPathPlan,
+  isInstructionMemoryFilePath,
+} from '../src/deepcode/instruction-paths.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -102,6 +108,39 @@ test('buildDeepSeekRequest emits native DeepSeek chat-completions body without A
   assert.equal('anthropic_beta' in request.body, false)
   assert.equal('temperature' in request.body, false)
   assert.equal('top_p' in request.body, false)
+})
+
+test('Deep Code instruction path plans prefer DEEPCODE.md and .deepcode before Claude fallbacks', () => {
+  const project = createProjectInstructionPathPlan('/repo')
+  assert.deepEqual(project.primaryFiles, [
+    join('/repo', 'DEEPCODE.md'),
+    join('/repo', '.deepcode', 'DEEPCODE.md'),
+  ])
+  assert.equal(project.primaryRulesDir, join('/repo', '.deepcode', 'rules'))
+  assert.deepEqual(project.legacyFiles, [
+    join('/repo', 'CLAUDE.md'),
+    join('/repo', '.claude', 'CLAUDE.md'),
+  ])
+  assert.equal(project.legacyRulesDir, join('/repo', '.claude', 'rules'))
+
+  const local = createLocalInstructionPathPlan('/repo')
+  assert.equal(local.primaryFile, join('/repo', 'DEEPCODE.local.md'))
+  assert.equal(local.legacyFile, join('/repo', 'CLAUDE.local.md'))
+})
+
+test('Deep Code memory file detection includes DEEPCODE.md and .deepcode rules', () => {
+  assert.equal(isInstructionMemoryFilePath(join('/repo', 'DEEPCODE.md')), true)
+  assert.equal(isInstructionMemoryFilePath(join('/repo', 'DEEPCODE.local.md')), true)
+  assert.equal(
+    isInstructionMemoryFilePath(join('/repo', '.deepcode', 'rules', 'testing.md')),
+    true,
+  )
+  assert.equal(isInstructionMemoryFilePath(join('/repo', 'CLAUDE.md')), true)
+  assert.equal(
+    isInstructionMemoryFilePath(join('/repo', '.claude', 'rules', 'testing.md')),
+    true,
+  )
+  assert.equal(isInstructionMemoryFilePath(join('/repo', 'README.md')), false)
 })
 
 test('resolveModelProvider defaults to DeepSeek native provider', async () => {
@@ -1668,6 +1707,42 @@ test('createDeepSeekDoctorReport treats missing API key as skip in no-live mode'
       check => check.id === 'live.api' && check.status === 'skip',
     ),
   )
+})
+
+test('Deep Code migration diagnostics warn on legacy-only project config paths', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'deepcode-migration-'))
+  await mkdir(join(cwd, '.claude', 'skills', 'legacy-skill'), {
+    recursive: true,
+  })
+  await mkdir(join(cwd, '.claude', 'agents'), { recursive: true })
+  await writeFile(join(cwd, 'CLAUDE.md'), 'legacy instructions')
+  await writeFile(join(cwd, '.claude', 'settings.json'), '{}')
+  await writeFile(
+    join(cwd, '.claude', 'skills', 'legacy-skill', 'SKILL.md'),
+    '# skill',
+  )
+
+  const diagnostics = createDeepCodeMigrationDiagnostics({
+    env: {
+      DEEPCODE_CONFIG_DIR: join(cwd, 'home', '.deepcode'),
+      CLAUDE_CONFIG_DIR: join(cwd, 'home', '.claude'),
+    },
+    cwd,
+  })
+
+  assert.equal(diagnostics.status, 'warn')
+  assert.ok(
+    diagnostics.legacyOnly.some(item => item.label === 'Project instructions'),
+  )
+  assert.ok(
+    diagnostics.legacyOnly.some(item => item.label === 'Project settings'),
+  )
+  assert.ok(
+    diagnostics.legacyOnly.some(item => item.label === 'Project skills'),
+  )
+  assert.match(diagnostics.detail, /legacy fallback active/i)
+  assert.match(diagnostics.recommendation, /DEEPCODE\.md/)
+  assert.match(diagnostics.recommendation, /\.deepcode/)
 })
 
 test('createDeepSeekDoctorReport validates live stream and cache telemetry with provider injection', async () => {

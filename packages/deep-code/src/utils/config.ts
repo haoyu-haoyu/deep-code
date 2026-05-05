@@ -5,6 +5,11 @@ import memoize from 'lodash-es/memoize.js'
 import pickBy from 'lodash-es/pickBy.js'
 import { basename, dirname, join, resolve } from 'path'
 import { getOriginalCwd, getSessionTrustAccepted } from '../bootstrap/state.js'
+import {
+  DEEPCODE_INSTRUCTION_FILE,
+  DEEPCODE_LOCAL_INSTRUCTION_FILE,
+  DEEPCODE_PROJECT_DIR,
+} from '../deepcode/instruction-paths.mjs'
 import { getAutoMemEntrypoint } from '../memdir/paths.js'
 import { logEvent } from '../services/analytics/index.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
@@ -1781,13 +1786,13 @@ export function getMemoryPath(memoryType: MemoryType): string {
 
   switch (memoryType) {
     case 'User':
-      return join(getClaudeConfigHomeDir(), 'CLAUDE.md')
+      return join(getClaudeConfigHomeDir(), DEEPCODE_INSTRUCTION_FILE)
     case 'Local':
-      return join(cwd, 'CLAUDE.local.md')
+      return join(cwd, DEEPCODE_LOCAL_INSTRUCTION_FILE)
     case 'Project':
-      return join(cwd, 'CLAUDE.md')
+      return join(cwd, DEEPCODE_INSTRUCTION_FILE)
     case 'Managed':
-      return join(getManagedFilePath(), 'CLAUDE.md')
+      return join(getManagedFilePath(), DEEPCODE_INSTRUCTION_FILE)
     case 'AutoMem':
       return getAutoMemEntrypoint()
   }
@@ -1799,7 +1804,7 @@ export function getMemoryPath(memoryType: MemoryType): string {
 }
 
 export function getManagedClaudeRulesDir(): string {
-  return join(getManagedFilePath(), '.claude', 'rules')
+  return join(getManagedFilePath(), DEEPCODE_PROJECT_DIR, 'rules')
 }
 
 export function getUserClaudeRulesDir(): string {

@@ -12,7 +12,11 @@ import { getRemoteManagedSettingsSyncFromCache } from '../../services/remoteMana
 import { uniq } from '../array.js'
 import { logForDebugging } from '../debug.js'
 import { logForDiagnosticsNoPII } from '../diagLogs.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '../envUtils.js'
+import {
+  getClaudeConfigHomeDir,
+  getLegacyClaudeConfigHomeDir,
+  isEnvTruthy,
+} from '../envUtils.js'
 import { getErrnoCode, isENOENT } from '../errors.js'
 import { writeFileSyncAndFlush_DEPRECATED } from '../file.js'
 import { readFileSync } from '../fileRead.js'
@@ -295,7 +299,39 @@ export function getSettingsFilePathForSource(
   }
 }
 
+export function getLegacySettingsFilePathForSource(
+  source: SettingSource,
+): string | undefined {
+  switch (source) {
+    case 'userSettings':
+      return join(getLegacyClaudeConfigHomeDir(), getUserSettingsFilePath())
+    case 'projectSettings':
+    case 'localSettings': {
+      return join(
+        getSettingsRootPathForSource(source),
+        getLegacyRelativeSettingsFilePathForSource(source),
+      )
+    }
+    case 'policySettings':
+      return getManagedSettingsFilePath()
+    case 'flagSettings': {
+      return getFlagSettingsPath()
+    }
+  }
+}
+
 export function getRelativeSettingsFilePathForSource(
+  source: 'projectSettings' | 'localSettings',
+): string {
+  switch (source) {
+    case 'projectSettings':
+      return join('.deepcode', 'settings.json')
+    case 'localSettings':
+      return join('.deepcode', 'settings.local.json')
+  }
+}
+
+export function getLegacyRelativeSettingsFilePathForSource(
   source: 'projectSettings' | 'localSettings',
 ): string {
   switch (source) {
@@ -304,6 +340,32 @@ export function getRelativeSettingsFilePathForSource(
     case 'localSettings':
       return join('.claude', 'settings.local.json')
   }
+}
+
+function settingsFileExists(path: string): boolean {
+  try {
+    getFsImplementation().statSync(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function getSettingsReadFilePathForSource(
+  source: SettingSource,
+): string | undefined {
+  const primary = getSettingsFilePathForSource(source)
+  const legacy = getLegacySettingsFilePathForSource(source)
+  if (!primary || primary === legacy) {
+    return primary
+  }
+  if (settingsFileExists(primary)) {
+    return primary
+  }
+  if (legacy && settingsFileExists(legacy)) {
+    return legacy
+  }
+  return primary
 }
 
 export function getSettingsForSource(
@@ -344,7 +406,7 @@ function getSettingsForSourceUncached(
     return null
   }
 
-  const settingsFilePath = getSettingsFilePathForSource(source)
+  const settingsFilePath = getSettingsReadFilePathForSource(source)
   const { settings: fileSettings } = settingsFilePath
     ? parseSettingsFile(settingsFilePath)
     : { settings: null }
@@ -438,12 +500,13 @@ export function updateSettingsForSource(
     // and mutating the cached object would leak unpersisted state if the
     // write fails before resetSettingsCache().
     let existingSettings = getSettingsForSourceUncached(source)
+    const readFilePath = getSettingsReadFilePathForSource(source) ?? filePath
 
     // If validation failed, check if file exists with a JSON syntax error
     if (!existingSettings) {
       let content: string | null = null
       try {
-        content = readFileSync(filePath)
+        content = readFileSync(readFilePath)
       } catch (e) {
         if (!isENOENT(e)) {
           throw e
@@ -457,14 +520,14 @@ export function updateSettingsForSource(
           // safeParseJSON will already log the error, so we'll just return the error here
           return {
             error: new Error(
-              `Invalid JSON syntax in settings file at ${filePath}`,
+              `Invalid JSON syntax in settings file at ${readFilePath}`,
             ),
           }
         }
         if (rawData && typeof rawData === 'object') {
           existingSettings = rawData as SettingsJson
           logForDebugging(
-            `Using raw settings from ${filePath} due to validation failure`,
+            `Using raw settings from ${readFilePath} due to validation failure`,
           )
         }
       }
@@ -738,7 +801,7 @@ function loadSettingsFromDisk(): SettingsWithErrors {
         continue
       }
 
-      const filePath = getSettingsFilePathForSource(source)
+      const filePath = getSettingsReadFilePathForSource(source)
       if (filePath) {
         const resolvedPath = resolve(filePath)
 
@@ -988,7 +1051,7 @@ export function rawSettingsContainsKey(key: string): boolean {
       continue
     }
 
-    const filePath = getSettingsFilePathForSource(source)
+    const filePath = getSettingsReadFilePathForSource(source)
     if (!filePath) {
       continue
     }

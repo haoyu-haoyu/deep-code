@@ -14,6 +14,10 @@ import {
   getSessionId,
 } from '../bootstrap/state.js'
 import {
+  DEEPCODE_PROJECT_DIR,
+  LEGACY_CLAUDE_PROJECT_DIR,
+} from '../deepcode/instruction-paths.mjs'
+import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../services/analytics/index.js'
@@ -31,6 +35,7 @@ import {
 } from '../utils/effort.js'
 import {
   getClaudeConfigHomeDir,
+  getLegacyClaudeConfigHomeDir,
   isBareMode,
   isEnvTruthy,
 } from '../utils/envUtils.js'
@@ -81,16 +86,47 @@ export function getSkillsPath(
 ): string {
   switch (source) {
     case 'policySettings':
-      return join(getManagedFilePath(), '.claude', dir)
+      return join(getManagedFilePath(), DEEPCODE_PROJECT_DIR, dir)
     case 'userSettings':
       return join(getClaudeConfigHomeDir(), dir)
     case 'projectSettings':
-      return `.claude/${dir}`
+      return `${DEEPCODE_PROJECT_DIR}/${dir}`
     case 'plugin':
       return 'plugin'
     default:
       return ''
   }
+}
+
+async function directoryExists(path: string): Promise<boolean> {
+  try {
+    await getFsImplementation().stat(path)
+    return true
+  } catch (e: unknown) {
+    if (!isFsInaccessible(e)) logError(e)
+    return false
+  }
+}
+
+async function getPreferredDirectory(
+  primary: string,
+  legacy: string,
+): Promise<string> {
+  if (await directoryExists(primary)) {
+    return primary
+  }
+  if (await directoryExists(legacy)) {
+    return legacy
+  }
+  return primary
+}
+
+function getPrimaryProjectSkillsDir(root: string): string {
+  return join(root, DEEPCODE_PROJECT_DIR, 'skills')
+}
+
+function getLegacyProjectSkillsDir(root: string): string {
+  return join(root, LEGACY_CLAUDE_PROJECT_DIR, 'skills')
 }
 
 /**
@@ -637,8 +673,14 @@ async function loadSkillsFromCommandsDir(
  */
 export const getSkillDirCommands = memoize(
   async (cwd: string): Promise<Command[]> => {
-    const userSkillsDir = join(getClaudeConfigHomeDir(), 'skills')
-    const managedSkillsDir = join(getManagedFilePath(), '.claude', 'skills')
+    const userSkillsDir = await getPreferredDirectory(
+      join(getClaudeConfigHomeDir(), 'skills'),
+      join(getLegacyClaudeConfigHomeDir(), 'skills'),
+    )
+    const managedSkillsDir = await getPreferredDirectory(
+      getPrimaryProjectSkillsDir(getManagedFilePath()),
+      getLegacyProjectSkillsDir(getManagedFilePath()),
+    )
     const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)
 
     logForDebugging(
@@ -663,9 +705,12 @@ export const getSkillDirCommands = memoize(
         return []
       }
       const additionalSkillsNested = await Promise.all(
-        additionalDirs.map(dir =>
+        additionalDirs.map(async dir =>
           loadSkillsFromSkillsDir(
-            join(dir, '.claude', 'skills'),
+            await getPreferredDirectory(
+              getPrimaryProjectSkillsDir(dir),
+              getLegacyProjectSkillsDir(dir),
+            ),
             'projectSettings',
           ),
         ),
@@ -698,9 +743,12 @@ export const getSkillDirCommands = memoize(
         : Promise.resolve([]),
       projectSettingsEnabled
         ? Promise.all(
-            additionalDirs.map(dir =>
+            additionalDirs.map(async dir =>
               loadSkillsFromSkillsDir(
-                join(dir, '.claude', 'skills'),
+                await getPreferredDirectory(
+                  getPrimaryProjectSkillsDir(dir),
+                  getLegacyProjectSkillsDir(dir),
+                ),
                 'projectSettings',
               ),
             ),
@@ -874,17 +922,21 @@ export async function discoverSkillDirsForPaths(
     // CWD-level skills are already loaded at startup, so we only discover nested ones
     // Use prefix+separator check to avoid matching /project-backup when cwd is /project
     while (currentDir.startsWith(resolvedCwd + pathSep)) {
-      const skillDir = join(currentDir, '.claude', 'skills')
-
-      // Skip if we've already checked this path (hit or miss) — avoids
-      // repeating the same failed stat on every Read/Write/Edit call when
-      // the directory doesn't exist (the common case).
-      if (!dynamicSkillDirs.has(skillDir)) {
+      for (const skillDir of [
+        getPrimaryProjectSkillsDir(currentDir),
+        getLegacyProjectSkillsDir(currentDir),
+      ]) {
+        // Skip if we've already checked this path (hit or miss) — avoids
+        // repeating the same failed stat on every Read/Write/Edit call when
+        // the directory doesn't exist (the common case).
+        if (dynamicSkillDirs.has(skillDir)) {
+          continue
+        }
         dynamicSkillDirs.add(skillDir)
         try {
           await fs.stat(skillDir)
           // Skills dir exists. Before loading, check if the containing dir
-          // is gitignored — blocks e.g. node_modules/pkg/.claude/skills from
+          // is gitignored — blocks e.g. node_modules/pkg/.deepcode/skills from
           // loading silently. `git check-ignore` handles nested .gitignore,
           // .git/info/exclude, and global gitignore. Fails open outside a
           // git repo (exit 128 → false); the invocation-time trust dialog
@@ -893,9 +945,10 @@ export async function discoverSkillDirsForPaths(
             logForDebugging(
               `[skills] Skipped gitignored skills dir: ${skillDir}`,
             )
-            continue
+            break
           }
           newDirs.push(skillDir)
+          break
         } catch {
           // Directory doesn't exist — already recorded above, continue
         }

@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import {
   buildDeepSeekRequest,
   collectDeepSeekStreamEvents,
@@ -10,6 +13,14 @@ import {
   MODEL_PROVIDER_CAPABILITIES,
   resolveModelProvider,
 } from '../services/providers/index.mjs'
+import {
+  DEEPCODE_INSTRUCTION_FILE,
+  DEEPCODE_LOCAL_INSTRUCTION_FILE,
+  DEEPCODE_PROJECT_DIR,
+  LEGACY_CLAUDE_INSTRUCTION_FILE,
+  LEGACY_CLAUDE_LOCAL_INSTRUCTION_FILE,
+  LEGACY_CLAUDE_PROJECT_DIR,
+} from './instruction-paths.mjs'
 
 const DOCTOR_TOOL = {
   name: 'DoctorEcho',
@@ -80,6 +91,15 @@ export async function createDeepSeekDoctorReport({
     'Cache user_id',
     config.cacheUserId ? 'pass' : 'fail',
     config.cacheUserId || 'missing',
+  )
+
+  const migrationDiagnostics = createDeepCodeMigrationDiagnostics({ env, cwd })
+  add(
+    'migration.deepCodePaths',
+    'Deep Code migration paths',
+    migrationDiagnostics.status,
+    migrationDiagnostics.detail,
+    migrationDiagnostics,
   )
 
   const request = await buildDeepSeekRequest({
@@ -225,6 +245,115 @@ export async function createDeepSeekDoctorReport({
   }
 }
 
+export function createDeepCodeMigrationDiagnostics({
+  env = process.env,
+  cwd = process.cwd(),
+  exists = existsSync,
+} = {}) {
+  const primaryHome = resolveDeepCodeConfigHome(env)
+  const legacyHome = resolveLegacyClaudeConfigHome(env)
+  const pathPairs = [
+    {
+      label: 'Global settings',
+      primary: join(primaryHome, 'settings.json'),
+      legacy: join(legacyHome, 'settings.json'),
+    },
+    {
+      label: 'Global skills',
+      primary: join(primaryHome, 'skills'),
+      legacy: join(legacyHome, 'skills'),
+    },
+    {
+      label: 'Global agents',
+      primary: join(primaryHome, 'agents'),
+      legacy: join(legacyHome, 'agents'),
+    },
+    {
+      label: 'Project instructions',
+      primary: join(cwd, DEEPCODE_INSTRUCTION_FILE),
+      legacy: join(cwd, LEGACY_CLAUDE_INSTRUCTION_FILE),
+    },
+    {
+      label: 'Local instructions',
+      primary: join(cwd, DEEPCODE_LOCAL_INSTRUCTION_FILE),
+      legacy: join(cwd, LEGACY_CLAUDE_LOCAL_INSTRUCTION_FILE),
+    },
+    {
+      label: 'Project settings',
+      primary: join(cwd, DEEPCODE_PROJECT_DIR, 'settings.json'),
+      legacy: join(cwd, LEGACY_CLAUDE_PROJECT_DIR, 'settings.json'),
+    },
+    {
+      label: 'Local settings',
+      primary: join(cwd, DEEPCODE_PROJECT_DIR, 'settings.local.json'),
+      legacy: join(cwd, LEGACY_CLAUDE_PROJECT_DIR, 'settings.local.json'),
+    },
+    {
+      label: 'Project skills',
+      primary: join(cwd, DEEPCODE_PROJECT_DIR, 'skills'),
+      legacy: join(cwd, LEGACY_CLAUDE_PROJECT_DIR, 'skills'),
+    },
+    {
+      label: 'Project agents',
+      primary: join(cwd, DEEPCODE_PROJECT_DIR, 'agents'),
+      legacy: join(cwd, LEGACY_CLAUDE_PROJECT_DIR, 'agents'),
+    },
+    {
+      label: 'Project rules',
+      primary: join(cwd, DEEPCODE_PROJECT_DIR, 'rules'),
+      legacy: join(cwd, LEGACY_CLAUDE_PROJECT_DIR, 'rules'),
+    },
+  ]
+
+  const annotated = pathPairs.map(item => ({
+    ...item,
+    primaryExists: exists(item.primary),
+    legacyExists: exists(item.legacy),
+  }))
+  const legacyOnly = annotated.filter(
+    item => item.legacyExists && !item.primaryExists,
+  )
+  const bothPresent = annotated.filter(
+    item => item.legacyExists && item.primaryExists,
+  )
+  const deepCodeOnly = annotated.filter(
+    item => item.primaryExists && !item.legacyExists,
+  )
+
+  const detail =
+    legacyOnly.length > 0
+      ? `legacy fallback active for ${legacyOnly.map(item => item.label).join(', ')}`
+      : bothPresent.length > 0
+        ? `Deep Code paths active; legacy duplicates also present for ${bothPresent.map(item => item.label).join(', ')}`
+        : 'Deep Code paths active'
+
+  return {
+    status: legacyOnly.length > 0 ? 'warn' : 'pass',
+    detail,
+    recommendation:
+      legacyOnly.length > 0
+        ? `Move project memory to ${DEEPCODE_INSTRUCTION_FILE} and project config to ${DEEPCODE_PROJECT_DIR}/ when ready. Legacy ${LEGACY_CLAUDE_INSTRUCTION_FILE} and ${LEGACY_CLAUDE_PROJECT_DIR}/ remain readable as fallback.`
+        : `Use ${DEEPCODE_INSTRUCTION_FILE} and ${DEEPCODE_PROJECT_DIR}/ for new Deep Code configuration.`,
+    primaryHome,
+    legacyHome,
+    legacyOnly,
+    bothPresent,
+    deepCodeOnly,
+  }
+}
+
+function resolveDeepCodeConfigHome(env) {
+  return (
+    env.DEEPCODE_CONFIG_DIR ||
+    env.CLAUDE_CONFIG_DIR ||
+    join(homedir(), '.deepcode')
+  )
+}
+
+function resolveLegacyClaudeConfigHome(env) {
+  return env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
+}
+
 export function formatDeepSeekDoctorReport(report) {
   const lines = [
     'Deep Code Doctor',
@@ -243,6 +372,12 @@ export function formatDeepSeekDoctorReport(report) {
     lines.push(
       `[${formatStatus(check.status)}] ${check.label}: ${check.detail}`,
     )
+    if (
+      check.id === 'migration.deepCodePaths' &&
+      check.metadata?.recommendation
+    ) {
+      lines.push(`    ${check.metadata.recommendation}`)
+    }
   }
 
   lines.push(

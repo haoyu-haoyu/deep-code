@@ -3,7 +3,11 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { fileSuffixForOauthConfig } from '../constants/oauth.js'
 import { isRunningWithBun } from './bundledMode.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
+import {
+  getDeepCodeConfigHomeDir,
+  getLegacyClaudeConfigHomeDir,
+  isEnvTruthy,
+} from './envUtils.js'
 import { findExecutable } from './findExecutable.js'
 import { getFsImplementation } from './fsOperations.js'
 import { which } from './which.js'
@@ -11,19 +15,29 @@ import { which } from './which.js'
 type Platform = 'win32' | 'darwin' | 'linux'
 
 // Config and data paths
-export const getGlobalClaudeFile = memoize((): string => {
-  // Legacy fallback for backwards compatibility
-  if (
-    getFsImplementation().existsSync(
-      join(getClaudeConfigHomeDir(), '.config.json'),
-    )
-  ) {
-    return join(getClaudeConfigHomeDir(), '.config.json')
-  }
+export const getGlobalDeepCodeFile = memoize(
+  (): string => {
+    const filename = `.deepcode${fileSuffixForOauthConfig()}.json`
+    return join(getDeepCodeConfigHomeDir(), filename)
+  },
+  () => `${process.env.DEEPCODE_CONFIG_DIR ?? ''}\0${process.env.CLAUDE_CONFIG_DIR ?? ''}\0${fileSuffixForOauthConfig()}`,
+)
 
-  const filename = `.claude${fileSuffixForOauthConfig()}.json`
-  return join(process.env.CLAUDE_CONFIG_DIR || homedir(), filename)
-})
+export const getLegacyGlobalClaudeFileCandidates = memoize(
+  (): string[] => {
+    const filename = `.claude${fileSuffixForOauthConfig()}.json`
+    const candidates = [
+      join(getLegacyClaudeConfigHomeDir(), '.config.json'),
+      join(process.env.CLAUDE_CONFIG_DIR || homedir(), filename),
+    ]
+    return [...new Set(candidates.map(path => path.normalize('NFC')))]
+  },
+  () => `${process.env.CLAUDE_CONFIG_DIR ?? ''}\0${fileSuffixForOauthConfig()}`,
+)
+
+// Compatibility alias for existing call sites. New writes target the Deep Code
+// config file; explicit legacy candidates are handled separately.
+export const getGlobalClaudeFile = getGlobalDeepCodeFile
 
 const hasInternetAccess = memoize(async (): Promise<boolean> => {
   try {
