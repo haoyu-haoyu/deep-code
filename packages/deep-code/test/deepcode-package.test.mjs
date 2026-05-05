@@ -31,6 +31,10 @@ const deepcodeEntrypointSource = readFileSync(
   resolve(root, 'packages/deep-code/deepcode.js'),
   'utf8',
 )
+const themeSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/utils/theme.ts'),
+  'utf8',
+)
 const runSingleTurnSource = deepcodeEntrypointSource.slice(
   deepcodeEntrypointSource.indexOf('async function runSingleTurn'),
   deepcodeEntrypointSource.indexOf('async function runInteractive'),
@@ -74,7 +78,7 @@ test('Deep Code package entrypoint executes the DeepSeek-native CLI', () => {
       encoding: 'utf8',
     })
     assert.equal(result.status, 0, result.stderr)
-    assert.equal(result.stdout.trim(), '0.1.0-deepseek-native')
+    assert.equal(result.stdout.trim(), '0.1.0-deepseek-native (Deep Code)')
   }
 })
 
@@ -95,10 +99,84 @@ test('Deep Code CLI advertises DeepSeek local toolchain E2E check', () => {
   assert.match(result.stdout, /--reasoning-effort high\|max/)
 })
 
-test('Deep Code print mode routes single-turn prompts through the local toolchain', () => {
-  assert.match(deepcodeEntrypointSource, /runSingleTurn\(prompt, env, cacheStatsPath, stablePrefix\)/)
-  assert.match(runSingleTurnSource, /runDeepSeekLocalToolChain\(\{/)
-  assert.match(runSingleTurnSource, /printAndRecordUsage\(result\.usage, cacheStatsPath, result\.stablePrefix\)/)
+test('Deep Code front controller delegates print mode to the full CLI bundle', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-delegate-'))
+  const fakeFullCli = join(dir, 'deepcode-full.mjs')
+  const capturePath = join(dir, 'capture.json')
+  writeFileSync(fakeFullCli, [
+    '#!/usr/bin/env node',
+    'import { writeFileSync } from "node:fs"',
+    `writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), provider: process.env.DEEPCODE_PROVIDER ?? null }))`,
+    'console.log("delegated-full-cli")',
+  ].join('\n'))
+
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '-p',
+    'explain',
+    'repo',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_FULL_CLI_PATH: fakeFullCli,
+      DEEPCODE_PROVIDER: 'deepseek',
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), 'delegated-full-cli')
+  assert.deepEqual(JSON.parse(readFileSync(capturePath, 'utf8')), {
+    argv: ['-p', 'explain', 'repo'],
+    cwd: root,
+    provider: 'deepseek',
+  })
+})
+
+test('Deep Code front controller reports a clear error when the full CLI bundle is missing', () => {
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '-p',
+    'explain',
+    'repo',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_FULL_CLI_PATH: join(tmpdir(), 'missing-deepcode-full.mjs'),
+    },
+  })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /Deep Code full CLI bundle is missing/)
+  assert.match(result.stderr, /npm run build:full-cli --workspace @deepcode-ai\/deep-code/)
+})
+
+test('Deep Code package can build the full CLI launcher artifact', () => {
+  const result = spawnSync('npm', [
+    'run',
+    'build:full-cli',
+    '--workspace',
+    '@deepcode-ai/deep-code',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(existsSync(resolve(root, 'packages/deep-code/dist/deepcode-full.mjs')), true)
+})
+
+test('Deep Code theme exposes DeepSeek blue brand tokens and aliases legacy brand tokens to blue', () => {
+  assert.match(themeSource, /deepseek: string/)
+  assert.match(themeSource, /deepseekShimmer: string/)
+  assert.match(themeSource, /DEEPSEEK_BLUE = 'rgb\(77,107,254\)'/)
+  assert.match(themeSource, /DEEPSEEK_BLUE_DARK = 'rgb\(143,170,255\)'/)
+  assert.doesNotMatch(themeSource, /claude: 'rgb\(215,119,87\)'/)
+  assert.doesNotMatch(themeSource, /briefLabelClaude: 'rgb\(215,119,87\)'/)
+  assert.doesNotMatch(themeSource, /claude: 'ansi:redBright'/)
 })
 
 test('Deep Code status displays persisted DeepSeek cache telemetry', () => {

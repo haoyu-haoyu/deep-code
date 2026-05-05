@@ -4,7 +4,12 @@ import {
   createDeepSeekProvider,
   mapDeepSeekFinishReason,
 } from '../deepcode/deepseek-native.mjs'
+import {
+  recordDeepSeekCacheUsage,
+  resolveDeepSeekCacheStatsPath,
+} from '../deepcode/cache-telemetry.mjs'
 import { createDeepCodeStablePrefix } from '../deepcode/stable-prefix.mjs'
+import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
 
 export function createDeepSeekCallModel({
   provider = createDeepSeekProvider(),
@@ -50,12 +55,31 @@ export function createDeepSeekCallModel({
       fetch: options.fetchOverride,
     }))
 
+    await recordQueryCacheUsage(response.usage, stablePrefix)
+
     yield deepSeekResponseToAssistantMessage(response, {
       model: resolveDeepSeekRuntimeModel(options.model) ?? 'deepseek-v4-pro',
       now,
       uuid,
     })
   }
+}
+
+async function recordQueryCacheUsage(usage, stablePrefix) {
+  if (!usage) return
+  const config = resolveDeepSeekConfig({
+    env: process.env,
+    cwd: process.cwd(),
+  })
+  const path = resolveDeepSeekCacheStatsPath({
+    env: process.env,
+    config,
+  })
+  await recordDeepSeekCacheUsage({
+    path,
+    usage,
+    stablePrefix,
+  })
 }
 
 export function resolveDeepSeekRuntimeModel(model) {

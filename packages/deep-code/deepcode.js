@@ -2,9 +2,11 @@
 
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import readline from 'node:readline/promises'
+import { fileURLToPath } from 'node:url'
 import {
   calculateDeepSeekCacheHitRate,
   compactDeepCodeConversation,
@@ -36,6 +38,7 @@ import { runDeepSeekLocalToolChain } from './src/deepcode/local-toolchain.mjs'
 import { resolveModelProvider } from './src/services/providers/index.mjs'
 
 const VERSION = '0.1.0-deepseek-native'
+const PACKAGE_DIR = dirname(fileURLToPath(import.meta.url))
 
 async function main() {
   const cli = parseDeepCodeArgs(process.argv.slice(2))
@@ -44,7 +47,7 @@ async function main() {
     return
   }
   if (cli.command === 'version') {
-    console.log(VERSION)
+    console.log(`${VERSION} (Deep Code)`)
     return
   }
 
@@ -120,6 +123,9 @@ async function main() {
     return
   }
 
+  await delegateToFullCli()
+  return
+
   const repoSummary = await loadRepoSummary()
   const stablePrefix = await createDeepCodeStablePrefix({ repoSummary })
   const prompt = await resolvePrompt(cli.promptArgs)
@@ -135,6 +141,49 @@ async function main() {
   }
 
   await runInteractive(env, cacheStatsPath, stablePrefix)
+}
+
+async function delegateToFullCli() {
+  const fullCliPath = resolveFullCliPath()
+  if (!existsSync(fullCliPath)) {
+    console.error(
+      `Deep Code full CLI bundle is missing at ${fullCliPath}.\n` +
+        'Run: npm run build:full-cli --workspace @deepcode-ai/deep-code',
+    )
+    process.exitCode = 1
+    return
+  }
+
+  const child = spawn(process.execPath, [
+    fullCliPath,
+    ...process.argv.slice(2),
+  ], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      DEEPCODE_PROVIDER: process.env.DEEPCODE_PROVIDER ?? 'deepseek',
+    },
+    stdio: 'inherit',
+  })
+
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('exit', (code, signal) => {
+      if (signal) {
+        resolve(1)
+        return
+      }
+      resolve(code ?? 1)
+    })
+  }).catch(error => {
+    console.error(`Failed to launch Deep Code full CLI: ${error.message}`)
+    return 1
+  })
+  process.exitCode = exitCode
+}
+
+function resolveFullCliPath() {
+  return process.env.DEEPCODE_FULL_CLI_PATH ?? join(PACKAGE_DIR, 'dist', 'deepcode-full.mjs')
 }
 
 async function runSingleTurn(prompt, env, cacheStatsPath, stablePrefix) {

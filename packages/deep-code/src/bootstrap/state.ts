@@ -1673,6 +1673,14 @@ export function setAdditionalDirectoriesForClaudeMd(
   STATE.additionalDirectoriesForClaudeMd = directories
 }
 
+export function isReplBridgeActive(): boolean {
+  return Boolean((STATE as State & { replBridgeActive?: boolean }).replBridgeActive)
+}
+
+export function setReplBridgeActive(active: boolean): void {
+  ;(STATE as State & { replBridgeActive?: boolean }).replBridgeActive = active
+}
+
 export function getAllowedChannels(): ChannelEntry[] {
   return STATE.allowedChannels
 }
@@ -1755,4 +1763,3 @@ export function getPromptId(): string | null {
 export function setPromptId(id: string | null): void {
   STATE.promptId = id
 }
-

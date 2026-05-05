@@ -61,12 +61,14 @@ export async function createDeepSeekDoctorReport({
       : `missing=${missingCapabilities.join(',')}`,
   )
 
-  add(
-    'config.apiKey',
-    'API key',
-    config.apiKey ? 'pass' : 'fail',
-    config.apiKey ? 'configured' : 'missing DEEPSEEK_API_KEY or DEEPCODE_API_KEY',
-  )
+  const shouldRunLive = live ?? Boolean(config.apiKey)
+  const apiKeyStatus = config.apiKey ? 'pass' : shouldRunLive ? 'fail' : 'skip'
+  const apiKeyDetail = config.apiKey
+    ? 'configured'
+    : shouldRunLive
+      ? 'missing DEEPSEEK_API_KEY or DEEPCODE_API_KEY'
+      : 'skipped by --no-live; set DEEPSEEK_API_KEY or DEEPCODE_API_KEY for live checks'
+  add('config.apiKey', 'API key', apiKeyStatus, apiKeyDetail)
   add(
     'config.baseUrl',
     'Base URL',
@@ -145,7 +147,6 @@ export async function createDeepSeekDoctorReport({
     cacheDiagnostics,
   )
 
-  const shouldRunLive = live ?? Boolean(config.apiKey)
   let liveUsage = null
   if (shouldRunLive) {
     if (!config.apiKey) {

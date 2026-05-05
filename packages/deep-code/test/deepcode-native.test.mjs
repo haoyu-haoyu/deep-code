@@ -1271,6 +1271,55 @@ test('createDeepSeekCallModel forwards query runtime controls to DeepSeek provid
   assert.equal(requests[0].fetch, fetchOverride)
 })
 
+test('createDeepSeekCallModel records DeepSeek cache telemetry for full CLI and TUI paths', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'deepcode-query-cache-'))
+  const statsPath = join(cwd, 'cache-stats.json')
+  const previousStatsPath = process.env.DEEPCODE_CACHE_STATS_PATH
+  process.env.DEEPCODE_CACHE_STATS_PATH = statsPath
+
+  try {
+    const callModel = createDeepSeekCallModel({
+      provider: {
+        streamQuery() {
+          return (async function* stream() {
+            yield { type: 'content_delta', text: 'done' }
+            yield { type: 'finish', finishReason: 'stop' }
+            yield {
+              type: 'usage',
+              usage: {
+                prompt_cache_hit_tokens: 8,
+                prompt_cache_miss_tokens: 2,
+              },
+            }
+          })()
+        },
+      },
+      uuid: () => 'cache-test',
+    })
+
+    for await (const _ of callModel({
+      messages: [{ role: 'user', content: 'hello' }],
+      systemPrompt: ['You are Deep Code.'],
+      tools: [],
+      signal: new AbortController().signal,
+    })) {
+      // Drain the response stream.
+    }
+
+    const stats = JSON.parse(await readFile(statsPath, 'utf8'))
+    assert.equal(stats.lastPromptCacheHitTokens, 8)
+    assert.equal(stats.lastPromptCacheMissTokens, 2)
+    assert.equal(stats.lastPromptCacheHitRate, 0.8)
+    assert.match(stats.lastStablePrefixHash, /^[A-Za-z0-9_-]+$/)
+  } finally {
+    if (previousStatsPath === undefined) {
+      delete process.env.DEEPCODE_CACHE_STATS_PATH
+    } else {
+      process.env.DEEPCODE_CACHE_STATS_PATH = previousStatsPath
+    }
+  }
+})
+
 test('createDeepSeekCallModel prepends a stable real-tool prefix using query permissions', async () => {
   const requests = []
   const callModel = createDeepSeekCallModel({
@@ -1380,6 +1429,26 @@ test('createDeepSeekDoctorReport validates DeepSeek-native request shape offline
   assert.match(formatDeepSeekDoctorReport(report), /Deep Code Doctor/)
   assert.ok(report.checks.some(check => check.id === 'request.noAnthropicFields'))
   assert.ok(report.checks.some(check => check.id === 'cache.diagnostics'))
+})
+
+test('createDeepSeekDoctorReport treats missing API key as skip in no-live mode', async () => {
+  const report = await createDeepSeekDoctorReport({
+    env: {},
+    cwd: '/tmp/workspace-no-key',
+    live: false,
+  })
+
+  assert.equal(hasFailingDoctorChecks(report), false)
+  assert.ok(
+    report.checks.some(
+      check => check.id === 'config.apiKey' && check.status === 'skip',
+    ),
+  )
+  assert.ok(
+    report.checks.some(
+      check => check.id === 'live.api' && check.status === 'skip',
+    ),
+  )
 })
 
 test('createDeepSeekDoctorReport validates live stream and cache telemetry with provider injection', async () => {
