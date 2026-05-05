@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import readline from 'node:readline/promises'
 import {
@@ -18,6 +18,7 @@ import {
   formatDeepSeekDoctorReport,
   hasFailingDoctorChecks,
 } from './src/deepcode/doctor.mjs'
+import { runDeepSeekLocalToolChain } from './src/deepcode/local-toolchain.mjs'
 import { resolveModelProvider } from './src/services/providers/index.mjs'
 
 const VERSION = '0.1.0-deepseek-native'
@@ -60,6 +61,10 @@ async function main() {
       repoSummary: await loadRepoSummary(),
     })
     console.log(formatDeepSeekWarmupResult(result))
+    return
+  }
+  if (args.includes('--tool-e2e')) {
+    await runToolE2E(env)
     return
   }
 
@@ -221,6 +226,37 @@ function printUsage(usage) {
   )
 }
 
+async function runToolE2E(env) {
+  const cwd = await mkdtemp(join(tmpdir(), 'deepcode-tool-e2e-'))
+  const samplePath = join(cwd, 'sample.txt')
+  await writeFile(samplePath, 'alpha\n')
+  const result = await runDeepSeekLocalToolChain({
+    cwd,
+    env,
+    prompt: [
+      'Use tools in this exact order:',
+      '1. Read sample.txt.',
+      '2. Edit sample.txt by replacing alpha with beta.',
+      '3. Bash cat sample.txt.',
+      '4. Read sample.txt again.',
+      'Then answer exactly: tool-e2e-ok',
+    ].join('\n'),
+  })
+  const finalContent = await readFile(samplePath, 'utf8')
+  console.log('DeepSeek local toolchain E2E')
+  console.log(`Workspace: ${cwd}`)
+  console.log(`Model response: ${JSON.stringify(result.content.trim())}`)
+  console.log(`File content: ${JSON.stringify(finalContent)}`)
+  if (result.cacheDiagnostics) {
+    console.log(
+      `Cache: hit=${result.cacheDiagnostics.promptCacheHitTokens} miss=${result.cacheDiagnostics.promptCacheMissTokens} hit_rate=${(result.cacheDiagnostics.promptCacheHitRate * 100).toFixed(1)}%`,
+    )
+  }
+  if (!finalContent.includes('beta')) {
+    process.exitCode = 1
+  }
+}
+
 function printHelp() {
   console.log(`Deep Code native DeepSeek CLI
 
@@ -230,6 +266,7 @@ Usage:
   deepcode --status
   deepcode --doctor [--no-live]
   deepcode --warm-cache
+  deepcode --tool-e2e
 
 Configuration:
   ~/.deepcode/settings.json

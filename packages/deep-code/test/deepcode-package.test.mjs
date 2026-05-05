@@ -52,3 +52,16 @@ test('Deep Code package entrypoint executes the DeepSeek-native CLI', () => {
     assert.equal(result.stdout.trim(), '0.1.0-deepseek-native')
   }
 })
+
+test('Deep Code CLI advertises DeepSeek local toolchain E2E check', () => {
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '--help',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /deepcode --tool-e2e/)
+})

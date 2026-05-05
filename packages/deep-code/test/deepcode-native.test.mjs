@@ -1,5 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   buildDeepSeekRequest,
@@ -38,6 +41,10 @@ import {
   formatDeepSeekDoctorReport,
   hasFailingDoctorChecks,
 } from '../src/deepcode/doctor.mjs'
+import {
+  createDeepSeekLocalTools,
+  runDeepSeekLocalToolChain,
+} from '../src/deepcode/local-toolchain.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -875,6 +882,100 @@ test('createDeepSeekDoctorReport validates live stream and cache telemetry with 
   assert.ok(report.checks.some(check => check.id === 'live.cacheTelemetry' && check.status === 'pass'))
 })
 
+test('runDeepSeekLocalToolChain executes Read -> Edit -> Bash -> Read through DeepSeek tool calls', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'deepcode-toolchain-'))
+  await writeFile(join(cwd, 'sample.txt'), 'alpha\n')
+  const requests = []
+  const result = await runDeepSeekLocalToolChain({
+    prompt: 'Update sample.txt from alpha to beta, verify with bash, then read it.',
+    cwd,
+    env: {
+      DEEPSEEK_API_KEY: 'sk-test',
+      DEEPSEEK_CACHE_USER_ID: 'workspace-1',
+    },
+    provider: {
+      streamQuery(request) {
+        requests.push(request)
+        if (requests.length === 1) {
+          return toolCallStream({
+            id: 'call_read_1',
+            name: 'Read',
+            input: { file_path: 'sample.txt' },
+            reasoning: 'Need to read the file first.',
+          })
+        }
+        if (requests.length === 2) {
+          return toolCallStream({
+            id: 'call_edit_1',
+            name: 'Edit',
+            input: {
+              file_path: 'sample.txt',
+              old_string: 'alpha',
+              new_string: 'beta',
+            },
+            reasoning: 'Now update the file.',
+          })
+        }
+        if (requests.length === 3) {
+          return toolCallStream({
+            id: 'call_bash_1',
+            name: 'Bash',
+            input: { command: 'cat sample.txt' },
+            reasoning: 'Verify using a shell command.',
+          })
+        }
+        if (requests.length === 4) {
+          return toolCallStream({
+            id: 'call_read_2',
+            name: 'Read',
+            input: { file_path: 'sample.txt' },
+            reasoning: 'Read the final file contents.',
+          })
+        }
+        return (async function* finalStream() {
+          yield { type: 'content_delta', text: 'tool-e2e-ok' }
+          yield { type: 'finish', finishReason: 'stop' }
+          yield {
+            type: 'usage',
+            usage: {
+              prompt_cache_hit_tokens: 32,
+              prompt_cache_miss_tokens: 8,
+            },
+          }
+        })()
+      },
+    },
+  })
+
+  assert.equal(result.content, 'tool-e2e-ok')
+  assert.equal(await readFile(join(cwd, 'sample.txt'), 'utf8'), 'beta\n')
+  assert.equal(requests.length, 5)
+  assert.deepEqual(requests[0].body.tools.map(tool => tool.function.name), [
+    'Bash',
+    'Edit',
+    'Read',
+  ])
+  assert.equal(requests[1].body.messages.at(-2).reasoning_content, 'Need to read the file first.')
+  assert.equal(requests[4].body.messages.at(-1).role, 'tool')
+  assert.equal(result.cacheDiagnostics.promptCacheHitRate, 0.8)
+})
+
+test('createDeepSeekLocalTools rejects paths outside cwd and unsafe bash commands', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'deepcode-toolchain-'))
+  const tools = createDeepSeekLocalTools({ cwd })
+  const read = tools.find(tool => tool.name === 'Read')
+  const bash = tools.find(tool => tool.name === 'Bash')
+
+  await assert.rejects(
+    () => read.execute({ file_path: '../outside.txt' }, { cwd }),
+    /outside workspace/,
+  )
+  await assert.rejects(
+    () => bash.execute({ command: 'rm -rf sample.txt' }, { cwd }),
+    /not allowed/,
+  )
+})
+
 function sseBody(lines) {
   const encoder = new TextEncoder()
   return new ReadableStream({
@@ -885,4 +986,18 @@ function sseBody(lines) {
       controller.close()
     },
   })
+}
+
+function toolCallStream({ id, name, input, reasoning }) {
+  return (async function* stream() {
+    yield { type: 'reasoning_delta', text: reasoning }
+    yield {
+      type: 'tool_call_delta',
+      index: 0,
+      id,
+      name,
+      argumentsDelta: JSON.stringify(input),
+      finishReason: 'tool_calls',
+    }
+  })()
 }
