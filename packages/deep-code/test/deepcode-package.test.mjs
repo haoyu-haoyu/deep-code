@@ -166,7 +166,28 @@ test('Deep Code package can build the full CLI launcher artifact', () => {
   })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.equal(existsSync(resolve(root, 'packages/deep-code/dist/deepcode-full.mjs')), true)
+  const bundlePath = resolve(root, 'packages/deep-code/dist/deepcode-full.mjs')
+  assert.equal(existsSync(bundlePath), true)
+  const bundleSource = readFileSync(bundlePath, 'utf8')
+  assert.doesNotMatch(bundleSource, /src\/entrypoints\/cli\.tsx/)
+  assert.doesNotMatch(bundleSource, /--preload/)
+  assert.doesNotMatch(bundleSource, /Failed to launch Deep Code full CLI through Bun/)
+  assert.match(bundleSource, /Deep Code full CLI bundled artifact/)
+
+  const versionResult = spawnSync('node', [bundlePath, '--version'], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  assert.equal(versionResult.status, 0, versionResult.stderr)
+  assert.match(versionResult.stdout, /0\.1\.0-deepseek-native \(Deep Code\)/)
+
+  const helpResult = spawnSync('node', [bundlePath, '--help'], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  assert.equal(helpResult.status, 0, helpResult.stderr)
+  assert.match(helpResult.stdout, /Deep Code/)
+  assert.match(helpResult.stdout, /DeepSeek native models/)
 })
 
 test('Deep Code theme exposes DeepSeek blue brand tokens and aliases legacy brand tokens to blue', () => {

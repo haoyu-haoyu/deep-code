@@ -17,7 +17,7 @@
     "url": "https://api-docs.deepseek.com/"
   },
   "scripts": {
-    "build:full-cli": "node scripts/build-full-cli.mjs",
+    "build:full-cli": "bun scripts/build-full-cli.mjs",
     "test:deepcode": "node --test test/deepcode-native.test.mjs test/deepcode-package.test.mjs",
     "test:tui-deepseek": "bun test test/tui-deepseek.test.mjs",
     "prepare": "node -e \"if (!process.env.AUTHORIZED) { console.error('ERROR: Direct publishing is not allowed.\\nPlease see the release workflow documentation to publish this package.'); process.exit(1); }\""
