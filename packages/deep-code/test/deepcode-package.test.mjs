@@ -575,8 +575,14 @@ test('Deep Code front controller starts the stable native interactive session by
   })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /Deep Code native DeepSeek session/)
+  assert.match(result.stdout, /Deep Code v0\.1\.0-deepseek-native/)
+  assert.match(result.stdout, /Welcome back/)
+  assert.match(result.stdout, /Tips for getting started/)
+  assert.match(result.stdout, /Recent activity/)
+  assert.match(result.stdout, /deepseek-v4-flash \(1M context\)/)
+  assert.match(result.stdout, /Try "how does <filepath> work\?"/)
   assert.match(result.stdout, /deepcode>/)
+  assert.doesNotMatch(result.stdout, /Claude|Anthropic/)
   assert.doesNotMatch(result.stdout, /should-not-delegate-full-cli-tui/)
 })
 

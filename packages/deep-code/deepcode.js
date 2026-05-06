@@ -31,6 +31,7 @@ import {
   buildDeepCodeStatusReport,
   formatDeepCodeStatus,
 } from './src/deepcode/status.mjs'
+import { formatDeepCodeWelcome } from './src/deepcode/welcome.mjs'
 import {
   formatDeepCodeHarnessStatus,
   resolveDeepCodeHarnessConfig,
@@ -242,12 +243,24 @@ async function runSingleTurn(prompt, env, cacheStatsPath, stablePrefix) {
 }
 
 async function runInteractive(env, cacheStatsPath, stablePrefix) {
+  const messages = []
+  const statusReport = await buildDeepCodeStatusReport({
+    env,
+    cwd: process.cwd(),
+    repoSummary: stablePrefix?.repoSummary,
+    cacheStatsPath,
+    stablePrefix,
+  })
+  console.log(formatDeepCodeWelcome({
+    version: VERSION,
+    report: statusReport,
+    cwd: process.cwd(),
+    env,
+  }))
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   })
-  const messages = []
-  console.log('Deep Code native DeepSeek session. Type /exit to quit.')
   while (true) {
     const prompt = await rl.question('deepcode> ')
     if (prompt.trim() === '/exit') break
