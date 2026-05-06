@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { PassThrough } from 'node:stream'
 
 const root = resolve(import.meta.dirname, '../../..')
 const rootPackage = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
@@ -678,6 +679,38 @@ test('Deep Code native interactive model picker supports arrows and updates sess
   assert.match(result.stdout, /Model\s+deepseek-v4-flash/)
   assert.match(result.stdout, /Reasoning effort\s+high/)
   assert.doesNotMatch(result.stdout, /Claude|Anthropic/)
+})
+
+test('Deep Code native slash palette redraws in place during TTY arrow navigation', async () => {
+  const { createDeepCodeInteractiveReader } = await import('../src/deepcode/native-interactive.mjs')
+  const input = new PassThrough()
+  input.isTTY = true
+  input.setRawMode = () => {}
+  let outputText = ''
+  const output = {
+    isTTY: true,
+    columns: 100,
+    write(chunk) {
+      outputText += String(chunk)
+      return true
+    },
+  }
+
+  const reader = createDeepCodeInteractiveReader({
+    input,
+    output,
+    env: { DEEPCODE_FORCE_COLOR: '1' },
+  })
+  const linePromise = reader.readLine()
+  input.write('/')
+  input.write('\x1b[B')
+  input.write('\x1b[B')
+  input.write('\n')
+  const line = await linePromise
+  reader.close()
+
+  assert.equal(line, '/doctor')
+  assert.doesNotMatch(outputText, /\x1b\[\d+B\r\x1b\[J/)
 })
 
 test('Deep Code front controller can opt into the experimental full TUI bundle', () => {

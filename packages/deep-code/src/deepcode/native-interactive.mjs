@@ -276,8 +276,6 @@ class KeyDrivenInteractiveReader {
       return
     }
     const prompt = formatDeepCodePrompt()
-    const previousLines = previousBlock ? previousBlock.split('\n').length : 0
-    if (previousLines > 0) this.output.write(`\x1b[${previousLines}B`)
     this.output.write('\r\x1b[J')
     this.output.write(`${prompt}${buffer}`)
     if (block) {
@@ -292,8 +290,6 @@ class KeyDrivenInteractiveReader {
       if (block !== previousBlock) this.output.write(`${block}\n`)
       return
     }
-    const previousLines = previousBlock ? previousBlock.split('\n').length : 0
-    if (previousLines > 0) this.output.write(`\x1b[${previousLines}B`)
     this.output.write('\r\x1b[J')
     this.output.write(block)
     this.output.write(`\x1b[${block.split('\n').length - 1}A`)
@@ -302,7 +298,7 @@ class KeyDrivenInteractiveReader {
 
   finishRender(block) {
     if (this.output.isTTY && block) {
-      this.output.write(`\x1b[${block.split('\n').length}B\r\x1b[J`)
+      this.output.write('\r\x1b[J')
     }
     this.output.write('\n')
   }
