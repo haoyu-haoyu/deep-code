@@ -713,6 +713,40 @@ test('Deep Code native slash palette redraws in place during TTY arrow navigatio
   assert.doesNotMatch(outputText, /\x1b\[\d+B\r\x1b\[J/)
 })
 
+test('Deep Code native turn spinner animates waiting state and clears before content', async () => {
+  const { createDeepCodeTurnSpinner } = await import('../src/deepcode/native-interactive.mjs')
+  let outputText = ''
+  const output = {
+    isTTY: true,
+    columns: 100,
+    write(chunk) {
+      outputText += String(chunk)
+      return true
+    },
+  }
+
+  const spinner = createDeepCodeTurnSpinner({
+    output,
+    env: { DEEPCODE_FORCE_COLOR: '1' },
+    intervalMs: 5,
+    message: 'DeepSeek reasoning',
+  })
+  spinner.start()
+  await new Promise(resolve => setTimeout(resolve, 20))
+  spinner.stop({ clear: true })
+
+  assert.match(outputText, /DeepSeek reasoning/)
+  assert.match(outputText, /\r\x1b\[J/)
+  assert.match(outputText, /[·✢✳✶✻✽*]/)
+  assert.doesNotMatch(outputText, /Claude|Anthropic/)
+})
+
+test('Deep Code native interactive stream path starts and clears the turn spinner', () => {
+  assert.match(deepcodeEntrypointSource, /createDeepCodeTurnSpinner/)
+  assert.match(deepcodeEntrypointSource, /spinner\.start\(\)/)
+  assert.match(deepcodeEntrypointSource, /spinner\.stop\(\{ clear: true \}\)/)
+})
+
 test('Deep Code front controller can opt into the experimental full TUI bundle', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-opt-in-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')

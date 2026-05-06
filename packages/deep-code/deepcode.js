@@ -47,6 +47,7 @@ import {
 } from './src/deepcode/harness-runtime.mjs'
 import {
   createDeepCodeInteractiveReader,
+  createDeepCodeTurnSpinner,
   shouldForceNativeInteractive,
 } from './src/deepcode/native-interactive.mjs'
 import {
@@ -366,17 +367,36 @@ async function requestDeepSeek(
 ) {
   const provider = resolveModelProvider({ env })
   const prefix = stablePrefix ?? (await createDeepCodeStablePrefix())
-  return await collectDeepSeekStreamEvents(provider.streamQuery({
-    systemPrompt: prefix.systemPrompt,
-    messages,
-    env,
-    cwd: process.cwd(),
-    maxTokens: Number(env.DEEPCODE_MAX_TOKENS ?? env.DEEPSEEK_MAX_TOKENS ?? 4096),
-  }), {
-    onContent: streamToStdout
-      ? text => process.stdout.write(formatDeepCodeAssistantChunk(text))
-      : undefined,
-  })
+  const spinner = streamToStdout
+    ? createDeepCodeTurnSpinner({
+        output: process.stdout,
+        env,
+        message: 'DeepSeek reasoning',
+      })
+    : null
+  let receivedContent = false
+  if (spinner) spinner.start()
+  try {
+    return await collectDeepSeekStreamEvents(provider.streamQuery({
+      systemPrompt: prefix.systemPrompt,
+      messages,
+      env,
+      cwd: process.cwd(),
+      maxTokens: Number(env.DEEPCODE_MAX_TOKENS ?? env.DEEPSEEK_MAX_TOKENS ?? 4096),
+    }), {
+      onContent: streamToStdout
+        ? text => {
+            if (!receivedContent) {
+              if (spinner) spinner.stop({ clear: true })
+              receivedContent = true
+            }
+            process.stdout.write(formatDeepCodeAssistantChunk(text))
+          }
+        : undefined,
+    })
+  } finally {
+    if (spinner) spinner.stop({ clear: true })
+  }
 }
 
 async function resolvePrompt(args, env = process.env) {

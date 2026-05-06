@@ -46,6 +46,15 @@ export const DEEP_CODE_MODEL_OPTIONS = [
 ]
 
 const DEEP_CODE_EFFORTS = ['high', 'max']
+const DEEP_CODE_BLUE = '\x1b[38;2;77;107;254m'
+const DEEP_CODE_BLUE_SHIMMER = '\x1b[38;2;121;150;255m'
+const DEEP_CODE_MUTED = '\x1b[38;2;150;160;180m'
+const DEEP_CODE_RESET = '\x1b[0m'
+const DEEP_CODE_SPINNER_BASE_FRAMES = getSpinnerBaseFrames()
+const DEEP_CODE_SPINNER_FRAMES = [
+  ...DEEP_CODE_SPINNER_BASE_FRAMES,
+  ...[...DEEP_CODE_SPINNER_BASE_FRAMES].reverse(),
+]
 
 export function shouldForceNativeInteractive(env = process.env) {
   return (
@@ -70,6 +79,67 @@ export function createDeepCodeInteractiveReader({
     return new KeyDrivenInteractiveReader({ input, output, env })
   }
   return new ReadlineInteractiveReader({ input, output })
+}
+
+export function createDeepCodeTurnSpinner({
+  output = process.stdout,
+  env = process.env,
+  intervalMs = 120,
+  message = 'DeepSeek reasoning',
+} = {}) {
+  const enabled =
+    Boolean(output.isTTY) ||
+    env.DEEPCODE_FORCE_NATIVE_SPINNER === '1' ||
+    env.DEEPCODE_FORCE_COLOR === '1'
+  const color = shouldColor(output, env)
+  let timer = null
+  let frame = 0
+  let startedAt = 0
+  let active = false
+
+  const render = () => {
+    if (!enabled) return
+    const elapsedSeconds = startedAt
+      ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+      : 0
+    const glyph = DEEP_CODE_SPINNER_FRAMES[frame % DEEP_CODE_SPINNER_FRAMES.length]
+    const shimmer =
+      frame % DEEP_CODE_SPINNER_FRAMES.length < DEEP_CODE_SPINNER_BASE_FRAMES.length
+    const glyphText = color
+      ? `${shimmer ? DEEP_CODE_BLUE_SHIMMER : DEEP_CODE_BLUE}${glyph}${DEEP_CODE_RESET}`
+      : glyph
+    const messageText = color ? `${DEEP_CODE_BLUE}${message}${DEEP_CODE_RESET}` : message
+    const suffix = elapsedSeconds > 1
+      ? color
+        ? ` ${DEEP_CODE_MUTED}(${elapsedSeconds}s)${DEEP_CODE_RESET}`
+        : ` (${elapsedSeconds}s)`
+      : ''
+    output.write(`\r\x1b[J${glyphText} ${messageText}${suffix}`)
+    frame += 1
+  }
+
+  return {
+    start() {
+      if (!enabled || active) return
+      active = true
+      startedAt = Date.now()
+      render()
+      timer = setInterval(render, intervalMs)
+      timer.unref?.()
+    },
+    stop({ clear = true } = {}) {
+      if (!active) return
+      active = false
+      if (timer) {
+        clearInterval(timer)
+        timer = null
+      }
+      if (enabled && clear) output.write('\r\x1b[J')
+    },
+    isActive() {
+      return active
+    },
+  }
 }
 
 class ReadlineInteractiveReader {
@@ -385,6 +455,12 @@ function parseKeyTokens(chunk) {
 
 function shouldColor(output, env) {
   return Boolean(output.isTTY) || env.DEEPCODE_FORCE_COLOR === '1'
+}
+
+function getSpinnerBaseFrames() {
+  if (process.env.TERM === 'xterm-ghostty') return ['·', '✢', '✳', '✶', '✻', '*']
+  if (process.platform === 'darwin') return ['·', '✢', '✳', '✶', '✻', '✽']
+  return ['·', '✢', '*', '✶', '✻', '✽']
 }
 
 function wrap(index, length) {
