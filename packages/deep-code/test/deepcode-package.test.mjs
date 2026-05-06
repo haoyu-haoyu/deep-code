@@ -561,7 +561,41 @@ test('Deep Code front controller delegates print mode to the full CLI bundle', (
   })
 })
 
-test('Deep Code front controller starts the Claude-like native interactive session by default', () => {
+test('Deep Code front controller defaults interactive TTY sessions to the full CLI bundle', async () => {
+  const { shouldDelegateToFullCli } = await import('../src/deepcode/front-controller.mjs')
+  const baseCli = {
+    printMode: false,
+    promptArgs: [],
+    unknownFlags: [],
+  }
+
+  assert.equal(
+    shouldDelegateToFullCli({
+      cli: baseCli,
+      env: {},
+      input: { isTTY: true },
+    }),
+    true,
+  )
+  assert.equal(
+    shouldDelegateToFullCli({
+      cli: baseCli,
+      env: { DEEPCODE_FORCE_NATIVE_INTERACTIVE: '1' },
+      input: { isTTY: true },
+    }),
+    false,
+  )
+  assert.equal(
+    shouldDelegateToFullCli({
+      cli: { ...baseCli, printMode: true },
+      env: { DEEPCODE_FORCE_NATIVE_INTERACTIVE: '1' },
+      input: { isTTY: true },
+    }),
+    true,
+  )
+})
+
+test('Deep Code front controller uses native interactive only when explicitly forced', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-delegate-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')
   writeFileSync(fakeFullCli, [
@@ -600,6 +634,40 @@ test('Deep Code front controller starts the Claude-like native interactive sessi
   assert.doesNotMatch(result.stdout, /deepcode>/)
   assert.doesNotMatch(result.stdout, /Claude|Anthropic/)
   assert.doesNotMatch(result.stdout, /should-not-delegate-full-cli-tui/)
+})
+
+test('Deep Code front controller delegates interactive startup to full TUI without experimental opt-in', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-default-'))
+  const fakeFullCli = join(dir, 'deepcode-full.mjs')
+  const capturePath = join(dir, 'capture.json')
+  writeFileSync(fakeFullCli, [
+    '#!/usr/bin/env node',
+    'import { writeFileSync } from "node:fs"',
+    `writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), provider: process.env.DEEPCODE_PROVIDER ?? null }))`,
+    'console.log("delegated-full-cli-default-tui")',
+  ].join('\n'))
+
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '--model',
+    'deepseek-v4-flash',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_FULL_CLI_PATH: fakeFullCli,
+      DEEPCODE_PROVIDER: 'deepseek',
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), 'delegated-full-cli-default-tui')
+  assert.deepEqual(JSON.parse(readFileSync(capturePath, 'utf8')), {
+    argv: ['--model', 'deepseek-v4-flash'],
+    cwd: root,
+    provider: 'deepseek',
+  })
 })
 
 test('Deep Code native interactive slash commands render Claude-like panels', () => {
@@ -1493,6 +1561,36 @@ test('Deep Code status displays persisted DeepSeek cache telemetry', () => {
   assert.match(result.stdout, /Cache prefix: current=[A-Za-z0-9_-]+ last=unknown status=untracked/)
   assert.match(result.stdout, /Cache telemetry: last_hit=9 last_miss=1 last_hit_rate=90\.0%/)
   assert.match(result.stdout, /Cache telemetry: total_hit=90 total_miss=10 total_hit_rate=90\.0% requests=2/)
+})
+
+test('Deep Code front controller reads settings from DEEPCODE_CONFIG_DIR', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-config-dir-settings-'))
+  writeFileSync(join(dir, 'settings.json'), JSON.stringify({
+    env: {
+      DEEPSEEK_MODEL: 'deepseek-v4-flash-configured',
+      DEEPSEEK_SMALL_MODEL: 'deepseek-v4-flash-small-configured',
+    },
+  }))
+
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '--status',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_CONFIG_DIR: dir,
+      DEEPSEEK_MODEL: '',
+      DEEPCODE_MODEL: '',
+      DEEPSEEK_SMALL_MODEL: '',
+      DEEPCODE_SMALL_MODEL: '',
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Model: deepseek-v4-flash-configured/)
+  assert.match(result.stdout, /Small model: deepseek-v4-flash-small-configured/)
 })
 
 test('TUI status panel uses the shared Deep Code status adapter', () => {

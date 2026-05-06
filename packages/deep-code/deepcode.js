@@ -51,6 +51,12 @@ import {
   shouldForceNativeInteractive,
 } from './src/deepcode/native-interactive.mjs'
 import {
+  formatFullCliLaunchFailure,
+  formatMissingFullCliMessage,
+  resolveFullCliPath,
+  shouldDelegateToFullCli,
+} from './src/deepcode/front-controller.mjs'
+import {
   applyDeepCodeCliEnvOverrides,
   parseDeepCodeArgs,
 } from './src/deepcode/cli-args.mjs'
@@ -72,7 +78,7 @@ async function main() {
     return
   }
 
-  const settings = await loadSettings()
+  const settings = await loadSettings(process.env)
   const env = mergeSettingsEnv(
     applyDeepCodeCliEnvOverrides(process.env, cli.envOverrides),
     settings,
@@ -164,8 +170,8 @@ async function main() {
     return
   }
 
-  if (shouldDelegateToFullCli(cli, env)) {
-    await delegateToFullCli()
+  if (shouldDelegateToFullCli({ cli, env, input: process.stdin })) {
+    await delegateToFullCli(env)
     return
   }
 
@@ -186,24 +192,10 @@ async function main() {
   await runInteractive(env, cacheStatsPath, stablePrefix)
 }
 
-function shouldDelegateToFullCli(cli, env = process.env) {
-  if (env.DEEPCODE_EXPERIMENTAL_FULL_TUI === '1') return true
-  if (!process.stdin.isTTY && !shouldForceNativeInteractive(env)) {
-    return true
-  }
-  if (cli.printMode) return true
-  if (cli.promptArgs.length > 0) return true
-  if (cli.unknownFlags.length > 0) return true
-  return false
-}
-
-async function delegateToFullCli() {
-  const fullCliPath = resolveFullCliPath()
+async function delegateToFullCli(env) {
+  const fullCliPath = resolveFullCliPath({ env, packageDir: PACKAGE_DIR })
   if (!existsSync(fullCliPath)) {
-    console.error(
-      `Deep Code full CLI bundle is missing at ${fullCliPath}.\n` +
-        'Run: npm run build:full-cli --workspace @deepcode-ai/deep-code',
-    )
+    console.error(formatMissingFullCliMessage(fullCliPath))
     process.exitCode = 1
     return
   }
@@ -214,8 +206,8 @@ async function delegateToFullCli() {
   ], {
     cwd: process.cwd(),
     env: {
-      ...process.env,
-      DEEPCODE_PROVIDER: process.env.DEEPCODE_PROVIDER ?? 'deepseek',
+      ...env,
+      DEEPCODE_PROVIDER: env.DEEPCODE_PROVIDER ?? 'deepseek',
     },
     stdio: 'inherit',
   })
@@ -230,14 +222,10 @@ async function delegateToFullCli() {
       resolve(code ?? 1)
     })
   }).catch(error => {
-    console.error(`Failed to launch Deep Code full CLI: ${error.message}`)
+    console.error(formatFullCliLaunchFailure(error))
     return 1
   })
   process.exitCode = exitCode
-}
-
-function resolveFullCliPath() {
-  return process.env.DEEPCODE_FULL_CLI_PATH ?? join(PACKAGE_DIR, 'dist', 'deepcode-full.mjs')
 }
 
 async function runSingleTurn(prompt, env, cacheStatsPath, stablePrefix) {
@@ -416,8 +404,12 @@ async function readStdin() {
   return input.trim()
 }
 
-async function loadSettings() {
-  const path = join(homedir(), '.deepcode', 'settings.json')
+function resolveSettingsPath(env = process.env) {
+  return join(env.DEEPCODE_CONFIG_DIR || join(homedir(), '.deepcode'), 'settings.json')
+}
+
+async function loadSettings(env = process.env) {
+  const path = resolveSettingsPath(env)
   if (!existsSync(path)) return {}
   try {
     return JSON.parse(await readFile(path, 'utf8'))
@@ -448,41 +440,64 @@ function mergeSettingsEnv(env, settings) {
   return {
     ...env,
     DEEPSEEK_API_KEY:
-      env.DEEPSEEK_API_KEY ??
-      env.DEEPCODE_API_KEY ??
-      settingsEnv.DEEPSEEK_API_KEY ??
-      settingsEnv.API_KEY,
+      firstConfigured(
+        env.DEEPSEEK_API_KEY,
+        env.DEEPCODE_API_KEY,
+        settingsEnv.DEEPSEEK_API_KEY,
+        settingsEnv.API_KEY,
+      ),
     DEEPSEEK_BASE_URL:
-      env.DEEPSEEK_BASE_URL ??
-      env.DEEPCODE_BASE_URL ??
-      settingsEnv.DEEPSEEK_BASE_URL ??
-      settingsEnv.BASE_URL,
+      firstConfigured(
+        env.DEEPSEEK_BASE_URL,
+        env.DEEPCODE_BASE_URL,
+        settingsEnv.DEEPSEEK_BASE_URL,
+        settingsEnv.BASE_URL,
+      ),
     DEEPSEEK_MODEL:
-      env.DEEPSEEK_MODEL ??
-      env.DEEPCODE_MODEL ??
-      settingsEnv.DEEPSEEK_MODEL ??
-      settingsEnv.MODEL,
+      firstConfigured(
+        env.DEEPSEEK_MODEL,
+        env.DEEPCODE_MODEL,
+        settingsEnv.DEEPSEEK_MODEL,
+        settingsEnv.MODEL,
+      ),
+    DEEPSEEK_SMALL_MODEL:
+      firstConfigured(
+        env.DEEPSEEK_SMALL_MODEL,
+        env.DEEPCODE_SMALL_MODEL,
+        settingsEnv.DEEPSEEK_SMALL_MODEL,
+        settingsEnv.SMALL_MODEL,
+      ),
     DEEPSEEK_THINKING:
-      env.DEEPSEEK_THINKING ??
-      env.DEEPCODE_THINKING ??
-      (settings.thinkingEnabled === false ? 'disabled' : undefined),
+      firstConfigured(
+        env.DEEPSEEK_THINKING,
+        env.DEEPCODE_THINKING,
+        settings.thinkingEnabled === false ? 'disabled' : undefined,
+      ),
     DEEPSEEK_REASONING_EFFORT:
-      env.DEEPSEEK_REASONING_EFFORT ??
-      env.DEEPCODE_REASONING_EFFORT ??
-      settings.reasoningEffort,
+      firstConfigured(
+        env.DEEPSEEK_REASONING_EFFORT,
+        env.DEEPCODE_REASONING_EFFORT,
+        settings.reasoningEffort,
+      ),
     DEEPCODE_CACHE_USER_ID:
-      env.DEEPCODE_CACHE_USER_ID ??
-      settings.cacheUserId ??
-      createDeepSeekCacheUserId(process.cwd()),
+      firstConfigured(
+        env.DEEPCODE_CACHE_USER_ID,
+        settings.cacheUserId,
+        createDeepSeekCacheUserId(process.cwd()),
+      ),
     DEEPCODE_HARNESS_MODE:
-      env.DEEPCODE_HARNESS_MODE ?? settings.harnessMode,
+      firstConfigured(env.DEEPCODE_HARNESS_MODE, settings.harnessMode),
     DEEPCODE_HARNESS_MAX_AGENTS:
-      env.DEEPCODE_HARNESS_MAX_AGENTS ?? settings.harnessMaxAgents,
+      firstConfigured(env.DEEPCODE_HARNESS_MAX_AGENTS, settings.harnessMaxAgents),
     DEEPCODE_PROMPT_PACK:
-      env.DEEPCODE_PROMPT_PACK ?? settings.promptPack,
+      firstConfigured(env.DEEPCODE_PROMPT_PACK, settings.promptPack),
     DEEPCODE_STRICT_TOOLS:
-      env.DEEPCODE_STRICT_TOOLS ?? settings.strictTools,
+      firstConfigured(env.DEEPCODE_STRICT_TOOLS, settings.strictTools),
   }
+}
+
+function firstConfigured(...values) {
+  return values.find(value => value !== undefined && value !== null && value !== '')
 }
 
 function applyInteractiveModelSelection(env, selection) {
