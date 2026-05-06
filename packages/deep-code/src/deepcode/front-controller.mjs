@@ -11,7 +11,7 @@ export function shouldDelegateToFullCli({
   if ((cli?.promptArgs ?? []).length > 0) return true
   if ((cli?.unknownFlags ?? []).length > 0) return true
   if (shouldForceNativeInteractive(env)) return false
-  return true
+  return false
 }
 
 export function resolveFullCliPath({

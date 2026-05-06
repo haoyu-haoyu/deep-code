@@ -561,7 +561,7 @@ test('Deep Code front controller delegates print mode to the full CLI bundle', (
   })
 })
 
-test('Deep Code front controller defaults interactive TTY sessions to the full CLI bundle', async () => {
+test('Deep Code front controller keeps native interactive as the visible default', async () => {
   const { shouldDelegateToFullCli } = await import('../src/deepcode/front-controller.mjs')
   const baseCli = {
     printMode: false,
@@ -573,6 +573,14 @@ test('Deep Code front controller defaults interactive TTY sessions to the full C
     shouldDelegateToFullCli({
       cli: baseCli,
       env: {},
+      input: { isTTY: true },
+    }),
+    false,
+  )
+  assert.equal(
+    shouldDelegateToFullCli({
+      cli: baseCli,
+      env: { DEEPCODE_EXPERIMENTAL_FULL_TUI: '1' },
       input: { isTTY: true },
     }),
     true,
@@ -636,7 +644,7 @@ test('Deep Code front controller uses native interactive only when explicitly fo
   assert.doesNotMatch(result.stdout, /should-not-delegate-full-cli-tui/)
 })
 
-test('Deep Code front controller delegates interactive startup to full TUI without experimental opt-in', () => {
+test('Deep Code front controller delegates interactive startup to full TUI when explicitly enabled', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-default-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')
   const capturePath = join(dir, 'capture.json')
@@ -656,6 +664,7 @@ test('Deep Code front controller delegates interactive startup to full TUI witho
     encoding: 'utf8',
     env: {
       ...process.env,
+      DEEPCODE_EXPERIMENTAL_FULL_TUI: '1',
       DEEPCODE_FULL_CLI_PATH: fakeFullCli,
       DEEPCODE_PROVIDER: 'deepseek',
     },
@@ -953,6 +962,7 @@ test('Deep Code front controller streams TUI stdin through the full CLI bundle',
     input: '/status\n/model\n/doctor\n/exit\n',
     env: {
       ...process.env,
+      DEEPCODE_EXPERIMENTAL_FULL_TUI: '1',
       DEEPCODE_FULL_CLI_PATH: fakeFullCli,
       DEEPCODE_PROVIDER: 'deepseek',
       DEEPCODE_TUI_CAPTURE_PATH: capturePath,
