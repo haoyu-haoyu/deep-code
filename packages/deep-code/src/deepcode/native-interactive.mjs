@@ -49,7 +49,10 @@ const DEEP_CODE_EFFORTS = ['high', 'max']
 const DEEP_CODE_BLUE = '\x1b[38;2;77;107;254m'
 const DEEP_CODE_BLUE_SHIMMER = '\x1b[38;2;121;150;255m'
 const DEEP_CODE_MUTED = '\x1b[38;2;150;160;180m'
+const DEEP_CODE_SUCCESS = '\x1b[38;2;82;196;126m'
+const DEEP_CODE_ERROR = '\x1b[38;2;255;92;122m'
 const DEEP_CODE_RESET = '\x1b[0m'
+const DEEP_CODE_BLACK_CIRCLE = '●'
 const DEEP_CODE_SPINNER_BASE_FRAMES = getSpinnerBaseFrames()
 const DEEP_CODE_SPINNER_FRAMES = [
   ...DEEP_CODE_SPINNER_BASE_FRAMES,
@@ -84,8 +87,9 @@ export function createDeepCodeInteractiveReader({
 export function createDeepCodeTurnSpinner({
   output = process.stdout,
   env = process.env,
-  intervalMs = 120,
+  intervalMs = 50,
   message = 'DeepSeek reasoning',
+  mode = 'thinking',
 } = {}) {
   const enabled =
     Boolean(output.isTTY) ||
@@ -99,22 +103,13 @@ export function createDeepCodeTurnSpinner({
 
   const render = () => {
     if (!enabled) return
-    const elapsedSeconds = startedAt
-      ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
-      : 0
-    const glyph = DEEP_CODE_SPINNER_FRAMES[frame % DEEP_CODE_SPINNER_FRAMES.length]
-    const shimmer =
-      frame % DEEP_CODE_SPINNER_FRAMES.length < DEEP_CODE_SPINNER_BASE_FRAMES.length
-    const glyphText = color
-      ? `${shimmer ? DEEP_CODE_BLUE_SHIMMER : DEEP_CODE_BLUE}${glyph}${DEEP_CODE_RESET}`
-      : glyph
-    const messageText = color ? `${DEEP_CODE_BLUE}${message}${DEEP_CODE_RESET}` : message
-    const suffix = elapsedSeconds > 1
-      ? color
-        ? ` ${DEEP_CODE_MUTED}(${elapsedSeconds}s)${DEEP_CODE_RESET}`
-        : ` (${elapsedSeconds}s)`
-      : ''
-    output.write(`\r\x1b[J${glyphText} ${messageText}${suffix}`)
+    const timeMs = startedAt ? Date.now() - startedAt : 0
+    output.write(`\r\x1b[J${formatDeepCodeSpinnerFrame({
+      message,
+      mode,
+      timeMs,
+      color,
+    })}`)
     frame += 1
   }
 
@@ -140,6 +135,62 @@ export function createDeepCodeTurnSpinner({
       return active
     },
   }
+}
+
+export function formatDeepCodeSpinnerFrame({
+  message = 'DeepSeek reasoning',
+  mode = 'thinking',
+  timeMs = 0,
+  color = false,
+} = {}) {
+  const frame = Math.floor(timeMs / 120)
+  const glyph = DEEP_CODE_SPINNER_FRAMES[frame % DEEP_CODE_SPINNER_FRAMES.length]
+  const shimmer =
+    frame % DEEP_CODE_SPINNER_FRAMES.length < DEEP_CODE_SPINNER_BASE_FRAMES.length
+  const glyphText = color
+    ? `${shimmer ? DEEP_CODE_BLUE_SHIMMER : DEEP_CODE_BLUE}${glyph}${DEEP_CODE_RESET}`
+    : glyph
+  const messageText = formatDeepCodeGlimmerMessage({
+    message,
+    mode,
+    timeMs,
+    color,
+  })
+  const elapsedSeconds = Math.max(0, Math.floor(timeMs / 1000))
+  const suffix = elapsedSeconds > 1
+    ? color
+      ? ` ${DEEP_CODE_MUTED}(${elapsedSeconds}s)${DEEP_CODE_RESET}`
+      : ` (${elapsedSeconds}s)`
+    : ''
+  return `${glyphText} ${messageText}${suffix}`
+}
+
+export function formatDeepCodeToolUseLine({
+  name,
+  input = {},
+  state = 'running',
+  frame = 0,
+  color = false,
+} = {}) {
+  const unresolved = state === 'running' || state === 'queued' || state === 'permission'
+  const blinkOff = unresolved && state === 'running' && frame % 2 === 1
+  const dot = blinkOff ? ' ' : DEEP_CODE_BLACK_CIRCLE
+  const dotColor =
+    !color ? '' : state === 'error' ? DEEP_CODE_ERROR : unresolved ? DEEP_CODE_MUTED : DEEP_CODE_SUCCESS
+  const dotText = color ? `${dotColor}${dot}${DEEP_CODE_RESET}` : dot
+  const toolName = color ? `${DEEP_CODE_BLUE_SHIMMER}${name}${DEEP_CODE_RESET}` : String(name ?? '')
+  const summary = summarizeToolInput(name, input)
+  const summaryText = summary
+    ? color
+      ? ` ${DEEP_CODE_MUTED}(${summary})${DEEP_CODE_RESET}`
+      : ` (${summary})`
+    : ''
+  const waitingText = state === 'permission'
+    ? color
+      ? ` ${DEEP_CODE_MUTED}Waiting for permission…${DEEP_CODE_RESET}`
+      : ' Waiting for permission…'
+    : ''
+  return `${dotText} ${toolName}${summaryText}${waitingText}`
 }
 
 class ReadlineInteractiveReader {
@@ -455,6 +506,70 @@ function parseKeyTokens(chunk) {
 
 function shouldColor(output, env) {
   return Boolean(output.isTTY) || env.DEEPCODE_FORCE_COLOR === '1'
+}
+
+function formatDeepCodeGlimmerMessage({
+  message,
+  mode,
+  timeMs,
+  color,
+}) {
+  const text = String(message ?? '')
+  if (!color || !text) return text
+
+  if (mode === 'tool-use') {
+    const flashOpacity = (Math.sin((timeMs / 1000) * Math.PI) + 1) / 2
+    const colorCode = flashOpacity > 0.5 ? DEEP_CODE_BLUE_SHIMMER : DEEP_CODE_BLUE
+    return `${colorCode}${text}${DEEP_CODE_RESET}`
+  }
+
+  const segments = Array.from(text)
+  const messageWidth = segments.length
+  const glimmerSpeed = mode === 'requesting' ? 50 : 200
+  const cyclePosition = Math.floor(timeMs / glimmerSpeed)
+  const cycleLength = messageWidth + 20
+  const glimmerIndex =
+    mode === 'requesting'
+      ? (cyclePosition % cycleLength) - 10
+      : messageWidth + 10 - (cyclePosition % cycleLength)
+  const shimmerStart = glimmerIndex - 1
+  const shimmerEnd = glimmerIndex + 1
+  if (shimmerStart >= messageWidth || shimmerEnd < 0) {
+    return `${DEEP_CODE_BLUE}${text}${DEEP_CODE_RESET}`
+  }
+
+  let before = ''
+  let shimmer = ''
+  let after = ''
+  for (let index = 0; index < segments.length; index++) {
+    if (index < shimmerStart) {
+      before += segments[index]
+    } else if (index > shimmerEnd) {
+      after += segments[index]
+    } else {
+      shimmer += segments[index]
+    }
+  }
+
+  return [
+    before ? `${DEEP_CODE_BLUE}${before}${DEEP_CODE_RESET}` : '',
+    shimmer ? `${DEEP_CODE_BLUE_SHIMMER}${shimmer}${DEEP_CODE_RESET}` : '',
+    after ? `${DEEP_CODE_BLUE}${after}${DEEP_CODE_RESET}` : '',
+  ].join('')
+}
+
+function summarizeToolInput(name, input) {
+  const toolName = String(name ?? '')
+  const data = input && typeof input === 'object' ? input : {}
+  if (toolName === 'Read' && data.file_path) return String(data.file_path)
+  if (toolName === 'Edit' && data.file_path) return String(data.file_path)
+  if (toolName === 'Write' && data.file_path) return String(data.file_path)
+  if (toolName === 'Bash' && data.command) return String(data.command)
+  if (toolName === 'Agent' && data.subagent_type) return String(data.subagent_type)
+  if (toolName === 'Agent' && data.description) return String(data.description)
+  const firstStringEntry = Object.entries(data).find(([, value]) => typeof value === 'string')
+  if (firstStringEntry) return firstStringEntry[1]
+  return ''
 }
 
 function getSpinnerBaseFrames() {

@@ -741,6 +741,69 @@ test('Deep Code native turn spinner animates waiting state and clears before con
   assert.doesNotMatch(outputText, /Claude|Anthropic/)
 })
 
+test('Deep Code native spinner frames port Claude-style glimmer timing and modes', async () => {
+  const { formatDeepCodeSpinnerFrame } = await import('../src/deepcode/native-interactive.mjs')
+
+  const requesting = formatDeepCodeSpinnerFrame({
+    message: 'DeepSeek requesting',
+    mode: 'requesting',
+    timeMs: 650,
+    color: true,
+  })
+  const thinking = formatDeepCodeSpinnerFrame({
+    message: 'DeepSeek thinking',
+    mode: 'thinking',
+    timeMs: 2000,
+    color: true,
+  })
+  const toolUse = formatDeepCodeSpinnerFrame({
+    message: 'DeepSeek using tools',
+    mode: 'tool-use',
+    timeMs: 500,
+    color: true,
+  })
+
+  assert.match(requesting, /[·✢✳✶✻✽*]/)
+  assert.ok((requesting.match(/\x1b\[38;2;121;150;255m/g) ?? []).length >= 2)
+  assert.ok((thinking.match(/\x1b\[38;2;121;150;255m/g) ?? []).length >= 2)
+  assert.match(toolUse, /DeepSeek using tools/)
+  assert.doesNotMatch(`${requesting}\n${thinking}\n${toolUse}`, /Claude|Anthropic/)
+})
+
+test('Deep Code native tool rows follow Claude-style loader and summary shape', async () => {
+  const { formatDeepCodeToolUseLine } = await import('../src/deepcode/native-interactive.mjs')
+
+  const running = formatDeepCodeToolUseLine({
+    name: 'Read',
+    input: { file_path: 'sample.txt' },
+    state: 'running',
+    frame: 0,
+    color: true,
+  })
+  const runningBlink = formatDeepCodeToolUseLine({
+    name: 'Read',
+    input: { file_path: 'sample.txt' },
+    state: 'running',
+    frame: 1,
+    color: true,
+  })
+  const resolved = formatDeepCodeToolUseLine({
+    name: 'Bash',
+    input: { command: 'cat sample.txt' },
+    state: 'resolved',
+    color: true,
+  })
+
+  assert.match(running, /●/)
+  assert.match(running, /Read/)
+  assert.match(running, /\(sample\.txt\)/)
+  assert.doesNotMatch(runningBlink, /●/)
+  assert.match(resolved, /●/)
+  assert.match(resolved, /Bash/)
+  assert.match(resolved, /\(cat sample\.txt\)/)
+  assert.doesNotMatch(`${running}\n${runningBlink}\n${resolved}`, /Claude|Anthropic/)
+})
+
 test('Deep Code native interactive stream path starts and clears the turn spinner', () => {
   assert.match(deepcodeEntrypointSource, /createDeepCodeTurnSpinner/)
   assert.match(deepcodeEntrypointSource, /spinner\.start\(\)/)
