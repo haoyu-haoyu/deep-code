@@ -589,6 +589,50 @@ test('Deep Code front controller starts the Claude-like native interactive sessi
   assert.doesNotMatch(result.stdout, /should-not-delegate-full-cli-tui/)
 })
 
+test('Deep Code native interactive slash commands render Claude-like panels', () => {
+  const modelResult = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '--model',
+    'deepseek-v4-flash',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    input: '/model\n/exit\n',
+    env: {
+      ...process.env,
+      DEEPCODE_FORCE_NATIVE_INTERACTIVE: '1',
+      DEEPCODE_PROVIDER: 'deepseek',
+    },
+  })
+  const statusResult = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    input: '/status\n/exit\n',
+    env: {
+      ...process.env,
+      DEEPCODE_FORCE_NATIVE_INTERACTIVE: '1',
+      DEEPCODE_PROVIDER: 'deepseek',
+    },
+  })
+
+  assert.equal(modelResult.status, 0, modelResult.stderr)
+  assert.match(modelResult.stdout, /╭─ Model ─/)
+  assert.match(modelResult.stdout, /Main model/)
+  assert.match(modelResult.stdout, /Small model/)
+  assert.match(modelResult.stdout, /Reasoning effort/)
+  assert.doesNotMatch(modelResult.stdout, /^Current model:/m)
+  assert.doesNotMatch(modelResult.stdout, /Claude|Anthropic/)
+
+  assert.equal(statusResult.status, 0, statusResult.stderr)
+  assert.match(statusResult.stdout, /╭─ Status ─/)
+  assert.match(statusResult.stdout, /Provider\s+DeepSeek native/)
+  assert.match(statusResult.stdout, /Stable prefix hash/)
+  assert.doesNotMatch(statusResult.stdout, /^Provider:/m)
+  assert.doesNotMatch(statusResult.stdout, /Claude|Anthropic/)
+})
+
 test('Deep Code front controller can opt into the experimental full TUI bundle', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-opt-in-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')

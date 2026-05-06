@@ -33,7 +33,10 @@ import {
 } from './src/deepcode/status.mjs'
 import {
   formatDeepCodeAssistantChunk,
+  formatDeepCodeCacheUsage,
   formatDeepCodePrompt,
+  formatDeepCodeInfoPanel,
+  formatDeepCodeTextPanel,
   formatDeepCodeWelcome,
 } from './src/deepcode/welcome.mjs'
 import {
@@ -266,23 +269,28 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     output: process.stdout,
   })
   while (true) {
-    const prompt = await rl.question(formatDeepCodePrompt())
+    const prompt = await readInteractiveLine(rl)
+    if (prompt === null) break
     if (prompt.trim() === '/exit') break
     if (prompt.trim() === '/status') {
-      console.log(formatDeepCodeStatus(await buildDeepCodeStatusReport({
+      console.log(formatDeepCodeTextPanel('Status', formatDeepCodeStatus(await buildDeepCodeStatusReport({
         env,
         cwd: process.cwd(),
         repoSummary: stablePrefix?.repoSummary,
         cacheStatsPath,
         stablePrefix,
-      })))
+      }))))
       continue
     }
     if (prompt.trim() === '/model') {
       const config = resolveDeepSeekConfig({ env, cwd: process.cwd() })
-      console.log(`Current model: ${config.model}`)
-      console.log(`Small model: ${config.smallModel}`)
-      console.log(`Reasoning effort: ${config.reasoningEffort}`)
+      console.log(formatDeepCodeInfoPanel('Model', [
+        { label: 'Main model', value: config.model },
+        { label: 'Small model', value: config.smallModel },
+        { label: 'Thinking', value: config.thinking?.type ?? 'enabled' },
+        { label: 'Reasoning effort', value: config.reasoningEffort },
+        { label: 'Context window', value: '1M context' },
+      ]))
       continue
     }
     if (prompt.trim() === '/doctor') {
@@ -290,11 +298,11 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
         env,
         cwd: process.cwd(),
       })
-      console.log(formatDeepSeekDoctorReport(report))
+      console.log(formatDeepCodeTextPanel('Doctor', formatDeepSeekDoctorReport(report)))
       continue
     }
     if (prompt.trim() === '/harness') {
-      console.log(formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig(env)))
+      console.log(formatDeepCodeTextPanel('Harness', formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig(env))))
       continue
     }
     if (prompt.trim() === '/compact') {
@@ -334,6 +342,15 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     await printAndRecordUsage(response.usage, cacheStatsPath, stablePrefix)
   }
   rl.close()
+}
+
+async function readInteractiveLine(rl) {
+  try {
+    return await rl.question(formatDeepCodePrompt())
+  } catch (error) {
+    if (error?.message === 'readline was closed') return null
+    throw error
+  }
 }
 
 async function requestDeepSeek(
@@ -448,7 +465,7 @@ async function printAndRecordUsage(usage, cacheStatsPath, stablePrefix) {
   const hit = usage.prompt_cache_hit_tokens ?? 0
   const miss = usage.prompt_cache_miss_tokens ?? 0
   process.stderr.write(
-    `\n[DeepSeek cache] hit=${hit} miss=${miss} hit_rate=${(hitRate * 100).toFixed(1)}%\n`,
+    `\n${formatDeepCodeCacheUsage({ hit, miss, hitRate })}\n`,
   )
   await recordDeepSeekCacheUsage({
     path: cacheStatsPath,

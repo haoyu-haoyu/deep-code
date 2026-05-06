@@ -71,6 +71,66 @@ export function formatDeepCodeAssistantChunk(
   return c(text, 'white', color)
 }
 
+export function formatDeepCodeInfoPanel(
+  title,
+  rows,
+  {
+    columns = process.stdout.columns,
+    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+  } = {},
+) {
+  const width = clamp(Number(columns) || 80, 54, 88)
+  const normalizedRows = rows.map(row => normalizePanelRow(row))
+  const labelWidth = Math.min(
+    22,
+    Math.max(10, ...normalizedRows.map(row => stripAnsi(row.label).length)),
+  )
+  const valueWidth = Math.max(10, width - labelWidth - 7)
+  return [
+    topBorder(` ${title} `, width, color),
+    ...normalizedRows.map(row => panelRow(row, labelWidth, valueWidth, color)),
+    bottomBorder(width, color),
+  ].join('\n')
+}
+
+export function formatDeepCodeTextPanel(
+  title,
+  text,
+  {
+    columns = process.stdout.columns,
+    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+  } = {},
+) {
+  const rows = String(text ?? '')
+    .split(/\r?\n/)
+    .map(line => line.trimEnd())
+    .filter(Boolean)
+    .map(line => {
+      const separator = line.indexOf(':')
+      if (separator > 0 && separator <= 32) {
+        return {
+          label: line.slice(0, separator),
+          value: line.slice(separator + 1).trim(),
+        }
+      }
+      return line
+    })
+  return formatDeepCodeInfoPanel(title, rows, { columns, color })
+}
+
+export function formatDeepCodeCacheUsage(
+  usage,
+  {
+    color = process.stderr.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+  } = {},
+) {
+  if (!usage) return ''
+  const hitRate = Number(usage.hitRate ?? 0)
+  const hit = usage.hit ?? 0
+  const miss = usage.miss ?? 0
+  return `${c('•', 'muted', color)} ${c(`DeepSeek cache hit ${hit} · miss ${miss} · ${(hitRate * 100).toFixed(1)}%`, 'muted', color)}`
+}
+
 function row(left, right, leftWidth, rightWidth, color) {
   return [
     c('│', 'blue', color),
@@ -79,6 +139,38 @@ function row(left, right, leftWidth, rightWidth, color) {
     ` ${padVisible(right, rightWidth)} `,
     c('│', 'blue', color),
   ].join('')
+}
+
+function panelRow(row, labelWidth, valueWidth, color) {
+  if (row.fullWidth) {
+    return `${c('│', 'blue', color)} ${padVisible(c(row.value, row.style, color), labelWidth + valueWidth + 3)} ${c('│', 'blue', color)}`
+  }
+  return [
+    c('│', 'blue', color),
+    ' ',
+    padVisible(c(row.label, 'blueLightBold', color), labelWidth),
+    ' ',
+    padVisible(c(row.value, row.style, color), valueWidth),
+    ' ',
+    c('│', 'blue', color),
+  ].join('')
+}
+
+function normalizePanelRow(row) {
+  if (typeof row === 'string') {
+    return {
+      fullWidth: true,
+      label: '',
+      value: row,
+      style: 'white',
+    }
+  }
+  return {
+    fullWidth: false,
+    label: String(row.label ?? ''),
+    value: String(row.value ?? ''),
+    style: row.style ?? 'white',
+  }
 }
 
 function topBorder(title, width, color) {
