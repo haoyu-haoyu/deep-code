@@ -535,6 +535,7 @@ test('Deep Code front controller delegates print mode to the full CLI bundle', (
     encoding: 'utf8',
     env: {
       ...process.env,
+      DEEPCODE_FORCE_NATIVE_INTERACTIVE: '1',
       DEEPCODE_FULL_CLI_PATH: fakeFullCli,
       DEEPCODE_PROVIDER: 'deepseek',
     },
@@ -549,8 +550,38 @@ test('Deep Code front controller delegates print mode to the full CLI bundle', (
   })
 })
 
-test('Deep Code front controller delegates interactive mode to the full CLI bundle', () => {
+test('Deep Code front controller starts the stable native interactive session by default', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-delegate-'))
+  const fakeFullCli = join(dir, 'deepcode-full.mjs')
+  writeFileSync(fakeFullCli, [
+    '#!/usr/bin/env node',
+    'console.log("should-not-delegate-full-cli-tui")',
+  ].join('\n'))
+
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '--model',
+    'deepseek-v4-flash',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    input: '/exit\n',
+    env: {
+      ...process.env,
+      DEEPCODE_FORCE_NATIVE_INTERACTIVE: '1',
+      DEEPCODE_FULL_CLI_PATH: fakeFullCli,
+      DEEPCODE_PROVIDER: 'deepseek',
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Deep Code native DeepSeek session/)
+  assert.match(result.stdout, /deepcode>/)
+  assert.doesNotMatch(result.stdout, /should-not-delegate-full-cli-tui/)
+})
+
+test('Deep Code front controller can opt into the experimental full TUI bundle', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-opt-in-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')
   const capturePath = join(dir, 'capture.json')
   writeFileSync(fakeFullCli, [
@@ -569,6 +600,7 @@ test('Deep Code front controller delegates interactive mode to the full CLI bund
     encoding: 'utf8',
     env: {
       ...process.env,
+      DEEPCODE_EXPERIMENTAL_FULL_TUI: '1',
       DEEPCODE_FULL_CLI_PATH: fakeFullCli,
       DEEPCODE_PROVIDER: 'deepseek',
     },

@@ -153,12 +153,14 @@ async function main() {
     return
   }
 
-  await delegateToFullCli()
-  return
+  if (shouldDelegateToFullCli(cli, env)) {
+    await delegateToFullCli()
+    return
+  }
 
   const repoSummary = await loadRepoSummary()
   const stablePrefix = await createDeepCodeStablePrefix({ repoSummary })
-  const prompt = await resolvePrompt(cli.promptArgs)
+  const prompt = await resolvePrompt(cli.promptArgs, env)
   if (prompt) {
     await runSingleTurn(prompt, env, cacheStatsPath, stablePrefix)
     return
@@ -171,6 +173,17 @@ async function main() {
   }
 
   await runInteractive(env, cacheStatsPath, stablePrefix)
+}
+
+function shouldDelegateToFullCli(cli, env = process.env) {
+  if (env.DEEPCODE_EXPERIMENTAL_FULL_TUI === '1') return true
+  if (!process.stdin.isTTY && env.DEEPCODE_FORCE_NATIVE_INTERACTIVE !== '1') {
+    return true
+  }
+  if (cli.printMode) return true
+  if (cli.promptArgs.length > 0) return true
+  if (cli.unknownFlags.length > 0) return true
+  return false
 }
 
 async function delegateToFullCli() {
@@ -238,6 +251,35 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
   while (true) {
     const prompt = await rl.question('deepcode> ')
     if (prompt.trim() === '/exit') break
+    if (prompt.trim() === '/status') {
+      console.log(formatDeepCodeStatus(await buildDeepCodeStatusReport({
+        env,
+        cwd: process.cwd(),
+        repoSummary: stablePrefix?.repoSummary,
+        cacheStatsPath,
+        stablePrefix,
+      })))
+      continue
+    }
+    if (prompt.trim() === '/model') {
+      const config = resolveDeepSeekConfig({ env, cwd: process.cwd() })
+      console.log(`Current model: ${config.model}`)
+      console.log(`Small model: ${config.smallModel}`)
+      console.log(`Reasoning effort: ${config.reasoningEffort}`)
+      continue
+    }
+    if (prompt.trim() === '/doctor') {
+      const report = await createDeepSeekDoctorReport({
+        env,
+        cwd: process.cwd(),
+      })
+      console.log(formatDeepSeekDoctorReport(report))
+      continue
+    }
+    if (prompt.trim() === '/harness') {
+      console.log(formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig(env)))
+      continue
+    }
     if (prompt.trim() === '/compact') {
       if (messages.length === 0) {
         console.log('Nothing to compact.')
@@ -295,10 +337,10 @@ async function requestDeepSeek(
   })
 }
 
-async function resolvePrompt(args) {
+async function resolvePrompt(args, env = process.env) {
   const nonFlagArgs = args.filter(arg => !arg.startsWith('-'))
   if (nonFlagArgs.length > 0) return nonFlagArgs.join(' ')
-  if (!process.stdin.isTTY) {
+  if (!process.stdin.isTTY && env.DEEPCODE_FORCE_NATIVE_INTERACTIVE !== '1') {
     return await readStdin()
   }
   return ''
