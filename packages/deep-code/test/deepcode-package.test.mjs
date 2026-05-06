@@ -134,6 +134,10 @@ const agentToolSource = readFileSync(
   resolve(root, 'packages/deep-code/src/tools/AgentTool/AgentTool.tsx'),
   'utf8',
 )
+const agentToolPromptSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/prompt.ts'),
+  'utf8',
+)
 const generalPurposeAgentSource = readFileSync(
   resolve(root, 'packages/deep-code/src/tools/AgentTool/built-in/generalPurposeAgent.ts'),
   'utf8',
@@ -993,6 +997,13 @@ test('DeepSeek Harness runtime is wired into full CLI and TUI without legacy coo
   assert.match(replSource, /buildDeepCodeHarnessRuntimeContext/)
   assert.match(agentToolSource, /getLastDeepCodeHarnessRuntimeDecision/)
   assert.match(agentToolSource, /resolveDeepCodeDefaultSubagentType/)
+  assert.match(agentToolPromptSource, /DeepSeek Harness profiles/)
+  assert.match(agentToolPromptSource, /Harness runtime is active/)
+  assert.match(agentToolPromptSource, /omitting \\`subagent_type\\` defaults to \\`worker\\`/)
+  assert.match(agentToolPromptSource, /explorer.*read-only research/s)
+  assert.match(agentToolPromptSource, /worker.*write ownership/s)
+  assert.match(agentToolPromptSource, /verification.*VERDICT/s)
+  assert.match(agentToolPromptSource, /summarizer.*compact/s)
   assert.doesNotMatch(deepSeekHarnessRuntimeSource, /CLAUDE_CODE_COORDINATOR_MODE/)
 })
 

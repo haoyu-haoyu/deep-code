@@ -60,6 +60,7 @@ import {
 import {
   buildDeepCodeHarnessRuntimeContext,
   formatDeepCodeHarnessRuntimeDecision,
+  recordDeepCodeHarnessRuntimeDecision,
   resolveDeepCodeDefaultSubagentType,
   resolveDeepCodeHarnessRuntime,
 } from '../src/deepcode/harness-runtime.mjs'
@@ -351,8 +352,12 @@ test('resolveDeepCodeHarnessRuntime applies DeepSeek Harness mode decisions', ()
   assert.equal(complexAuto.state, 'harness')
   assert.ok(complexAuto.reasons.includes('tests'))
   assert.ok(complexAuto.reasons.includes('tooling'))
+  assert.equal(complexAuto.recommendedProfile, 'worker')
+  assert.equal(complexAuto.delegationPolicy, 'selective-specialists')
   assert.equal(nested.state, 'inactive')
   assert.equal(nested.reason, 'subagent-nesting-disabled')
+  assert.equal(nested.recommendedProfile, 'general-purpose')
+  assert.equal(nested.delegationPolicy, 'single-agent')
 })
 
 test('resolveDeepCodeHarnessRuntime keeps auto mode conservative', () => {
@@ -399,6 +404,8 @@ test('buildDeepCodeHarnessRuntimeContext is dynamic and cache-safe', () => {
   assert.match(context, /Deep Code Harness runtime/)
   assert.match(context, /profiles: explorer, worker, verification, summarizer/)
   assert.match(context, /Max agents: 4/)
+  assert.match(context, /Recommended default Agent profile: worker/)
+  assert.match(context, /Delegation policy: team-lanes/)
   assert.doesNotMatch(context, /Claude|Anthropic/)
   assert.doesNotMatch(context, /session[_ -]?id|request[_ -]?id|cache hit|cache miss|timestamp/i)
 })
@@ -480,7 +487,7 @@ test('resolveDeepCodeDefaultSubagentType follows active Harness decisions', () =
         prompt: 'Fix failing tests across the full CLI and TUI',
       }),
     ),
-    /Harness runtime: harness/,
+    /Runtime recommended profile: worker/,
   )
 })
 
@@ -718,6 +725,12 @@ test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', a
     updatedAt: '2026-05-05T00:00:00.000Z',
   }))
 
+  const runtimeDecision = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'on' },
+    prompt: 'Fix failing tests across the full CLI and TUI',
+  })
+  recordDeepCodeHarnessRuntimeDecision(runtimeDecision)
+
   const report = await buildDeepCodeStatusReport({
     cwd: '/tmp/deepcode-workspace',
     env: {
@@ -746,11 +759,15 @@ test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', a
   assert.match(formatted, /Provider: DeepSeek native/)
   assert.match(formatted, /Model: deepseek-v4-pro/)
   assert.match(formatted, /Reasoning effort: max/)
+  assert.match(formatted, /Runtime recommended profile: worker/)
+  assert.match(formatted, /Runtime delegation policy: selective-specialists/)
   assert.match(formatted, /Cache telemetry: last_hit=9 last_miss=1 last_hit_rate=90\.0%/)
   assert.match(formatted, /Stable prefix hash: [A-Za-z0-9_-]+/)
   assert.equal(properties.find(item => item.label === 'Provider')?.value, 'DeepSeek native')
   assert.equal(properties.find(item => item.label === 'Model')?.value, 'deepseek-v4-pro')
   assert.equal(properties.find(item => item.label === 'Reasoning effort')?.value, 'max')
+  assert.equal(properties.find(item => item.label === 'Harness recommended profile')?.value, 'worker')
+  assert.equal(properties.find(item => item.label === 'Harness delegation policy')?.value, 'selective-specialists')
   assert.equal(properties.find(item => item.label === 'Cache hit rate')?.value, '90.0%')
   assert.equal(properties.find(item => item.label === 'Cache total hit/miss')?.value, '90/10')
   assert.equal(
