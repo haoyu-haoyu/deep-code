@@ -436,6 +436,11 @@ test('DeepSeek Harness runtime context stays out of stable prefix hash', async (
 })
 
 test('resolveDeepCodeDefaultSubagentType follows active Harness decisions', () => {
+  const activeRuntimeDecision = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'auto' },
+    prompt: 'Fix failing tests across the full CLI and TUI',
+  })
+
   assert.equal(
     resolveDeepCodeDefaultSubagentType({
       env: { DEEPCODE_HARNESS_MODE: 'on' },
@@ -447,6 +452,24 @@ test('resolveDeepCodeDefaultSubagentType follows active Harness decisions', () =
     resolveDeepCodeDefaultSubagentType({
       env: { DEEPCODE_HARNESS_MODE: 'off' },
       prompt: 'implement the focused fix',
+    }),
+    'general-purpose',
+  )
+  assert.equal(
+    resolveDeepCodeDefaultSubagentType({
+      env: { DEEPCODE_HARNESS_MODE: 'auto' },
+      prompt: 'Inspect one file.',
+      isMainAgent: true,
+      runtimeDecision: activeRuntimeDecision,
+    }),
+    'worker',
+  )
+  assert.equal(
+    resolveDeepCodeDefaultSubagentType({
+      env: { DEEPCODE_HARNESS_MODE: 'auto' },
+      prompt: 'Inspect one file.',
+      isMainAgent: false,
+      runtimeDecision: activeRuntimeDecision,
     }),
     'general-purpose',
   )

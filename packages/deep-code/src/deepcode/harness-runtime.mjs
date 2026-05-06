@@ -73,7 +73,15 @@ export function resolveDeepCodeDefaultSubagentType({
   prompt = '',
   isMainAgent = true,
   permissionMode = 'default',
+  runtimeDecision,
 } = {}) {
+  if (!isMainAgent) {
+    return 'general-purpose'
+  }
+  if (runtimeDecision?.active) {
+    return 'worker'
+  }
+
   const decision = resolveDeepCodeHarnessRuntime({
     env,
     prompt,

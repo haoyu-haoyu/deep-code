@@ -71,6 +71,92 @@ test('TUI query loop executes a DeepSeek-style tool turn and continues', async (
   }
 })
 
+test('TUI query loop carries a DeepSeek Harness Agent tool turn through continuation', async () => {
+  const harness = await buildDeepSeekTuiQueryHarness()
+  const previousMode = process.env.DEEPCODE_HARNESS_MODE
+  const modelRequests = []
+  const agentToolCalls = []
+  const toolResultMessage = {
+    type: 'user',
+    uuid: 'tool-result-agent',
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: 'toolu_agent_1',
+          content: 'worker result: inspected cache and permissions',
+        },
+      ],
+    },
+  }
+
+  process.env.DEEPCODE_HARNESS_MODE = 'on'
+  globalThis.__deepcodeTuiHarness = {
+    async *runTools(toolUseBlocks, assistantMessages, _canUseTool, toolUseContext) {
+      agentToolCalls.push({
+        toolUseBlocks,
+        assistantContent: assistantMessages.flatMap(message => message.message.content),
+        agentId: toolUseContext.agentId,
+        permissionMode: toolUseContext.getAppState().toolPermissionContext.mode,
+      })
+      yield { message: toolResultMessage }
+    },
+  }
+
+  try {
+    const terminal = await drain(
+      harness.query({
+        messages: [userMessage('fix failing tests across the full CLI and TUI')],
+        systemPrompt: ['You are Deep Code.'],
+        userContext: {
+          deepCodeHarnessRuntime:
+            'Deep Code Harness runtime is active for this turn.',
+        },
+        systemContext: {},
+        canUseTool: async () => ({ behavior: 'allow', updatedInput: {} }),
+        querySource: 'sdk',
+        maxTurns: 3,
+        toolUseContext: createToolUseContext({
+          permissionMode: 'default',
+          tools: [{ name: 'Agent' }],
+        }),
+        deps: createDeepSeekAgentToolDeps(modelRequests),
+      }),
+    )
+
+    expect(terminal.reason).toBe('completed')
+    expect(modelRequests).toHaveLength(2)
+    expect(agentToolCalls).toHaveLength(1)
+    expect(agentToolCalls[0].toolUseBlocks[0]).toMatchObject({
+      id: 'toolu_agent_1',
+      name: 'Agent',
+      input: {
+        description: 'Inspect cache',
+        prompt: 'Inspect cache and permission behavior.',
+      },
+    })
+    expect(agentToolCalls[0].toolUseBlocks[0].input.subagent_type).toBeUndefined()
+    expect(agentToolCalls[0].agentId).toBeUndefined()
+    expect(agentToolCalls[0].permissionMode).toBe('default')
+    expect(agentToolCalls[0].assistantContent).toContainEqual({
+      type: 'thinking',
+      thinking: 'Use one worker and continue after the result.',
+    })
+    const followUpAssistant = modelRequests[1].find(
+      message => message.uuid === 'assistant-agent-call',
+    )
+    expect(followUpAssistant.message.content).toContainEqual({
+      type: 'thinking',
+      thinking: 'Use one worker and continue after the result.',
+    })
+    expect(modelRequests[1].some(message => message.uuid === 'tool-result-agent')).toBe(true)
+  } finally {
+    restoreEnv('DEEPCODE_HARNESS_MODE', previousMode)
+    delete globalThis.__deepcodeTuiHarness
+  }
+})
+
 test('TUI query loop preserves DeepSeek reasoning across permission-gated tool turns', async () => {
   const harness = await buildDeepSeekTuiQueryHarness()
   const permissionModes = ['default', 'auto', 'bypassPermissions']
@@ -419,9 +505,14 @@ function userMessage(content) {
   }
 }
 
-function createToolUseContext({ permissionMode = 'default' } = {}) {
+function createToolUseContext({
+  permissionMode = 'default',
+  tools = [{ name: 'FakeTool' }],
+  agentId,
+} = {}) {
   const abortController = new AbortController()
   return {
+    agentId,
     abortController,
     readFileState: {},
     addNotification() {},
@@ -435,7 +526,7 @@ function createToolUseContext({ permissionMode = 'default' } = {}) {
       }
     },
     options: {
-      tools: [{ name: 'FakeTool' }],
+      tools,
       mainLoopModel: 'deepseek-v4-pro',
       thinkingConfig: { type: 'enabled' },
       isNonInteractiveSession: true,
@@ -444,6 +535,44 @@ function createToolUseContext({ permissionMode = 'default' } = {}) {
         activeAgents: {},
         allowedAgentTypes: [],
       },
+    },
+  }
+}
+
+function createDeepSeekAgentToolDeps(modelRequests) {
+  let callCount = 0
+  return {
+    uuid: () => `deepcode-agent-uuid-${callCount}`,
+    async microcompact(messages) {
+      return { messages }
+    },
+    async autocompact() {
+      return { compactionResult: null, consecutiveFailures: undefined }
+    },
+    async *callModel({ messages }) {
+      modelRequests.push(messages)
+      callCount += 1
+      if (callCount === 1) {
+        yield assistantMessage('assistant-agent-call', [
+          {
+            type: 'thinking',
+            thinking: 'Use one worker and continue after the result.',
+          },
+          {
+            type: 'tool_use',
+            id: 'toolu_agent_1',
+            name: 'Agent',
+            input: {
+              description: 'Inspect cache',
+              prompt: 'Inspect cache and permission behavior.',
+            },
+          },
+        ])
+        return
+      }
+      yield assistantMessage('assistant-agent-final', [
+        { type: 'text', text: 'DeepSeek Harness Agent result integrated.' },
+      ])
     },
   }
 }

@@ -991,6 +991,7 @@ test('DeepSeek Harness runtime is wired into full CLI and TUI without legacy coo
   assert.match(queryEngineSource, /buildDeepCodeHarnessRuntimeContext/)
   assert.match(queryEngineSource, /recordDeepCodeHarnessRuntimeDecision/)
   assert.match(replSource, /buildDeepCodeHarnessRuntimeContext/)
+  assert.match(agentToolSource, /getLastDeepCodeHarnessRuntimeDecision/)
   assert.match(agentToolSource, /resolveDeepCodeDefaultSubagentType/)
   assert.doesNotMatch(deepSeekHarnessRuntimeSource, /CLAUDE_CODE_COORDINATOR_MODE/)
 })
