@@ -1,6 +1,7 @@
 const RESET = '\x1b[0m'
 const BOLD = '\x1b[1m'
 const DIM = '\x1b[2m'
+const WHITE = '\x1b[38;2;232;236;255m'
 const BLUE = '\x1b[38;2;77;107;254m'
 const BLUE_LIGHT = '\x1b[38;2;121;150;255m'
 const MUTED = '\x1b[38;2;150;160;180m'
@@ -26,11 +27,10 @@ export function formatDeepCodeWelcome({
   const workspaceLabel = basename(cwd)
   const userLabel = displayUser(env)
   const cacheText = createCacheText(report.cacheStats)
-  const apiKeyText = report.apiKeyConfigured ? 'DeepSeek API key configured' : 'DeepSeek API key missing'
+  const apiKeyText = report.apiKeyConfigured ? 'API key configured' : 'API key missing'
   const title = ` Deep Code v${version} `
-  const horizontal = '-'.repeat(Math.max(0, width - title.length - 2))
   const lines = [
-    c(`+--${title}${horizontal}+`, 'blue', color),
+    topBorder(title, width, color),
     row(
       c(`Welcome back ${userLabel}!`, 'blueLightBold', color),
       c('Tips for getting started', 'blueLightBold', color),
@@ -38,33 +38,65 @@ export function formatDeepCodeWelcome({
       rightWidth,
       color,
     ),
-    row('', 'Run /init to create a DEEPCODE.md file.', leftWidth, rightWidth, color),
-    row('        ____', ''.padEnd(rightWidth, '-'), leftWidth, rightWidth, color),
-    row('   ____/ __ \\____', c('Recent activity', 'blueLightBold', color), leftWidth, rightWidth, color),
-    row('  / __  /_/ / __ \\', cacheText, leftWidth, rightWidth, color),
-    row(' / /_/ / __/ /_/ /', apiKeyText, leftWidth, rightWidth, color),
-    row(' \\__,_/_/  \\____/', `Harness mode: ${harnessMode}`, leftWidth, rightWidth, color),
+    row('', 'Run /init to create DEEPCODE.md', leftWidth, rightWidth, color),
+    row('', '─'.repeat(Math.min(rightWidth, 36)), leftWidth, rightWidth, color),
+    row(center('DeepSeek native', leftWidth), c('Recent activity', 'blueLightBold', color), leftWidth, rightWidth, color),
+    row(center(model, leftWidth), cacheText, leftWidth, rightWidth, color),
+    row(center(`${contextLabel} · reasoning ${effort}`, leftWidth), apiKeyText, leftWidth, rightWidth, color),
+    row('', `Harness mode: ${harnessMode}`, leftWidth, rightWidth, color),
     row('', `Small model: ${smallModel}`, leftWidth, rightWidth, color),
-    row(`${model} (${contextLabel}) with reasoning ${effort}`, '', leftWidth, rightWidth, color),
     row(pathLabel, '', leftWidth, rightWidth, color),
-    c(`+${'-'.repeat(width - 2)}+`, 'blue', color),
+    bottomBorder(width, color),
     '',
-    c(`> Try "how does <filepath> work?"`, 'blueLightBold', color),
+    `${c('›', 'blueLightBold', color)} ${c('Try "how does <filepath> work?"', 'blueLightBold', color)}`,
     '',
-    `${c(workspaceLabel, 'blueLight', color)}  ${model} (${contextLabel})  ${c('*', 'muted', color)} ${effort} - /effort`,
+    `${c(workspaceLabel, 'blueLight', color)}  ${c(`${model} (${contextLabel})`, 'white', color)}  ${c('•', 'muted', color)} ${c(`${effort} · /effort`, 'muted', color)}`,
     '',
   ]
   return lines.join('\n')
 }
 
+export function formatDeepCodePrompt({
+  color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+} = {}) {
+  return `${c('›', 'blueLightBold', color)} `
+}
+
+export function formatDeepCodeAssistantChunk(
+  text,
+  {
+    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+  } = {},
+) {
+  return c(text, 'white', color)
+}
+
 function row(left, right, leftWidth, rightWidth, color) {
   return [
-    c('|', 'blue', color),
+    c('│', 'blue', color),
     ` ${padVisible(left, leftWidth)} `,
-    c('|', 'blue', color),
+    c('│', 'blue', color),
     ` ${padVisible(right, rightWidth)} `,
-    c('|', 'blue', color),
+    c('│', 'blue', color),
   ].join('')
+}
+
+function topBorder(title, width, color) {
+  const label = title.trim() ? `─${title}` : '─'
+  const rest = '─'.repeat(Math.max(0, width - stripAnsi(label).length - 2))
+  return c(`╭${label}${rest}╮`, 'blue', color)
+}
+
+function bottomBorder(width, color) {
+  return c(`╰${'─'.repeat(width - 2)}╯`, 'blue', color)
+}
+
+function center(value, width) {
+  const text = String(value ?? '')
+  const visible = stripAnsi(text)
+  if (visible.length >= width) return text
+  const left = Math.floor((width - visible.length) / 2)
+  return `${' '.repeat(left)}${text}`
 }
 
 function createContextLabel(policy = {}) {
@@ -82,7 +114,7 @@ function createCacheText(stats) {
   const rate = percent(stats.lastPromptCacheHitRate)
   const hit = stats.lastPromptCacheHitTokens ?? 0
   const miss = stats.lastPromptCacheMissTokens ?? 0
-  return `Cache last hit ${hit}, miss ${miss}, rate ${rate}`
+  return `Cache hit ${hit}, miss ${miss}, rate ${rate}`
 }
 
 function displayUser(env = {}) {
@@ -130,6 +162,7 @@ function c(text, style, enabled) {
     blue: BLUE,
     blueLight: BLUE_LIGHT,
     blueLightBold: `${BOLD}${BLUE_LIGHT}`,
+    white: WHITE,
     muted: MUTED,
     dim: DIM,
   }[style]

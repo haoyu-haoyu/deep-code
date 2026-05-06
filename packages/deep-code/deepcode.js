@@ -31,7 +31,11 @@ import {
   buildDeepCodeStatusReport,
   formatDeepCodeStatus,
 } from './src/deepcode/status.mjs'
-import { formatDeepCodeWelcome } from './src/deepcode/welcome.mjs'
+import {
+  formatDeepCodeAssistantChunk,
+  formatDeepCodePrompt,
+  formatDeepCodeWelcome,
+} from './src/deepcode/welcome.mjs'
 import {
   formatDeepCodeHarnessStatus,
   resolveDeepCodeHarnessConfig,
@@ -262,7 +266,7 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     output: process.stdout,
   })
   while (true) {
-    const prompt = await rl.question('deepcode> ')
+    const prompt = await rl.question(formatDeepCodePrompt())
     if (prompt.trim() === '/exit') break
     if (prompt.trim() === '/status') {
       console.log(formatDeepCodeStatus(await buildDeepCodeStatusReport({
@@ -346,7 +350,9 @@ async function requestDeepSeek(
     cwd: process.cwd(),
     maxTokens: Number(env.DEEPCODE_MAX_TOKENS ?? env.DEEPSEEK_MAX_TOKENS ?? 4096),
   }), {
-    onContent: streamToStdout ? text => process.stdout.write(text) : undefined,
+    onContent: streamToStdout
+      ? text => process.stdout.write(formatDeepCodeAssistantChunk(text))
+      : undefined,
   })
 }
 
