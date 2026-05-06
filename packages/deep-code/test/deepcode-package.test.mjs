@@ -195,6 +195,10 @@ const logoV2Source = readFileSync(
   resolve(root, 'packages/deep-code/src/components/LogoV2/LogoV2.tsx'),
   'utf8',
 )
+const deepSeekLogoSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/LogoV2/DeepSeekLogo.tsx'),
+  'utf8',
+)
 const guestPassesUpsellSource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/LogoV2/GuestPassesUpsell.tsx'),
   'utf8',
@@ -578,6 +582,8 @@ test('Deep Code front controller starts the Claude-like native interactive sessi
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /╭─ Deep Code v0\.1\.0-deepseek-native/)
   assert.match(result.stdout, /Welcome back/)
+  assert.match(result.stdout, /████/)
+  assert.match(result.stdout, /DeepSeek native/)
   assert.match(result.stdout, /Tips for getting started/)
   assert.match(result.stdout, /Recent activity/)
   assert.match(result.stdout, /deepseek-v4-flash \(1M context\)/)
@@ -1133,6 +1139,7 @@ test('README and welcome surfaces use Deep Code and DeepSeek branding', () => {
   const welcomeSources = [
     condensedLogoSource,
     logoV2Source,
+    deepSeekLogoSource,
     guestPassesUpsellSource,
     logoFeedConfigsSource,
     channelsNoticeSource,
@@ -1146,6 +1153,9 @@ test('README and welcome surfaces use Deep Code and DeepSeek branding', () => {
 
   assert.match(welcomeSources, /Deep Code/)
   assert.match(welcomeSources, /DeepSeek/)
+  assert.match(welcomeSources, /DeepSeekLogo/)
+  assert.match(welcomeSources, /DEEPSEEK_LOGO_ROWS/)
+  assert.doesNotMatch(welcomeSources, /<Clawd/)
   assert.doesNotMatch(welcomeSources, /Claude Code/)
   assert.doesNotMatch(welcomeSources, /Anthropic/)
   assert.doesNotMatch(welcomeSources, /claude\.ai/)

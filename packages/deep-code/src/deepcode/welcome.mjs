@@ -5,6 +5,15 @@ const WHITE = '\x1b[38;2;232;236;255m'
 const BLUE = '\x1b[38;2;77;107;254m'
 const BLUE_LIGHT = '\x1b[38;2;121;150;255m'
 const MUTED = '\x1b[38;2;150;160;180m'
+const DEEP_CODE_PIXEL_LOGO = [
+  '        ██████████        ',
+  '    █████████████████   ██',
+  '  ████       █████████████',
+  ' ██   ██   █████   █████ ',
+  '██    ████████   █████   ',
+  '██        ██████████     ',
+  '  ██████████  █████      ',
+]
 
 export function formatDeepCodeWelcome({
   version = '0.1.0-deepseek-native',
@@ -29,6 +38,7 @@ export function formatDeepCodeWelcome({
   const cacheText = createCacheText(report.cacheStats)
   const apiKeyText = report.apiKeyConfigured ? 'API key configured' : 'API key missing'
   const title = ` Deep Code v${version} `
+  const logoRows = DEEP_CODE_PIXEL_LOGO.map(line => center(c(line, 'blue', color), leftWidth))
   const lines = [
     topBorder(title, width, color),
     row(
@@ -40,11 +50,15 @@ export function formatDeepCodeWelcome({
     ),
     row('', 'Run /init to create DEEPCODE.md', leftWidth, rightWidth, color),
     row('', '─'.repeat(Math.min(rightWidth, 36)), leftWidth, rightWidth, color),
-    row(center('DeepSeek native', leftWidth), c('Recent activity', 'blueLightBold', color), leftWidth, rightWidth, color),
-    row(center(model, leftWidth), cacheText, leftWidth, rightWidth, color),
-    row(center(`${contextLabel} · reasoning ${effort}`, leftWidth), apiKeyText, leftWidth, rightWidth, color),
-    row('', `Harness mode: ${harnessMode}`, leftWidth, rightWidth, color),
-    row('', `Small model: ${smallModel}`, leftWidth, rightWidth, color),
+    row(logoRows[0], c('Recent activity', 'blueLightBold', color), leftWidth, rightWidth, color),
+    row(logoRows[1], cacheText, leftWidth, rightWidth, color),
+    row(logoRows[2], apiKeyText, leftWidth, rightWidth, color),
+    row(logoRows[3], `Harness mode: ${harnessMode}`, leftWidth, rightWidth, color),
+    row(logoRows[4], `Small model: ${smallModel}`, leftWidth, rightWidth, color),
+    row(logoRows[5], '', leftWidth, rightWidth, color),
+    row(logoRows[6], '', leftWidth, rightWidth, color),
+    row(center('DeepSeek native', leftWidth), '', leftWidth, rightWidth, color),
+    row(center(`${model} (${contextLabel}) · reasoning ${effort}`, leftWidth), '', leftWidth, rightWidth, color),
     row(pathLabel, '', leftWidth, rightWidth, color),
     bottomBorder(width, color),
     '',
