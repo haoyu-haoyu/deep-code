@@ -3,7 +3,10 @@ import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { CLAUDE_CODE_GUIDE_AGENT } from './built-in/claudeCodeGuideAgent.js'
-import { EXPLORE_AGENT } from './built-in/exploreAgent.js'
+import {
+  DEEPSEEK_EXPLORER_AGENT,
+  EXPLORE_AGENT,
+} from './built-in/exploreAgent.js'
 import {
   DEEPSEEK_WORKER_AGENT,
   GENERAL_PURPOSE_AGENT,
@@ -47,6 +50,7 @@ export function getBuiltInAgents(): AgentDefinition[] {
   }
 
   const agents: AgentDefinition[] = [
+    DEEPSEEK_EXPLORER_AGENT,
     GENERAL_PURPOSE_AGENT,
     DEEPSEEK_WORKER_AGENT,
     DEEPSEEK_SUMMARIZER_AGENT,

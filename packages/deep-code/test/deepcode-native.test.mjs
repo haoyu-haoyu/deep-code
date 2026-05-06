@@ -58,6 +58,12 @@ import {
   resolveDeepCodeHarnessConfig,
 } from '../src/deepcode/harness-config.mjs'
 import {
+  buildDeepCodeHarnessRuntimeContext,
+  formatDeepCodeHarnessRuntimeDecision,
+  resolveDeepCodeDefaultSubagentType,
+  resolveDeepCodeHarnessRuntime,
+} from '../src/deepcode/harness-runtime.mjs'
+import {
   createDeepCodeStableTools,
   createDeepSeekLocalTools,
   runDeepSeekLocalToolChain,
@@ -305,6 +311,88 @@ test('resolveDeepCodeHarnessConfig applies safe DeepSeek defaults and env overri
   assert.match(formatDeepCodeHarnessStatus(config), /Harness mode: on/)
   assert.match(formatDeepCodeHarnessStatus(config), /Prompt pack: deepseek-v1/)
   assert.match(formatDeepCodeHarnessStatus(config), /Strict tools: safe/)
+})
+
+test('resolveDeepCodeHarnessRuntime applies DeepSeek Harness mode decisions', () => {
+  const off = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'off' },
+    prompt: 'fix failing tests across the full CLI and TUI',
+  })
+  const on = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'on' },
+    prompt: 'reply hello',
+  })
+  const swarm = resolveDeepCodeHarnessRuntime({
+    env: {
+      DEEPCODE_HARNESS_MODE: 'swarm',
+      DEEPCODE_HARNESS_MAX_AGENTS: '3',
+    },
+    prompt: 'coordinate a multi-module migration',
+  })
+  const simpleAuto = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'auto' },
+    prompt: 'Reply exactly: hello',
+  })
+  const complexAuto = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'auto' },
+    prompt: 'Fix failing tests across the full CLI and TUI, including cache and tool permission regressions.',
+  })
+  const nested = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'on' },
+    prompt: 'fix a file',
+    isMainAgent: false,
+  })
+
+  assert.equal(off.state, 'inactive')
+  assert.equal(on.state, 'harness')
+  assert.equal(swarm.state, 'swarm')
+  assert.equal(swarm.maxAgents, 3)
+  assert.equal(simpleAuto.state, 'inactive')
+  assert.equal(complexAuto.state, 'harness')
+  assert.ok(complexAuto.reasons.includes('tests'))
+  assert.ok(complexAuto.reasons.includes('tooling'))
+  assert.equal(nested.state, 'inactive')
+  assert.equal(nested.reason, 'subagent-nesting-disabled')
+})
+
+test('buildDeepCodeHarnessRuntimeContext is dynamic and cache-safe', () => {
+  const decision = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'swarm' },
+    prompt: 'implement a cross-module orchestrator and verify it',
+  })
+  const context = buildDeepCodeHarnessRuntimeContext(decision)
+
+  assert.match(context, /Deep Code Harness runtime/)
+  assert.match(context, /profiles: explorer, worker, verification, summarizer/)
+  assert.match(context, /Max agents: 4/)
+  assert.doesNotMatch(context, /Claude|Anthropic/)
+  assert.doesNotMatch(context, /session[_ -]?id|request[_ -]?id|cache hit|cache miss|timestamp/i)
+})
+
+test('resolveDeepCodeDefaultSubagentType follows active Harness decisions', () => {
+  assert.equal(
+    resolveDeepCodeDefaultSubagentType({
+      env: { DEEPCODE_HARNESS_MODE: 'on' },
+      prompt: 'implement the focused fix',
+    }),
+    'worker',
+  )
+  assert.equal(
+    resolveDeepCodeDefaultSubagentType({
+      env: { DEEPCODE_HARNESS_MODE: 'off' },
+      prompt: 'implement the focused fix',
+    }),
+    'general-purpose',
+  )
+  assert.match(
+    formatDeepCodeHarnessRuntimeDecision(
+      resolveDeepCodeHarnessRuntime({
+        env: { DEEPCODE_HARNESS_MODE: 'auto' },
+        prompt: 'Fix failing tests across the full CLI and TUI',
+      }),
+    ),
+    /Harness runtime: harness/,
+  )
 })
 
 test('applyDeepCodeCliEnvOverrides keeps CLI values above inherited env', () => {
