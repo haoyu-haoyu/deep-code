@@ -633,6 +633,53 @@ test('Deep Code native interactive slash commands render Claude-like panels', ()
   assert.doesNotMatch(statusResult.stdout, /Claude|Anthropic/)
 })
 
+test('Deep Code native interactive slash palette opens from slash and accepts arrow selection', () => {
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    input: `/\x1b[B\n/exit\n`,
+    env: {
+      ...process.env,
+      DEEPCODE_FORCE_NATIVE_INTERACTIVE_KEYS: '1',
+      DEEPCODE_PROVIDER: 'deepseek',
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Slash commands/)
+  assert.match(result.stdout, /\/model\s+Select model and reasoning effort/)
+  assert.match(result.stdout, /\/status\s+Show Deep Code status/)
+  assert.match(result.stdout, /╭─ Status ─/)
+  assert.doesNotMatch(result.stdout, /Claude|Anthropic/)
+})
+
+test('Deep Code native interactive model picker supports arrows and updates session status', () => {
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+    input: `/model\n\x1b[B\x1b[D\n/status\n/exit\n`,
+    env: {
+      ...process.env,
+      DEEPCODE_FORCE_NATIVE_INTERACTIVE_KEYS: '1',
+      DEEPCODE_PROVIDER: 'deepseek',
+    },
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Select model/)
+  assert.match(result.stdout, /deepseek-v4-pro/)
+  assert.match(result.stdout, /deepseek-v4-flash/)
+  assert.match(result.stdout, /←\/→ adjust reasoning effort/)
+  assert.match(result.stdout, /Model updated/)
+  assert.match(result.stdout, /Model\s+deepseek-v4-flash/)
+  assert.match(result.stdout, /Reasoning effort\s+high/)
+  assert.doesNotMatch(result.stdout, /Claude|Anthropic/)
+})
+
 test('Deep Code front controller can opt into the experimental full TUI bundle', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-opt-in-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')

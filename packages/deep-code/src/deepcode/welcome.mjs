@@ -131,6 +131,75 @@ export function formatDeepCodeCacheUsage(
   return `${c('•', 'muted', color)} ${c(`DeepSeek cache hit ${hit} · miss ${miss} · ${(hitRate * 100).toFixed(1)}%`, 'muted', color)}`
 }
 
+export function formatDeepCodeSlashPalette(
+  commands,
+  {
+    selectedIndex = 0,
+    columns = process.stdout.columns,
+    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+  } = {},
+) {
+  const width = clamp(Number(columns) || 80, 54, 96)
+  const commandWidth = Math.max(12, ...commands.map(command => command.name.length))
+  const descriptionWidth = Math.max(18, width - commandWidth - 7)
+  const rule = c('─'.repeat(width), 'blue', color)
+  return [
+    rule,
+    c('Slash commands', 'blueLightBold', color),
+    ...commands.map((command, index) => {
+      const marker = index === selectedIndex ? c('›', 'blueLightBold', color) : ' '
+      return [
+        marker,
+        ' ',
+        padVisible(c(command.name, index === selectedIndex ? 'whiteBold' : 'white', color), commandWidth),
+        '  ',
+        padVisible(c(command.description, index === selectedIndex ? 'white' : 'muted', color), descriptionWidth),
+      ].join('')
+    }),
+    c('↑/↓ select · Enter confirm · Esc clear', 'muted', color),
+    rule,
+  ].join('\n')
+}
+
+export function formatDeepCodeModelPicker(
+  {
+    modelOptions,
+    selectedIndex = 0,
+    currentModel,
+    effort,
+  },
+  {
+    columns = process.stdout.columns,
+    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+  } = {},
+) {
+  const width = clamp(Number(columns) || 88, 70, 112)
+  const title = ' Select model '
+  const optionRows = modelOptions.map((option, index) => {
+    const selected = index === selectedIndex
+    const active = option.model === currentModel
+    const marker = selected ? c('›', 'blueLightBold', color) : ' '
+    const check = active ? c('✓', 'blueLightBold', color) : ' '
+    const label = `${index + 1}. ${option.label}${active ? ' ' : ''}${stripAnsi(check)}`
+    return `${marker} ${padVisible(c(label, selected ? 'whiteBold' : 'white', color), 28)} ${padVisible(c(option.model, selected ? 'blueLightBold' : 'white', color), 22)} ${c(option.description, selected ? 'white' : 'muted', color)}`
+  })
+  const rows = [
+    c('Select model', 'blueLightBold', color),
+    c('Switch the DeepSeek model for this session. Use --model for one-off commands.', 'muted', color),
+    '',
+    ...optionRows,
+    '',
+    `${c('•', 'blueLightBold', color)} ${c(`${effort} effort`, 'white', color)} ${c('←/→ adjust reasoning effort', 'muted', color)}`,
+    '',
+    c('Enter to confirm · Esc to exit', 'muted', color),
+  ]
+  return [
+    topBorder(title, width, color),
+    ...rows.map(line => `${c('│', 'blue', color)} ${padVisible(line, width - 4)} ${c('│', 'blue', color)}`),
+    bottomBorder(width, color),
+  ].join('\n')
+}
+
 function row(left, right, leftWidth, rightWidth, color) {
   return [
     c('│', 'blue', color),
@@ -255,6 +324,7 @@ function c(text, style, enabled) {
     blueLight: BLUE_LIGHT,
     blueLightBold: `${BOLD}${BLUE_LIGHT}`,
     white: WHITE,
+    whiteBold: `${BOLD}${WHITE}`,
     muted: MUTED,
     dim: DIM,
   }[style]

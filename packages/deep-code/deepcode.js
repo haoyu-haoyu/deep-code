@@ -5,7 +5,6 @@ import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import readline from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import {
   calculateDeepSeekCacheHitRate,
@@ -34,7 +33,6 @@ import {
 import {
   formatDeepCodeAssistantChunk,
   formatDeepCodeCacheUsage,
-  formatDeepCodePrompt,
   formatDeepCodeInfoPanel,
   formatDeepCodeTextPanel,
   formatDeepCodeWelcome,
@@ -47,6 +45,10 @@ import {
   formatDeepCodeHarnessRuntimeDecision,
   resolveDeepCodeHarnessRuntime,
 } from './src/deepcode/harness-runtime.mjs'
+import {
+  createDeepCodeInteractiveReader,
+  shouldForceNativeInteractive,
+} from './src/deepcode/native-interactive.mjs'
 import {
   applyDeepCodeCliEnvOverrides,
   parseDeepCodeArgs,
@@ -185,7 +187,7 @@ async function main() {
 
 function shouldDelegateToFullCli(cli, env = process.env) {
   if (env.DEEPCODE_EXPERIMENTAL_FULL_TUI === '1') return true
-  if (!process.stdin.isTTY && env.DEEPCODE_FORCE_NATIVE_INTERACTIVE !== '1') {
+  if (!process.stdin.isTTY && !shouldForceNativeInteractive(env)) {
     return true
   }
   if (cli.printMode) return true
@@ -264,12 +266,13 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     cwd: process.cwd(),
     env,
   }))
-  const rl = readline.createInterface({
+  const reader = createDeepCodeInteractiveReader({
     input: process.stdin,
     output: process.stdout,
+    env,
   })
   while (true) {
-    const prompt = await readInteractiveLine(rl)
+    const prompt = await reader.readLine()
     if (prompt === null) break
     if (prompt.trim() === '/exit') break
     if (prompt.trim() === '/status') {
@@ -284,6 +287,18 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     }
     if (prompt.trim() === '/model') {
       const config = resolveDeepSeekConfig({ env, cwd: process.cwd() })
+      if (reader.supportsKeyMenus) {
+        const selection = await reader.selectModel({ config })
+        if (selection) {
+          applyInteractiveModelSelection(env, selection)
+          console.log(formatDeepCodeInfoPanel('Model updated', [
+            { label: 'Main model', value: selection.model },
+            { label: 'Reasoning effort', value: selection.reasoningEffort },
+            { label: 'Scope', value: 'current session' },
+          ]))
+        }
+        continue
+      }
       console.log(formatDeepCodeInfoPanel('Model', [
         { label: 'Main model', value: config.model },
         { label: 'Small model', value: config.smallModel },
@@ -341,16 +356,7 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     if (!response.content.endsWith('\n')) process.stdout.write('\n')
     await printAndRecordUsage(response.usage, cacheStatsPath, stablePrefix)
   }
-  rl.close()
-}
-
-async function readInteractiveLine(rl) {
-  try {
-    return await rl.question(formatDeepCodePrompt())
-  } catch (error) {
-    if (error?.message === 'readline was closed') return null
-    throw error
-  }
+  reader.close()
 }
 
 async function requestDeepSeek(
@@ -376,7 +382,7 @@ async function requestDeepSeek(
 async function resolvePrompt(args, env = process.env) {
   const nonFlagArgs = args.filter(arg => !arg.startsWith('-'))
   if (nonFlagArgs.length > 0) return nonFlagArgs.join(' ')
-  if (!process.stdin.isTTY && env.DEEPCODE_FORCE_NATIVE_INTERACTIVE !== '1') {
+  if (!process.stdin.isTTY && !shouldForceNativeInteractive(env)) {
     return await readStdin()
   }
   return ''
@@ -457,6 +463,13 @@ function mergeSettingsEnv(env, settings) {
     DEEPCODE_STRICT_TOOLS:
       env.DEEPCODE_STRICT_TOOLS ?? settings.strictTools,
   }
+}
+
+function applyInteractiveModelSelection(env, selection) {
+  env.DEEPSEEK_MODEL = selection.model
+  env.DEEPCODE_MODEL = selection.model
+  env.DEEPSEEK_REASONING_EFFORT = selection.reasoningEffort
+  env.DEEPCODE_REASONING_EFFORT = selection.reasoningEffort
 }
 
 async function printAndRecordUsage(usage, cacheStatsPath, stablePrefix) {
