@@ -31,11 +31,16 @@ export function resolveDeepCodeHarnessRuntime({
     return activeDecision(config, 'harness', 'mode-on', ['explicit-on'])
   }
 
-  const reasons = classifyHarnessSignals(promptText, permissionMode)
-  if (reasons.length === 0) {
+  const classification = classifyHarnessSignals(promptText, permissionMode)
+  if (!classification.active) {
     return inactiveDecision(config, 'auto-simple-task')
   }
-  return activeDecision(config, 'harness', 'auto-complex-task', reasons)
+  return activeDecision(
+    config,
+    'harness',
+    'auto-complex-task',
+    classification.reasons,
+  )
 }
 
 export function buildDeepCodeHarnessRuntimeContext(decision) {
@@ -125,15 +130,33 @@ function normalizePromptText(prompt) {
 function classifyHarnessSignals(prompt, permissionMode) {
   const text = prompt.toLowerCase()
   const reasons = new Set()
+  const strongReasons = new Set()
 
-  if (/\b(test|tests|failing|failure|regression|verify|verification|e2e|smoke)\b/.test(text) || /测试|失败|验证|回归/.test(prompt)) {
+  const hasTestSignal =
+    /\b(test|tests|verify|verification|e2e|smoke)\b/.test(text) ||
+    /测试|验证/.test(prompt)
+  const hasFailureSignal =
+    /\b(failing|failure|regression|broken|fix)\b/.test(text) ||
+    /失败|修复|回归/.test(prompt)
+  if (hasTestSignal || hasFailureSignal) {
     reasons.add('tests')
+  }
+  if (hasTestSignal && hasFailureSignal) {
+    reasons.add('fix-failing-tests')
+    strongReasons.add('fix-failing-tests')
+  }
+  if (/\b(agents?|subagents?|swarm|orchestrator|harness)\b/.test(text) || /子代理|蜂群|调度/.test(prompt)) {
+    reasons.add('agent-orchestration')
+    strongReasons.add('agent-orchestration')
   }
   if (/\b(cli|tui|tool|tools|permission|cache|provider|stream|sse|agent|subagent|swarm|orchestrator|harness)\b/.test(text) || /工具|权限|缓存|子代理|蜂群|调度/.test(prompt)) {
     reasons.add('tooling')
   }
   if (/\b(across|multi[- ]?file|multi[- ]?module|cross[- ]?module|full cli|full tui|registry|runtime)\b/.test(text) || /跨模块|多文件|完整/.test(prompt)) {
     reasons.add('cross-module')
+    if (/\b(across|multi[- ]?file|multi[- ]?module|cross[- ]?module)\b/.test(text) || /跨模块|多文件/.test(prompt)) {
+      strongReasons.add('cross-module')
+    }
   }
   if (/\b(implement|refactor|migration|migrate|hardening|orchestrator|runtime)\b/.test(text) || /实现|重构|迁移|加固/.test(prompt)) {
     reasons.add('implementation')
@@ -145,5 +168,9 @@ function classifyHarnessSignals(prompt, permissionMode) {
     reasons.add('large-prompt')
   }
 
-  return Array.from(reasons).sort()
+  const active = strongReasons.size > 0 || reasons.size >= 2
+  return {
+    active,
+    reasons: active ? Array.from(reasons).sort() : [],
+  }
 }
