@@ -8,7 +8,7 @@ import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from 
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from '../../constants/prompts.js';
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js';
 // @ts-expect-error Deep Code harness runtime is JS while AgentTool remains TypeScript.
-import { resolveDeepCodeDefaultSubagentType } from '../../deepcode/harness-runtime.mjs';
+import { getLastDeepCodeHarnessRuntimeDecision, resolveDeepCodeDefaultSubagentType } from '../../deepcode/harness-runtime.mjs';
 import { startAgentSummarization } from '../../services/AgentSummary/agentSummary.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
@@ -324,7 +324,8 @@ export const AgentTool = buildTool({
       env: process.env,
       prompt,
       isMainAgent: !toolUseContext.agentId,
-      permissionMode
+      permissionMode,
+      runtimeDecision: getLastDeepCodeHarnessRuntimeDecision()
     }));
     const isForkPath = effectiveType === undefined;
     let selectedAgent: AgentDefinition;

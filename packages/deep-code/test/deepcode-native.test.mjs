@@ -355,6 +355,40 @@ test('resolveDeepCodeHarnessRuntime applies DeepSeek Harness mode decisions', ()
   assert.equal(nested.reason, 'subagent-nesting-disabled')
 })
 
+test('resolveDeepCodeHarnessRuntime keeps auto mode conservative', () => {
+  const weakTestsOnly = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'auto' },
+    prompt: 'Run the tests and tell me what happened.',
+  })
+  const weakImplementationOnly = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'auto' },
+    prompt: 'Implement this one-line copy change.',
+  })
+  const strongFailingTests = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'auto' },
+    prompt: 'Fix failing tests in the CLI.',
+  })
+  const strongSubagents = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'auto' },
+    prompt: 'Use subagents to inspect the permissions and cache behavior.',
+  })
+  const combinedSignals = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'auto' },
+    prompt: 'Implement cache handling across the full CLI and TUI.',
+  })
+
+  assert.equal(weakTestsOnly.state, 'inactive')
+  assert.equal(weakTestsOnly.reason, 'auto-simple-task')
+  assert.equal(weakImplementationOnly.state, 'inactive')
+  assert.equal(strongFailingTests.state, 'harness')
+  assert.ok(strongFailingTests.reasons.includes('fix-failing-tests'))
+  assert.equal(strongSubagents.state, 'harness')
+  assert.ok(strongSubagents.reasons.includes('agent-orchestration'))
+  assert.equal(combinedSignals.state, 'harness')
+  assert.ok(combinedSignals.reasons.includes('cross-module'))
+  assert.ok(combinedSignals.reasons.includes('implementation'))
+})
+
 test('buildDeepCodeHarnessRuntimeContext is dynamic and cache-safe', () => {
   const decision = resolveDeepCodeHarnessRuntime({
     env: { DEEPCODE_HARNESS_MODE: 'swarm' },
@@ -369,7 +403,44 @@ test('buildDeepCodeHarnessRuntimeContext is dynamic and cache-safe', () => {
   assert.doesNotMatch(context, /session[_ -]?id|request[_ -]?id|cache hit|cache miss|timestamp/i)
 })
 
+test('DeepSeek Harness runtime context stays out of stable prefix hash', async () => {
+  const decision = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'on' },
+    prompt: 'Fix failing tests across the full CLI and TUI.',
+  })
+  const harnessRuntimeContext = buildDeepCodeHarnessRuntimeContext(decision)
+  const first = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-a',
+    volatileUserPrompt: `Current user prompt A\n\n${harnessRuntimeContext}`,
+  })
+  const second = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-a',
+    volatileUserPrompt: 'Current user prompt B without Harness context',
+  })
+  const changedTools = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-a',
+    tools: [
+      {
+        name: 'Read',
+        inputJSONSchema: {
+          type: 'object',
+          properties: { file_path: { type: 'string' } },
+          required: ['file_path'],
+        },
+      },
+    ],
+  })
+
+  assert.equal(first.prefixHash, second.prefixHash)
+  assert.notEqual(first.prefixHash, changedTools.prefixHash)
+})
+
 test('resolveDeepCodeDefaultSubagentType follows active Harness decisions', () => {
+  const activeRuntimeDecision = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'auto' },
+    prompt: 'Fix failing tests across the full CLI and TUI',
+  })
+
   assert.equal(
     resolveDeepCodeDefaultSubagentType({
       env: { DEEPCODE_HARNESS_MODE: 'on' },
@@ -381,6 +452,24 @@ test('resolveDeepCodeDefaultSubagentType follows active Harness decisions', () =
     resolveDeepCodeDefaultSubagentType({
       env: { DEEPCODE_HARNESS_MODE: 'off' },
       prompt: 'implement the focused fix',
+    }),
+    'general-purpose',
+  )
+  assert.equal(
+    resolveDeepCodeDefaultSubagentType({
+      env: { DEEPCODE_HARNESS_MODE: 'auto' },
+      prompt: 'Inspect one file.',
+      isMainAgent: true,
+      runtimeDecision: activeRuntimeDecision,
+    }),
+    'worker',
+  )
+  assert.equal(
+    resolveDeepCodeDefaultSubagentType({
+      env: { DEEPCODE_HARNESS_MODE: 'auto' },
+      prompt: 'Inspect one file.',
+      isMainAgent: false,
+      runtimeDecision: activeRuntimeDecision,
     }),
     'general-purpose',
   )
