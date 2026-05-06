@@ -11,6 +11,10 @@ import {
   formatDeepCodeHarnessStatus,
   resolveDeepCodeHarnessConfig,
 } from './harness-config.mjs'
+import {
+  formatDeepCodeHarnessRuntimeDecision,
+  getLastDeepCodeHarnessRuntimeDecision,
+} from './harness-runtime.mjs'
 import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
 
 export async function buildDeepCodeStatusReport({
@@ -34,6 +38,7 @@ export async function buildDeepCodeStatusReport({
     provider: 'DeepSeek native',
     config,
     harnessConfig,
+    harnessRuntimeDecision: getLastDeepCodeHarnessRuntimeDecision(),
     cacheStats: resolvedCacheStats,
     cacheStatsPath: resolvedCacheStatsPath,
     stablePrefix: resolvedStablePrefix,
@@ -50,6 +55,9 @@ export function formatDeepCodeStatus(report) {
     `Thinking: ${report.config.thinking}`,
     `Reasoning effort: ${report.config.reasoningEffort}`,
     formatDeepCodeHarnessStatus(report.harnessConfig),
+    report.harnessRuntimeDecision
+      ? formatDeepCodeHarnessRuntimeDecision(report.harnessRuntimeDecision)
+      : 'Harness runtime: unavailable',
     `Cache user_id: ${report.config.cacheUserId}`,
     formatDeepCodePrefixStatus(report.stablePrefix),
     `API key: ${report.apiKeyConfigured ? 'configured' : 'missing'}`,
@@ -75,6 +83,14 @@ export function deepCodeStatusReportToProperties(report) {
     },
     { label: 'Prompt pack', value: report.harnessConfig.promptPack },
     { label: 'Strict tools', value: report.harnessConfig.strictTools },
+    {
+      label: 'Harness runtime',
+      value: report.harnessRuntimeDecision?.state ?? 'unavailable',
+    },
+    {
+      label: 'Harness runtime reason',
+      value: report.harnessRuntimeDecision?.reason ?? 'unavailable',
+    },
     { label: 'Cache user_id', value: report.config.cacheUserId },
     {
       label: 'Stable prefix hash',

@@ -81,6 +81,12 @@ import {
   shouldEnableThinkingByDefault,
   type ThinkingConfig,
 } from './utils/thinking.js'
+// @ts-expect-error Deep Code harness runtime is JS while QueryEngine remains TypeScript.
+import {
+  buildDeepCodeHarnessRuntimeContext,
+  recordDeepCodeHarnessRuntimeDecision,
+  resolveDeepCodeHarnessRuntime,
+} from './deepcode/harness-runtime.mjs'
 
 // Lazy: MessageSelector.tsx pulls React/ink; only needed for message filtering at query time
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -299,12 +305,26 @@ export class QueryEngine {
       customSystemPrompt: customPrompt,
     })
     headlessProfilerCheckpoint('after_getSystemPrompt')
+    const harnessRuntimeDecision = resolveDeepCodeHarnessRuntime({
+      env: process.env,
+      prompt,
+      isMainAgent: true,
+      permissionMode: initialAppState.toolPermissionContext.mode,
+    })
+    recordDeepCodeHarnessRuntimeDecision(harnessRuntimeDecision)
+    const harnessRuntimeContext = buildDeepCodeHarnessRuntimeContext(
+      harnessRuntimeDecision,
+    )
+
     const userContext = {
       ...baseUserContext,
       ...getCoordinatorUserContext(
         mcpClients,
         isScratchpadEnabled() ? getScratchpadDir() : undefined,
       ),
+      ...(harnessRuntimeContext
+        ? { deepCodeHarnessRuntime: harnessRuntimeContext }
+        : {}),
     }
 
     // When an SDK caller provides a custom system prompt AND has set

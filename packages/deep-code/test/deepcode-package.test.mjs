@@ -118,8 +118,20 @@ const deepSeekHarnessPromptsSource = readFileSync(
   resolve(root, 'packages/deep-code/src/constants/deepseekHarnessPrompts.ts'),
   'utf8',
 )
+const deepSeekHarnessRuntimeSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/deepcode/harness-runtime.mjs'),
+  'utf8',
+)
 const coordinatorModeSource = readFileSync(
   resolve(root, 'packages/deep-code/src/coordinator/coordinatorMode.ts'),
+  'utf8',
+)
+const queryEngineSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/QueryEngine.ts'),
+  'utf8',
+)
+const agentToolSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/AgentTool.tsx'),
   'utf8',
 )
 const generalPurposeAgentSource = readFileSync(
@@ -466,6 +478,23 @@ test('Deep Code CLI advertises DeepSeek local toolchain E2E check', () => {
   assert.match(result.stdout, /deepcode --compact "summarize this transcript tail"/)
   assert.match(result.stdout, /--model deepseek-v4-pro/)
   assert.match(result.stdout, /--reasoning-effort high\|max/)
+})
+
+test('Deep Code CLI previews Harness runtime decisions', () => {
+  const result = spawnSync('node', [
+    resolve(root, rootPackage.bin.deepcode),
+    '--harness',
+    'fix failing tests across the full CLI and TUI',
+  ], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Harness mode: auto/)
+  assert.match(result.stdout, /Harness runtime: harness/)
+  assert.match(result.stdout, /Runtime reason: auto-complex-task/)
+  assert.match(result.stdout, /Runtime max agents: 4/)
 })
 
 test('Deep Code front controller delegates print mode to the full CLI bundle', () => {
@@ -948,8 +977,22 @@ test('DeepSeek Harness built-in agents expose explorer worker verifier and summa
   assert.match(statuslineSetupAgentSource, /Deep Code settings/)
   assert.match(builtInAgentsSource, /DEEPSEEK_SUMMARIZER_AGENT/)
   assert.match(builtInAgentsSource, /DEEPSEEK_WORKER_AGENT/)
+  assert.match(builtInAgentsSource, /DEEPSEEK_EXPLORER_AGENT/)
+  assert.match(exploreAgentSource, /agentType: 'explorer'/)
   assert.doesNotMatch(agentSources, /Anthropic's official CLI/)
   assert.doesNotMatch(agentSources, /for Claude Code/)
+})
+
+test('DeepSeek Harness runtime is wired into full CLI and TUI without legacy coordinator gate', () => {
+  assert.match(deepSeekHarnessRuntimeSource, /resolveDeepCodeHarnessRuntime/)
+  assert.match(deepSeekHarnessRuntimeSource, /buildDeepCodeHarnessRuntimeContext/)
+  assert.match(deepSeekHarnessRuntimeSource, /resolveDeepCodeDefaultSubagentType/)
+  assert.match(deepcodeEntrypointSource, /formatDeepCodeHarnessRuntimeDecision/)
+  assert.match(queryEngineSource, /buildDeepCodeHarnessRuntimeContext/)
+  assert.match(queryEngineSource, /recordDeepCodeHarnessRuntimeDecision/)
+  assert.match(replSource, /buildDeepCodeHarnessRuntimeContext/)
+  assert.match(agentToolSource, /resolveDeepCodeDefaultSubagentType/)
+  assert.doesNotMatch(deepSeekHarnessRuntimeSource, /CLAUDE_CODE_COORDINATOR_MODE/)
 })
 
 test('DeepSeek-native slash commands hide legacy Claude service integrations by default', () => {

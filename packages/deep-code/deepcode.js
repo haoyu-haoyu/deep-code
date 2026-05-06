@@ -36,6 +36,10 @@ import {
   resolveDeepCodeHarnessConfig,
 } from './src/deepcode/harness-config.mjs'
 import {
+  formatDeepCodeHarnessRuntimeDecision,
+  resolveDeepCodeHarnessRuntime,
+} from './src/deepcode/harness-runtime.mjs'
+import {
   applyDeepCodeCliEnvOverrides,
   parseDeepCodeArgs,
 } from './src/deepcode/cli-args.mjs'
@@ -88,6 +92,17 @@ async function main() {
   }
   if (cli.command === 'harness') {
     console.log(formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig(env)))
+    const prompt = cli.promptArgs.join(' ').trim()
+    if (prompt) {
+      console.log('')
+      console.log(formatDeepCodeHarnessRuntimeDecision(
+        resolveDeepCodeHarnessRuntime({
+          env,
+          prompt,
+          isMainAgent: true,
+        }),
+      ))
+    }
     return
   }
   if (cli.command === 'warm-cache') {

@@ -70,6 +70,8 @@ import { SpinnerWithVerb, BriefIdleStatus, type SpinnerMode } from '../component
 import { getSystemPrompt } from '../constants/prompts.js';
 import { buildEffectiveSystemPrompt } from '../utils/systemPrompt.js';
 import { getSystemContext, getUserContext } from '../context.js';
+// @ts-expect-error Deep Code harness runtime is JS while REPL remains TypeScript.
+import { buildDeepCodeHarnessRuntimeContext, recordDeepCodeHarnessRuntimeDecision, resolveDeepCodeHarnessRuntime } from '../deepcode/harness-runtime.mjs';
 import { getMemoryFiles } from '../utils/claudemd.js';
 import { startBackgroundHousekeeping } from '../utils/backgroundHousekeeping.js';
 import { getTotalCost, saveCurrentSessionCosts, resetCostState, getStoredSessionCosts } from '../cost-tracker.js';
@@ -2770,9 +2772,21 @@ export function REPL({
     checkAndDisableBypassPermissionsIfNeeded(toolPermissionContext, setAppState),
     // Gated on TRANSCRIPT_CLASSIFIER so GrowthBook kill switch runs wherever auto mode is built in
     feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState, store.getState().fastMode) : undefined, getSystemPrompt(freshTools, mainLoopModelParam, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
+    const harnessPromptText = newMessages.filter(m => m.type === 'user' && !m.isMeta).map(m => m.type === 'user' ? getContentText(m.message.content) : '').join('\n');
+    const harnessRuntimeDecision = resolveDeepCodeHarnessRuntime({
+      env: process.env,
+      prompt: harnessPromptText,
+      isMainAgent: true,
+      permissionMode: toolPermissionContext.mode
+    });
+    recordDeepCodeHarnessRuntimeDecision(harnessRuntimeDecision);
+    const harnessRuntimeContext = buildDeepCodeHarnessRuntimeContext(harnessRuntimeDecision);
     const userContext = {
       ...baseUserContext,
       ...getCoordinatorUserContext(freshMcpClients, isScratchpadEnabled() ? getScratchpadDir() : undefined),
+      ...(harnessRuntimeContext ? {
+        deepCodeHarnessRuntime: harnessRuntimeContext
+      } : {}),
       ...((feature('PROACTIVE') || feature('KAIROS')) && proactiveModule?.isProactiveActive() && !terminalFocusRef.current ? {
         terminalFocus: 'The terminal is unfocused \u2014 the user is not actively watching.'
       } : {})

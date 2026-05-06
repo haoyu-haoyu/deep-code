@@ -81,3 +81,11 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   omitClaudeMd: true,
   getSystemPrompt: () => getExploreSystemPrompt(),
 }
+
+export const DEEPSEEK_EXPLORER_AGENT: BuiltInAgentDefinition = {
+  ...EXPLORE_AGENT,
+  agentType: 'explorer',
+  whenToUse:
+    'DeepSeek Harness read-only explorer for locating code, architecture facts, and evidence without modifying files.',
+  model: 'deepseek-v4-flash',
+}
