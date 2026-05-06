@@ -9,6 +9,7 @@ import {
   resolveDeepSeekCacheStatsPath,
 } from '../deepcode/cache-telemetry.mjs'
 import { createDeepCodeStablePrefix } from '../deepcode/stable-prefix.mjs'
+import { resolveDeepCodeRequestMaxTokens } from '../deepcode/context-policy.mjs'
 import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
 
 export function createDeepSeekCallModel({
@@ -39,6 +40,7 @@ export function createDeepSeekCallModel({
       toolSchemaOptions,
     })
 
+    const runtimeModel = resolveDeepSeekRuntimeModel(options.model)
     const response = await collectDeepSeekStreamEvents(provider.streamQuery({
       systemPrompt: stablePrefix.systemPrompt,
       messages,
@@ -47,9 +49,14 @@ export function createDeepSeekCallModel({
       stablePrefix,
       env: process.env,
       cwd: process.cwd(),
-      model: resolveDeepSeekRuntimeModel(options.model),
+      model: runtimeModel,
       reasoningEffort: resolveDeepSeekReasoningEffort(options.effortValue),
-      maxTokens: options.maxOutputTokensOverride,
+      maxTokens:
+        options.maxOutputTokensOverride ??
+        resolveDeepCodeRequestMaxTokens({
+          env: process.env,
+          model: runtimeModel,
+        }),
       toolChoice: options.toolChoice,
       signal,
       fetch: options.fetchOverride,

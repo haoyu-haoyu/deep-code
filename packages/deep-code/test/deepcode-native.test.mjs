@@ -58,6 +58,10 @@ import {
   resolveDeepCodeHarnessConfig,
 } from '../src/deepcode/harness-config.mjs'
 import {
+  formatDeepCodeContextPolicy,
+  resolveDeepCodeContextPolicy,
+} from '../src/deepcode/context-policy.mjs'
+import {
   buildDeepCodeHarnessRuntimeContext,
   clearDeepCodeHarnessAgentLifecycle,
   formatDeepCodeHarnessAgentLifecycle,
@@ -73,6 +77,9 @@ import {
   createDeepSeekLocalTools,
   runDeepSeekLocalToolChain,
 } from '../src/deepcode/local-toolchain.mjs'
+import {
+  runDeepCodeAgentRuntimeE2E,
+} from '../src/deepcode/agent-runtime-e2e.mjs'
 import {
   createDeepCodeStablePrefix,
   formatDeepCodePrefixStatus,
@@ -279,6 +286,8 @@ test('parseDeepCodeArgs recognizes DeepSeek Harness controls', () => {
     '--harness-mode=swarm',
     '--harness-max-agents',
     '3',
+    '--max-context-tokens',
+    '750000',
     '--prompt-pack',
     'deepseek-v1',
     '--strict-tools=safe',
@@ -288,6 +297,7 @@ test('parseDeepCodeArgs recognizes DeepSeek Harness controls', () => {
   assert.deepEqual(parsed.envOverrides, {
     DEEPCODE_HARNESS_MODE: 'swarm',
     DEEPCODE_HARNESS_MAX_AGENTS: '3',
+    DEEPCODE_MAX_CONTEXT_TOKENS: '750000',
     DEEPCODE_PROMPT_PACK: 'deepseek-v1',
     DEEPCODE_STRICT_TOOLS: 'safe',
   })
@@ -316,6 +326,42 @@ test('resolveDeepCodeHarnessConfig applies safe DeepSeek defaults and env overri
   assert.match(formatDeepCodeHarnessStatus(config), /Harness mode: on/)
   assert.match(formatDeepCodeHarnessStatus(config), /Prompt pack: deepseek-v1/)
   assert.match(formatDeepCodeHarnessStatus(config), /Strict tools: safe/)
+})
+
+test('resolveDeepCodeContextPolicy configures DeepSeek v4 for 1M context and auto compact headroom', () => {
+  const policy = resolveDeepCodeContextPolicy({
+    env: {},
+    model: 'deepseek-v4-pro',
+  })
+  const flash = resolveDeepCodeContextPolicy({
+    env: {},
+    model: 'deepseek-v4-flash',
+  })
+  const override = resolveDeepCodeContextPolicy({
+    env: { DEEPCODE_MAX_CONTEXT_TOKENS: '500000' },
+    model: 'deepseek-v4-pro',
+  })
+  const disabled = resolveDeepCodeContextPolicy({
+    env: { DEEPCODE_DISABLE_1M_CONTEXT: '1' },
+    model: 'deepseek-v4-pro',
+  })
+  const formatted = formatDeepCodeContextPolicy(policy)
+
+  assert.equal(policy.contextWindowTokens, 1_000_000)
+  assert.equal(policy.effectiveContextWindowTokens, 980_000)
+  assert.equal(policy.autoCompactThresholdTokens, 967_000)
+  assert.equal(policy.maxOutputTokens.default, 64_000)
+  assert.equal(policy.maxOutputTokens.upperLimit, 384_000)
+  assert.equal(policy.autoCompactEnabled, true)
+  assert.equal(flash.contextWindowTokens, 1_000_000)
+  assert.equal(override.contextWindowTokens, 500_000)
+  assert.equal(override.autoCompactThresholdTokens, 467_000)
+  assert.equal(disabled.contextWindowTokens, 200_000)
+  assert.match(formatted, /Context window: 1000000/)
+  assert.match(formatted, /Effective context window: 980000/)
+  assert.match(formatted, /Auto compact: enabled/)
+  assert.match(formatted, /Auto compact threshold: 967000/)
+  assert.doesNotMatch(formatted, /Claude|Anthropic/)
 })
 
 test('resolveDeepCodeHarnessRuntime applies DeepSeek Harness mode decisions', () => {
@@ -810,6 +856,8 @@ test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', a
   assert.equal(report.stablePrefix.prefixHash, sameStablePrefix.stablePrefix.prefixHash)
   assert.match(formatted, /Provider: DeepSeek native/)
   assert.match(formatted, /Model: deepseek-v4-pro/)
+  assert.match(formatted, /Context window: 1000000/)
+  assert.match(formatted, /Auto compact threshold: 967000/)
   assert.match(formatted, /Reasoning effort: max/)
   assert.match(formatted, /Runtime recommended profile: worker/)
   assert.match(formatted, /Runtime delegation policy: selective-specialists/)
@@ -819,6 +867,8 @@ test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', a
   assert.match(formatted, /Stable prefix hash: [A-Za-z0-9_-]+/)
   assert.equal(properties.find(item => item.label === 'Provider')?.value, 'DeepSeek native')
   assert.equal(properties.find(item => item.label === 'Model')?.value, 'deepseek-v4-pro')
+  assert.equal(properties.find(item => item.label === 'Context window')?.value, '1000000')
+  assert.equal(properties.find(item => item.label === 'Auto compact threshold')?.value, '967000')
   assert.equal(properties.find(item => item.label === 'Reasoning effort')?.value, 'max')
   assert.equal(properties.find(item => item.label === 'Harness recommended profile')?.value, 'worker')
   assert.equal(properties.find(item => item.label === 'Harness delegation policy')?.value, 'selective-specialists')
@@ -2344,6 +2394,59 @@ test('runDeepSeekLocalToolChain uses real tools in both stable prefix and DeepSe
     requests[0].body.messages[0].content,
     /"name":"Read"/,
   )
+})
+
+test('runDeepCodeAgentRuntimeE2E records default worker lifecycle through Agent tool call', async () => {
+  const requests = []
+  const result = await runDeepCodeAgentRuntimeE2E({
+    env: {
+      DEEPSEEK_API_KEY: 'sk-test',
+      DEEPCODE_HARNESS_MODE: 'on',
+    },
+    complete(request) {
+      requests.push(request.body)
+      if (requests.length === 1) {
+        return {
+          content: '',
+          reasoning: 'Delegate a focused worker.',
+          finishReason: 'tool_calls',
+          toolCalls: [
+            {
+              id: 'call_agent',
+              type: 'function',
+              function: {
+                name: 'Agent',
+                arguments: JSON.stringify({
+                  description: 'Inspect lifecycle',
+                  prompt: 'Inspect DeepSeek Harness lifecycle.',
+                }),
+              },
+            },
+          ],
+        }
+      }
+      return {
+        content: 'deepcode-agent-e2e-ok',
+        reasoning: '',
+        finishReason: 'stop',
+        toolCalls: [],
+        usage: {
+          prompt_cache_hit_tokens: 64,
+          prompt_cache_miss_tokens: 16,
+        },
+      }
+    },
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.content, 'deepcode-agent-e2e-ok')
+  assert.equal(result.lifecycle.selectedProfile, 'worker')
+  assert.equal(result.lifecycle.selection, 'default')
+  assert.equal(result.lifecycle.requestedProfile, 'omitted')
+  assert.equal(result.runtimeDecision.state, 'harness')
+  assert.equal(requests[0].tools[0].function.name, 'Agent')
+  assert.equal(requests[1].messages.at(-1).tool_call_id, 'call_agent')
+  assert.equal(result.cacheDiagnostics.promptCacheHitTokens, 64)
 })
 
 test('createDeepSeekLocalTools rejects paths outside cwd and unsafe bash commands', async () => {

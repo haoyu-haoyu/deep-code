@@ -39,6 +39,14 @@ const configSource = readFileSync(
   resolve(root, 'packages/deep-code/src/utils/config.ts'),
   'utf8',
 )
+const utilsContextSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/utils/context.ts'),
+  'utf8',
+)
+const deepCodeContextPolicySource = readFileSync(
+  resolve(root, 'packages/deep-code/src/deepcode/context-policy.mjs'),
+  'utf8',
+)
 const settingsSource = readFileSync(
   resolve(root, 'packages/deep-code/src/utils/settings/settings.ts'),
   'utf8',
@@ -482,6 +490,7 @@ test('Deep Code CLI advertises DeepSeek local toolchain E2E check', () => {
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /deepcode --tool-e2e/)
+  assert.match(result.stdout, /deepcode --agent-e2e/)
   assert.match(result.stdout, /deepcode -p "explain this repo"/)
   assert.match(result.stdout, /deepcode --compact "summarize this transcript tail"/)
   assert.match(result.stdout, /--model deepseek-v4-pro/)
@@ -1021,6 +1030,19 @@ test('DeepSeek Harness runtime is wired into full CLI and TUI without legacy coo
   assert.match(agentToolPromptSource, /verification.*VERDICT/s)
   assert.match(agentToolPromptSource, /summarizer.*compact/s)
   assert.doesNotMatch(deepSeekHarnessRuntimeSource, /CLAUDE_CODE_COORDINATOR_MODE/)
+})
+
+test('DeepSeek context policy wires 1M context and auto compact status into Deep Code', () => {
+  assert.match(deepCodeContextPolicySource, /DEFAULT_DEEPCODE_CONTEXT_WINDOW_TOKENS = 1_000_000/)
+  assert.match(deepCodeContextPolicySource, /DEEPCODE_MAX_CONTEXT_TOKENS/)
+  assert.match(deepCodeContextPolicySource, /DEEPSEEK_MAX_CONTEXT_TOKENS/)
+  assert.match(deepCodeContextPolicySource, /DEEPCODE_DISABLE_1M_CONTEXT/)
+  assert.match(utilsContextSource, /resolveDeepCodeContextPolicy/)
+  assert.match(settingsStatusSource, /buildDeepCodeStatusReport/)
+  assert.match(deepcodeEntrypointSource, /--max-context-tokens/)
+  assert.match(deepcodeEntrypointSource, /DEEPCODE_MAX_CONTEXT_TOKENS/)
+  assert.match(deepcodeEntrypointSource, /runAgentE2E/)
+  assert.match(deepSeekCallModelSource, /resolveDeepCodeRequestMaxTokens/)
 })
 
 test('DeepSeek-native slash commands hide legacy Claude service integrations by default', () => {

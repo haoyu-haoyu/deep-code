@@ -7,6 +7,7 @@ const COMMAND_FLAGS = new Map([
   ['--doctor', 'doctor'],
   ['--warm-cache', 'warm-cache'],
   ['--tool-e2e', 'tool-e2e'],
+  ['--agent-e2e', 'agent-e2e'],
   ['--compact', 'compact'],
   ['--harness', 'harness'],
 ])
@@ -23,6 +24,7 @@ const ENV_OPTION_FLAGS = new Map([
   ['--thinking', 'DEEPSEEK_THINKING'],
   ['--harness-mode', 'DEEPCODE_HARNESS_MODE'],
   ['--harness-max-agents', 'DEEPCODE_HARNESS_MAX_AGENTS'],
+  ['--max-context-tokens', 'DEEPCODE_MAX_CONTEXT_TOKENS'],
   ['--prompt-pack', 'DEEPCODE_PROMPT_PACK'],
   ['--strict-tools', 'DEEPCODE_STRICT_TOOLS'],
 ])

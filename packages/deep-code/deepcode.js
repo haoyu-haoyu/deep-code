@@ -43,6 +43,7 @@ import {
   applyDeepCodeCliEnvOverrides,
   parseDeepCodeArgs,
 } from './src/deepcode/cli-args.mjs'
+import { runDeepCodeAgentRuntimeE2E } from './src/deepcode/agent-runtime-e2e.mjs'
 import { runDeepSeekLocalToolChain } from './src/deepcode/local-toolchain.mjs'
 import { resolveModelProvider } from './src/services/providers/index.mjs'
 
@@ -145,6 +146,10 @@ async function main() {
   }
   if (cli.command === 'tool-e2e') {
     await runToolE2E(env, cacheStatsPath)
+    return
+  }
+  if (cli.command === 'agent-e2e') {
+    await runAgentE2E(env, cacheStatsPath)
     return
   }
 
@@ -427,6 +432,34 @@ async function runToolE2E(env, cacheStatsPath) {
   }
 }
 
+async function runAgentE2E(env, cacheStatsPath) {
+  const result = await runDeepCodeAgentRuntimeE2E({
+    env: {
+      ...env,
+      DEEPCODE_HARNESS_MODE: env.DEEPCODE_HARNESS_MODE ?? 'on',
+    },
+    cwd: process.cwd(),
+  })
+  console.log('DeepSeek Agent runtime E2E')
+  console.log(`Runtime: ${result.runtimeDecision.state}`)
+  console.log(`Runtime reason: ${result.runtimeDecision.reason}`)
+  console.log(`Agent profile: ${result.lifecycle?.selectedProfile ?? 'unavailable'}`)
+  console.log(`Agent selection: ${result.lifecycle?.selection ?? 'unavailable'}`)
+  console.log(`Model response: ${JSON.stringify(result.content)}`)
+  if (result.cacheDiagnostics) {
+    console.log(
+      `Cache: hit=${result.cacheDiagnostics.promptCacheHitTokens} miss=${result.cacheDiagnostics.promptCacheMissTokens} hit_rate=${(result.cacheDiagnostics.promptCacheHitRate * 100).toFixed(1)}%`,
+    )
+  }
+  await recordDeepSeekCacheUsage({
+    path: cacheStatsPath,
+    usage: result.usage,
+  })
+  if (!result.ok) {
+    process.exitCode = 1
+  }
+}
+
 function printHelp() {
   console.log(`Deep Code native DeepSeek CLI
 
@@ -442,6 +475,7 @@ Usage:
   deepcode --warm-cache
   deepcode --compact "summarize this transcript tail"
   deepcode --tool-e2e
+  deepcode --agent-e2e
 
 Configuration:
   ~/.deepcode/settings.json
@@ -452,6 +486,7 @@ Configuration:
   DEEPSEEK_REASONING_EFFORT=high|max
   DEEPCODE_HARNESS_MODE=auto|off|on|swarm
   DEEPCODE_HARNESS_MAX_AGENTS=4
+  DEEPCODE_MAX_CONTEXT_TOKENS=1000000
   DEEPCODE_PROMPT_PACK=deepseek-v1
   DEEPCODE_STRICT_TOOLS=off|safe|all
 
@@ -469,6 +504,7 @@ Options:
   --harness
   --harness-mode auto|off|on|swarm
   --harness-max-agents 4
+  --max-context-tokens 1000000
   --prompt-pack deepseek-v1
   --strict-tools off|safe|all
 `)

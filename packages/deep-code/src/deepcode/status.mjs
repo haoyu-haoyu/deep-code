@@ -12,6 +12,10 @@ import {
   resolveDeepCodeHarnessConfig,
 } from './harness-config.mjs'
 import {
+  formatDeepCodeContextPolicy,
+  resolveDeepCodeContextPolicy,
+} from './context-policy.mjs'
+import {
   formatDeepCodeHarnessAgentLifecycle,
   formatDeepCodeHarnessRuntimeDecision,
   getLastDeepCodeHarnessAgentLifecycle,
@@ -29,6 +33,10 @@ export async function buildDeepCodeStatusReport({
 } = {}) {
   const config = resolveDeepSeekConfig({ env, cwd })
   const harnessConfig = resolveDeepCodeHarnessConfig(env)
+  const contextPolicy = resolveDeepCodeContextPolicy({
+    env,
+    model: config.model,
+  })
   const resolvedStablePrefix =
     stablePrefix ?? await createDeepCodeStablePrefix({ repoSummary })
   const resolvedCacheStatsPath =
@@ -39,6 +47,7 @@ export async function buildDeepCodeStatusReport({
   return {
     provider: 'DeepSeek native',
     config,
+    contextPolicy,
     harnessConfig,
     harnessRuntimeDecision: getLastDeepCodeHarnessRuntimeDecision(),
     harnessAgentLifecycle: getLastDeepCodeHarnessAgentLifecycle(),
@@ -55,6 +64,7 @@ export function formatDeepCodeStatus(report) {
     `Base URL: ${report.config.baseUrl}`,
     `Model: ${report.config.model}`,
     `Small model: ${report.config.smallModel}`,
+    formatDeepCodeContextPolicy(report.contextPolicy),
     `Thinking: ${report.config.thinking}`,
     `Reasoning effort: ${report.config.reasoningEffort}`,
     formatDeepCodeHarnessStatus(report.harnessConfig),
@@ -78,6 +88,22 @@ export function deepCodeStatusReportToProperties(report) {
     { label: 'Base URL', value: report.config.baseUrl },
     { label: 'Model', value: report.config.model },
     { label: 'Small model', value: report.config.smallModel },
+    {
+      label: 'Context window',
+      value: String(report.contextPolicy.contextWindowTokens),
+    },
+    {
+      label: 'Effective context window',
+      value: String(report.contextPolicy.effectiveContextWindowTokens),
+    },
+    {
+      label: 'Auto compact',
+      value: report.contextPolicy.autoCompactEnabled ? 'enabled' : 'disabled',
+    },
+    {
+      label: 'Auto compact threshold',
+      value: String(report.contextPolicy.autoCompactThresholdTokens),
+    },
     { label: 'Thinking', value: report.config.thinking },
     { label: 'Reasoning effort', value: report.config.reasoningEffort },
     { label: 'Harness mode', value: report.harnessConfig.mode },

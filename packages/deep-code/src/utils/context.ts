@@ -4,6 +4,13 @@ import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
+// @ts-expect-error Deep Code context policy is JS while this legacy module remains TypeScript.
+import {
+  isDeepCode1mContextDisabled,
+  isDeepSeekModelName,
+  resolveDeepCodeContextPolicy,
+  resolveDeepCodeMaxOutputTokens,
+} from '../deepcode/context-policy.mjs'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -29,7 +36,7 @@ export const ESCALATED_MAX_TOKENS = 64_000
  * Used by C4E admins to disable 1M context for HIPAA compliance.
  */
 export function is1mContextDisabled(): boolean {
-  return isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_1M_CONTEXT)
+  return isDeepCode1mContextDisabled(process.env)
 }
 
 export function has1mContext(model: string): boolean {
@@ -44,6 +51,12 @@ export function modelSupports1M(model: string): boolean {
   if (is1mContextDisabled()) {
     return false
   }
+  if (isDeepSeekModelName(model)) {
+    return resolveDeepCodeContextPolicy({
+      env: process.env,
+      model,
+    }).supportsOneMillionContext
+  }
   const canonical = getCanonicalName(model)
   return canonical.includes('claude-sonnet-4') || canonical.includes('opus-4-6')
 }
@@ -52,6 +65,23 @@ export function getContextWindowForModel(
   model: string,
   betas?: string[],
 ): number {
+  const deepCodeOverride =
+    process.env.DEEPCODE_MAX_CONTEXT_TOKENS ??
+    process.env.DEEPSEEK_MAX_CONTEXT_TOKENS
+  if (deepCodeOverride) {
+    const override = parseInt(deepCodeOverride, 10)
+    if (!isNaN(override) && override > 0) {
+      return override
+    }
+  }
+
+  if (isDeepSeekModelName(model)) {
+    return resolveDeepCodeContextPolicy({
+      env: process.env,
+      model,
+    }).contextWindowTokens
+  }
+
   // Allow override via environment variable (ant-only)
   // This takes precedence over all other context window resolution, including 1M detection,
   // so users can cap the effective context window for local decisions (auto-compact, etc.)
@@ -150,6 +180,13 @@ export function getModelMaxOutputTokens(model: string): {
   default: number
   upperLimit: number
 } {
+  if (isDeepSeekModelName(model)) {
+    return resolveDeepCodeMaxOutputTokens({
+      env: process.env,
+      model,
+    })
+  }
+
   let defaultTokens: number
   let upperLimit: number
 
