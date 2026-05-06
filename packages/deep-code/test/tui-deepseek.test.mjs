@@ -221,7 +221,16 @@ test('TUI query loop preserves DeepSeek reasoning across permission-gated tool t
       ])
       expect(toolExecutions).toHaveLength(1)
       expect(toolExecutions[0].permissionMode).toBe(permissionMode)
-      expect(toolExecutions[0].toolNames).toEqual(['Read', 'Edit', 'Bash'])
+      expect(toolExecutions[0].toolNames).toEqual(['Agent', 'Read', 'Edit', 'Bash'])
+      expect(toolExecutions[0].assistantContent).toContainEqual({
+        type: 'tool_use',
+        id: `toolu_${permissionMode}_agent`,
+        name: 'Agent',
+        input: {
+          description: 'Inspect behavior',
+          prompt: `Inspect Harness permissions in ${permissionMode}.`,
+        },
+      })
       expect(toolExecutions[0].permissionDecision.behavior).toBe(
         permissionMode === 'bypassPermissions' ? 'allow' : 'ask',
       )
@@ -600,6 +609,15 @@ function createDeepSeekPermissionDeps({
           {
             type: 'thinking',
             thinking: `Need to inspect, edit, and verify in ${permissionMode}.`,
+          },
+          {
+            type: 'tool_use',
+            id: `toolu_${permissionMode}_agent`,
+            name: 'Agent',
+            input: {
+              description: 'Inspect behavior',
+              prompt: `Inspect Harness permissions in ${permissionMode}.`,
+            },
           },
           {
             type: 'tool_use',

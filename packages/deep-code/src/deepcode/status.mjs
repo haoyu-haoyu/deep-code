@@ -91,6 +91,14 @@ export function deepCodeStatusReportToProperties(report) {
       label: 'Harness runtime reason',
       value: report.harnessRuntimeDecision?.reason ?? 'unavailable',
     },
+    {
+      label: 'Harness recommended profile',
+      value: report.harnessRuntimeDecision?.recommendedProfile ?? 'unavailable',
+    },
+    {
+      label: 'Harness delegation policy',
+      value: report.harnessRuntimeDecision?.delegationPolicy ?? 'unavailable',
+    },
     { label: 'Cache user_id', value: report.config.cacheUserId },
     {
       label: 'Stable prefix hash',

@@ -198,12 +198,24 @@ assistant: "I'm going to use the ${AGENT_TOOL_NAME} tool to launch the greeting-
     : `Available agent types and the tools they have access to:
 ${effectiveAgents.map(agent => formatAgentLine(agent)).join('\n')}`
 
+  const deepSeekHarnessProfileSection = `
+## DeepSeek Harness profiles
+
+When Deep Code Harness runtime is active, omitting \`subagent_type\` defaults to \`worker\`. When Harness runtime is inactive, omitting \`subagent_type\` keeps the legacy \`general-purpose\` default.
+- \`explorer\`: read-only research, code location, architecture mapping, and evidence gathering. Do not use it for writes.
+- \`worker\`: focused implementation with explicit write ownership, file scope, validation commands, and remaining-risk reporting.
+- \`verification\`: independent validation that does not modify project files and reports \`VERDICT: PASS | FAIL | PARTIAL\`.
+- \`summarizer\`: compact handoff, session, or subagent-result condensation without tool use.
+`
+
   // Shared core prompt used by both coordinator and non-coordinator modes
   const shared = `Launch a new agent to handle complex, multi-step tasks autonomously.
 
 The ${AGENT_TOOL_NAME} tool launches specialized agents (subprocesses) that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.
 
 ${agentListSection}
+
+${deepSeekHarnessProfileSection}
 
 ${
   forkEnabled

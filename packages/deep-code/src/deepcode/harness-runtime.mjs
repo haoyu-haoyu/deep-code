@@ -53,6 +53,8 @@ export function buildDeepCodeHarnessRuntimeContext(decision) {
     `Runtime reason: ${decision.reason}.`,
     `Runtime signals: ${decision.reasons.join(', ') || 'explicit'}.`,
     `Max agents: ${decision.maxAgents}.`,
+    `Recommended default Agent profile: ${decision.recommendedProfile}.`,
+    `Delegation policy: ${decision.delegationPolicy}.`,
     `Available profiles: explorer, worker, verification, summarizer.`,
     `Use the Agent tool only for independent, material subtasks. Prefer explorer for read-only research, worker for focused implementation with write ownership, verification for independent checks, and summarizer for compact result condensation.`,
     `Do not delegate trivial file reads or commands. Keep tool-call continuations coherent and preserve DeepSeek reasoning continuity across tool results.`,
@@ -64,6 +66,8 @@ export function formatDeepCodeHarnessRuntimeDecision(decision) {
     `Harness runtime: ${decision.state}`,
     `Runtime reason: ${decision.reason}`,
     `Runtime max agents: ${decision.maxAgents}`,
+    `Runtime recommended profile: ${decision.recommendedProfile}`,
+    `Runtime delegation policy: ${decision.delegationPolicy}`,
     `Runtime signals: ${decision.reasons.join(', ') || 'none'}`,
   ].join('\n')
 }
@@ -108,10 +112,14 @@ function inactiveDecision(config, reason) {
     reasons: [],
     maxAgents: config.maxAgents,
     promptPack: config.promptPack,
+    recommendedProfile: 'general-purpose',
+    delegationPolicy: 'single-agent',
   }
 }
 
 function activeDecision(config, state, reason, reasons) {
+  const delegationPolicy =
+    state === 'swarm' ? 'team-lanes' : 'selective-specialists'
   return {
     active: true,
     state,
@@ -120,6 +128,8 @@ function activeDecision(config, state, reason, reasons) {
     reasons,
     maxAgents: config.maxAgents,
     promptPack: config.promptPack,
+    recommendedProfile: 'worker',
+    delegationPolicy,
   }
 }
 
