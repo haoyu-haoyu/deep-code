@@ -6,13 +6,11 @@ const BLUE = '\x1b[38;2;77;107;254m'
 const BLUE_LIGHT = '\x1b[38;2;121;150;255m'
 const MUTED = '\x1b[38;2;150;160;180m'
 const DEEP_CODE_PIXEL_LOGO = [
-  '        ██████████        ',
-  '    █████████████████   ██',
-  '  ████       █████████████',
-  ' ██   ██   █████   █████ ',
-  '██    ████████   █████   ',
-  '██        ██████████     ',
-  '  ██████████  █████      ',
+  '   ███████    ██ ',
+  ' ██████████  ████',
+  '██   ███◆█ ███  ',
+  '██  ████  ███   ',
+  '  ███   █████   ',
 ]
 
 export function formatDeepCodeWelcome({
@@ -38,7 +36,7 @@ export function formatDeepCodeWelcome({
   const cacheText = createCacheText(report.cacheStats)
   const apiKeyText = report.apiKeyConfigured ? 'API key configured' : 'API key missing'
   const title = ` Deep Code v${version} `
-  const logoRows = DEEP_CODE_PIXEL_LOGO.map(line => center(c(line, 'blue', color), leftWidth))
+  const logoRows = DEEP_CODE_PIXEL_LOGO.map(line => center(colorLogoRow(line, color), leftWidth))
   const lines = [
     topBorder(title, width, color),
     row(
@@ -55,8 +53,6 @@ export function formatDeepCodeWelcome({
     row(logoRows[2], apiKeyText, leftWidth, rightWidth, color),
     row(logoRows[3], `Harness mode: ${harnessMode}`, leftWidth, rightWidth, color),
     row(logoRows[4], `Small model: ${smallModel}`, leftWidth, rightWidth, color),
-    row(logoRows[5], '', leftWidth, rightWidth, color),
-    row(logoRows[6], '', leftWidth, rightWidth, color),
     row(center('DeepSeek native', leftWidth), '', leftWidth, rightWidth, color),
     row(center(`${model} (${contextLabel}) · reasoning ${effort}`, leftWidth), '', leftWidth, rightWidth, color),
     row(pathLabel, '', leftWidth, rightWidth, color),
@@ -222,6 +218,12 @@ function row(left, right, leftWidth, rightWidth, color) {
     ` ${padVisible(right, rightWidth)} `,
     c('│', 'blue', color),
   ].join('')
+}
+
+function colorLogoRow(row, color) {
+  const visible = String(row ?? '').replaceAll('◆', '█')
+  if (!color) return visible
+  return `${BLUE}${String(row ?? '').replaceAll('◆', `${RESET}${WHITE}█${RESET}${BLUE}`)}${RESET}`
 }
 
 function panelRow(row, labelWidth, valueWidth, color) {

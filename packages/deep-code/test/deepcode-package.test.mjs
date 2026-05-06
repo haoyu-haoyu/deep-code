@@ -442,6 +442,12 @@ function stripInlineSourceMap(source) {
   return source.replace(/\n\/\/# sourceMappingURL=data:application\/json;charset=utf-8;base64,[\s\S]*$/, '')
 }
 
+function extractStringArray(source, name) {
+  const match = source.match(new RegExp(`(?:export\\s+)?const ${name} = \\[([\\s\\S]*?)\\]`))
+  assert.ok(match, `missing ${name}`)
+  return [...match[1].matchAll(/'([^']*)'/g)].map(item => item[1])
+}
+
 test('root package is branded as Deep Code', () => {
   assert.equal(rootPackage.name, 'deep-code')
   assert.deepEqual(rootPackage.workspaces, ['packages/deep-code'])
@@ -1155,6 +1161,12 @@ test('README and welcome surfaces use Deep Code and DeepSeek branding', () => {
   assert.match(welcomeSources, /DeepSeek/)
   assert.match(welcomeSources, /DeepSeekLogo/)
   assert.match(welcomeSources, /DEEPSEEK_LOGO_ROWS/)
+  const deepSeekLogoRows = extractStringArray(deepSeekLogoSource, 'DEEPSEEK_LOGO_ROWS')
+  assert.ok(deepSeekLogoRows.length <= 5, 'welcome logo should stay compact')
+  assert.ok(
+    Math.max(...deepSeekLogoRows.map(row => row.length)) <= 20,
+    'welcome logo rows should fit inside the Claude-style left panel',
+  )
   assert.doesNotMatch(welcomeSources, /<Clawd/)
   assert.doesNotMatch(welcomeSources, /Claude Code/)
   assert.doesNotMatch(welcomeSources, /Anthropic/)
