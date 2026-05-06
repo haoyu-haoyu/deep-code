@@ -55,6 +55,7 @@ import {
   formatMissingFullCliMessage,
   resolveFullCliPath,
   shouldDelegateToFullCli,
+  shouldLaunchFullTui,
 } from './src/deepcode/front-controller.mjs'
 import {
   applyDeepCodeCliEnvOverrides,
@@ -171,7 +172,7 @@ async function main() {
   }
 
   if (shouldDelegateToFullCli({ cli, env, input: process.stdin })) {
-    await delegateToFullCli(env)
+    await delegateToFullCli(env, cli)
     return
   }
 
@@ -192,7 +193,7 @@ async function main() {
   await runInteractive(env, cacheStatsPath, stablePrefix)
 }
 
-async function delegateToFullCli(env) {
+async function delegateToFullCli(env, cli) {
   const fullCliPath = resolveFullCliPath({ env, packageDir: PACKAGE_DIR })
   if (!existsSync(fullCliPath)) {
     console.error(formatMissingFullCliMessage(fullCliPath))
@@ -208,6 +209,9 @@ async function delegateToFullCli(env) {
     env: {
       ...env,
       DEEPCODE_PROVIDER: env.DEEPCODE_PROVIDER ?? 'deepseek',
+      ...(shouldLaunchFullTui({ cli, env, input: process.stdin })
+        ? { DEEPCODE_FULL_TUI_SKIP_SETUP: env.DEEPCODE_FULL_TUI_SKIP_SETUP ?? '1' }
+        : {}),
     },
     stdio: 'inherit',
   })

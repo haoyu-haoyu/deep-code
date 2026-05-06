@@ -298,22 +298,70 @@ export async function* streamDeepSeekQuery(context = {}) {
   const fetchFn = context.fetch ?? globalThis.fetch
   const sleep = context.sleep ?? sleepMs
   const maxRetries = context.maxRetries ?? 2
+  const requestTimeoutMs = resolveRequestTimeoutMs(context)
   let response
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    response = await fetchFn(request.url, {
-      method: request.method,
-      headers: request.headers,
-      signal: context.signal,
-      body:
-        typeof request.body === 'string'
-          ? request.body
-          : JSON.stringify(request.body),
-    })
+    const controller = new AbortController()
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, requestTimeoutMs)
+    timer.unref?.()
+    const detachUserSignal = forwardAbortToController(context.signal, controller)
 
-    if (response.ok) break
+    try {
+      response = await fetchFn(request.url, {
+        method: request.method,
+        headers: request.headers,
+        signal: controller.signal,
+        body:
+          typeof request.body === 'string'
+            ? request.body
+            : JSON.stringify(request.body),
+      })
+    } catch (error) {
+      clearTimeout(timer)
+      detachUserSignal()
+      if (timedOut) {
+        if (attempt === maxRetries) {
+          throw createDeepSeekTimeoutError(request.url, requestTimeoutMs)
+        }
+        await sleep(calculateDeepSeekRetryDelayMs({}, attempt, context))
+        continue
+      }
+      throw error
+    }
 
-    const text = await response.text()
+    if (response.ok) {
+      clearTimeout(timer)
+      try {
+        yield* streamDeepSeekResponseBody(response.body)
+      } finally {
+        detachUserSignal()
+      }
+      return
+    }
+
+    let text
+    try {
+      text = await response.text()
+    } catch (error) {
+      clearTimeout(timer)
+      detachUserSignal()
+      if (timedOut) {
+        if (attempt === maxRetries) {
+          throw createDeepSeekTimeoutError(request.url, requestTimeoutMs)
+        }
+        await sleep(calculateDeepSeekRetryDelayMs({}, attempt, context))
+        continue
+      }
+      throw error
+    }
+    clearTimeout(timer)
+    detachUserSignal()
+
     const recovery = mapDeepSeekHttpError({
       status: response.status,
       headers: response.headers,
@@ -326,12 +374,40 @@ export async function* streamDeepSeekQuery(context = {}) {
     await sleep(calculateDeepSeekRetryDelayMs(recovery, attempt, context))
   }
 
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`DeepSeek API ${response.status}: ${text}`)
-  }
+  throw new Error(`DeepSeek API exhausted retries`)
+}
 
-  yield* streamDeepSeekResponseBody(response.body)
+function resolveRequestTimeoutMs(context) {
+  if (Number.isFinite(context.requestTimeoutMs) && context.requestTimeoutMs > 0) {
+    return context.requestTimeoutMs
+  }
+  const raw =
+    context.env?.DEEPCODE_REQUEST_TIMEOUT_MS ??
+    process.env.DEEPCODE_REQUEST_TIMEOUT_MS
+  const parsed = Number(raw)
+  if (Number.isFinite(parsed) && parsed > 0) return parsed
+  return 300_000
+}
+
+function forwardAbortToController(userSignal, controller) {
+  if (!userSignal) return () => {}
+  if (userSignal.aborted) {
+    controller.abort(userSignal.reason)
+    return () => {}
+  }
+  const handler = () => controller.abort(userSignal.reason)
+  userSignal.addEventListener('abort', handler, { once: true })
+  return () => userSignal.removeEventListener('abort', handler)
+}
+
+function createDeepSeekTimeoutError(url, timeoutMs) {
+  const error = new Error(
+    `DeepSeek API request timed out after ${timeoutMs}ms (no response from ${url}). ` +
+      `Override with DEEPCODE_REQUEST_TIMEOUT_MS.`,
+  )
+  error.code = 'DEEPCODE_REQUEST_TIMEOUT'
+  error.timeoutMs = timeoutMs
+  return error
 }
 
 export function calculateDeepSeekRetryDelayMs(

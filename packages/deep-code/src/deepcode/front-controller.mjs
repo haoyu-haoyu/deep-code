@@ -6,12 +6,23 @@ export function shouldDelegateToFullCli({
   env = process.env,
   input = process.stdin,
 } = {}) {
-  if (env.DEEPCODE_EXPERIMENTAL_FULL_TUI === '1') return true
   if (cli?.printMode) return true
   if ((cli?.promptArgs ?? []).length > 0) return true
   if ((cli?.unknownFlags ?? []).length > 0) return true
   if (shouldForceNativeInteractive(env)) return false
-  return false
+  return true
+}
+
+export function shouldLaunchFullTui({
+  cli,
+  env = process.env,
+  input = process.stdin,
+} = {}) {
+  if (shouldForceNativeInteractive(env)) return false
+  if (cli?.printMode) return false
+  if ((cli?.promptArgs ?? []).length > 0) return false
+  if ((cli?.unknownFlags ?? []).length > 0) return false
+  return true
 }
 
 export function resolveFullCliPath({

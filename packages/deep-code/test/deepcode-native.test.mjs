@@ -1295,6 +1295,124 @@ test('streamDeepSeekQuery retries retryable HTTP failures before streaming', asy
   ])
 })
 
+test('streamDeepSeekQuery throws DEEPCODE_REQUEST_TIMEOUT when fetch outlives timeout', async () => {
+  const start = Date.now()
+  let caught
+  try {
+    for await (const _ of streamDeepSeekQuery({
+      url: 'https://api.deepseek.com/chat/completions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { model: 'deepseek-v4-pro', messages: [] },
+      maxRetries: 0,
+      requestTimeoutMs: 50,
+      sleep: () => Promise.resolve(),
+      fetch(_url, opts) {
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(resolve, 5000)
+          opts.signal?.addEventListener('abort', () => {
+            clearTimeout(timer)
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      },
+    })) {
+      // unreachable
+    }
+  } catch (error) {
+    caught = error
+  }
+  assert.ok(caught instanceof Error, 'expected timeout to throw')
+  assert.equal(caught.code, 'DEEPCODE_REQUEST_TIMEOUT')
+  assert.equal(caught.timeoutMs, 50)
+  assert.ok(Date.now() - start < 2000, 'should not wait the full mock duration')
+})
+
+test('streamDeepSeekQuery retries after timeout and then succeeds', async () => {
+  let attempts = 0
+  const delays = []
+  const events = []
+  for await (const event of streamDeepSeekQuery({
+    url: 'https://api.deepseek.com/chat/completions',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { model: 'deepseek-v4-pro', messages: [] },
+    maxRetries: 1,
+    requestTimeoutMs: 50,
+    sleep(ms) {
+      delays.push(ms)
+      return Promise.resolve()
+    },
+    fetch(_url, opts) {
+      attempts += 1
+      if (attempts === 1) {
+        return new Promise((resolve, reject) => {
+          const keepAlive = setTimeout(resolve, 5000)
+          opts.signal?.addEventListener('abort', () => {
+            clearTimeout(keepAlive)
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      }
+      return Promise.resolve(
+        new Response(sseBody([
+          'data: {"choices":[{"delta":{"content":"recovered"},"finish_reason":"stop"}]}',
+          'data: [DONE]',
+        ]), { status: 200 }),
+      )
+    },
+  })) {
+    events.push(event)
+  }
+  assert.equal(attempts, 2)
+  assert.equal(delays.length, 1)
+  assert.deepEqual(events, [
+    { type: 'content_delta', text: 'recovered' },
+    { type: 'done' },
+  ])
+})
+
+test('streamDeepSeekQuery propagates user abort without retry', async () => {
+  const ac = new AbortController()
+  let attempts = 0
+  const delays = []
+  setTimeout(() => ac.abort(new Error('user-cancel')), 30)
+  let caught
+  try {
+    for await (const _ of streamDeepSeekQuery({
+      url: 'https://api.deepseek.com/chat/completions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { model: 'deepseek-v4-pro', messages: [] },
+      maxRetries: 2,
+      requestTimeoutMs: 30000,
+      signal: ac.signal,
+      sleep(ms) {
+        delays.push(ms)
+        return Promise.resolve()
+      },
+      fetch(_url, opts) {
+        attempts += 1
+        return new Promise((resolve, reject) => {
+          const keepAlive = setTimeout(resolve, 5000)
+          opts.signal?.addEventListener('abort', () => {
+            clearTimeout(keepAlive)
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      },
+    })) {
+      // unreachable
+    }
+  } catch (error) {
+    caught = error
+  }
+  assert.ok(caught instanceof Error, 'expected abort to throw')
+  assert.equal(caught.name, 'AbortError')
+  assert.equal(attempts, 1, 'user abort must not retry')
+  assert.deepEqual(delays, [], 'user abort must not sleep between retries')
+})
+
 test('createDeepSeekCacheUserId is deterministic and safe for DeepSeek user_id', () => {
   assert.equal(
     createDeepSeekCacheUserId('/tmp/my workspace'),
