@@ -8,7 +8,7 @@ import { clearInvokedSkillsForAgent, getSdkAgentProgressSummariesEnabled } from 
 import { enhanceSystemPromptWithEnvDetails, getSystemPrompt } from '../../constants/prompts.js';
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js';
 // @ts-expect-error Deep Code harness runtime is JS while AgentTool remains TypeScript.
-import { getLastDeepCodeHarnessRuntimeDecision, resolveDeepCodeDefaultSubagentType } from '../../deepcode/harness-runtime.mjs';
+import { getLastDeepCodeHarnessRuntimeDecision, recordDeepCodeHarnessAgentLifecycle, resolveDeepCodeDefaultSubagentType } from '../../deepcode/harness-runtime.mjs';
 import { startAgentSummarization } from '../../services/AgentSummary/agentSummary.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
@@ -320,12 +320,13 @@ export const AgentTool = buildTool({
     // - subagent_type set: use it (explicit wins)
     // - subagent_type omitted, gate on: fork path (undefined)
     // - subagent_type omitted, gate off: default general-purpose
+    const parentRuntimeDecision = getLastDeepCodeHarnessRuntimeDecision();
     const effectiveType = subagent_type ?? (isForkSubagentEnabled() ? undefined : resolveDeepCodeDefaultSubagentType({
       env: process.env,
       prompt,
       isMainAgent: !toolUseContext.agentId,
       permissionMode,
-      runtimeDecision: getLastDeepCodeHarnessRuntimeDecision()
+      runtimeDecision: parentRuntimeDecision
     }));
     const isForkPath = effectiveType === undefined;
     let selectedAgent: AgentDefinition;
@@ -420,6 +421,13 @@ export const AgentTool = buildTool({
     if (selectedAgent.color) {
       setAgentColor(selectedAgent.agentType, selectedAgent.color);
     }
+    recordDeepCodeHarnessAgentLifecycle({
+      selectedProfile: selectedAgent.agentType,
+      requestedProfile: subagent_type,
+      selection: subagent_type ? 'explicit' : 'default',
+      parentRuntimeDecision,
+      permissionMode
+    });
 
     // Resolve agent params for logging (these are already resolved in runAgent)
     const resolvedAgentModel = getAgentModel(selectedAgent.model, toolUseContext.options.mainLoopModel, isForkPath ? undefined : model, permissionMode);
