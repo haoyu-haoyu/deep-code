@@ -2104,10 +2104,143 @@ test('createDeepSeekCallModel yields assistant messages from provider events', a
 
   assert.equal(requests.length, 1)
   assert.equal(requests[0].model, 'deepseek-v4-pro')
-  assert.deepEqual(messages.map(message => message.message.content), [
+  const assistantMessages = messages.filter(m => m.type === 'assistant')
+  assert.deepEqual(assistantMessages.map(message => message.message.content), [
     [{ type: 'text', text: 'done' }],
   ])
-  assert.equal(messages[0].message.stop_reason, 'stop')
+  assert.equal(assistantMessages[0].message.stop_reason, 'stop')
+})
+
+test('createDeepSeekCallModel streams thinking and text events incrementally', async () => {
+  const callModel = createDeepSeekCallModel({
+    provider: {
+      streamQuery() {
+        return (async function* stream() {
+          yield { type: 'reasoning_delta', text: 'Let me think...' }
+          yield { type: 'reasoning_delta', text: ' more reasoning' }
+          yield { type: 'content_delta', text: 'Hello' }
+          yield { type: 'content_delta', text: ' world' }
+          yield { type: 'finish', finishReason: 'stop' }
+          yield { type: 'usage', usage: { prompt_tokens: 8, completion_tokens: 4 } }
+        })()
+      },
+    },
+    now: () => new Date('2026-05-04T00:00:00.000Z'),
+    uuid: () => 'uuid-fixed',
+  })
+
+  const messages = []
+  for await (const message of callModel({
+    messages: [{ role: 'user', content: 'hi' }],
+    systemPrompt: ['You are Deep Code.'],
+    tools: [],
+    signal: new AbortController().signal,
+    options: { model: 'deepseek-v4-pro' },
+  })) {
+    messages.push(message)
+  }
+
+  const streamEvents = messages
+    .filter(m => m.type === 'stream_event')
+    .map(m => m.event)
+
+  const types = streamEvents.map(e => {
+    if (e.type === 'content_block_start') return `start:${e.content_block.type}`
+    if (e.type === 'content_block_delta') return `delta:${e.delta.type}`
+    if (e.type === 'content_block_stop') return 'stop'
+    return e.type
+  })
+
+  assert.deepEqual(types, [
+    'message_start',
+    'start:thinking',
+    'delta:thinking_delta',
+    'delta:thinking_delta',
+    'stop',
+    'start:text',
+    'delta:text_delta',
+    'delta:text_delta',
+    'stop',
+    'message_delta',
+    'message_stop',
+  ])
+
+  const thinkingDeltas = streamEvents
+    .filter(e => e.type === 'content_block_delta' && e.delta.type === 'thinking_delta')
+    .map(e => e.delta.thinking)
+  assert.deepEqual(thinkingDeltas, ['Let me think...', ' more reasoning'])
+
+  const textDeltas = streamEvents
+    .filter(e => e.type === 'content_block_delta' && e.delta.type === 'text_delta')
+    .map(e => e.delta.text)
+  assert.deepEqual(textDeltas, ['Hello', ' world'])
+
+  const assistantMessages = messages.filter(m => m.type === 'assistant')
+  assert.equal(assistantMessages.length, 1)
+  const finalContent = assistantMessages[0].message.content
+  const thinkingBlock = finalContent.find(block => block.type === 'thinking')
+  const textBlock = finalContent.find(block => block.type === 'text')
+  assert.equal(thinkingBlock?.thinking, 'Let me think... more reasoning')
+  assert.equal(textBlock?.text, 'Hello world')
+})
+
+test('createDeepSeekCallModel streams tool_use as input_json_delta events', async () => {
+  const callModel = createDeepSeekCallModel({
+    provider: {
+      streamQuery() {
+        return (async function* stream() {
+          yield { type: 'reasoning_delta', text: 'I should call Read' }
+          yield {
+            type: 'tool_call_delta',
+            index: 0,
+            id: 'call_1',
+            name: 'Read',
+            argumentsDelta: '{"file_path":',
+          }
+          yield {
+            type: 'tool_call_delta',
+            index: 0,
+            argumentsDelta: '"README.md"}',
+            finishReason: 'tool_calls',
+          }
+        })()
+      },
+    },
+    now: () => new Date('2026-05-04T00:00:00.000Z'),
+    uuid: () => 'uuid-fixed',
+  })
+
+  const messages = []
+  for await (const message of callModel({
+    messages: [{ role: 'user', content: 'read the readme' }],
+    systemPrompt: ['You are Deep Code.'],
+    tools: [],
+    signal: new AbortController().signal,
+    options: { model: 'deepseek-v4-pro' },
+  })) {
+    messages.push(message)
+  }
+
+  const streamEvents = messages
+    .filter(m => m.type === 'stream_event')
+    .map(m => m.event)
+
+  const toolStart = streamEvents.find(
+    e => e.type === 'content_block_start' && e.content_block.type === 'tool_use',
+  )
+  assert.ok(toolStart, 'expected tool_use content_block_start')
+  assert.equal(toolStart.content_block.id, 'call_1')
+  assert.equal(toolStart.content_block.name, 'Read')
+
+  const jsonDeltas = streamEvents
+    .filter(e => e.type === 'content_block_delta' && e.delta.type === 'input_json_delta')
+    .map(e => e.delta.partial_json)
+  assert.deepEqual(jsonDeltas, ['{"file_path":', '"README.md"}'])
+
+  const assistantMessages = messages.filter(m => m.type === 'assistant')
+  const toolUse = assistantMessages[0].message.content.find(b => b.type === 'tool_use')
+  assert.deepEqual(toolUse.input, { file_path: 'README.md' })
+  assert.equal(assistantMessages[0].message.stop_reason, 'tool_use')
 })
 
 test('createDeepSeekCallModel forwards query runtime controls to DeepSeek provider', async () => {
