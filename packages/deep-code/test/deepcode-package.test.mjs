@@ -150,6 +150,10 @@ const verificationAgentSource = readFileSync(
   resolve(root, 'packages/deep-code/src/tools/AgentTool/built-in/verificationAgent.ts'),
   'utf8',
 )
+const summarizerAgentSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/tools/AgentTool/built-in/summarizerAgent.ts'),
+  'utf8',
+)
 const planAgentSource = readFileSync(
   resolve(root, 'packages/deep-code/src/tools/AgentTool/built-in/planAgent.ts'),
   'utf8',
@@ -965,6 +969,7 @@ test('DeepSeek Harness built-in agents expose explorer worker verifier and summa
     generalPurposeAgentSource,
     exploreAgentSource,
     verificationAgentSource,
+    summarizerAgentSource,
     planAgentSource,
     statuslineSetupAgentSource,
     builtInAgentsSource,
@@ -977,6 +982,15 @@ test('DeepSeek Harness built-in agents expose explorer worker verifier and summa
   assert.match(generalPurposeAgentSource, /verification commands/)
   assert.match(verificationAgentSource, /VERDICT: PASS/)
   assert.match(verificationAgentSource, /non happy-path probe/)
+  assert.match(summarizerAgentSource, /tools: \[\]/)
+  assert.match(summarizerAgentSource, /Do not call tools/)
+  assert.match(exploreAgentSource, /disallowedTools:\s*\[/)
+  assert.match(exploreAgentSource, /AGENT_TOOL_NAME/)
+  assert.match(exploreAgentSource, /FILE_EDIT_TOOL_NAME/)
+  assert.match(exploreAgentSource, /FILE_WRITE_TOOL_NAME/)
+  assert.match(verificationAgentSource, /disallowedTools:\s*\[/)
+  assert.match(verificationAgentSource, /FILE_EDIT_TOOL_NAME/)
+  assert.match(verificationAgentSource, /FILE_WRITE_TOOL_NAME/)
   assert.match(planAgentSource, /Deep Code's DeepSeek Harness/)
   assert.match(statuslineSetupAgentSource, /Deep Code settings/)
   assert.match(builtInAgentsSource, /DEEPSEEK_SUMMARIZER_AGENT/)
@@ -991,12 +1005,14 @@ test('DeepSeek Harness runtime is wired into full CLI and TUI without legacy coo
   assert.match(deepSeekHarnessRuntimeSource, /resolveDeepCodeHarnessRuntime/)
   assert.match(deepSeekHarnessRuntimeSource, /buildDeepCodeHarnessRuntimeContext/)
   assert.match(deepSeekHarnessRuntimeSource, /resolveDeepCodeDefaultSubagentType/)
+  assert.match(deepSeekHarnessRuntimeSource, /recordDeepCodeHarnessAgentLifecycle/)
   assert.match(deepcodeEntrypointSource, /formatDeepCodeHarnessRuntimeDecision/)
   assert.match(queryEngineSource, /buildDeepCodeHarnessRuntimeContext/)
   assert.match(queryEngineSource, /recordDeepCodeHarnessRuntimeDecision/)
   assert.match(replSource, /buildDeepCodeHarnessRuntimeContext/)
   assert.match(agentToolSource, /getLastDeepCodeHarnessRuntimeDecision/)
   assert.match(agentToolSource, /resolveDeepCodeDefaultSubagentType/)
+  assert.match(agentToolSource, /recordDeepCodeHarnessAgentLifecycle/)
   assert.match(agentToolPromptSource, /DeepSeek Harness profiles/)
   assert.match(agentToolPromptSource, /Harness runtime is active/)
   assert.match(agentToolPromptSource, /omitting \\`subagent_type\\` defaults to \\`worker\\`/)

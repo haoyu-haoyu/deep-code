@@ -59,7 +59,11 @@ import {
 } from '../src/deepcode/harness-config.mjs'
 import {
   buildDeepCodeHarnessRuntimeContext,
+  clearDeepCodeHarnessAgentLifecycle,
+  formatDeepCodeHarnessAgentLifecycle,
   formatDeepCodeHarnessRuntimeDecision,
+  getLastDeepCodeHarnessAgentLifecycle,
+  recordDeepCodeHarnessAgentLifecycle,
   recordDeepCodeHarnessRuntimeDecision,
   resolveDeepCodeDefaultSubagentType,
   resolveDeepCodeHarnessRuntime,
@@ -491,6 +495,47 @@ test('resolveDeepCodeDefaultSubagentType follows active Harness decisions', () =
   )
 })
 
+test('DeepSeek Harness records Agent lifecycle metadata without cache drift', async () => {
+  clearDeepCodeHarnessAgentLifecycle()
+  const runtimeDecision = resolveDeepCodeHarnessRuntime({
+    env: { DEEPCODE_HARNESS_MODE: 'on' },
+    prompt: 'Fix failing tests across the full CLI and TUI',
+  })
+
+  recordDeepCodeHarnessAgentLifecycle({
+    selectedProfile: 'worker',
+    requestedProfile: undefined,
+    selection: 'default',
+    parentRuntimeDecision: runtimeDecision,
+    permissionMode: 'default',
+  })
+
+  const lifecycle = getLastDeepCodeHarnessAgentLifecycle()
+  const formatted = formatDeepCodeHarnessAgentLifecycle(lifecycle)
+  const first = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-a',
+    volatileUserPrompt: JSON.stringify(lifecycle),
+  })
+  const second = await createDeepCodeStablePrefix({
+    repoSummary: 'repo-a',
+    volatileUserPrompt: 'different prompt and lifecycle metadata',
+  })
+
+  assert.equal(lifecycle.selectedProfile, 'worker')
+  assert.equal(lifecycle.selection, 'default')
+  assert.equal(lifecycle.requestedProfile, 'omitted')
+  assert.equal(lifecycle.parentRuntimeState, 'harness')
+  assert.equal(lifecycle.recommendedProfile, 'worker')
+  assert.equal(lifecycle.delegationPolicy, 'selective-specialists')
+  assert.equal(first.prefixHash, second.prefixHash)
+  assert.match(formatted, /Harness agent profile: worker/)
+  assert.match(formatted, /Harness agent selection: default/)
+  assert.match(formatted, /Harness agent requested profile: omitted/)
+  assert.match(formatted, /Harness agent parent runtime: harness/)
+  assert.match(formatted, /Harness agent delegation policy: selective-specialists/)
+  assert.doesNotMatch(formatted, /Claude|Anthropic/)
+})
+
 test('applyDeepCodeCliEnvOverrides keeps CLI values above inherited env', () => {
   const env = applyDeepCodeCliEnvOverrides(
     {
@@ -730,6 +775,13 @@ test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', a
     prompt: 'Fix failing tests across the full CLI and TUI',
   })
   recordDeepCodeHarnessRuntimeDecision(runtimeDecision)
+  recordDeepCodeHarnessAgentLifecycle({
+    selectedProfile: 'worker',
+    requestedProfile: undefined,
+    selection: 'default',
+    parentRuntimeDecision: runtimeDecision,
+    permissionMode: 'default',
+  })
 
   const report = await buildDeepCodeStatusReport({
     cwd: '/tmp/deepcode-workspace',
@@ -761,6 +813,8 @@ test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', a
   assert.match(formatted, /Reasoning effort: max/)
   assert.match(formatted, /Runtime recommended profile: worker/)
   assert.match(formatted, /Runtime delegation policy: selective-specialists/)
+  assert.match(formatted, /Harness agent profile: worker/)
+  assert.match(formatted, /Harness agent selection: default/)
   assert.match(formatted, /Cache telemetry: last_hit=9 last_miss=1 last_hit_rate=90\.0%/)
   assert.match(formatted, /Stable prefix hash: [A-Za-z0-9_-]+/)
   assert.equal(properties.find(item => item.label === 'Provider')?.value, 'DeepSeek native')
@@ -768,6 +822,9 @@ test('Deep Code status adapter shares CLI and TUI cache telemetry formatting', a
   assert.equal(properties.find(item => item.label === 'Reasoning effort')?.value, 'max')
   assert.equal(properties.find(item => item.label === 'Harness recommended profile')?.value, 'worker')
   assert.equal(properties.find(item => item.label === 'Harness delegation policy')?.value, 'selective-specialists')
+  assert.equal(properties.find(item => item.label === 'Harness agent profile')?.value, 'worker')
+  assert.equal(properties.find(item => item.label === 'Harness agent selection')?.value, 'default')
+  assert.equal(properties.find(item => item.label === 'Harness agent delegation policy')?.value, 'selective-specialists')
   assert.equal(properties.find(item => item.label === 'Cache hit rate')?.value, '90.0%')
   assert.equal(properties.find(item => item.label === 'Cache total hit/miss')?.value, '90/10')
   assert.equal(

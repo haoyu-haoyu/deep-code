@@ -12,7 +12,9 @@ import {
   resolveDeepCodeHarnessConfig,
 } from './harness-config.mjs'
 import {
+  formatDeepCodeHarnessAgentLifecycle,
   formatDeepCodeHarnessRuntimeDecision,
+  getLastDeepCodeHarnessAgentLifecycle,
   getLastDeepCodeHarnessRuntimeDecision,
 } from './harness-runtime.mjs'
 import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
@@ -39,6 +41,7 @@ export async function buildDeepCodeStatusReport({
     config,
     harnessConfig,
     harnessRuntimeDecision: getLastDeepCodeHarnessRuntimeDecision(),
+    harnessAgentLifecycle: getLastDeepCodeHarnessAgentLifecycle(),
     cacheStats: resolvedCacheStats,
     cacheStatsPath: resolvedCacheStatsPath,
     stablePrefix: resolvedStablePrefix,
@@ -58,6 +61,7 @@ export function formatDeepCodeStatus(report) {
     report.harnessRuntimeDecision
       ? formatDeepCodeHarnessRuntimeDecision(report.harnessRuntimeDecision)
       : 'Harness runtime: unavailable',
+    formatDeepCodeHarnessAgentLifecycle(report.harnessAgentLifecycle),
     `Cache user_id: ${report.config.cacheUserId}`,
     formatDeepCodePrefixStatus(report.stablePrefix),
     `API key: ${report.apiKeyConfigured ? 'configured' : 'missing'}`,
@@ -98,6 +102,26 @@ export function deepCodeStatusReportToProperties(report) {
     {
       label: 'Harness delegation policy',
       value: report.harnessRuntimeDecision?.delegationPolicy ?? 'unavailable',
+    },
+    {
+      label: 'Harness agent profile',
+      value: report.harnessAgentLifecycle?.selectedProfile ?? 'unavailable',
+    },
+    {
+      label: 'Harness agent selection',
+      value: report.harnessAgentLifecycle?.selection ?? 'unavailable',
+    },
+    {
+      label: 'Harness agent requested profile',
+      value: report.harnessAgentLifecycle?.requestedProfile ?? 'unavailable',
+    },
+    {
+      label: 'Harness agent delegation policy',
+      value: report.harnessAgentLifecycle?.delegationPolicy ?? 'unavailable',
+    },
+    {
+      label: 'Harness agent permission mode',
+      value: report.harnessAgentLifecycle?.permissionMode ?? 'unavailable',
     },
     { label: 'Cache user_id', value: report.config.cacheUserId },
     {

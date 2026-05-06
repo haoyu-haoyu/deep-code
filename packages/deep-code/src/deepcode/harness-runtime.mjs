@@ -1,6 +1,7 @@
 import { resolveDeepCodeHarnessConfig } from './harness-config.mjs'
 
 let lastHarnessRuntimeDecision = null
+let lastHarnessAgentLifecycle = null
 
 export function resolveDeepCodeHarnessRuntime({
   env = process.env,
@@ -101,6 +102,61 @@ export function recordDeepCodeHarnessRuntimeDecision(decision) {
 
 export function getLastDeepCodeHarnessRuntimeDecision() {
   return lastHarnessRuntimeDecision
+}
+
+export function createDeepCodeHarnessAgentLifecycle({
+  selectedProfile,
+  requestedProfile,
+  selection,
+  parentRuntimeDecision,
+  permissionMode = 'default',
+} = {}) {
+  const requested = requestedProfile ?? 'omitted'
+  const resolvedSelection =
+    selection ?? (requestedProfile ? 'explicit' : 'default')
+  return {
+    selectedProfile: selectedProfile ?? 'unavailable',
+    selection: resolvedSelection,
+    requestedProfile: requested,
+    parentRuntimeState: parentRuntimeDecision?.state ?? 'unavailable',
+    parentRuntimeReason: parentRuntimeDecision?.reason ?? 'unavailable',
+    recommendedProfile:
+      parentRuntimeDecision?.recommendedProfile ?? 'general-purpose',
+    delegationPolicy:
+      parentRuntimeDecision?.delegationPolicy ?? 'single-agent',
+    maxAgents: parentRuntimeDecision?.maxAgents ?? 'unavailable',
+    permissionMode,
+  }
+}
+
+export function recordDeepCodeHarnessAgentLifecycle(lifecycle) {
+  lastHarnessAgentLifecycle =
+    lifecycle?.selectedProfile && lifecycle?.parentRuntimeState
+      ? lifecycle
+      : createDeepCodeHarnessAgentLifecycle(lifecycle)
+}
+
+export function getLastDeepCodeHarnessAgentLifecycle() {
+  return lastHarnessAgentLifecycle
+}
+
+export function clearDeepCodeHarnessAgentLifecycle() {
+  lastHarnessAgentLifecycle = null
+}
+
+export function formatDeepCodeHarnessAgentLifecycle(lifecycle) {
+  if (!lifecycle) return 'Harness agent profile: unavailable'
+  return [
+    `Harness agent profile: ${lifecycle.selectedProfile}`,
+    `Harness agent selection: ${lifecycle.selection}`,
+    `Harness agent requested profile: ${lifecycle.requestedProfile}`,
+    `Harness agent parent runtime: ${lifecycle.parentRuntimeState}`,
+    `Harness agent parent reason: ${lifecycle.parentRuntimeReason}`,
+    `Harness agent recommended profile: ${lifecycle.recommendedProfile}`,
+    `Harness agent delegation policy: ${lifecycle.delegationPolicy}`,
+    `Harness agent max agents: ${lifecycle.maxAgents}`,
+    `Harness agent permission mode: ${lifecycle.permissionMode}`,
+  ].join('\n')
 }
 
 function inactiveDecision(config, reason) {
