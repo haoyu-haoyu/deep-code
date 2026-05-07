@@ -1133,9 +1133,11 @@ export function useTypeahead({
     }
   }, [suggestions, selectedSuggestion, input, suggestionType, commands, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, cursorOffset, updateSuggestions, mcpResources, setSuggestionsState, agents, debouncedFetchFileSuggestions, debouncedFetchSlackChannels, effectiveGhostText]);
 
-  // Handle enter key press - apply and execute suggestions
-  const handleEnter = useCallback(() => {
-    if (selectedSuggestion < 0 || suggestions.length === 0) return;
+  // Handle enter key press - apply and execute suggestions.
+  // Returns true if Enter was consumed (caller should stop propagation so the
+  // sibling TextInput Enter handler doesn't double-submit).
+  const handleEnter = useCallback((): boolean => {
+    if (selectedSuggestion < 0 || suggestions.length === 0) return false;
     const suggestion = suggestions[selectedSuggestion];
     if (suggestionType === 'command' && selectedSuggestion < suggestions.length) {
       if (suggestion) {
@@ -1144,6 +1146,7 @@ export function useTypeahead({
         commands, onInputChange, setCursorOffset, onSubmit);
         debouncedFetchFileSuggestions.cancel();
         clearSuggestions();
+        return true;
       }
     } else if (suggestionType === 'custom-title' && selectedSuggestion < suggestions.length) {
       // Apply custom title and execute /resume command with sessionId
@@ -1154,6 +1157,7 @@ export function useTypeahead({
         onSubmit(newInput, /* isSubmittingSlashCommand */true);
         debouncedFetchFileSuggestions.cancel();
         clearSuggestions();
+        return true;
       }
     } else if (suggestionType === 'shell' && selectedSuggestion < suggestions.length) {
       const suggestion = suggestions[selectedSuggestion];
@@ -1164,16 +1168,19 @@ export function useTypeahead({
         applyShellSuggestion(suggestion, input, cursorOffset, onInputChange, setCursorOffset, metadata?.completionType);
         debouncedFetchFileSuggestions.cancel();
         clearSuggestions();
+        return true;
       }
     } else if (suggestionType === 'agent' && selectedSuggestion < suggestions.length && suggestion?.id?.startsWith('dm-')) {
       applyTriggerSuggestion(suggestion, input, cursorOffset, DM_MEMBER_RE, onInputChange, setCursorOffset);
       debouncedFetchFileSuggestions.cancel();
       clearSuggestions();
+      return true;
     } else if (suggestionType === 'slack-channel' && selectedSuggestion < suggestions.length) {
       if (suggestion) {
         applyTriggerSuggestion(suggestion, input, cursorOffset, HASH_CHANNEL_RE, onInputChange, setCursorOffset);
         debouncedFetchSlackChannels.cancel();
         clearSuggestions();
+        return true;
       }
     } else if (suggestionType === 'file' && selectedSuggestion < suggestions.length) {
       // Extract completion token directly when needed
@@ -1193,6 +1200,7 @@ export function useTypeahead({
           applyFileSuggestion(replacementValue, input, completionInfo.token, completionInfo.startPos, onInputChange, setCursorOffset);
           debouncedFetchFileSuggestions.cancel();
           clearSuggestions();
+          return true;
         }
       }
     } else if (suggestionType === 'directory' && selectedSuggestion < suggestions.length) {
@@ -1203,7 +1211,7 @@ export function useTypeahead({
         if (isCommandInput(input)) {
           debouncedFetchFileSuggestions.cancel();
           clearSuggestions();
-          return;
+          return false;
         }
 
         // General path completion: replace the path token
@@ -1214,14 +1222,20 @@ export function useTypeahead({
           const result = applyDirectorySuggestion(input, suggestion.id, completionToken.startPos, completionToken.token.length, isDir);
           onInputChange(result.newInput);
           setCursorOffset(result.cursorPos);
+          debouncedFetchFileSuggestions.cancel();
+          clearSuggestions();
+          return true;
         }
-        // If no completion token found (e.g., cursor after space), don't modify input
-        // to avoid data loss - just clear suggestions
-
+        // If no completion token found (e.g., cursor after space), don't modify
+        // input to avoid data loss — clear suggestions but let the parallel
+        // TextInput Enter handler decide what to do (typically submit current
+        // input as-is).
         debouncedFetchFileSuggestions.cancel();
         clearSuggestions();
+        return false;
       }
     }
+    return false;
   }, [suggestions, selectedSuggestion, suggestionType, commands, input, cursorOffset, mode, onInputChange, setCursorOffset, onSubmit, clearSuggestions, debouncedFetchFileSuggestions, debouncedFetchSlackChannels]);
 
   // Handler for autocomplete:accept - accepts current suggestion via Tab or Right Arrow
@@ -1357,7 +1371,13 @@ export function useTypeahead({
     // so don't accept the suggestion for those.
     if (e.key === 'return' && !e.shift && !e.meta) {
       e.preventDefault();
-      handleEnter();
+      // Stop propagation only when we actually consumed Enter, so the parallel
+      // TextInput Enter handler doesn't double-submit (or no-op if useTypeahead
+      // declined to consume — e.g., empty palette / stale state — we still want
+      // TextInput to submit the message).
+      if (handleEnter()) {
+        e.stopImmediatePropagation();
+      }
     }
   };
 
