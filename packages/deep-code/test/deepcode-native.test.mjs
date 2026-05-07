@@ -98,6 +98,14 @@ import {
   getPreferredAgentMemorySnapshotDir,
   isDeepCodeAgentMemoryPath,
 } from '../src/deepcode/agent-memory-paths.mjs'
+import {
+  hasDeepSeekConfigFile,
+  loadDeepSeekConfigFile,
+  mergeDeepSeekConfigPartial,
+  resolveDeepSeekConfigPath,
+  saveDeepSeekConfigFile,
+} from '../src/services/providers/deepseek-config-store.mjs'
+import { resolveDeepSeekConfig } from '../src/services/providers/deepseek.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -2741,3 +2749,146 @@ function toolCallStream({ id, name, input, reasoning }) {
     }
   })()
 }
+
+test('saveDeepSeekConfigFile persists wizard output and loadDeepSeekConfigFile reads it back', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const env = { DEEPCODE_CONFIG_FILE: join(dir, 'deepseek.json') }
+
+  assert.equal(hasDeepSeekConfigFile({ env }), false)
+  assert.equal(loadDeepSeekConfigFile({ env }), null)
+
+  const path = saveDeepSeekConfigFile(
+    {
+      apiKey: 'sk-from-wizard',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-pro',
+      reasoningEffort: 'high',
+    },
+    { env },
+  )
+
+  assert.equal(path, join(dir, 'deepseek.json'))
+  assert.equal(hasDeepSeekConfigFile({ env }), true)
+
+  const loaded = loadDeepSeekConfigFile({ env })
+  assert.equal(loaded.apiKey, 'sk-from-wizard')
+  assert.equal(loaded.model, 'deepseek-v4-pro')
+  assert.equal(loaded.reasoningEffort, 'high')
+  assert.equal(typeof loaded.completedAt, 'string')
+})
+
+test('resolveDeepSeekConfig falls back to persisted file when env vars are absent', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = { DEEPCODE_CONFIG_FILE: filePath }
+
+  saveDeepSeekConfigFile(
+    {
+      apiKey: 'sk-from-file',
+      baseUrl: 'https://example.test/v1',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'high',
+    },
+    { env },
+  )
+
+  const config = resolveDeepSeekConfig({ env, cwd: dir })
+  assert.equal(config.apiKey, 'sk-from-file')
+  assert.equal(config.baseUrl, 'https://example.test/v1')
+  assert.equal(config.model, 'deepseek-v4-flash')
+  assert.equal(config.reasoningEffort, 'high')
+})
+
+test('resolveDeepSeekConfig env var beats persisted file', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = {
+    DEEPCODE_CONFIG_FILE: filePath,
+    DEEPSEEK_API_KEY: 'sk-from-env',
+    DEEPSEEK_MODEL: 'deepseek-v4-pro',
+  }
+
+  saveDeepSeekConfigFile(
+    {
+      apiKey: 'sk-from-file',
+      model: 'deepseek-v4-flash',
+    },
+    { env },
+  )
+
+  const config = resolveDeepSeekConfig({ env, cwd: dir })
+  assert.equal(config.apiKey, 'sk-from-env')
+  assert.equal(config.model, 'deepseek-v4-pro')
+})
+
+test('resolveDeepSeekConfigPath honours DEEPCODE_CONFIG_DIR override', () => {
+  const env = { DEEPCODE_CONFIG_DIR: '/tmp/custom-deepcode' }
+  assert.equal(
+    resolveDeepSeekConfigPath({ env }),
+    '/tmp/custom-deepcode/deepseek-config.json',
+  )
+})
+
+test('mergeDeepSeekConfigPartial preserves existing keys not touched by the wizard', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = { DEEPCODE_CONFIG_FILE: filePath }
+
+  saveDeepSeekConfigFile(
+    {
+      apiKey: 'sk-old',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-pro',
+      smallModel: 'deepseek-v4-flash',
+      thinking: 'enabled',
+      reasoningEffort: 'max',
+    },
+    { env },
+  )
+
+  const merged = mergeDeepSeekConfigPartial(
+    {
+      apiKey: 'sk-new',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'high',
+    },
+    { env },
+  )
+
+  assert.equal(merged.apiKey, 'sk-new')
+  assert.equal(merged.model, 'deepseek-v4-flash')
+  assert.equal(merged.reasoningEffort, 'high')
+  assert.equal(merged.smallModel, 'deepseek-v4-flash')
+  assert.equal(merged.thinking, 'enabled')
+})
+
+test('saveDeepSeekConfigFile writes file with 0600 permissions on POSIX systems', async () => {
+  if (process.platform === 'win32') return
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = { DEEPCODE_CONFIG_FILE: filePath }
+
+  saveDeepSeekConfigFile({ apiKey: 'sk-secret' }, { env })
+
+  const { statSync } = await import('node:fs')
+  const stats = statSync(filePath)
+  const mode = stats.mode & 0o777
+  assert.equal(mode, 0o600)
+})
+
+test('saveDeepSeekConfigFile rejects non-object payload before touching the filesystem', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = { DEEPCODE_CONFIG_FILE: filePath }
+
+  saveDeepSeekConfigFile({ apiKey: 'sk-original' }, { env })
+  const original = await readFile(filePath, 'utf8')
+
+  assert.throws(
+    () => saveDeepSeekConfigFile([] /* not a plain object */, { env }),
+    /plain object/,
+  )
+
+  const after = await readFile(filePath, 'utf8')
+  assert.equal(after, original, 'config file must be untouched after rejected save')
+})

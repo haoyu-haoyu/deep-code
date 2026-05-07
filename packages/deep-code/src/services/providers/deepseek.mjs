@@ -15,6 +15,7 @@ import {
   toolToDeepSeekFunctionSchema,
 } from '../../tools/deepseek-schema.mjs'
 import { mapDeepSeekHttpError } from './deepseek-recovery.mjs'
+import { loadDeepSeekConfigFile } from './deepseek-config-store.mjs'
 
 export { mapMessagesToDeepSeek } from '../../messages/deepseek-normalizer.mjs'
 export {
@@ -51,11 +52,14 @@ export function resolveDeepSeekConfig({
   env = process.env,
   cwd = process.cwd(),
   overrides = {},
+  fileConfig,
 } = {}) {
+  const file = fileConfig === undefined ? loadDeepSeekConfigFile({ env }) : fileConfig
   const thinkingType =
     overrides.thinking ??
     env.DEEPSEEK_THINKING ??
     env.DEEPCODE_THINKING ??
+    file?.thinking ??
     'enabled'
   const thinkingEnabled = thinkingType !== 'disabled'
 
@@ -64,22 +68,26 @@ export function resolveDeepSeekConfig({
       overrides.apiKey ??
       env.DEEPSEEK_API_KEY ??
       env.DEEPCODE_API_KEY ??
-      env.API_KEY,
+      env.API_KEY ??
+      file?.apiKey,
     baseUrl: stripTrailingSlash(
       overrides.baseUrl ??
         env.DEEPSEEK_BASE_URL ??
         env.DEEPCODE_BASE_URL ??
+        file?.baseUrl ??
         DEFAULT_DEEPSEEK_BASE_URL,
     ),
     model:
       overrides.model ??
       env.DEEPSEEK_MODEL ??
       env.DEEPCODE_MODEL ??
+      file?.model ??
       DEFAULT_DEEPSEEK_MODEL,
     smallModel:
       overrides.smallModel ??
       env.DEEPSEEK_SMALL_MODEL ??
       env.DEEPCODE_SMALL_MODEL ??
+      file?.smallModel ??
       DEFAULT_DEEPSEEK_SMALL_MODEL,
     thinking: thinkingEnabled ? 'enabled' : 'disabled',
     reasoningEffort: normalizeDeepSeekEffort(
@@ -87,6 +95,7 @@ export function resolveDeepSeekConfig({
         env.DEEPSEEK_REASONING_EFFORT ??
         env.DEEPCODE_REASONING_EFFORT ??
         env.CLAUDE_CODE_EFFORT_LEVEL ??
+        file?.reasoningEffort ??
         'max',
     ),
     cacheUserId:

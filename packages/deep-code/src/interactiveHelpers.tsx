@@ -102,11 +102,69 @@ export async function renderAndRun(root: Root, element: React.ReactNode): Promis
   await root.waitUntilExit();
   await gracefulShutdown(0);
 }
+/**
+ * Returns true iff a DeepSeek-specific API key is present (env var or
+ * persisted config file). Deliberately does NOT consider the generic
+ * `API_KEY` env var — that variable is shared with unrelated tooling and
+ * the wizard should still run when the user has not specifically
+ * configured DeepSeek.
+ */
+async function hasDeepSeekCredentials(): Promise<boolean> {
+  const env = process.env;
+  const fromEnv =
+    env.DEEPSEEK_API_KEY?.trim() ||
+    env.DEEPCODE_API_KEY?.trim();
+  if (fromEnv) return true;
+  const { loadDeepSeekConfigFile } = await import('./services/providers/deepseek-config-store.mjs');
+  const file = loadDeepSeekConfigFile({ env });
+  return typeof file?.apiKey === 'string' && file.apiKey.trim().length > 0;
+}
+
+/**
+ * DeepSeek-only setup wizard. Runs even when DEEPCODE_FULL_TUI_SKIP_SETUP=1
+ * suppresses the upstream Anthropic flow, because a DeepSeek API key is
+ * required for the runtime to function.
+ *
+ * Skipped when DeepSeek-specific credentials are already present
+ * (DEEPSEEK_API_KEY / DEEPCODE_API_KEY env, or a persisted config file
+ * with a non-empty `apiKey`). When the user cancels the wizard or save
+ * fails, we exit the process with code 1 instead of booting into a
+ * broken session that 401s on the first request.
+ *
+ * Set DEEPCODE_SKIP_DEEPSEEK_SETUP=1 to suppress the wizard entirely
+ * (useful for CI / pre-provisioned environments where credentials arrive
+ * via a non-standard env var or runtime credential helper).
+ */
+async function maybeShowDeepSeekSetupWizard(root: Root): Promise<void> {
+  if (isEnvTruthy(process.env.DEEPCODE_SKIP_DEEPSEEK_SETUP)) return;
+  if (await hasDeepSeekCredentials()) return;
+  const { resolveDeepSeekConfig } = await import('./services/providers/deepseek.mjs');
+  const config = resolveDeepSeekConfig({});
+  const { DeepSeekSetupDialog } = await import('./components/DeepSeekSetupDialog.js');
+  const saved = await showSetupDialog<boolean>(root, done => (
+    <DeepSeekSetupDialog
+      defaultBaseUrl={config.baseUrl}
+      defaultModel={config.model}
+      initialEffort={(config.reasoningEffort ?? 'max') as 'max' | 'high'}
+      onDone={result => done(result)}
+    />
+  ), { onChangeAppState });
+  if (!saved) {
+    logForDebugging('DeepSeek setup wizard was cancelled or failed to save — aborting startup');
+    await exitWithError(
+      root,
+      'Deep Code requires a DeepSeek API key to run. Set DEEPSEEK_API_KEY, write ~/.deepcode/deepseek-config.json, or re-run and complete the setup wizard.',
+    );
+  }
+}
+
 export async function showSetupScreens(root: Root, permissionMode: PermissionMode, allowDangerouslySkipPermissions: boolean, commands?: Command[], claudeInChrome?: boolean, devChannels?: ChannelEntry[]): Promise<boolean> {
   if (isEnvTruthy(process.env.DEEPCODE_FULL_TUI_SKIP_SETUP)) {
     logForDebugging('Skip Deep Code full TUI setup screens for experimental startup');
+    await maybeShowDeepSeekSetupWizard(root);
     return false;
   }
+  await maybeShowDeepSeekSetupWizard(root);
   if ("production" === 'test' || isEnvTruthy(false) || process.env.IS_DEMO // Skip onboarding in demo mode
   ) {
     return false;
