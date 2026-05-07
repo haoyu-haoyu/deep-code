@@ -16,6 +16,7 @@ import { getTerminalFocused, setTerminalFocused } from '../terminal-focus-state.
 import { TerminalQuerier, xtversion } from '../terminal-querier.js';
 import { DISABLE_KITTY_KEYBOARD, DISABLE_MODIFY_OTHER_KEYS, ENABLE_KITTY_KEYBOARD, ENABLE_MODIFY_OTHER_KEYS, FOCUS_IN, FOCUS_OUT } from '../termio/csi.js';
 import { DBP, DFE, DISABLE_MOUSE_TRACKING, EBP, EFE, HIDE_CURSOR, SHOW_CURSOR } from '../termio/dec.js';
+import { dlog } from '../_input-debug.js';
 import AppContext from './AppContext.js';
 import { ClockProvider } from './ClockContext.js';
 import CursorDeclarationContext, { type CursorDeclarationSetter } from './CursorDeclarationContext.js';
@@ -147,6 +148,17 @@ export default class App extends PureComponent<Props, State> {
   // Initialized to now so startup doesn't false-trigger.
   lastStdinTime = Date.now();
 
+  // macOS pty + Node Readable mode kqueue can get stuck after rapid useInput
+  // mount/unmount churn (e.g., when a slash command opens a dialog and dozens
+  // of useInput hooks toggle isActive in one commit). Symptom: stdin's
+  // 'readable' event stops firing for new bytes even though the listener is
+  // still attached and raw mode is still on. The fd has unread data, but
+  // kqueue/EVFILT_READ never wakes Node up. Workaround: poll stdin directly.
+  // Each interval, if there's data buffered or if the fd has new data ready,
+  // we manually invoke handleReadable to drain it. read(0) is a no-op when
+  // there's nothing pending so the cost is negligible.
+  stdinHeartbeat: ReturnType<typeof setInterval> | null = null;
+
   // Determines if TTY is supported on the provided stdin
   isRawModeSupported(): boolean {
     return this.props.stdin.isTTY;
@@ -210,6 +222,11 @@ export default class App extends PureComponent<Props, State> {
     const {
       stdin
     } = this.props;
+    dlog('App.handleSetRawMode enter', {
+      isEnabled,
+      countBefore: this.rawModeEnabledCount,
+      readableListenersBefore: stdin.listenerCount('readable'),
+    });
     if (!this.isRawModeSupported()) {
       if (stdin === process.stdin) {
         throw new Error('Raw mode is not supported on the current process.stdin, which Ink uses as input stream by default.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported');
@@ -229,6 +246,18 @@ export default class App extends PureComponent<Props, State> {
         stdin.ref();
         stdin.setRawMode(true);
         stdin.addListener('readable', this.handleReadable);
+        // Start heartbeat poll — works around a macOS pty/kqueue stall after
+        // rapid listener churn (see field comment). Polls every 50ms; the
+        // typical input idle is shorter than human reaction so this is
+        // imperceptible. unref() so it doesn't keep the loop alive on its own.
+        if (this.stdinHeartbeat === null) {
+          this.stdinHeartbeat = setInterval(() => {
+            if (this.rawModeEnabledCount > 0 && stdin.readable) {
+              this.handleReadable();
+            }
+          }, 50);
+          this.stdinHeartbeat.unref?.();
+        }
         // Enable bracketed paste mode
         this.props.stdout.write(EBP);
         // Enable terminal focus reporting (DECSET 1004)
@@ -262,6 +291,13 @@ export default class App extends PureComponent<Props, State> {
         });
       }
       this.rawModeEnabledCount++;
+      const stdinAny = stdin as unknown as { _readableState?: { length?: number; flowing?: boolean | null }; isPaused?: () => boolean };
+      dlog('App.handleSetRawMode exit (enable)', {
+        countAfter: this.rawModeEnabledCount,
+        readableListenersAfter: stdin.listenerCount('readable'),
+        flowing: stdinAny._readableState?.flowing,
+        paused: stdinAny.isPaused?.(),
+      });
       return;
     }
 
@@ -276,6 +312,19 @@ export default class App extends PureComponent<Props, State> {
       stdin.setRawMode(false);
       stdin.removeListener('readable', this.handleReadable);
       stdin.unref();
+      if (this.stdinHeartbeat !== null) {
+        clearInterval(this.stdinHeartbeat);
+        this.stdinHeartbeat = null;
+      }
+      dlog('App.handleSetRawMode TEARDOWN', {
+        countAfter: this.rawModeEnabledCount,
+        readableListenersAfter: stdin.listenerCount('readable'),
+      });
+    } else {
+      dlog('App.handleSetRawMode exit (disable, kept alive)', {
+        countAfter: this.rawModeEnabledCount,
+        readableListenersAfter: stdin.listenerCount('readable'),
+      });
     }
   };
 
@@ -307,9 +356,16 @@ export default class App extends PureComponent<Props, State> {
 
   // Process input through the parser and handle the results
   processInput = (input: string | Buffer | null): void => {
+    dlog('App.processInput', { input: input == null ? null : String(input) });
     // Parse input using our state machine
     const [keys, newState] = parseMultipleKeypresses(this.keyParseState, input);
     this.keyParseState = newState;
+    dlog('App.processInput parsed', {
+      keysCount: keys.length,
+      mode: newState.mode,
+      incomplete: !!newState.incomplete,
+      kindList: keys.map(k => k.kind).join(','),
+    });
 
     // Process ALL keys in a SINGLE discreteUpdates call to prevent
     // "Maximum update depth exceeded" error when many keys arrive at once
@@ -330,6 +386,14 @@ export default class App extends PureComponent<Props, State> {
     }
   };
   handleReadable = (): void => {
+    const stdinAny = this.props.stdin as unknown as { _readableState?: { length?: number; reading?: boolean; flowing?: boolean | null }; isPaused?: () => boolean };
+    dlog('App.handleReadable', {
+      listenerCount: this.props.stdin.listenerCount('readable'),
+      bufferedLength: stdinAny._readableState?.length,
+      reading: stdinAny._readableState?.reading,
+      flowing: stdinAny._readableState?.flowing,
+      paused: stdinAny.isPaused?.(),
+    });
     // Detect long stdin gaps (tmux attach, ssh reconnect, laptop wake).
     // The terminal may have reset DEC private modes; re-assert mouse
     // tracking. Checked before the read loop so one Date.now() covers
@@ -341,10 +405,14 @@ export default class App extends PureComponent<Props, State> {
     this.lastStdinTime = now;
     try {
       let chunk;
+      let chunkCount = 0;
       while ((chunk = this.props.stdin.read() as string | null) !== null) {
+        chunkCount += 1;
+        dlog('App.handleReadable chunk', { chunkNum: chunkCount, chunk: String(chunk) });
         // Process the input chunk
         this.processInput(chunk);
       }
+      dlog('App.handleReadable done', { totalChunks: chunkCount });
     } catch (error) {
       // In Bun, an uncaught throw inside a stream 'readable' handler can
       // permanently wedge the stream: data stays buffered and 'readable'

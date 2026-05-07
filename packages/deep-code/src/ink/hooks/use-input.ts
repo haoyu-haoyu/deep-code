@@ -1,7 +1,10 @@
-import { useEffect, useLayoutEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useEventCallback } from 'usehooks-ts'
+import { dlog } from '../_input-debug.js'
 import type { InputEvent, Key } from '../events/input-event.js'
 import useStdin from './use-stdin.js'
+
+let useInputCounter = 0
 
 type Handler = (input: string, key: Key, event: InputEvent) => void
 
@@ -41,6 +44,9 @@ type Options = {
  */
 const useInput = (inputHandler: Handler, options: Options = {}) => {
   const { setRawMode, internal_exitOnCtrlC, internal_eventEmitter } = useStdin()
+  const idRef = useRef<number>(0)
+  if (idRef.current === 0) idRef.current = ++useInputCounter
+  const id = idRef.current
 
   // useLayoutEffect (not useEffect) so that raw mode is enabled synchronously
   // during React's commit phase, before render() returns. With useEffect, raw
@@ -49,15 +55,18 @@ const useInput = (inputHandler: Handler, options: Options = {}) => {
   // visible until the effect fires.
   useLayoutEffect(() => {
     if (options.isActive === false) {
+      dlog('useInput skip-rawmode (inactive)', { id })
       return
     }
 
+    dlog('useInput rawmode ON', { id })
     setRawMode(true)
 
     return () => {
+      dlog('useInput rawmode OFF', { id })
       setRawMode(false)
     }
-  }, [options.isActive, setRawMode])
+  }, [options.isActive, setRawMode, id])
 
   // Register the listener once on mount so its slot in the EventEmitter's
   // listener array is stable. If isActive were in the effect's deps, the
@@ -81,12 +90,20 @@ const useInput = (inputHandler: Handler, options: Options = {}) => {
   })
 
   useEffect(() => {
+    dlog('useInput listener ADD', {
+      id,
+      totalAfter: (internal_eventEmitter?.listenerCount('input') ?? 0) + 1,
+    })
     internal_eventEmitter?.on('input', handleData)
 
     return () => {
+      dlog('useInput listener REMOVE', {
+        id,
+        totalAfter: Math.max(0, (internal_eventEmitter?.listenerCount('input') ?? 1) - 1),
+      })
       internal_eventEmitter?.removeListener('input', handleData)
     }
-  }, [internal_eventEmitter, handleData])
+  }, [internal_eventEmitter, handleData, id])
 }
 
 export default useInput
