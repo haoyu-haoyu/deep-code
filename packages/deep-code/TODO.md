@@ -30,7 +30,7 @@
 
 ## Task 0.1 — 建立性能基线脚本
 
-- [x] **状态**：已完成（commit TBD）
+- [x] **状态**：已完成（commit 3b65ebb）
 - **优先级**：⭐⭐⭐⭐⭐（不量化就盲改 = 浪费工时）
 - **预估工作量**：0.5 天
 
@@ -691,4 +691,4 @@ test/integration/
 | 日期 | 任务 | 状态变化 | Commit |
 |---|---|---|---|
 | 2026-05-07 | TODO.md 创建 | 初版 | e7b5bf2 |
-| 2026-05-07 | Task 0.1 perf baseline | 完成 — 3 个 measured metrics + 4 个 placeholder + 测试套件 | TBD |
+| 2026-05-07 | Task 0.1 perf baseline | 完成 — 3 个 measured metrics + 4 个 placeholder + 测试套件 | 3b65ebb |
