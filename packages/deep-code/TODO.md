@@ -371,7 +371,7 @@ export async function loadConversationForResume(sessionId, opts) {
 
 ## Task A2 — Bash 轮询频率提到 5-10Hz
 
-- [x] **状态**：已完成（commit TBD）。`POLL_INTERVAL_MS: 1000 → 200`（5 Hz），加自适应：连续 5 个空 tick 后跳每隔 1 个 tick（≈2.5 Hz）。`PROGRESS_THRESHOLD_MS = 2000` 拆成 `PROGRESS_DISPLAY_THRESHOLD_MS = 500`（开始流式输出）和 `BACKGROUND_HINT_THRESHOLD_MS = 2000`（"Press Ctrl+B"提示）。新增 `DEEPCODE_BASH_POLL_INTERVAL_MS` / `DEEPCODE_BASH_POLL_IDLE_THRESHOLD` env 调优。Codex 修了 3 个问题：(1) 加 `#pollGeneration` 解决 stale tailFile callback race；(2) 早 return 让 totalLines/onProgress 也守住；(3) `stopPolling` 也 bump generation 防 React unmount 后泄漏一次 onProgress。
+- [x] **状态**：已完成（commit 741efec）。`POLL_INTERVAL_MS: 1000 → 200`（5 Hz），加自适应：连续 5 个空 tick 后跳每隔 1 个 tick（≈2.5 Hz）。`PROGRESS_THRESHOLD_MS = 2000` 拆成 `PROGRESS_DISPLAY_THRESHOLD_MS = 500`（开始流式输出）和 `BACKGROUND_HINT_THRESHOLD_MS = 2000`（"Press Ctrl+B"提示）。新增 `DEEPCODE_BASH_POLL_INTERVAL_MS` / `DEEPCODE_BASH_POLL_IDLE_THRESHOLD` env 调优。Codex 修了 3 个问题：(1) 加 `#pollGeneration` 解决 stale tailFile callback race；(2) 早 return 让 totalLines/onProgress 也守住；(3) `stopPolling` 也 bump generation 防 React unmount 后泄漏一次 onProgress。
 - **优先级**：⭐⭐⭐
 - **预估工作量**：0.25 天
 - **风险**：低
@@ -694,4 +694,4 @@ test/integration/
 | 2026-05-07 | Task 0.1 perf baseline | 完成 — 3 个 measured metrics + 4 个 placeholder + 测试套件 | 3b65ebb |
 | 2026-05-07 | Task S3 transcript cap + env aliases | 完成（实际 scope 调整：virtual scroll 不在非 fullscreen 路径上可达，改为收紧 cap + 加 DEEPCODE 命名空间 env 别名）| 67f2b3f |
 | 2026-05-07 | Task S2 streaming text granularity | 完成（核心 bug：line-only 截断导致短回复无 typing effect。改为 char 默认、Intl.Segmenter + 标点感知 word fallback、a11y/中断恢复解耦）| 5ede59e |
-| 2026-05-07 | Task A2 bash polling 1Hz → 5Hz | 完成（200ms 轮询 + 自适应 idle 退化，threshold 拆 display/background-hint，3 个 codex race-condition 修复）| TBD |
+| 2026-05-07 | Task A2 bash polling 1Hz → 5Hz | 完成（200ms 轮询 + 自适应 idle 退化，threshold 拆 display/background-hint，3 个 codex race-condition 修复）| 741efec |
