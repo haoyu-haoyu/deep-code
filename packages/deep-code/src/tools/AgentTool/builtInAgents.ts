@@ -2,6 +2,7 @@ import { feature } from 'bun:bundle'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isDeepCodeNativeProvider } from '../../utils/model/model.js'
 import { CLAUDE_CODE_GUIDE_AGENT } from './built-in/claudeCodeGuideAgent.js'
 import {
   DEEPSEEK_EXPLORER_AGENT,
@@ -67,7 +68,7 @@ export function getBuiltInAgents(): AgentDefinition[] {
     process.env.CLAUDE_CODE_ENTRYPOINT !== 'sdk-py' &&
     process.env.CLAUDE_CODE_ENTRYPOINT !== 'sdk-cli'
 
-  if (isNonSdkEntrypoint) {
+  if (isNonSdkEntrypoint && !isDeepCodeNativeProvider()) {
     agents.push(CLAUDE_CODE_GUIDE_AGENT)
   }
 

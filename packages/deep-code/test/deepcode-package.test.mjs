@@ -48,6 +48,60 @@ const deepCodeContextPolicySource = readFileSync(
   resolve(root, 'packages/deep-code/src/deepcode/context-policy.mjs'),
   'utf8',
 )
+const interactiveHelpersSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/interactiveHelpers.tsx'),
+  'utf8',
+)
+const sessionTitleSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/utils/sessionTitle.ts'),
+  'utf8',
+)
+const claudeAiLimitsSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/services/claudeAiLimits.ts'),
+  'utf8',
+)
+const bootstrapApiSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/services/api/bootstrap.ts'),
+  'utf8',
+)
+const overageCreditGrantSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/services/api/overageCreditGrant.ts'),
+  'utf8',
+)
+const claudeAiMcpSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/services/mcp/claudeai.ts'),
+  'utf8',
+)
+const fullTuiReplSource = stripInlineSourceMap(
+  readFileSync(
+    resolve(root, 'packages/deep-code/src/screens/REPL.tsx'),
+    'utf8',
+  ),
+)
+const fullTuiLogoUtilsSource = stripInlineSourceMap(
+  readFileSync(
+    resolve(root, 'packages/deep-code/src/utils/logoV2Utils.ts'),
+    'utf8',
+  ),
+)
+const fullTuiStatusSource = stripInlineSourceMap(
+  readFileSync(
+    resolve(root, 'packages/deep-code/src/utils/status.tsx'),
+    'utf8',
+  ),
+)
+const npmDeprecationNotificationSource = stripInlineSourceMap(
+  readFileSync(
+    resolve(root, 'packages/deep-code/src/hooks/notifs/useNpmDeprecationNotification.tsx'),
+    'utf8',
+  ),
+)
+const notifierSource = stripInlineSourceMap(
+  readFileSync(
+    resolve(root, 'packages/deep-code/src/services/notifier.ts'),
+    'utf8',
+  ),
+)
 const settingsSource = readFileSync(
   resolve(root, 'packages/deep-code/src/utils/settings/settings.ts'),
   'utf8',
@@ -93,6 +147,22 @@ const outputStylesSource = readFileSync(
 )
 const printSource = readFileSync(
   resolve(root, 'packages/deep-code/src/cli/print.ts'),
+  'utf8',
+)
+const gracefulShutdownSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/utils/gracefulShutdown.ts'),
+  'utf8',
+)
+const crossProjectResumeSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/utils/crossProjectResume.ts'),
+  'utf8',
+)
+const buildFullCliSource = readFileSync(
+  resolve(root, 'packages/deep-code/scripts/build-full-cli.mjs'),
+  'utf8',
+)
+const ripgrepSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/utils/ripgrep.ts'),
   'utf8',
 )
 const replSource = readFileSync(
@@ -173,6 +243,10 @@ const statuslineSetupAgentSource = readFileSync(
 )
 const builtInAgentsSource = readFileSync(
   resolve(root, 'packages/deep-code/src/tools/AgentTool/builtInAgents.ts'),
+  'utf8',
+)
+const agentsListSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/components/agents/AgentsList.tsx'),
   'utf8',
 )
 const deepcodeEntrypointSource = readFileSync(
@@ -532,7 +606,7 @@ test('Deep Code front controller delegates print mode to the full CLI bundle', (
   writeFileSync(fakeFullCli, [
     '#!/usr/bin/env node',
     'import { writeFileSync } from "node:fs"',
-    `writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), provider: process.env.DEEPCODE_PROVIDER ?? null }))`,
+    `writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), provider: process.env.DEEPCODE_PROVIDER ?? null, skipSetup: process.env.DEEPCODE_FULL_TUI_SKIP_SETUP }))`,
     'console.log("delegated-full-cli")',
   ].join('\n'))
 
@@ -561,7 +635,7 @@ test('Deep Code front controller delegates print mode to the full CLI bundle', (
   })
 })
 
-test('Deep Code front controller keeps native interactive as the visible default', async () => {
+test('Deep Code front controller delegates interactive startup to full TUI by default', async () => {
   const { shouldDelegateToFullCli } = await import('../src/deepcode/front-controller.mjs')
   const baseCli = {
     printMode: false,
@@ -575,12 +649,20 @@ test('Deep Code front controller keeps native interactive as the visible default
       env: {},
       input: { isTTY: true },
     }),
-    false,
+    true,
   )
   assert.equal(
     shouldDelegateToFullCli({
       cli: baseCli,
       env: { DEEPCODE_EXPERIMENTAL_FULL_TUI: '1' },
+      input: { isTTY: true },
+    }),
+    true,
+  )
+  assert.equal(
+    shouldDelegateToFullCli({
+      cli: baseCli,
+      env: { DEEPCODE_EXPERIMENTAL_FULL_TUI: 'force' },
       input: { isTTY: true },
     }),
     true,
@@ -644,14 +726,14 @@ test('Deep Code front controller uses native interactive only when explicitly fo
   assert.doesNotMatch(result.stdout, /should-not-delegate-full-cli-tui/)
 })
 
-test('Deep Code front controller delegates interactive startup to full TUI when explicitly enabled', () => {
+test('Deep Code front controller delegates bare interactive startup to full TUI', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-default-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')
   const capturePath = join(dir, 'capture.json')
   writeFileSync(fakeFullCli, [
     '#!/usr/bin/env node',
     'import { writeFileSync } from "node:fs"',
-    `writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), provider: process.env.DEEPCODE_PROVIDER ?? null }))`,
+    `writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), provider: process.env.DEEPCODE_PROVIDER ?? null, skipSetup: process.env.DEEPCODE_FULL_TUI_SKIP_SETUP }))`,
     'console.log("delegated-full-cli-default-tui")',
   ].join('\n'))
 
@@ -664,7 +746,6 @@ test('Deep Code front controller delegates interactive startup to full TUI when 
     encoding: 'utf8',
     env: {
       ...process.env,
-      DEEPCODE_EXPERIMENTAL_FULL_TUI: '1',
       DEEPCODE_FULL_CLI_PATH: fakeFullCli,
       DEEPCODE_PROVIDER: 'deepseek',
     },
@@ -676,6 +757,7 @@ test('Deep Code front controller delegates interactive startup to full TUI when 
     argv: ['--model', 'deepseek-v4-flash'],
     cwd: root,
     provider: 'deepseek',
+    skipSetup: '1',
   })
 })
 
@@ -899,14 +981,14 @@ test('Deep Code native interactive stream path starts and clears the turn spinne
   assert.match(deepcodeEntrypointSource, /spinner\.stop\(\{ clear: true \}\)/)
 })
 
-test('Deep Code front controller can opt into the experimental full TUI bundle', () => {
+test('Deep Code front controller can force the experimental full TUI bundle', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-opt-in-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')
   const capturePath = join(dir, 'capture.json')
   writeFileSync(fakeFullCli, [
     '#!/usr/bin/env node',
     'import { writeFileSync } from "node:fs"',
-    `writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), provider: process.env.DEEPCODE_PROVIDER ?? null }))`,
+    `writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), provider: process.env.DEEPCODE_PROVIDER ?? null, skipSetup: process.env.DEEPCODE_FULL_TUI_SKIP_SETUP }))`,
     'console.log("delegated-full-cli-tui")',
   ].join('\n'))
 
@@ -919,7 +1001,7 @@ test('Deep Code front controller can opt into the experimental full TUI bundle',
     encoding: 'utf8',
     env: {
       ...process.env,
-      DEEPCODE_EXPERIMENTAL_FULL_TUI: '1',
+      DEEPCODE_EXPERIMENTAL_FULL_TUI: 'force',
       DEEPCODE_FULL_CLI_PATH: fakeFullCli,
       DEEPCODE_PROVIDER: 'deepseek',
     },
@@ -931,6 +1013,7 @@ test('Deep Code front controller can opt into the experimental full TUI bundle',
     argv: ['--model', 'deepseek-v4-flash'],
     cwd: root,
     provider: 'deepseek',
+    skipSetup: '1',
   })
 })
 
@@ -944,7 +1027,7 @@ test('Deep Code front controller streams TUI stdin through the full CLI bundle',
     'let input = ""',
     'process.stdin.setEncoding("utf8")',
     'for await (const chunk of process.stdin) input += chunk',
-    'writeFileSync(process.env.DEEPCODE_TUI_CAPTURE_PATH, JSON.stringify({ argv: process.argv.slice(2), input, provider: process.env.DEEPCODE_PROVIDER }))',
+    'writeFileSync(process.env.DEEPCODE_TUI_CAPTURE_PATH, JSON.stringify({ argv: process.argv.slice(2), input, provider: process.env.DEEPCODE_PROVIDER, skipSetup: process.env.DEEPCODE_FULL_TUI_SKIP_SETUP }))',
     'console.log("Deep Code TUI started")',
     'for (const line of input.split(/\\r?\\n/).map(value => value.trim()).filter(Boolean)) {',
     '  if (line === "/status") console.log("Provider: DeepSeek native\\nCache telemetry: last_hit=8 last_miss=2 last_hit_rate=80.0%")',
@@ -962,7 +1045,7 @@ test('Deep Code front controller streams TUI stdin through the full CLI bundle',
     input: '/status\n/model\n/doctor\n/exit\n',
     env: {
       ...process.env,
-      DEEPCODE_EXPERIMENTAL_FULL_TUI: '1',
+      DEEPCODE_EXPERIMENTAL_FULL_TUI: 'force',
       DEEPCODE_FULL_CLI_PATH: fakeFullCli,
       DEEPCODE_PROVIDER: 'deepseek',
       DEEPCODE_TUI_CAPTURE_PATH: capturePath,
@@ -980,7 +1063,62 @@ test('Deep Code front controller streams TUI stdin through the full CLI bundle',
     argv: [],
     input: '/status\n/model\n/doctor\n/exit\n',
     provider: 'deepseek',
+    skipSetup: '1',
   })
+})
+
+test('Deep Code full TUI can skip legacy setup screens during experimental startup', () => {
+  assert.match(interactiveHelpersSource, /DEEPCODE_FULL_TUI_SKIP_SETUP/)
+  assert.match(interactiveHelpersSource, /Skip Deep Code full TUI setup screens/)
+})
+
+test('Deep Code full TUI avoids legacy Anthropic preflight calls under DeepSeek provider', () => {
+  assert.match(sessionTitleSource, /isDeepCodeDeepSeekProvider/)
+  assert.match(sessionTitleSource, /createDeepCodeLocalSessionTitle/)
+  assert.match(sessionTitleSource, /DeepSeek provider uses local title derivation/)
+  assert.match(claudeAiLimitsSource, /DEEPCODE_PROVIDER/)
+  assert.match(claudeAiLimitsSource, /DeepSeek native provider does not use Claude\.ai quota checks/)
+  assert.match(bootstrapApiSource, /isDeepCodeDeepSeekProvider/)
+  assert.match(bootstrapApiSource, /\[Bootstrap\] Skipped: DeepSeek native provider/)
+  assert.match(overageCreditGrantSource, /isDeepCodeDeepSeekProvider/)
+  assert.match(overageCreditGrantSource, /if \(isDeepCodeDeepSeekProvider\(\)\) return/)
+  assert.match(claudeAiMcpSource, /isDeepCodeDeepSeekProvider/)
+  assert.match(claudeAiMcpSource, /\[claudeai-mcp\] Disabled for DeepSeek native provider/)
+})
+
+test('Deep Code full TUI removes legacy Claude chrome from visible DeepSeek startup surfaces', () => {
+  assert.match(fullTuiReplSource, /terminalTitle\s*=.*'Deep Code'/)
+  assert.doesNotMatch(fullTuiReplSource, /terminalTitle\s*=.*'Claude Code'/)
+
+  assert.match(npmDeprecationNotificationSource, /isDeepCodeDeepSeekProvider/)
+  assert.match(npmDeprecationNotificationSource, /return null/)
+  assert.doesNotMatch(npmDeprecationNotificationSource, /claude install|docs\.anthropic\.com/)
+
+  assert.match(fullTuiLogoUtilsSource, /getDeepCodeBillingType/)
+  assert.match(fullTuiLogoUtilsSource, /DeepSeek native/)
+  assert.doesNotMatch(fullTuiLogoUtilsSource, /Claude Max|Claude API/)
+
+  assert.match(
+    fullTuiStatusSource,
+    /isDeepSeekProvider[\s\S]*label: 'DeepSeek API key'[\s\S]*return properties[\s\S]*getAccountInformation/,
+  )
+
+  assert.match(notifierSource, /DEFAULT_TITLE = 'Deep Code'/)
+})
+
+test('Deep Code full TUI resume and lockfile paths are Deep Code compatible', () => {
+  assert.match(gracefulShutdownSource, /deepcode --resume/)
+  assert.doesNotMatch(gracefulShutdownSource, /claude --resume/)
+  assert.match(crossProjectResumeSource, /deepcode --resume/)
+  assert.doesNotMatch(crossProjectResumeSource, /claude --resume/)
+  assert.match(printSource, /Usage: deepcode -p --resume <session-id>/)
+  assert.doesNotMatch(printSource, /Usage: claude -p --resume <session-id>/)
+
+  assert.match(buildFullCliSource, /'signal-exit'/)
+  assert.match(buildFullCliSource, /module\.exports = onExit/)
+  assert.match(buildFullCliSource, /module\.exports\.onExit = onExit/)
+  assert.match(ripgrepSource, /rgRootCandidates/)
+  assert.match(ripgrepSource, /path\.resolve\(__dirname, '\.\.', 'vendor', 'ripgrep'\)/)
 })
 
 test('Deep Code front controller reports a clear error when the full CLI bundle is missing', () => {
@@ -1023,6 +1161,8 @@ test('Deep Code package can build the full CLI launcher artifact', () => {
   assert.doesNotMatch(bundleSource, /Failed to launch Deep Code full CLI through Bun/)
   assert.doesNotMatch(bundleSource, /import\("\.\/devtools\.js"\)/)
   assert.doesNotMatch(bundleSource, /environment variable DEV is set to true/)
+  assert.doesNotMatch(bundleSource, /stripAnsi2\(string4\)/)
+  assert.match(bundleSource, /module\.exports\.default = stringWidth/)
   assert.match(bundleSource, /Deep Code full CLI bundled artifact/)
 
   const versionResult = spawnSync('node', [bundlePath, '--version'], {
@@ -1367,6 +1507,9 @@ test('DeepSeek Harness built-in agents expose explorer worker verifier and summa
   assert.match(builtInAgentsSource, /DEEPSEEK_SUMMARIZER_AGENT/)
   assert.match(builtInAgentsSource, /DEEPSEEK_WORKER_AGENT/)
   assert.match(builtInAgentsSource, /DEEPSEEK_EXPLORER_AGENT/)
+  assert.match(builtInAgentsSource, /!isDeepCodeNativeProvider\(\)/)
+  assert.match(agentsListSource, /Deep Code can delegate/)
+  assert.match(agentsListSource, /useInput/)
   assert.match(exploreAgentSource, /agentType: 'explorer'/)
   assert.doesNotMatch(agentSources, /Anthropic's official CLI/)
   assert.doesNotMatch(agentSources, /for Claude Code/)

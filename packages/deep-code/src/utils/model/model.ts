@@ -36,7 +36,7 @@ export type ModelSetting = ModelName | ModelAlias | null
 const DEEPCODE_DEFAULT_MAIN_MODEL = 'deepseek-v4-pro'
 const DEEPCODE_DEFAULT_SMALL_MODEL = 'deepseek-v4-flash'
 
-function isDeepCodeNativeProvider(): boolean {
+export function isDeepCodeNativeProvider(): boolean {
   const provider = (
     process.env.DEEPCODE_PROVIDER ??
     process.env.DEEP_CODE_PROVIDER ??

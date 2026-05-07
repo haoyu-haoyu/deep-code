@@ -198,11 +198,19 @@ export async function buildInstallationHealthDiagnostics(): Promise<Diagnostic[]
   return items;
 }
 export function buildAccountProperties(): Property[] {
+  const isDeepSeekProvider = (process.env.DEEPCODE_PROVIDER ?? process.env.DEEP_CODE_PROVIDER ?? 'deepseek').toLowerCase() === 'deepseek';
+  const properties: Property[] = [];
+  if (isDeepSeekProvider) {
+    properties.push({
+      label: 'DeepSeek API key',
+      value: process.env.DEEPSEEK_API_KEY ? 'configured' : 'missing'
+    });
+    return properties;
+  }
   const accountInfo = getAccountInformation();
   if (!accountInfo) {
     return [];
   }
-  const properties: Property[] = [];
   if (accountInfo.subscription) {
     properties.push({
       label: 'Login method',

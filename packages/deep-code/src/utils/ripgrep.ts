@@ -1,5 +1,6 @@
 import type { ChildProcess, ExecFileException } from 'child_process'
 import { execFile, spawn } from 'child_process'
+import { existsSync } from 'fs'
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import * as path from 'path'
@@ -55,7 +56,13 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
     }
   }
 
-  const rgRoot = path.resolve(__dirname, 'vendor', 'ripgrep')
+  const rgRootCandidates = [
+    path.resolve(__dirname, 'vendor', 'ripgrep'),
+    path.resolve(__dirname, '..', 'vendor', 'ripgrep'),
+  ]
+  const rgRoot =
+    rgRootCandidates.find(candidate => existsSync(candidate)) ??
+    rgRootCandidates[0]!
   const command =
     process.platform === 'win32'
       ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')

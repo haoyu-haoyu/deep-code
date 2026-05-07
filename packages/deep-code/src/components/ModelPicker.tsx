@@ -64,6 +64,7 @@ export function ModelPicker(t0) {
     t1 = $[1];
   }
   const [effort, setEffort] = useState(t1);
+  const isDeepCodeNative = isDeepCodeNativeProvider();
   const t2 = isFastMode ?? false;
   let t3;
   if ($[2] !== t2) {
@@ -265,7 +266,7 @@ export function ModelPicker(t0) {
   } else {
     t15 = $[41];
   }
-  const t16 = headerText ?? "Switch between Claude models. Applies to this session and future Claude Code sessions. For other/previous model names, specify with --model.";
+  const t16 = headerText ?? (isDeepCodeNative ? "Switch between DeepSeek models for this Deep Code session. Use ←/→ to adjust reasoning effort." : "Switch between Claude models. Applies to this session and future Claude Code sessions. For other/previous model names, specify with --model.");
   let t17;
   if ($[42] !== t16) {
     t17 = <Text dimColor={true}>{t16}</Text>;
@@ -336,7 +337,7 @@ export function ModelPicker(t0) {
   }
   let t25;
   if ($[67] !== showFastModeNotice) {
-    t25 = isFastModeEnabled() ? showFastModeNotice ? <Box marginBottom={1}><Text dimColor={true}>Fast mode is <Text bold={true}>ON</Text> and available with{" "}{FAST_MODE_MODEL_DISPLAY} only (/fast). Switching to other models turn off fast mode.</Text></Box> : isFastModeAvailable() && !isFastModeCooldown() ? <Box marginBottom={1}><Text dimColor={true}>Use <Text bold={true}>/fast</Text> to turn on Fast mode ({FAST_MODE_MODEL_DISPLAY} only).</Text></Box> : null : null;
+    t25 = isDeepCodeNative ? <Box marginBottom={1}><Text dimColor={true}>DeepSeek thinking uses reasoning_effort. Use ←/→ to choose low, medium, high, or max.</Text></Box> : isFastModeEnabled() ? showFastModeNotice ? <Box marginBottom={1}><Text dimColor={true}>Fast mode is <Text bold={true}>ON</Text> and available with{" "}{FAST_MODE_MODEL_DISPLAY} only (/fast). Switching to other models turn off fast mode.</Text></Box> : isFastModeAvailable() && !isFastModeCooldown() ? <Box marginBottom={1}><Text dimColor={true}>Use <Text bold={true}>/fast</Text> to turn on Fast mode ({FAST_MODE_MODEL_DISPLAY} only).</Text></Box> : null : null;
     $[67] = showFastModeNotice;
     $[68] = t25;
   } else {
@@ -384,6 +385,10 @@ export function ModelPicker(t0) {
     t29 = $[81];
   }
   return t29;
+}
+function isDeepCodeNativeProvider() {
+  const provider = (process.env.DEEPCODE_PROVIDER ?? process.env.DEEP_CODE_PROVIDER ?? 'deepseek').toLowerCase();
+  return provider === 'deepseek';
 }
 function _temp4() {}
 function _temp3(opt_0) {

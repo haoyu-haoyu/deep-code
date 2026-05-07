@@ -30,6 +30,15 @@ type ClaudeAIMcpServersResponse = {
 const FETCH_TIMEOUT_MS = 5000
 const MCP_SERVERS_BETA_HEADER = 'mcp-servers-2025-12-04'
 
+function isDeepCodeDeepSeekProvider(): boolean {
+  const provider = (
+    process.env.DEEPCODE_PROVIDER ??
+    process.env.DEEP_CODE_PROVIDER ??
+    'deepseek'
+  ).toLowerCase()
+  return provider === 'deepseek'
+}
+
 /**
  * Fetches MCP server configurations from Claude.ai org configs.
  * These servers are managed by the organization via Claude.ai.
@@ -39,6 +48,15 @@ const MCP_SERVERS_BETA_HEADER = 'mcp-servers-2025-12-04'
 export const fetchClaudeAIMcpConfigsIfEligible = memoize(
   async (): Promise<Record<string, ScopedMcpServerConfig>> => {
     try {
+      if (isDeepCodeDeepSeekProvider()) {
+        logForDebugging('[claudeai-mcp] Disabled for DeepSeek native provider')
+        logEvent('tengu_claudeai_mcp_eligibility', {
+          state:
+            'disabled_deepseek_provider' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        })
+        return {}
+      }
+
       if (isEnvDefinedFalsy(process.env.ENABLE_CLAUDEAI_MCP_SERVERS)) {
         logForDebugging('[claudeai-mcp] Disabled via env var')
         logEvent('tengu_claudeai_mcp_eligibility', {

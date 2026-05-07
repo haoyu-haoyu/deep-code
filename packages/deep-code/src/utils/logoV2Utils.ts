@@ -14,6 +14,22 @@ import { gt } from './semver.js'
 import { loadMessageLogs } from './sessionStorage.js'
 import { getInitialSettings } from './settings/settings.js'
 
+function isDeepCodeDeepSeekProvider(): boolean {
+  const provider = (
+    process.env.DEEPCODE_PROVIDER ??
+    process.env.DEEP_CODE_PROVIDER ??
+    'deepseek'
+  ).toLowerCase()
+  return provider === 'deepseek'
+}
+
+export function getDeepCodeBillingType(): string {
+  if (isDeepCodeDeepSeekProvider()) {
+    return 'DeepSeek native'
+  }
+  return isClaudeAISubscriber() ? getSubscriptionName() : 'API Usage Billing'
+}
+
 // Layout constants
 const MAX_LEFT_WIDTH = 50
 const MAX_USERNAME_LENGTH = 20
@@ -253,9 +269,7 @@ export function getLogoDisplayData(): {
   const cwd = serverUrl
     ? `${displayPath} in ${serverUrl.replace(/^https?:\/\//, '')}`
     : displayPath
-  const billingType = isClaudeAISubscriber()
-    ? getSubscriptionName()
-    : 'API Usage Billing'
+  const billingType = getDeepCodeBillingType()
   const agentName = getInitialSettings().agent
 
   return {
