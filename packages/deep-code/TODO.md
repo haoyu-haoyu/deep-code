@@ -17,7 +17,7 @@
 
 | Tier | 任务数 | 已完成 | 工作量 |
 |---|---|---|---|
-| Phase 0 | 1 | 0 | 0.5 d |
+| Phase 0 | 1 | 1 | 0.5 d |
 | Tier S | 4 | 0 | 5-6 d |
 | Tier A | 4 | 0 | 1.5-2 d |
 | Tier B | 3 | 0 | 3 d |
@@ -30,7 +30,7 @@
 
 ## Task 0.1 — 建立性能基线脚本
 
-- [ ] **状态**：未开始
+- [x] **状态**：已完成（commit TBD）
 - **优先级**：⭐⭐⭐⭐⭐（不量化就盲改 = 浪费工时）
 - **预估工作量**：0.5 天
 
@@ -671,9 +671,12 @@ test/integration/
 
 # 基线记录（每次跑完填一行）
 
-| 日期 | Commit | cold_start_ms | keystroke_p99_ms | scroll_1k_fps | resume_1k_ms | bash_first_chunk_ms | 备注 |
-|---|---|---|---|---|---|---|---|
-| TBD | baseline | - | - | - | - | - | 跑 Phase 0 后填入 |
+> 量法：`npm run perf:baseline`，每项跑 1 次 warmup + 3 次实测，取 median。
+> 环境：M-series macOS, Node 18+, idle terminal。
+
+| 日期 | Commit | cold_start_version_ms | cold_start_status_ms | jsonl_parse_1k_msgs_ms | keystroke_p99_ms | scroll_1k_fps | bash_first_chunk_ms | 备注 |
+|---|---|---|---|---|---|---|---|---|
+| 2026-05-07 | (Phase 0) | **8227** | **15458** | **2.9** | pending pty | pending pty | pending S1 | 起始 baseline（4 次实测取 median）。cold_start_version 是纯模块加载（version 命令立即返回），cold_start_status 多算了 settings + git repo summary（CV 高，受磁盘缓存波动）。jsonl_parse_1k_msgs 走 production fallback（indexOf 扫描 + JSON.parse），未来若启用 Bun.JSONL 需要重新基线。 |
 
 ---
 
@@ -687,4 +690,5 @@ test/integration/
 
 | 日期 | 任务 | 状态变化 | Commit |
 |---|---|---|---|
-| 2026-05-07 | TODO.md 创建 | 初版 | TBD |
+| 2026-05-07 | TODO.md 创建 | 初版 | e7b5bf2 |
+| 2026-05-07 | Task 0.1 perf baseline | 完成 — 3 个 measured metrics + 4 个 placeholder + 测试套件 | TBD |
