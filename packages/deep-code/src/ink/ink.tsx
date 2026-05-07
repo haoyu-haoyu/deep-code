@@ -1483,19 +1483,27 @@ export default class Ink {
         // Exit alt screen FIRST so other cleanup sequences go to the main screen.
         writeSync(1, EXIT_ALT_SCREEN);
       }
-      // Disable mouse tracking — unconditional because altScreenActive can be
-      // stale if AlternateScreen's unmount (which flips the flag) raced a
-      // blocked event loop + SIGINT. No-op if tracking was never enabled.
+      // Disable INPUT-EMITTING modes BEFORE drainStdin so the drain
+      // also catches their tail-end residue. Order: DBP/DMT/etc emit
+      // sequences (`\x1b[200~`...`\x1b[201~` for paste, mouse reports
+      // for tracking, focus events) — once disabled, the terminal
+      // stops generating new ones, but already-in-flight bytes still
+      // need to be consumed. drainStdin absorbs them in one pass.
+      // The previous order (DMT → drain → DBP) leaked bracketed-paste
+      // markers on Ctrl+C-mid-large-paste because DBP was written
+      // AFTER the drain — the bytes emitted between drain return and
+      // DBP application went to the shell.
+      writeSync(1, DBP);
       writeSync(1, DISABLE_MOUSE_TRACKING);
-      // Drain stdin so in-flight mouse events don't leak to the shell
+      writeSync(1, DFE);
+      // Drain stdin so in-flight bracketed-paste markers + mouse
+      // events + focus reports don't leak to the shell.
       this.drainStdin();
-      // Disable extended key reporting (both kitty and modifyOtherKeys)
+      // Disable extended key reporting (both kitty and modifyOtherKeys).
+      // These modes don't emit unsolicited bytes — they only modify
+      // how key events are encoded — so they don't need drain ordering.
       writeSync(1, DISABLE_MODIFY_OTHER_KEYS);
       writeSync(1, DISABLE_KITTY_KEYBOARD);
-      // Disable focus events (DECSET 1004)
-      writeSync(1, DFE);
-      // Disable bracketed paste mode
-      writeSync(1, DBP);
       // Show cursor
       writeSync(1, SHOW_CURSOR);
       // Clear iTerm2 progress bar
@@ -1519,6 +1527,19 @@ export default class Ink {
     // @ts-expect-error flushSyncWork exists in react-reconciler but not in @types/react-reconciler
     reconciler.flushSyncWork();
     instances.delete(this.options.stdout);
+
+    // FINAL drain — after React teardown effects (e.g.
+    // <AlternateScreen>'s cleanup writing DISABLE_MOUSE_TRACKING +
+    // EXIT_ALT_SCREEN, modal cleanups, focus restorers). Those writes
+    // are redundant with the synchronous block above in steady state
+    // but on rare paths (alt-screen race, modal mid-teardown) they
+    // could re-trigger short bursts of input bytes. This drain is the
+    // absolute last input-cleanup step before the shell takes over.
+    /* eslint-disable custom-rules/no-sync-fs -- terminal cleanup */
+    if (this.options.stdout.isTTY) {
+      this.drainStdin();
+    }
+    /* eslint-enable custom-rules/no-sync-fs */
 
     // Free the root yoga node, then clear its reference. Children are already
     // freed by the reconciler's removeChildFromContainer; using .free() (not
@@ -1683,9 +1704,13 @@ export function drainStdin(stdin: NodeJS.ReadStream = process.stdin): void {
     setRawMode?: (raw: boolean) => void;
   };
   const wasRaw = tty.isRaw === true;
-  // Drain the kernel TTY buffer via a fresh O_NONBLOCK fd. Bounded at 64
-  // reads (64KB) — a real mouse burst is a few hundred bytes; the cap
-  // guards against a terminal that ignores O_NONBLOCK.
+  // Drain the kernel TTY buffer via a fresh O_NONBLOCK fd. Bounded at
+  // 1024 reads (1 MB) — large pastes routinely exceed the old 64 KB
+  // cap, leaving a tail of `\x1b[201~` end markers to leak to the
+  // shell. The cap is a safety net for terminals that ignore
+  // O_NONBLOCK; in normal operation readSync returns 0 (or throws
+  // EAGAIN, caught below) the moment the buffer empties, so the loop
+  // exits early on real workloads regardless of the ceiling.
   let fd = -1;
   try {
     // setRawMode inside try: on revoked TTY (SIGHUP/SSH disconnect) the
@@ -1693,7 +1718,7 @@ export function drainStdin(stdin: NodeJS.ReadStream = process.stdin): void {
     if (!wasRaw) tty.setRawMode?.(true);
     fd = openSync('/dev/tty', fsConstants.O_RDONLY | fsConstants.O_NONBLOCK);
     const buf = Buffer.alloc(1024);
-    for (let i = 0; i < 64; i++) {
+    for (let i = 0; i < 1024; i++) {
       if (readSync(fd, buf, 0, buf.length, null) <= 0) break;
     }
   } catch {

@@ -137,6 +137,13 @@ export default class App extends PureComponent<Props, State> {
   // the word without also opening the browser). DOM onClick dispatch is
   // NOT deferred — it returns true from onClickAt and skips this timer.
   pendingHyperlinkTimer: ReturnType<typeof setTimeout> | null = null;
+  // Handle for the deferred XTVERSION terminal-identity probe so we can
+  // cancel it during componentWillUnmount. Without cancellation, an
+  // unmount that happens before the immediate fires would let the
+  // callback run AFTER ink.tsx's final stdin drain, write
+  // xtversion()/flush() to the TTY, and trigger terminal response
+  // bytes on stdin post-teardown — leaking input to the shell.
+  xtversionImmediate: ReturnType<typeof setImmediate> | null = null;
   // Last mode-1003 motion position. Terminals already dedupe to cell
   // granularity but this also lets us skip dispatchHover entirely on
   // repeat events (drag-then-release at same cell, etc.).
@@ -210,6 +217,15 @@ export default class App extends PureComponent<Props, State> {
       clearTimeout(this.pendingHyperlinkTimer);
       this.pendingHyperlinkTimer = null;
     }
+    // Cancel the deferred XTVERSION probe so its callback can't write
+    // to the TTY after we've completed the final input drain. Without
+    // this, a fast unmount (e.g. Ctrl+C immediately after launch)
+    // leaves the immediate scheduled; when it eventually fires it
+    // sends xtversion() to a torn-down terminal session.
+    if (this.xtversionImmediate) {
+      clearImmediate(this.xtversionImmediate);
+      this.xtversionImmediate = null;
+    }
     // ignore calling setRawMode on an handle stdin it cannot be called
     if (this.isRawModeSupported()) {
       this.handleSetRawMode(false);
@@ -279,7 +295,17 @@ export default class App extends PureComponent<Props, State> {
         // Deferred to next tick so it fires AFTER the current synchronous
         // init sequence completes — avoids interleaving with alt-screen/mouse
         // tracking enable writes that may happen in the same render cycle.
-        setImmediate(() => {
+        this.xtversionImmediate = setImmediate(() => {
+          this.xtversionImmediate = null;
+          // Known limitation: there's no way to stop terminal-reply
+          // bytes from arriving once the query is on the wire. If
+          // unmount fires AFTER this callback has issued send() but
+          // BEFORE the reply lands, the response (~5–30 bytes of
+          // terminal-name string) leaks to the shell. Mitigation
+          // would require buffering stdin past process exit, which
+          // isn't possible. The realistic-case Ctrl+C-before-immediate
+          // window IS closed by the clearImmediate in
+          // componentWillUnmount.
           void Promise.all([this.querier.send(xtversion()), this.querier.flush()]).then(([r]) => {
             if (r) {
               setXtversionName(r.name);

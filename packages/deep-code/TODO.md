@@ -19,7 +19,7 @@
 |---|---|---|---|
 | Phase 0 | 1 | 1 | 0.5 d |
 | Tier S | 4 | 2 | 5-6 d |
-| Tier A | 4 | 1 | 1.5-2 d |
+| Tier A | 4 | 4 | 1.5-2 d |
 | Tier B | 3 | 0 | 3 d |
 | Phase 5 | 2 | 0 | 0.5 d |
 | **总计** | **14** | **0** | **9-12 d** |
@@ -406,7 +406,7 @@ export async function loadConversationForResume(sessionId, opts) {
 
 ## Task A3 — 节流配置修正
 
-- [ ] **状态**：未开始
+- [x] **状态**：已验证不需要改动（commit TBD）。原审计建议错误。直接 grep Claude Code 上游 bundle 确认它用的就是 `throttle(scheduleRender, 16, {leading: true, trailing: true})`，和 DeepCode 当前一字不差。审计 agent 当初是猜的没有证据。改成 `{leading: false, ...}` 反而会给每个按键加 16ms 延迟（坏 UX）且偏离上游行为。当前 ink.tsx:213-216 的配置就是正确的。这条任务关闭，无代码改动。
 - **优先级**：⭐⭐
 - **预估工作量**：0.25 天
 - **风险**：中（需防止 stale 渲染）
@@ -441,7 +441,7 @@ export async function loadConversationForResume(sessionId, opts) {
 
 ## Task A4 — Bracketed paste / 大块粘贴清理
 
-- [ ] **状态**：未开始
+- [x] **状态**：已完成（commit TBD）。重排 ink.tsx unmount 清理：input-emitting 模式（DBP/DMT/DFE）先 disable 再 drainStdin，扩展 drain 内核循环上限 64→1024（覆盖 >64KB 大粘贴），最终 drainStdin 移到 `updateContainerSync` + `flushSyncWork` 之后捕获 React teardown effect 的尾部。同时在 `App.componentWillUnmount` 中用 `clearImmediate` 取消 XTVERSION 探测，关闭"deepcode 启动 1ms 内 Ctrl+C"的最常见 leak 路径。回调启动后已发送的查询 reply 无法终止（这是已知限制，无法不通过缓冲 stdin 跨进程退出来修复，已在源码注释）。
 - **优先级**：⭐⭐
 - **预估工作量**：0.5 天
 - **风险**：低
@@ -695,3 +695,5 @@ test/integration/
 | 2026-05-07 | Task S3 transcript cap + env aliases | 完成（实际 scope 调整：virtual scroll 不在非 fullscreen 路径上可达，改为收紧 cap + 加 DEEPCODE 命名空间 env 别名）| 67f2b3f |
 | 2026-05-07 | Task S2 streaming text granularity | 完成（核心 bug：line-only 截断导致短回复无 typing effect。改为 char 默认、Intl.Segmenter + 标点感知 word fallback、a11y/中断恢复解耦）| 5ede59e |
 | 2026-05-07 | Task A2 bash polling 1Hz → 5Hz | 完成（200ms 轮询 + 自适应 idle 退化，threshold 拆 display/background-hint，3 个 codex race-condition 修复）| 741efec |
+| 2026-05-07 | Task A3 throttle config | 验证-不需要修改（grep 上游 bundle 确认配置一致，错误 audit 推荐）| f3d0f3c |
+| 2026-05-07 | Task A4 paste cleanup | 完成（DBP/DMT/DFE 顺序前置 + drainStdin 容量 1KB→1MB + final drain 后置到 React teardown 之后 + xtversion clearImmediate 修复）| TBD |
