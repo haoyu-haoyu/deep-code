@@ -143,7 +143,7 @@ onProgress({ newLines: ['line 7', 'line 8'], cursorBytes: 1024 })
 
 ## Task S2 — 助手文本流式渲染
 
-- [x] **状态**：已完成（commit TBD）。调研发现关键 bug：DeepCode 把 `streamingText` 截断到最后换行（line-only），所以短回复（无换行）在 `message_stop` 之前完全不显示，造成"AI 不在打字"的错觉。Claude Code bundle 是直接透传 streamingText（char-by-char）。改动：(1) 抽 `src/utils/streamGranularity.mjs`，提供 char/word/line 三档；(2) 默认 `char`（恢复 Claude Code typing effect）；(3) word 模式用 `Intl.Segmenter` 支持 CJK，fallback 用 `[\s\p{P}]` 保留尾部标点；(4) buffering 与渲染解耦——a11y/reduced motion 用户的中断恢复仍能拿回 partial text；(5) `CLAUDE_CODE_ACCESSIBILITY=1` 时禁用 preview 防止屏幕阅读器逐字念。
+- [x] **状态**：已完成（commit 5ede59e）。调研发现关键 bug：DeepCode 把 `streamingText` 截断到最后换行（line-only），所以短回复（无换行）在 `message_stop` 之前完全不显示，造成"AI 不在打字"的错觉。Claude Code bundle 是直接透传 streamingText（char-by-char）。改动：(1) 抽 `src/utils/streamGranularity.mjs`，提供 char/word/line 三档；(2) 默认 `char`（恢复 Claude Code typing effect）；(3) word 模式用 `Intl.Segmenter` 支持 CJK，fallback 用 `[\s\p{P}]` 保留尾部标点；(4) buffering 与渲染解耦——a11y/reduced motion 用户的中断恢复仍能拿回 partial text；(5) `CLAUDE_CODE_ACCESSIBILITY=1` 时禁用 preview 防止屏幕阅读器逐字念。
 - **优先级**：⭐⭐⭐⭐
 - **预估工作量**：1 天
 - **风险**：低
@@ -693,4 +693,4 @@ test/integration/
 | 2026-05-07 | TODO.md 创建 | 初版 | e7b5bf2 |
 | 2026-05-07 | Task 0.1 perf baseline | 完成 — 3 个 measured metrics + 4 个 placeholder + 测试套件 | 3b65ebb |
 | 2026-05-07 | Task S3 transcript cap + env aliases | 完成（实际 scope 调整：virtual scroll 不在非 fullscreen 路径上可达，改为收紧 cap + 加 DEEPCODE 命名空间 env 别名）| 67f2b3f |
-| 2026-05-07 | Task S2 streaming text granularity | 完成（核心 bug：line-only 截断导致短回复无 typing effect。改为 char 默认、Intl.Segmenter + 标点感知 word fallback、a11y/中断恢复解耦）| TBD |
+| 2026-05-07 | Task S2 streaming text granularity | 完成（核心 bug：line-only 截断导致短回复无 typing effect。改为 char 默认、Intl.Segmenter + 标点感知 word fallback、a11y/中断恢复解耦）| 5ede59e |
