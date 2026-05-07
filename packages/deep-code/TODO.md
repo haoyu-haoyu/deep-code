@@ -75,7 +75,7 @@
 
 ## Task S1 — 工具输出实时流式化
 
-- [x] **状态**：已完成（commit TBD）。实际 scope 调整：`progress_message` 已经在执行期间通过 `toolExecution.ts:549` 的 `stream.enqueue(createProgressMessage)` 即时推送（之前以为没有，调研后发现路径是好的）。瓶颈是 `lastLines` 切到 5 行 + snapshot-replace 渲染——长命令期间用户只看到最后 5 行闪过。改动：(1) `LAST_LINES_COUNT: 5 → 10`（clamped to ALL_LINES_COUNT 100），可调；(2) 新增 `chunkDelta` 第 6 个 ProgressCallback 参数，用 raw bytes + UTF-8 边界对齐计算（emoji/CJK 安全），为未来 append-only 增量渲染留好接口；(3) 抽 `src/utils/utf8Tail.mjs` 提供 `tailFileRaw` + `decodeUtf8AtBoundary`，避免之前 `tailFile` 在 4096 字节 tail 边界 mid-codepoint 解码插入 U+FFFD 的问题；(4) `ShellProgressMessage` 同步使用相同 env vars（`DEEPCODE_BASH_PROGRESS_LINES`）。修复 3 个 codex 找到的问题：UTF-16 vs UTF-8 字节计算错位、env var unbounded、tail 边界 lossy decode。
+- [x] **状态**：已完成（commit 2ba04ad）。实际 scope 调整：`progress_message` 已经在执行期间通过 `toolExecution.ts:549` 的 `stream.enqueue(createProgressMessage)` 即时推送（之前以为没有，调研后发现路径是好的）。瓶颈是 `lastLines` 切到 5 行 + snapshot-replace 渲染——长命令期间用户只看到最后 5 行闪过。改动：(1) `LAST_LINES_COUNT: 5 → 10`（clamped to ALL_LINES_COUNT 100），可调；(2) 新增 `chunkDelta` 第 6 个 ProgressCallback 参数，用 raw bytes + UTF-8 边界对齐计算（emoji/CJK 安全），为未来 append-only 增量渲染留好接口；(3) 抽 `src/utils/utf8Tail.mjs` 提供 `tailFileRaw` + `decodeUtf8AtBoundary`，避免之前 `tailFile` 在 4096 字节 tail 边界 mid-codepoint 解码插入 U+FFFD 的问题；(4) `ShellProgressMessage` 同步使用相同 env vars（`DEEPCODE_BASH_PROGRESS_LINES`）。修复 3 个 codex 找到的问题：UTF-16 vs UTF-8 字节计算错位、env var unbounded、tail 边界 lossy decode。
 - **优先级**：⭐⭐⭐⭐⭐
 - **预估工作量**：2-3 天
 - **风险**：中（generator 生命周期需谨慎）
@@ -697,4 +697,4 @@ test/integration/
 | 2026-05-07 | Task A2 bash polling 1Hz → 5Hz | 完成（200ms 轮询 + 自适应 idle 退化，threshold 拆 display/background-hint，3 个 codex race-condition 修复）| 741efec |
 | 2026-05-07 | Task A3 throttle config | 验证-不需要修改（grep 上游 bundle 确认配置一致，错误 audit 推荐）| f3d0f3c |
 | 2026-05-07 | Task A4 paste cleanup | 完成（DBP/DMT/DFE 顺序前置 + drainStdin 容量 1KB→1MB + final drain 后置到 React teardown 之后 + xtversion clearImmediate 修复）| feee542 |
-| 2026-05-07 | Task S1 tool streaming | 完成（lastLines 5→10 + chunkDelta UTF-8-safe 增量通道 + tailFileRaw raw 字节路径修复 tail 边界 lossy 解码）| TBD |
+| 2026-05-07 | Task S1 tool streaming | 完成（lastLines 5→10 + chunkDelta UTF-8-safe 增量通道 + tailFileRaw raw 字节路径修复 tail 边界 lossy 解码）| 2ba04ad |
