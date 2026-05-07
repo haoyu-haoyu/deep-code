@@ -1,5 +1,6 @@
 import { unlink } from 'fs/promises'
 import { CircularBuffer } from '../CircularBuffer.js'
+import { readBranchedEnvInt } from '../branchedEnv.mjs'
 import { logForDebugging } from '../debug.js'
 import { readFileRange, tailFile } from '../fsOperations.js'
 import { getMaxOutputLength } from '../shell/outputLimits.js'
@@ -7,7 +8,27 @@ import { safeJoinLines } from '../stringUtils.js'
 import { DiskTaskOutput, getTaskOutputPath } from './diskOutput.js'
 
 const DEFAULT_MAX_MEMORY = 8 * 1024 * 1024 // 8MB
-const POLL_INTERVAL_MS = 1000
+// Bash output polling cadence. Default 200ms (5 Hz) is the sweet spot for
+// "feels like real-time" stdout streaming on long commands while keeping
+// per-tick CPU well under 1% on typical hardware. Tunable via env for
+// users who want the upstream 1Hz behavior back or who want to push the
+// rate higher on dev workstations.
+const POLL_INTERVAL_ACTIVE_MS = readBranchedEnvInt(
+  ['DEEPCODE_BASH_POLL_INTERVAL_MS', 'CLAUDE_CODE_BASH_POLL_INTERVAL_MS'],
+  200,
+)
+// After this many consecutive ticks with no new output bytes, the
+// per-task adaptive backoff kicks in: skip every other tick to save CPU
+// on commands that hang on I/O for long periods (e.g. interactive
+// prompts waiting for input, network-blocked git fetch). Effective rate
+// becomes ~POLL_INTERVAL_ACTIVE_MS * 2.
+const IDLE_TICK_SKIP_THRESHOLD = readBranchedEnvInt(
+  [
+    'DEEPCODE_BASH_POLL_IDLE_THRESHOLD',
+    'CLAUDE_CODE_BASH_POLL_IDLE_THRESHOLD',
+  ],
+  5,
+)
 const PROGRESS_TAIL_BYTES = 4096
 
 type ProgressCallback = (
@@ -46,6 +67,29 @@ export class TaskOutput {
   #outputFileRedundant = false
   /** Set by getStdout() — total file size in bytes. */
   #outputFileSize = 0
+  /**
+   * Per-instance counters for adaptive polling backoff.
+   * #consecutiveEmptyTicks counts ticks during which the output file
+   * grew by 0 bytes; once it crosses IDLE_TICK_SKIP_THRESHOLD, the
+   * shared poller skips every other tick for this entry. Reset to 0
+   * the moment new bytes arrive. #pollSkipParity flips on each tick
+   * so the skip pattern is deterministic across multiple idle tasks.
+   */
+  #consecutiveEmptyTicks = 0
+  #pollSkipParity = 0
+  /** Last observed total bytes — used to detect zero-growth ticks. */
+  #lastSeenBytesTotal = 0
+  /**
+   * Generation counter incremented each time we issue a new tailFile
+   * read AND each time startPolling resets adaptive state. The async
+   * .then() callback captures the generation that was current when the
+   * read fired; if the entry's generation has advanced (because a
+   * later tick fired or polling was restarted), the callback is stale
+   * and must NOT mutate the adaptive bookkeeping — otherwise a slow
+   * tailFile resolving after stopPolling/startPolling would corrupt
+   * the freshly reset counters.
+   */
+  #pollGeneration = 0
 
   // --- Shared poller state ---
 
@@ -83,9 +127,21 @@ export class TaskOutput {
     if (!instance || !instance.#onProgress) {
       return
     }
+    // Reset adaptive counters so a re-started poller doesn't inherit
+    // stale idle state and immediately back off. Bumping the generation
+    // also invalidates any in-flight tailFile reads from a previous
+    // polling session — their .then() callbacks will see a mismatched
+    // generation and skip their bookkeeping mutations.
+    instance.#consecutiveEmptyTicks = 0
+    instance.#pollSkipParity = 0
+    instance.#lastSeenBytesTotal = 0
+    instance.#pollGeneration++
     TaskOutput.#activePolling.set(taskId, instance)
     if (!TaskOutput.#pollInterval) {
-      TaskOutput.#pollInterval = setInterval(TaskOutput.#tick, POLL_INTERVAL_MS)
+      TaskOutput.#pollInterval = setInterval(
+        TaskOutput.#tick,
+        POLL_INTERVAL_ACTIVE_MS,
+      )
       TaskOutput.#pollInterval.unref()
     }
   }
@@ -93,8 +149,18 @@ export class TaskOutput {
   /**
    * Stop polling the output file. Called from React useEffect cleanup
    * when the progress component unmounts.
+   *
+   * Bumps the generation BEFORE removing the entry so any tailFile
+   * read still in flight at unmount time will see a stale generation
+   * when it resolves and skip both the bookkeeping update AND the
+   * onProgress callback. Otherwise a late callback could emit one
+   * progress update after React thought polling had stopped.
    */
   static stopPolling(taskId: string): void {
+    const instance = TaskOutput.#registry.get(taskId)
+    if (instance) {
+      instance.#pollGeneration++
+    }
     TaskOutput.#activePolling.delete(taskId)
     if (TaskOutput.#activePolling.size === 0 && TaskOutput.#pollInterval) {
       clearInterval(TaskOutput.#pollInterval)
@@ -105,16 +171,58 @@ export class TaskOutput {
   /**
    * Shared tick: reads the file tail for every actively-polled task.
    * Non-async body (.then) to avoid stacking if I/O is slow.
+   *
+   * Adaptive backoff: an entry that has seen no new output bytes for
+   * IDLE_TICK_SKIP_THRESHOLD ticks gets polled every other tick instead
+   * of every tick. This keeps the active-stream rate at ~5Hz while
+   * dropping idle commands (waiting on user input, blocked I/O, etc.)
+   * to ~2.5Hz for negligible CPU cost. As soon as bytes arrive again,
+   * the counter resets and full-rate polling resumes.
    */
   static #tick(): void {
     for (const [, entry] of TaskOutput.#activePolling) {
       if (!entry.#onProgress) {
         continue
       }
+      // Toggle parity every tick so the skip pattern is interleaved
+      // across multiple idle tasks. Without this, idle tasks would all
+      // skip the same ticks, doubling the active-tick load.
+      entry.#pollSkipParity ^= 1
+      if (
+        entry.#consecutiveEmptyTicks >= IDLE_TICK_SKIP_THRESHOLD &&
+        entry.#pollSkipParity === 0
+      ) {
+        continue
+      }
+      // Bump the generation per-tick so out-of-order tailFile
+      // resolutions can be detected and dropped. If two reads are in
+      // flight and the older one resolves last, its bookkeeping would
+      // walk #lastSeenBytesTotal backward and falsely increment
+      // #consecutiveEmptyTicks. Generation also gets bumped on
+      // startPolling, invalidating any leftover reads from a previous
+      // polling session.
+      entry.#pollGeneration++
+      const gen = entry.#pollGeneration
       void tailFile(entry.path, PROGRESS_TAIL_BYTES).then(
         ({ content, bytesRead, bytesTotal }) => {
           if (!entry.#onProgress) {
             return
+          }
+          // Stale-callback guard: when a later tick already issued a
+          // newer read, this older one MUST drop everything — not
+          // just adaptive state but also #totalLines, #totalBytes,
+          // and the onProgress emit. Otherwise BashTool / PowerShell
+          // could see progress regress to an older snapshot after
+          // overlapping polls or a stopPolling/startPolling restart.
+          if (gen !== entry.#pollGeneration) {
+            return
+          }
+          // Adaptive bookkeeping: did the file grow this tick?
+          if (bytesTotal > entry.#lastSeenBytesTotal) {
+            entry.#consecutiveEmptyTicks = 0
+            entry.#lastSeenBytesTotal = bytesTotal
+          } else {
+            entry.#consecutiveEmptyTicks++
           }
           // Always call onProgress even when content is empty, so the
           // progress loop wakes up and can check for backgrounding.

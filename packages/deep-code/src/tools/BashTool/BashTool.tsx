@@ -51,8 +51,19 @@ import { BackgroundHint, renderToolResultMessage, renderToolUseErrorMessage, ren
 import { buildImageToolResult, isImageOutput, resetCwdIfOutsideProject, resizeShellImageOutput, stdErrAppendShellResetMessage, stripEmptyLines } from './utils.js';
 const EOL = '\n';
 
-// Progress display constants
-const PROGRESS_THRESHOLD_MS = 2000; // Show progress after 2 seconds
+// Progress display constants.
+//
+// PROGRESS_DISPLAY_THRESHOLD_MS — how long a command must run before we
+// start polling its output and rendering the progress UI. 500ms is the
+// "user noticed it didn't return immediately" sweet spot. Sub-500ms
+// commands return synchronously without rendering any progress chrome
+// at all, avoiding flicker on quick `ls` / `pwd` / `cat` calls.
+const PROGRESS_DISPLAY_THRESHOLD_MS = 500;
+// BACKGROUND_HINT_THRESHOLD_MS — how long before we register the command
+// as a foreground task and surface "Press Ctrl+B to background" affordance.
+// Kept at the upstream 2s value because the hint is only useful for
+// genuinely long-running commands; firing it earlier would be noisy.
+const BACKGROUND_HINT_THRESHOLD_MS = 2000;
 // In assistant mode, blocking bash auto-backgrounds after this many ms in the main agent
 const ASSISTANT_BLOCKING_BUDGET_MS = 15_000;
 
@@ -1000,12 +1011,15 @@ async function* runShellCommand({
     };
   }
 
-  // Wait for the initial threshold before showing progress
+  // Wait for the initial threshold before showing progress.
+  // Uses the lower display threshold (500ms) so output starts streaming
+  // as soon as a command takes long enough to be noticeable, rather
+  // than waiting the full 2s background-hint window first.
   const startTime = Date.now();
   let foregroundTaskId: string | undefined = undefined;
   {
     const initialResult = await Promise.race([resultPromise, new Promise<null>(resolve => {
-      const t = setTimeout((r: (v: null) => void) => r(null), PROGRESS_THRESHOLD_MS, resolve);
+      const t = setTimeout((r: (v: null) => void) => r(null), PROGRESS_DISPLAY_THRESHOLD_MS, resolve);
       t.unref();
     })]);
     if (initialResult !== null) {
@@ -1106,8 +1120,12 @@ async function* runShellCommand({
       const elapsedSeconds = Math.floor(elapsed / 1000);
 
       // Show minimal backgrounding UI if available
-      // Skip if background tasks are disabled
-      if (!isBackgroundTasksDisabled && backgroundShellId === undefined && elapsedSeconds >= PROGRESS_THRESHOLD_MS / 1000 && setToolJSX) {
+      // Skip if background tasks are disabled. Gates on the
+      // BACKGROUND_HINT_THRESHOLD_MS (2s) so the "Press Ctrl+B to
+      // background" hint only appears for genuinely long-running
+      // commands — it's noisy on every command that crosses the
+      // shorter display threshold.
+      if (!isBackgroundTasksDisabled && backgroundShellId === undefined && elapsedSeconds >= BACKGROUND_HINT_THRESHOLD_MS / 1000 && setToolJSX) {
         // Register this command as a foreground task so it can be backgrounded via Ctrl+B
         if (!foregroundTaskId) {
           foregroundTaskId = registerForeground({
