@@ -2,10 +2,22 @@ import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import stripAnsi from 'strip-ansi';
 import { Box, Text } from '../../ink.js';
+import { readBranchedEnvInt } from '../../utils/branchedEnv.mjs';
 import { formatFileSize } from '../../utils/format.js';
 import { MessageResponse } from '../MessageResponse.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
 import { ShellTimeDisplay } from './ShellTimeDisplay.js';
+
+// Number of trailing lines to show in non-verbose progress UI. Upstream
+// hard-coded 5 — too few to track output during long commands at 5Hz
+// polling. Bump to 10 for a wider live window. Must match
+// LAST_LINES_COUNT in src/utils/task/TaskOutput.ts so the upstream
+// ProgressCallback's lastLines slice is also wide enough; otherwise
+// the renderer would over-truncate. Tunable via the same env vars.
+const NON_VERBOSE_PREVIEW_LINES = readBranchedEnvInt(
+  ['DEEPCODE_BASH_PROGRESS_LINES', 'CLAUDE_CODE_BASH_PROGRESS_LINES'],
+  10,
+);
 type Props = {
   output: string;
   fullOutput: string;
@@ -41,7 +53,7 @@ export function ShellProgressMessage(t0) {
   if ($[2] !== output || $[3] !== strippedFullOutput || $[4] !== verbose) {
     const strippedOutput = stripAnsi(output.trim());
     lines = strippedOutput.split("\n").filter(_temp);
-    t2 = verbose ? strippedFullOutput : lines.slice(-5).join("\n");
+    t2 = verbose ? strippedFullOutput : lines.slice(-NON_VERBOSE_PREVIEW_LINES).join("\n");
     $[2] = output;
     $[3] = strippedFullOutput;
     $[4] = verbose;
@@ -71,7 +83,7 @@ export function ShellProgressMessage(t0) {
     }
     return t4;
   }
-  const extraLines = totalLines ? Math.max(0, totalLines - 5) : 0;
+  const extraLines = totalLines ? Math.max(0, totalLines - NON_VERBOSE_PREVIEW_LINES) : 0;
   let lineStatus = "";
   if (!verbose && totalBytes && totalLines) {
     lineStatus = `~${totalLines} lines`;
@@ -80,7 +92,7 @@ export function ShellProgressMessage(t0) {
       lineStatus = `+${extraLines} lines`;
     }
   }
-  const t3 = verbose ? undefined : Math.min(5, lines.length);
+  const t3 = verbose ? undefined : Math.min(NON_VERBOSE_PREVIEW_LINES, lines.length);
   let t4;
   if ($[11] !== displayLines) {
     t4 = <Text dimColor={true}>{displayLines}</Text>;

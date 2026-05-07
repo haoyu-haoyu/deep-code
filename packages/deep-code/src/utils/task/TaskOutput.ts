@@ -2,7 +2,11 @@ import { unlink } from 'fs/promises'
 import { CircularBuffer } from '../CircularBuffer.js'
 import { readBranchedEnvInt } from '../branchedEnv.mjs'
 import { logForDebugging } from '../debug.js'
-import { readFileRange, tailFile } from '../fsOperations.js'
+import {
+  decodeUtf8AtBoundary,
+  readFileRange,
+  tailFileRaw,
+} from '../fsOperations.js'
 import { getMaxOutputLength } from '../shell/outputLimits.js'
 import { safeJoinLines } from '../stringUtils.js'
 import { DiskTaskOutput, getTaskOutputPath } from './diskOutput.js'
@@ -31,12 +35,41 @@ const IDLE_TICK_SKIP_THRESHOLD = readBranchedEnvInt(
 )
 const PROGRESS_TAIL_BYTES = 4096
 
+// Cap on the "all lines" slice — the contextual buffer fed to verbose
+// renderers and used for "press v" expansion. 100 is upstream's value;
+// kept as a constant to match memory budget assumptions in the
+// downstream display.
+const ALL_LINES_COUNT = 100
+// How many trailing lines to expose as the "last lines" slice on every
+// progress tick. Upstream's hard-coded 5 was too cramped during long
+// commands — the user only ever sees the last 5 lines of a stream
+// flickering by, with everything older invisible. 10 strikes a balance
+// between context and screen real estate; tunable for users who want
+// the upstream behavior or a larger window. Clamped to ALL_LINES_COUNT
+// so non-verbose preview can never exceed the verbose history buffer
+// (would otherwise leave the preview taller than the long-form view).
+const LAST_LINES_COUNT = Math.min(
+  ALL_LINES_COUNT,
+  readBranchedEnvInt(
+    ['DEEPCODE_BASH_PROGRESS_LINES', 'CLAUDE_CODE_BASH_PROGRESS_LINES'],
+    10,
+  ),
+)
+
 type ProgressCallback = (
   lastLines: string,
   allLines: string,
   totalLines: number,
   totalBytes: number,
   isIncomplete: boolean,
+  /**
+   * Bytes that are NEW in this tick (not visible in the previous
+   * onProgress emit). Empty string on the first tick or when no new
+   * bytes arrived. Optional so existing callers continue to compile
+   * without type changes; new callers can use it to drive append-only
+   * incremental rendering instead of snapshot replacement.
+   */
+  chunkDelta?: string,
 ) => void
 
 /**
@@ -79,6 +112,13 @@ export class TaskOutput {
   #pollSkipParity = 0
   /** Last observed total bytes — used to detect zero-growth ticks. */
   #lastSeenBytesTotal = 0
+  /**
+   * Last byte position emitted via onProgress's chunkDelta channel.
+   * Differs from #lastSeenBytesTotal in that this only advances on a
+   * SUCCESSFUL emit (after the stale-callback guard passes), so a
+   * dropped stale callback doesn't corrupt the delta cursor.
+   */
+  #lastEmittedBytesTotal = 0
   /**
    * Generation counter incremented each time we issue a new tailFile
    * read AND each time startPolling resets adaptive state. The async
@@ -135,6 +175,7 @@ export class TaskOutput {
     instance.#consecutiveEmptyTicks = 0
     instance.#pollSkipParity = 0
     instance.#lastSeenBytesTotal = 0
+    instance.#lastEmittedBytesTotal = 0
     instance.#pollGeneration++
     TaskOutput.#activePolling.set(taskId, instance)
     if (!TaskOutput.#pollInterval) {
@@ -203,8 +244,8 @@ export class TaskOutput {
       // polling session.
       entry.#pollGeneration++
       const gen = entry.#pollGeneration
-      void tailFile(entry.path, PROGRESS_TAIL_BYTES).then(
-        ({ content, bytesRead, bytesTotal }) => {
+      void tailFileRaw(entry.path, PROGRESS_TAIL_BYTES).then(
+        ({ buffer, bytesRead, bytesTotal }) => {
           if (!entry.#onProgress) {
             return
           }
@@ -227,22 +268,40 @@ export class TaskOutput {
           // Always call onProgress even when content is empty, so the
           // progress loop wakes up and can check for backgrounding.
           // Commands like `git log -S` produce no output for long periods.
-          if (!content) {
-            entry.#onProgress('', '', entry.#totalLines, bytesTotal, false)
+          if (bytesRead === 0) {
+            entry.#onProgress(
+              '',
+              '',
+              entry.#totalLines,
+              bytesTotal,
+              false,
+              '',
+            )
             return
           }
-          // Count all newlines in the tail and capture slice points for the
-          // last 5 and last 100 lines. Uncapped so extrapolation stays accurate
-          // for dense output (short lines → >100 newlines in 4KB).
+          // Decode the tail buffer at a UTF-8 codepoint boundary so the
+          // start of the slice (which may land mid-codepoint when the
+          // tail buffer is smaller than the file) is byte-correct.
+          // Avoids U+FFFD replacement-char re-encoding hazards that
+          // would otherwise corrupt downstream byte arithmetic.
+          const content = decodeUtf8AtBoundary(buffer, 0, bytesRead)
+          // Count all newlines in the tail and capture slice points for
+          // the last LAST_LINES_COUNT and ALL_LINES_COUNT lines.
+          // Uncapped so extrapolation stays accurate for dense output
+          // (short lines → many newlines in 4KB).
           let pos = content.length
-          let n5 = 0
-          let n100 = 0
+          let nLast = 0
+          let nAll = 0
           let lineCount = 0
           while (pos > 0) {
             pos = content.lastIndexOf('\n', pos - 1)
             lineCount++
-            if (lineCount === 5) n5 = pos <= 0 ? 0 : pos + 1
-            if (lineCount === 100) n100 = pos <= 0 ? 0 : pos + 1
+            if (lineCount === LAST_LINES_COUNT) {
+              nLast = pos <= 0 ? 0 : pos + 1
+            }
+            if (lineCount === ALL_LINES_COUNT) {
+              nAll = pos <= 0 ? 0 : pos + 1
+            }
           }
           // lineCount is exact when the whole file fits in PROGRESS_TAIL_BYTES.
           // Otherwise extrapolate from the tail sample; monotone max keeps the
@@ -256,12 +315,28 @@ export class TaskOutput {
                 )
           entry.#totalLines = totalLines
           entry.#totalBytes = bytesTotal
+          // Byte-correct chunk delta: slice the RAW buffer (not the
+          // decoded string), realign to a UTF-8 codepoint boundary,
+          // then decode. bytesTotal and #lastEmittedBytesTotal are
+          // both byte counts so the math is unitary. If the file grew
+          // by more than the tail buffer can sample, we hand back the
+          // full aligned tail; the caller can detect undersampling
+          // via bytesTotal - lastEmitted > chunkDelta.length.
+          const newBytes = Math.max(0, bytesTotal - entry.#lastEmittedBytesTotal)
+          let chunkDelta = ''
+          if (newBytes > 0 && bytesRead > 0) {
+            const cutFromEnd = Math.min(newBytes, bytesRead)
+            const start = bytesRead - cutFromEnd
+            chunkDelta = decodeUtf8AtBoundary(buffer, start, bytesRead)
+          }
+          entry.#lastEmittedBytesTotal = bytesTotal
           entry.#onProgress(
-            content.slice(n5),
-            content.slice(n100),
+            content.slice(nLast),
+            content.slice(nAll),
             totalLines,
             bytesTotal,
             bytesRead < bytesTotal,
+            chunkDelta,
           )
         },
         () => {
