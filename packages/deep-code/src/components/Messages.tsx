@@ -26,6 +26,7 @@ import { collapseReadSearchGroups } from '../utils/collapseReadSearch.js';
 import { collapseTeammateShutdowns } from '../utils/collapseTeammateShutdowns.js';
 import { getGlobalConfig } from '../utils/config.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
+import { readBranchedEnvInt } from '../utils/branchedEnv.mjs';
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js';
 import { applyGrouping } from '../utils/groupToolUses.js';
 import { buildMessageLookups, createAssistantMessage, deriveUUID, getMessagesAfterCompactBoundary, getToolUseID, getToolUseIDs, hasUnresolvedHooksFromLookup, isNotEmptyMessage, normalizeMessages, reorderMessagesInUI, type StreamingThinking, type StreamingToolUse, shouldShowUserMessage } from '../utils/messages.js';
@@ -304,8 +305,30 @@ const MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE = 30;
 // slice roughly where it was instead of resetting to 0 — which would
 // jump from ~200 rendered messages to the full history, orphaning
 // in-progress badge snapshots in scrollback.
-const MAX_MESSAGES_WITHOUT_VIRTUALIZATION = 200;
-const MESSAGE_CAP_STEP = 50;
+// DeepCode default: 75/20 (down from upstream 200/50). The non-virtualized
+// path is what every external user hits today (fullscreen / virtual scroll
+// is opt-in via CLAUDE_CODE_NO_FLICKER=1 / DEEPCODE_NO_FLICKER=1), so the
+// cap directly drives per-render fiber allocation cost. 75 messages keeps a
+// generous "recent context" window in the React tree while cutting fiber
+// memory and yoga layout cost by ~62% versus 200. STEP=20 trades slightly
+// more frequent anchor advances during active streaming for smaller
+// per-advance jumps so each pause is shorter. Tunable via env for users on
+// long-context machines who want the upstream 200/50 behavior back.
+//
+// These constants are read at module-evaluation time. Messages.tsx is
+// pulled in by REPL.tsx, which is dynamically `await import()`-ed AFTER
+// `init()` has run and `applySafeConfigEnvironmentVariables()` has merged
+// settings.env into process.env, so settings.json overrides DO take
+// effect. Live settings edits mid-session are NOT picked up — that
+// matches the upstream behavior of the original 200/50 constants.
+const MAX_MESSAGES_WITHOUT_VIRTUALIZATION = readBranchedEnvInt(
+  ['DEEPCODE_RENDER_CAP', 'CLAUDE_CODE_RENDER_CAP'],
+  75,
+);
+const MESSAGE_CAP_STEP = readBranchedEnvInt(
+  ['DEEPCODE_RENDER_CAP_STEP', 'CLAUDE_CODE_RENDER_CAP_STEP'],
+  20,
+);
 export type SliceAnchor = {
   uuid: string;
   idx: number;
@@ -458,7 +481,12 @@ const MessagesImpl = ({
   }), [streamingToolUsesWithoutInProgress]);
   const isTranscriptMode = screen === 'transcript';
   // Hoisted to mount-time — this component re-renders on every scroll.
-  const disableVirtualScroll = useMemo(() => isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_VIRTUAL_SCROLL), []);
+  const disableVirtualScroll = useMemo(
+    () =>
+      isEnvTruthy(process.env.DEEPCODE_DISABLE_VIRTUAL_SCROLL) ||
+      isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_VIRTUAL_SCROLL),
+    [],
+  );
   // Virtual scroll replaces the transcript cap: everything is scrollable and
   // memory is bounded by the mounted-item count, not the total. scrollRef is
   // only passed when isFullscreenEnvEnabled() is true (REPL.tsx gates it),

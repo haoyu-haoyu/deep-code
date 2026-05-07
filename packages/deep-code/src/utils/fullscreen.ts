@@ -110,9 +110,14 @@ export function _resetTmuxControlModeProbeForTesting(): void {
  * opt in).
  */
 export function isFullscreenEnvEnabled(): boolean {
-  // Explicit user opt-out always wins.
+  // DeepCode-branded opt-out / opt-in checked first so users with
+  // DEEPCODE_NO_FLICKER set don't have to know about the legacy
+  // CLAUDE_CODE_NO_FLICKER name. Otherwise both behave identically:
+  // explicit falsy ('0'/'false') overrides everything, explicit truthy
+  // overrides auto-detection.
+  if (isEnvDefinedFalsy(process.env.DEEPCODE_NO_FLICKER)) return false
+  if (isEnvTruthy(process.env.DEEPCODE_NO_FLICKER)) return true
   if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_NO_FLICKER)) return false
-  // Explicit opt-in overrides auto-detection (escape hatch).
   if (isEnvTruthy(process.env.CLAUDE_CODE_NO_FLICKER)) return true
   // Auto-disable under tmux -CC: alt-screen + mouse tracking corrupts
   // terminal state on double-click and mouse wheel is dead.
@@ -120,7 +125,7 @@ export function isFullscreenEnvEnabled(): boolean {
     if (!loggedTmuxCcDisable) {
       loggedTmuxCcDisable = true
       logForDebugging(
-        'fullscreen disabled: tmux -CC (iTerm2 integration mode) detected · set CLAUDE_CODE_NO_FLICKER=1 to override',
+        'fullscreen disabled: tmux -CC (iTerm2 integration mode) detected · set DEEPCODE_NO_FLICKER=1 (or CLAUDE_CODE_NO_FLICKER=1) to override',
       )
     }
     return false

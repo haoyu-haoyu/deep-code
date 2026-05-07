@@ -18,7 +18,7 @@
 | Tier | 任务数 | 已完成 | 工作量 |
 |---|---|---|---|
 | Phase 0 | 1 | 1 | 0.5 d |
-| Tier S | 4 | 0 | 5-6 d |
+| Tier S | 4 | 1 | 5-6 d |
 | Tier A | 4 | 0 | 1.5-2 d |
 | Tier B | 3 | 0 | 3 d |
 | Phase 5 | 2 | 0 | 0.5 d |
@@ -197,7 +197,7 @@ onProgress({ newLines: ['line 7', 'line 8'], cursorBytes: 1024 })
 
 ## Task S3 — Transcript 长会话渲染瓶颈
 
-- [ ] **状态**：未开始
+- [x] **状态**：已完成（commit TBD）—— 实际 scope 调整：virtual scroll 结构上绑定 FullscreenLayout，无法在不开 alt-screen 的情况下"默认开启"。改成：(1) 收紧非虚拟化兜底 cap 200→75/step 50→20 ；(2) 加 DEEPCODE-branded env var 别名（DEEPCODE_NO_FLICKER / DEEPCODE_DISABLE_VIRTUAL_SCROLL / DEEPCODE_RENDER_CAP / DEEPCODE_RENDER_CAP_STEP）；(3) 抽出 `src/utils/branchedEnv.mjs` 纯 JS 模块统一 env 读取（严格 integer 校验）。S3 详细 sub-task 的"自动开 virtual scroll"部分挪到未来 task：需要做 fullscreen 默认开 + alt-screen 兼容性测试。
 - **优先级**：⭐⭐⭐⭐
 - **预估工作量**：0.5 天
 - **风险**：中（小会话场景需回归测试）
@@ -692,3 +692,4 @@ test/integration/
 |---|---|---|---|
 | 2026-05-07 | TODO.md 创建 | 初版 | e7b5bf2 |
 | 2026-05-07 | Task 0.1 perf baseline | 完成 — 3 个 measured metrics + 4 个 placeholder + 测试套件 | 3b65ebb |
+| 2026-05-07 | Task S3 transcript cap + env aliases | 完成（实际 scope 调整：virtual scroll 不在非 fullscreen 路径上可达，改为收紧 cap + 加 DEEPCODE 命名空间 env 别名）| TBD |
