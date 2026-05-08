@@ -86,6 +86,7 @@ test(
     const expectedLabels = [
       'cold_start_version_ms',
       'cold_start_status_ms',
+      'jsonl_tail_100_msgs_ms',
       'jsonl_parse_1k_msgs_ms',
       'keystroke_to_paint_p50_ms',
       'keystroke_to_paint_p99_ms',

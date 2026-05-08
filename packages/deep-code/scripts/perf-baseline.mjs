@@ -78,6 +78,27 @@ results.push(await safeMeasure('cold_start_status_ms', repeats, async () => {
 }))
 
 results.push(
+  await safeMeasure('jsonl_tail_100_msgs_ms', repeats, async () => {
+    // S4 streaming-resume metric: time to extract just the last 100
+    // records from a 1k-msg JSONL file by reading from the end. This
+    // is what session resume needs to render a first paint quickly.
+    // Upper-bound is whatever loadTranscriptFile takes (currently
+    // dominated by parseJSONL + chain reconstruction); the streaming
+    // path should be much smaller.
+    const { parseJsonlTail } = await import(
+      `${packageRoot}/src/utils/streamingJsonl.mjs`
+    )
+    const t0 = performance.now()
+    const tail = await parseJsonlTail(fixturePath, 100)
+    const elapsed = performance.now() - t0
+    if (tail.length !== 100) {
+      throw new Error(`expected 100 tail records, got ${tail.length}`)
+    }
+    return elapsed
+  }),
+)
+
+results.push(
   await safeMeasure('jsonl_parse_1k_msgs_ms', repeats, async () => {
     // Mirror the production parseJSONL fallback in src/utils/json.ts. Bun
     // 1.2.x doesn't ship Bun.JSONL.parseChunk in the public API yet, so
