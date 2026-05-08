@@ -547,71 +547,55 @@ const visibleHighlights = useMemo(
 
 ## Task B2 — Cursor blink 中心化
 
-- [ ] **状态**：未开始
+- [x] **状态**：已关闭（无需改动）
 - **优先级**：⭐
 - **预估工作量**：0.5 天
 - **风险**：低
 
-### 问题描述
+### 调查结论
 
-`src/hooks/useBlink.ts:22-34` 每个 TextInput 实例独立跑 600ms 定时器。多个 input 同时存在（如 Settings 面板）会有 N 个定时器叠加，且各自相位不同（视觉上"乱闪"）。
+审计假设无效：
+1. `src/ink/hooks/use-animation-frame.ts:30-57` 通过 `ClockContext` 复用 **单一全局 `setInterval`**（`src/ink/components/ClockContext.tsx:10-68`）。所有 `useAnimationFrame` 订阅者共用 `clock.subscribe(...)`，无每实例定时器
+2. 各订阅者通过 `Math.floor(time / intervalMs) % 2` 派生状态，**自动同相位**，不存在"乱闪"
+3. `useBlink` 实际只被 `ToolUseLoader.tsx` 调用一处（不是多 TextInput），即便多个实例也已经同步
 
-### 实现步骤
-
-1. 新建 `src/context/blinkContext.tsx`：全局 `BlinkProvider` 跑单一 600ms `setInterval`，emit blink state via context
-2. 改造 `useBlink` 从 context 读 state 而不是自己跑定时器
-3. 兼容性：context 缺失时降级为旧行为
-
-文件：`src/hooks/useBlink.ts:22-34`、`src/ink/components/App.tsx`（包一层 Provider）
-
-### 验收标准
-
-- 多个 TextInput 同时显示时光标同步闪烁
-- 总定时器数从 N 降到 1（用 `node --inspect` 验证）
-
-### 测试方案
-
-**自动化：**
-- `test/blink-context.test.mjs`：渲染 3 个 TextInput，断言 setInterval 被调用 1 次（不是 3 次）
-
-**手工：**
-- 打开 Settings 面板（多个 input 共存），目测光标是否一起闪
-- 设置 `prefersReducedMotion`，确认完全停止闪烁
+无需新增 `BlinkProvider`。CD 与 A3 性质相同——先于审计已经具备最优结构。
 
 ---
 
 ## Task B3 — Voice waveform 完全 unmount
 
-- [ ] **状态**：未开始
+- [x] **状态**：已完成
 - **优先级**：⭐
-- **预估工作量**：1 天
+- **实际工作量**：0.5 天（缩小作用域到条件 Box 包装）
 - **风险**：低
 
 ### 问题描述
 
-`src/components/TextInput.tsx:53-55` 即使 voice idle，`animRef` Box 还在 React 树里。`useAnimationFrame(null)` 返回 noop，但树本身仍然参与 reconcile。
+`src/components/TextInput.tsx` 的 `<Box ref={animRef}>` 包装无条件存在。即便 voice idle，`useAnimationFrame` 内部的 `useTerminalViewport.useLayoutEffect` 也会在每次按键时遍历 DOM 祖先链 + 计算 Yoga 高度，对 UI 中所有 TextInput 实例都是开销。
 
-### 实现步骤
+### 调整后的实现
 
-1. 抽出 `<VoiceWaveform animRef />` 子组件
-2. 仅在 `isVoiceRecording` 时 mount 这个子组件
-3. 通过 portal 或绝对定位让它叠在光标位置
+不引入新组件——仅条件渲染外层 Box。当 `needsAnimation === false` 时，根本不挂载 ref-target，`elementRef.current` 始终为 null，`useLayoutEffect` 立即 short-circuit。规则上 Hook 仍按固定顺序调用（rules-of-hooks 满足），但其昂贵的 layout 工作被绕过。
 
-文件：`src/components/TextInput.tsx:44-78`、新建 `src/components/VoiceWaveform.tsx`
+```tsx
+const baseInput = <BaseTextInput ... />;
+return needsAnimation ? <Box ref={animRef}>{baseInput}</Box> : baseInput;
+```
 
-### 验收标准
+文件：`src/components/TextInput.tsx:120-127`
 
-- voice idle 时 React 树节点数减少（用 `<Profiler>` 验证）
-- voice 录音时功能完全等价
+### 测试
 
-### 测试方案
+`test/b3-voice-unmount.test.mjs`：
+- 断言 TextInput 条件渲染 `<Box ref={animRef}>`（仅 needsAnimation 时）
+- 断言 needsAnimation = isVoiceRecording && !reducedMotion（reducedMotion 用户也免开销）
+- 断言 BaseTextInput JSX 在源中只出现一次（避免 props 双重展开）
 
-**自动化：**
-- `test/voice-mount.test.mjs`：`feature('VOICE_MODE')` 关闭时断言 VoiceWaveform 永不 mount
+### 收益
 
-**手工：**
-- 录音流程跑一遍，确认波形动画正常
-- 不录音时打字，对比 React DevTools 的 commit 时间
+- 每次按键省去：1 次 Yoga 节点创建/调和、1 次 DOM 父链遍历、1 次 getComputedHeight 调用
+- 录音时行为完全等价
 
 ---
 
