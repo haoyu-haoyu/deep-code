@@ -262,7 +262,7 @@ const MESSAGE_CAP_STEP = 20                          // 50 → 20
 
 ## Task S4 — Resume 流式解析 JSONL
 
-- [x] **状态**：基础设施完成（commit TBD）。实际 scope 调整：Phase 0 baseline 显示 jsonl_parse 只占 2.7ms，瓶颈不在 parse 本身而在 loadTranscriptFile 下游的 metadata 聚合 + chain reconstruction。本 commit 做的是 **infrastructure**：抽 `src/utils/streamingJsonl.mjs` 提供 `parseJsonlReverse`（async generator，向后流式解析）+ `parseJsonlTail`（取最后 N 条）。实测 1k 消息 fixture 上 tail-100 耗时 0.7ms vs full-parse 2.7ms（4x 快）。conversationRecovery 集成为后续任务（涉及 metadata-aggregation chain，影响面大）。Codex 修了 5 个 bug：major no-LF 单大记录被误判为 parse 错误、UTF-8 BOM 没剥、short read cursor hole、unbounded buffer 内存增长、cursor reset 错位。
+- [x] **状态**：基础设施完成（commit 154376f）。实际 scope 调整：Phase 0 baseline 显示 jsonl_parse 只占 2.7ms，瓶颈不在 parse 本身而在 loadTranscriptFile 下游的 metadata 聚合 + chain reconstruction。本 commit 做的是 **infrastructure**：抽 `src/utils/streamingJsonl.mjs` 提供 `parseJsonlReverse`（async generator，向后流式解析）+ `parseJsonlTail`（取最后 N 条）。实测 1k 消息 fixture 上 tail-100 耗时 0.7ms vs full-parse 2.7ms（4x 快）。conversationRecovery 集成为后续任务（涉及 metadata-aggregation chain，影响面大）。Codex 修了 5 个 bug：major no-LF 单大记录被误判为 parse 错误、UTF-8 BOM 没剥、short read cursor hole、unbounded buffer 内存增长、cursor reset 错位。
 - **优先级**：⭐⭐⭐⭐
 - **预估工作量**：1.5 天
 - **风险**：中（需保证消息顺序）
@@ -698,4 +698,4 @@ test/integration/
 | 2026-05-07 | Task A3 throttle config | 验证-不需要修改（grep 上游 bundle 确认配置一致，错误 audit 推荐）| f3d0f3c |
 | 2026-05-07 | Task A4 paste cleanup | 完成（DBP/DMT/DFE 顺序前置 + drainStdin 容量 1KB→1MB + final drain 后置到 React teardown 之后 + xtversion clearImmediate 修复）| feee542 |
 | 2026-05-07 | Task S1 tool streaming | 完成（lastLines 5→10 + chunkDelta UTF-8-safe 增量通道 + tailFileRaw raw 字节路径修复 tail 边界 lossy 解码）| 2ba04ad |
-| 2026-05-08 | Task S4 streaming JSONL infra | 完成（streamingJsonl.mjs reverse parser + tail-N，4x 快于 full parse）| TBD |
+| 2026-05-08 | Task S4 streaming JSONL infra | 完成（streamingJsonl.mjs reverse parser + tail-N，4x 快于 full parse）| 154376f |
