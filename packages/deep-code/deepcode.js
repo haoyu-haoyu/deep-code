@@ -5,7 +5,6 @@ import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import readline from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 import {
   calculateDeepSeekCacheHitRate,
@@ -31,7 +30,13 @@ import {
   buildDeepCodeStatusReport,
   formatDeepCodeStatus,
 } from './src/deepcode/status.mjs'
-import { formatDeepCodeWelcome } from './src/deepcode/welcome.mjs'
+import {
+  formatDeepCodeAssistantChunk,
+  formatDeepCodeCacheUsage,
+  formatDeepCodeInfoPanel,
+  formatDeepCodeTextPanel,
+  formatDeepCodeWelcome,
+} from './src/deepcode/welcome.mjs'
 import {
   formatDeepCodeHarnessStatus,
   resolveDeepCodeHarnessConfig,
@@ -40,6 +45,18 @@ import {
   formatDeepCodeHarnessRuntimeDecision,
   resolveDeepCodeHarnessRuntime,
 } from './src/deepcode/harness-runtime.mjs'
+import {
+  createDeepCodeInteractiveReader,
+  createDeepCodeTurnSpinner,
+  shouldForceNativeInteractive,
+} from './src/deepcode/native-interactive.mjs'
+import {
+  formatFullCliLaunchFailure,
+  formatMissingFullCliMessage,
+  resolveFullCliPath,
+  shouldDelegateToFullCli,
+  shouldLaunchFullTui,
+} from './src/deepcode/front-controller.mjs'
 import {
   applyDeepCodeCliEnvOverrides,
   parseDeepCodeArgs,
@@ -62,7 +79,7 @@ async function main() {
     return
   }
 
-  const settings = await loadSettings()
+  const settings = await loadSettings(process.env)
   const env = mergeSettingsEnv(
     applyDeepCodeCliEnvOverrides(process.env, cli.envOverrides),
     settings,
@@ -154,8 +171,8 @@ async function main() {
     return
   }
 
-  if (shouldDelegateToFullCli(cli, env)) {
-    await delegateToFullCli()
+  if (shouldDelegateToFullCli({ cli, env, input: process.stdin })) {
+    await delegateToFullCli(env, cli)
     return
   }
 
@@ -176,24 +193,10 @@ async function main() {
   await runInteractive(env, cacheStatsPath, stablePrefix)
 }
 
-function shouldDelegateToFullCli(cli, env = process.env) {
-  if (env.DEEPCODE_EXPERIMENTAL_FULL_TUI === '1') return true
-  if (!process.stdin.isTTY && env.DEEPCODE_FORCE_NATIVE_INTERACTIVE !== '1') {
-    return true
-  }
-  if (cli.printMode) return true
-  if (cli.promptArgs.length > 0) return true
-  if (cli.unknownFlags.length > 0) return true
-  return false
-}
-
-async function delegateToFullCli() {
-  const fullCliPath = resolveFullCliPath()
+async function delegateToFullCli(env, cli) {
+  const fullCliPath = resolveFullCliPath({ env, packageDir: PACKAGE_DIR })
   if (!existsSync(fullCliPath)) {
-    console.error(
-      `Deep Code full CLI bundle is missing at ${fullCliPath}.\n` +
-        'Run: npm run build:full-cli --workspace @deepcode-ai/deep-code',
-    )
+    console.error(formatMissingFullCliMessage(fullCliPath))
     process.exitCode = 1
     return
   }
@@ -204,8 +207,11 @@ async function delegateToFullCli() {
   ], {
     cwd: process.cwd(),
     env: {
-      ...process.env,
-      DEEPCODE_PROVIDER: process.env.DEEPCODE_PROVIDER ?? 'deepseek',
+      ...env,
+      DEEPCODE_PROVIDER: env.DEEPCODE_PROVIDER ?? 'deepseek',
+      ...(shouldLaunchFullTui({ cli, env, input: process.stdin })
+        ? { DEEPCODE_FULL_TUI_SKIP_SETUP: env.DEEPCODE_FULL_TUI_SKIP_SETUP ?? '1' }
+        : {}),
     },
     stdio: 'inherit',
   })
@@ -220,14 +226,10 @@ async function delegateToFullCli() {
       resolve(code ?? 1)
     })
   }).catch(error => {
-    console.error(`Failed to launch Deep Code full CLI: ${error.message}`)
+    console.error(formatFullCliLaunchFailure(error))
     return 1
   })
   process.exitCode = exitCode
-}
-
-function resolveFullCliPath() {
-  return process.env.DEEPCODE_FULL_CLI_PATH ?? join(PACKAGE_DIR, 'dist', 'deepcode-full.mjs')
 }
 
 async function runSingleTurn(prompt, env, cacheStatsPath, stablePrefix) {
@@ -257,28 +259,46 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     cwd: process.cwd(),
     env,
   }))
-  const rl = readline.createInterface({
+  const reader = createDeepCodeInteractiveReader({
     input: process.stdin,
     output: process.stdout,
+    env,
   })
   while (true) {
-    const prompt = await rl.question('deepcode> ')
+    const prompt = await reader.readLine()
+    if (prompt === null) break
     if (prompt.trim() === '/exit') break
     if (prompt.trim() === '/status') {
-      console.log(formatDeepCodeStatus(await buildDeepCodeStatusReport({
+      console.log(formatDeepCodeTextPanel('Status', formatDeepCodeStatus(await buildDeepCodeStatusReport({
         env,
         cwd: process.cwd(),
         repoSummary: stablePrefix?.repoSummary,
         cacheStatsPath,
         stablePrefix,
-      })))
+      }))))
       continue
     }
     if (prompt.trim() === '/model') {
       const config = resolveDeepSeekConfig({ env, cwd: process.cwd() })
-      console.log(`Current model: ${config.model}`)
-      console.log(`Small model: ${config.smallModel}`)
-      console.log(`Reasoning effort: ${config.reasoningEffort}`)
+      if (reader.supportsKeyMenus) {
+        const selection = await reader.selectModel({ config })
+        if (selection) {
+          applyInteractiveModelSelection(env, selection)
+          console.log(formatDeepCodeInfoPanel('Model updated', [
+            { label: 'Main model', value: selection.model },
+            { label: 'Reasoning effort', value: selection.reasoningEffort },
+            { label: 'Scope', value: 'current session' },
+          ]))
+        }
+        continue
+      }
+      console.log(formatDeepCodeInfoPanel('Model', [
+        { label: 'Main model', value: config.model },
+        { label: 'Small model', value: config.smallModel },
+        { label: 'Thinking', value: config.thinking?.type ?? 'enabled' },
+        { label: 'Reasoning effort', value: config.reasoningEffort },
+        { label: 'Context window', value: '1M context' },
+      ]))
       continue
     }
     if (prompt.trim() === '/doctor') {
@@ -286,11 +306,11 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
         env,
         cwd: process.cwd(),
       })
-      console.log(formatDeepSeekDoctorReport(report))
+      console.log(formatDeepCodeTextPanel('Doctor', formatDeepSeekDoctorReport(report)))
       continue
     }
     if (prompt.trim() === '/harness') {
-      console.log(formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig(env)))
+      console.log(formatDeepCodeTextPanel('Harness', formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig(env))))
       continue
     }
     if (prompt.trim() === '/compact') {
@@ -329,7 +349,7 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     if (!response.content.endsWith('\n')) process.stdout.write('\n')
     await printAndRecordUsage(response.usage, cacheStatsPath, stablePrefix)
   }
-  rl.close()
+  reader.close()
 }
 
 async function requestDeepSeek(
@@ -339,21 +359,42 @@ async function requestDeepSeek(
 ) {
   const provider = resolveModelProvider({ env })
   const prefix = stablePrefix ?? (await createDeepCodeStablePrefix())
-  return await collectDeepSeekStreamEvents(provider.streamQuery({
-    systemPrompt: prefix.systemPrompt,
-    messages,
-    env,
-    cwd: process.cwd(),
-    maxTokens: Number(env.DEEPCODE_MAX_TOKENS ?? env.DEEPSEEK_MAX_TOKENS ?? 4096),
-  }), {
-    onContent: streamToStdout ? text => process.stdout.write(text) : undefined,
-  })
+  const spinner = streamToStdout
+    ? createDeepCodeTurnSpinner({
+        output: process.stdout,
+        env,
+        message: 'DeepSeek reasoning',
+      })
+    : null
+  let receivedContent = false
+  if (spinner) spinner.start()
+  try {
+    return await collectDeepSeekStreamEvents(provider.streamQuery({
+      systemPrompt: prefix.systemPrompt,
+      messages,
+      env,
+      cwd: process.cwd(),
+      maxTokens: Number(env.DEEPCODE_MAX_TOKENS ?? env.DEEPSEEK_MAX_TOKENS ?? 4096),
+    }), {
+      onContent: streamToStdout
+        ? text => {
+            if (!receivedContent) {
+              if (spinner) spinner.stop({ clear: true })
+              receivedContent = true
+            }
+            process.stdout.write(formatDeepCodeAssistantChunk(text))
+          }
+        : undefined,
+    })
+  } finally {
+    if (spinner) spinner.stop({ clear: true })
+  }
 }
 
 async function resolvePrompt(args, env = process.env) {
   const nonFlagArgs = args.filter(arg => !arg.startsWith('-'))
   if (nonFlagArgs.length > 0) return nonFlagArgs.join(' ')
-  if (!process.stdin.isTTY && env.DEEPCODE_FORCE_NATIVE_INTERACTIVE !== '1') {
+  if (!process.stdin.isTTY && !shouldForceNativeInteractive(env)) {
     return await readStdin()
   }
   return ''
@@ -367,8 +408,12 @@ async function readStdin() {
   return input.trim()
 }
 
-async function loadSettings() {
-  const path = join(homedir(), '.deepcode', 'settings.json')
+function resolveSettingsPath(env = process.env) {
+  return join(env.DEEPCODE_CONFIG_DIR || join(homedir(), '.deepcode'), 'settings.json')
+}
+
+async function loadSettings(env = process.env) {
+  const path = resolveSettingsPath(env)
   if (!existsSync(path)) return {}
   try {
     return JSON.parse(await readFile(path, 'utf8'))
@@ -399,41 +444,71 @@ function mergeSettingsEnv(env, settings) {
   return {
     ...env,
     DEEPSEEK_API_KEY:
-      env.DEEPSEEK_API_KEY ??
-      env.DEEPCODE_API_KEY ??
-      settingsEnv.DEEPSEEK_API_KEY ??
-      settingsEnv.API_KEY,
+      firstConfigured(
+        env.DEEPSEEK_API_KEY,
+        env.DEEPCODE_API_KEY,
+        settingsEnv.DEEPSEEK_API_KEY,
+        settingsEnv.API_KEY,
+      ),
     DEEPSEEK_BASE_URL:
-      env.DEEPSEEK_BASE_URL ??
-      env.DEEPCODE_BASE_URL ??
-      settingsEnv.DEEPSEEK_BASE_URL ??
-      settingsEnv.BASE_URL,
+      firstConfigured(
+        env.DEEPSEEK_BASE_URL,
+        env.DEEPCODE_BASE_URL,
+        settingsEnv.DEEPSEEK_BASE_URL,
+        settingsEnv.BASE_URL,
+      ),
     DEEPSEEK_MODEL:
-      env.DEEPSEEK_MODEL ??
-      env.DEEPCODE_MODEL ??
-      settingsEnv.DEEPSEEK_MODEL ??
-      settingsEnv.MODEL,
+      firstConfigured(
+        env.DEEPSEEK_MODEL,
+        env.DEEPCODE_MODEL,
+        settingsEnv.DEEPSEEK_MODEL,
+        settingsEnv.MODEL,
+      ),
+    DEEPSEEK_SMALL_MODEL:
+      firstConfigured(
+        env.DEEPSEEK_SMALL_MODEL,
+        env.DEEPCODE_SMALL_MODEL,
+        settingsEnv.DEEPSEEK_SMALL_MODEL,
+        settingsEnv.SMALL_MODEL,
+      ),
     DEEPSEEK_THINKING:
-      env.DEEPSEEK_THINKING ??
-      env.DEEPCODE_THINKING ??
-      (settings.thinkingEnabled === false ? 'disabled' : undefined),
+      firstConfigured(
+        env.DEEPSEEK_THINKING,
+        env.DEEPCODE_THINKING,
+        settings.thinkingEnabled === false ? 'disabled' : undefined,
+      ),
     DEEPSEEK_REASONING_EFFORT:
-      env.DEEPSEEK_REASONING_EFFORT ??
-      env.DEEPCODE_REASONING_EFFORT ??
-      settings.reasoningEffort,
+      firstConfigured(
+        env.DEEPSEEK_REASONING_EFFORT,
+        env.DEEPCODE_REASONING_EFFORT,
+        settings.reasoningEffort,
+      ),
     DEEPCODE_CACHE_USER_ID:
-      env.DEEPCODE_CACHE_USER_ID ??
-      settings.cacheUserId ??
-      createDeepSeekCacheUserId(process.cwd()),
+      firstConfigured(
+        env.DEEPCODE_CACHE_USER_ID,
+        settings.cacheUserId,
+        createDeepSeekCacheUserId(process.cwd()),
+      ),
     DEEPCODE_HARNESS_MODE:
-      env.DEEPCODE_HARNESS_MODE ?? settings.harnessMode,
+      firstConfigured(env.DEEPCODE_HARNESS_MODE, settings.harnessMode),
     DEEPCODE_HARNESS_MAX_AGENTS:
-      env.DEEPCODE_HARNESS_MAX_AGENTS ?? settings.harnessMaxAgents,
+      firstConfigured(env.DEEPCODE_HARNESS_MAX_AGENTS, settings.harnessMaxAgents),
     DEEPCODE_PROMPT_PACK:
-      env.DEEPCODE_PROMPT_PACK ?? settings.promptPack,
+      firstConfigured(env.DEEPCODE_PROMPT_PACK, settings.promptPack),
     DEEPCODE_STRICT_TOOLS:
-      env.DEEPCODE_STRICT_TOOLS ?? settings.strictTools,
+      firstConfigured(env.DEEPCODE_STRICT_TOOLS, settings.strictTools),
   }
+}
+
+function firstConfigured(...values) {
+  return values.find(value => value !== undefined && value !== null && value !== '')
+}
+
+function applyInteractiveModelSelection(env, selection) {
+  env.DEEPSEEK_MODEL = selection.model
+  env.DEEPCODE_MODEL = selection.model
+  env.DEEPSEEK_REASONING_EFFORT = selection.reasoningEffort
+  env.DEEPCODE_REASONING_EFFORT = selection.reasoningEffort
 }
 
 async function printAndRecordUsage(usage, cacheStatsPath, stablePrefix) {
@@ -442,7 +517,7 @@ async function printAndRecordUsage(usage, cacheStatsPath, stablePrefix) {
   const hit = usage.prompt_cache_hit_tokens ?? 0
   const miss = usage.prompt_cache_miss_tokens ?? 0
   process.stderr.write(
-    `\n[DeepSeek cache] hit=${hit} miss=${miss} hit_rate=${(hitRate * 100).toFixed(1)}%\n`,
+    `\n${formatDeepCodeCacheUsage({ hit, miss, hitRate })}\n`,
   )
   await recordDeepSeekCacheUsage({
     path: cacheStatsPath,

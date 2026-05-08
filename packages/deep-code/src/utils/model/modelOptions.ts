@@ -24,7 +24,9 @@ import {
   getDefaultHaikuModel,
   getDefaultMainLoopModelSetting,
   getMarketingNameForModel,
+  getSmallFastModel,
   getUserSpecifiedModelSetting,
+  isDeepCodeNativeProvider,
   isOpus1mMergeEnabled,
   getOpus46PricingSuffix,
   renderDefaultModelSetting,
@@ -43,6 +45,18 @@ export type ModelOption = {
 }
 
 export function getDefaultOptionForUser(fastMode = false): ModelOption {
+  if (isDeepCodeNativeProvider()) {
+    const currentModel = renderDefaultModelSetting(
+      getDefaultMainLoopModelSetting(),
+    )
+    return {
+      value: null,
+      label: 'Default (recommended)',
+      description: `Use the DeepSeek default for Deep Code (currently ${currentModel})`,
+      descriptionForModel: `DeepSeek default model (currently ${currentModel})`,
+    }
+  }
+
   if (process.env.USER_TYPE === 'ant') {
     const currentModel = renderDefaultModelSetting(
       getDefaultMainLoopModelSetting(),
@@ -89,6 +103,42 @@ function getCustomSonnetOption(): ModelOption | undefined {
       descriptionForModel: `${process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION ?? `Custom Sonnet model${is1m ? ' with 1M context' : ''}`} (${customSonnetModel})`,
     }
   }
+}
+
+function getDeepSeekModelLabel(model: string): string {
+  const normalized = model.toLowerCase()
+  if (normalized === 'deepseek-v4-pro') return 'DeepSeek V4 Pro'
+  if (normalized === 'deepseek-v4-flash') return 'DeepSeek V4 Flash'
+  return model
+}
+
+function getDeepSeekModelDescription(model: string): string {
+  const normalized = model.toLowerCase()
+  if (normalized === 'deepseek-v4-pro') {
+    return '1M context · strongest Deep Code model for complex engineering work'
+  }
+  if (normalized === 'deepseek-v4-flash') {
+    return '1M context · fast lightweight model for small edits, summaries, and subagents'
+  }
+  return 'Custom DeepSeek-compatible model'
+}
+
+function getDeepSeekNativeModelOptions(): ModelOption[] {
+  const options: ModelOption[] = [getDefaultOptionForUser()]
+  const candidates = [getDefaultMainLoopModelSetting(), getSmallFastModel()]
+
+  for (const model of candidates) {
+    if (!options.some(opt => opt.value === model)) {
+      options.push({
+        value: model,
+        label: getDeepSeekModelLabel(model),
+        description: getDeepSeekModelDescription(model),
+        descriptionForModel: `${getDeepSeekModelLabel(model)} (${model})`,
+      })
+    }
+  }
+
+  return options
 }
 
 // @[MODEL LAUNCH]: Update or add model option functions (getSonnetXXOption, getOpusXXOption, etc.)
@@ -269,6 +319,10 @@ function getOpusPlanOption(): ModelOption {
 // @[MODEL LAUNCH]: Update the model picker lists below to include/reorder options for the new model.
 // Each user tier (ant, Max/Team Premium, Pro/Team Standard/Enterprise, PAYG 1P, PAYG 3P) has its own list.
 function getModelOptionsBase(fastMode = false): ModelOption[] {
+  if (isDeepCodeNativeProvider()) {
+    return getDeepSeekNativeModelOptions()
+  }
+
   if (process.env.USER_TYPE === 'ant') {
     // Build options from antModels config
     const antModelOptions: ModelOption[] = getAntModels().map(m => ({
@@ -460,6 +514,25 @@ function getKnownModelOption(model: string): ModelOption | null {
 
 export function getModelOptions(fastMode = false): ModelOption[] {
   const options = getModelOptionsBase(fastMode)
+  if (isDeepCodeNativeProvider()) {
+    const currentMainLoopModel = getUserSpecifiedModelSetting()
+    const initialMainLoopModel = getInitialMainLoopModel()
+    const customModel = currentMainLoopModel ?? initialMainLoopModel
+
+    if (
+      customModel !== null &&
+      customModel !== undefined &&
+      !options.some(opt => opt.value === customModel)
+    ) {
+      options.push({
+        value: customModel,
+        label: getDeepSeekModelLabel(customModel),
+        description: getDeepSeekModelDescription(customModel),
+      })
+    }
+
+    return filterModelOptionsByAllowlist(options)
+  }
 
   // Add the custom model from the ANTHROPIC_CUSTOM_MODEL_OPTION env var
   const envCustomModel = process.env.ANTHROPIC_CUSTOM_MODEL_OPTION

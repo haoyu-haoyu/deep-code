@@ -5,6 +5,7 @@ import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { isClaudeAISubscriber } from '../utils/auth.js'
 import { getModelBetas } from '../utils/betas.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
+import { logForDebugging } from '../utils/debug.js'
 import { logError } from '../utils/log.js'
 import { getSmallFastModel } from '../utils/model/model.js'
 import { isEssentialTrafficOnly } from '../utils/privacyLevel.js'
@@ -217,7 +218,23 @@ async function makeTestQuery() {
     .asResponse()
 }
 
+function isDeepCodeDeepSeekProvider(): boolean {
+  const provider = (
+    process.env.DEEPCODE_PROVIDER ??
+    process.env.DEEP_CODE_PROVIDER ??
+    'deepseek'
+  ).toLowerCase()
+  return provider === 'deepseek'
+}
+
 export async function checkQuotaStatus(): Promise<void> {
+  if (isDeepCodeDeepSeekProvider()) {
+    logForDebugging(
+      'DeepSeek native provider does not use Claude.ai quota checks',
+    )
+    return
+  }
+
   // Skip network requests if nonessential traffic is disabled
   if (isEssentialTrafficOnly()) {
     return

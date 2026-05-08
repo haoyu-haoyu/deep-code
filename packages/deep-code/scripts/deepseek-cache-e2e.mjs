@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import {
   buildDeepSeekRequest,
   calculateDeepSeekCacheHitRate,
@@ -18,17 +22,17 @@ const REAL_E2E_FLAG = 'DEEPCODE_REAL_E2E'
 async function main() {
   if (process.env[REAL_E2E_FLAG] !== '1') {
     console.log(
-      'DeepSeek cache E2E skipped: set DEEPCODE_REAL_E2E=1 and DEEPSEEK_API_KEY or DEEPCODE_API_KEY to run live cache validation.',
+      'DeepSeek cache E2E skipped: set DEEPCODE_REAL_E2E=1 and configure DEEPSEEK_API_KEY, DEEPCODE_API_KEY, or ~/.deepcode/settings.json env to run live cache validation.',
     )
     return
   }
 
   const cwd = process.cwd()
-  const env = process.env
+  const env = mergeSettingsEnv(process.env, await loadDeepCodeSettings(process.env))
   const config = resolveDeepSeekConfig({ env, cwd })
   if (!config.apiKey) {
     console.error(
-      'DeepSeek cache E2E failed: missing DEEPSEEK_API_KEY or DEEPCODE_API_KEY.',
+      'DeepSeek cache E2E failed: missing DEEPSEEK_API_KEY, DEEPCODE_API_KEY, or ~/.deepcode/settings.json env.',
     )
     process.exitCode = 1
     return
@@ -103,6 +107,56 @@ function createCacheE2ERepoSummary() {
   ].join(' ')
 
   return Array.from({ length: 16 }, () => paragraph).join('\n')
+}
+
+async function loadDeepCodeSettings(env) {
+  const configDir = env.DEEPCODE_CONFIG_DIR || join(homedir(), '.deepcode')
+  const settingsPath = join(configDir, 'settings.json')
+  if (!existsSync(settingsPath)) return {}
+  try {
+    return JSON.parse(await readFile(settingsPath, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function mergeSettingsEnv(env, settings) {
+  const settingsEnv = settings.env ?? {}
+  return {
+    ...env,
+    DEEPSEEK_API_KEY: firstConfigured(
+      env.DEEPSEEK_API_KEY,
+      env.DEEPCODE_API_KEY,
+      settingsEnv.DEEPSEEK_API_KEY,
+      settingsEnv.DEEPCODE_API_KEY,
+      settingsEnv.API_KEY,
+    ),
+    DEEPSEEK_BASE_URL: firstConfigured(
+      env.DEEPSEEK_BASE_URL,
+      env.DEEPCODE_BASE_URL,
+      settingsEnv.DEEPSEEK_BASE_URL,
+      settingsEnv.DEEPCODE_BASE_URL,
+      settingsEnv.BASE_URL,
+    ),
+    DEEPSEEK_MODEL: firstConfigured(
+      env.DEEPSEEK_MODEL,
+      env.DEEPCODE_MODEL,
+      settingsEnv.DEEPSEEK_MODEL,
+      settingsEnv.DEEPCODE_MODEL,
+      settingsEnv.MODEL,
+    ),
+    DEEPSEEK_SMALL_MODEL: firstConfigured(
+      env.DEEPSEEK_SMALL_MODEL,
+      env.DEEPCODE_SMALL_MODEL,
+      settingsEnv.DEEPSEEK_SMALL_MODEL,
+      settingsEnv.DEEPCODE_SMALL_MODEL,
+      settingsEnv.SMALL_MODEL,
+    ),
+  }
+}
+
+function firstConfigured(...values) {
+  return values.find(value => typeof value === 'string' && value.length > 0)
 }
 
 main().catch(error => {

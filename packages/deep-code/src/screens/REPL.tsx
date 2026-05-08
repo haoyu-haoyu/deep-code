@@ -34,6 +34,10 @@ import { asSessionId, asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
+import {
+  streamingTextGranularity,
+  truncateToBoundary,
+} from '../utils/streamGranularity.mjs';
 import { formatTokens, truncateToWidth } from '../utils/format.js';
 import { consumeEarlyInput } from '../utils/earlyInput.js';
 import { setMemberActive } from '../utils/swarm/teamHelpers.js';
@@ -604,7 +608,12 @@ export function REPL({
   // includes, and these were on the render path (hot during PageUp spam).
   const titleDisabled = useMemo(() => isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE), []);
   const moreRightEnabled = useMemo(() => "external" === 'ant' && isEnvTruthy(process.env.CLAUDE_MORERIGHT), []);
-  const disableVirtualScroll = useMemo(() => isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_VIRTUAL_SCROLL), []);
+  const disableVirtualScroll = useMemo(
+    () =>
+      isEnvTruthy(process.env.DEEPCODE_DISABLE_VIRTUAL_SCROLL) ||
+      isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_VIRTUAL_SCROLL),
+    [],
+  );
   const disableMessageActions = feature('MESSAGE_ACTIONS') ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useMemo(() => isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_MESSAGE_ACTIONS), []) : false;
@@ -1134,7 +1143,7 @@ export function REPL({
   // session from mid-conversation context.
   const haikuTitleAttemptedRef = useRef((initialMessages?.length ?? 0) > 0);
   const agentTitle = mainThreadAgentDefinition?.agentType;
-  const terminalTitle = sessionTitle ?? agentTitle ?? haikuTitle ?? 'Claude Code';
+  const terminalTitle = sessionTitle ?? agentTitle ?? haikuTitle ?? 'Deep Code';
   const isWaitingForApproval = toolUseConfirmQueue.length > 0 || promptQueue.length > 0 || pendingWorkerRequest || pendingSandboxRequest;
   // Local-jsx commands (like /plugin, /config) show user-facing dialogs that
   // wait for input. Require jsx != null — if the flag is stuck true but jsx
@@ -1460,19 +1469,62 @@ export function REPL({
   // Streaming text display: set state directly per delta (Ink's 16ms render
   // throttle batches rapid updates). Cleared on message arrival (messages.ts)
   // so displayedMessages switches from deferredMessages to messages atomically.
+  //
+  // Buffering is decoupled from rendering: streamingText accumulates the
+  // partial assistant text REGARDLESS of reducedMotion / accessibility /
+  // cursor-up-bug, because the interrupt-recovery path below
+  // (`createAssistantMessage({ content: streamingText })`) needs the
+  // buffered text to preserve a partial response when the user hits
+  // Esc mid-stream. Visibility is gated separately via
+  // `showStreamingText` → `visibleStreamingText`.
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const reducedMotion = useAppState(s => s.settings.prefersReducedMotion) ?? false;
-  const showStreamingText = !reducedMotion && !hasCursorUpViewportYankBug();
-  const onStreamingText = useCallback((f: (current: string | null) => string | null) => {
-    if (!showStreamingText) return;
-    setStreamingText(f);
-  }, [showStreamingText]);
+  // CLAUDE_CODE_ACCESSIBILITY=1 indicates a screen reader is attached.
+  // Char-by-char streaming would fire an accessibility event for every
+  // delta, which screen readers would announce as a stream of single
+  // characters — terrible UX for assistive-tech users. Suppress the
+  // preview entirely so they hear the final message once it lands.
+  const accessibilityEnabled = useMemo(
+    () => isEnvTruthy(process.env.CLAUDE_CODE_ACCESSIBILITY),
+    [],
+  );
+  const showStreamingText =
+    !reducedMotion && !hasCursorUpViewportYankBug() && !accessibilityEnabled;
+  const onStreamingText = useCallback(
+    (f: (current: string | null) => string | null) => {
+      // Always buffer — visibility is gated downstream so interrupt
+      // recovery still has the partial text even when the preview is
+      // hidden for accessibility / reduced motion.
+      setStreamingText(f);
+    },
+    [],
+  );
 
-  // Hide the in-progress source line so text streams line-by-line, not
-  // char-by-char. lastIndexOf returns -1 when no newline, giving '' → null.
-  // Guard on showStreamingText so toggling reducedMotion mid-stream
-  // immediately hides the streaming preview.
-  const visibleStreamingText = streamingText && showStreamingText ? streamingText.substring(0, streamingText.lastIndexOf('\n') + 1) || null : null;
+  // Streaming-text granularity:
+  //   'char' — show every character as it arrives (matches Claude Code's
+  //            default; gives the most "AI is typing" feel; can briefly
+  //            tear mid-word in unstable terminals)
+  //   'word' — Intl.Segmenter Unicode-aware word boundary (English, CJK,
+  //            etc.); falls back to whitespace-only on environments
+  //            without Intl.Segmenter
+  //   'line' — truncate to last newline (upstream DeepCode default; short
+  //            replies that have no newline never appear until message_stop)
+  // Tunable via DEEPCODE_STREAM_GRANULARITY / CLAUDE_CODE_STREAM_GRANULARITY.
+  // Default 'char' restores the Claude-Code-like typing effect that
+  // DeepCode users were missing.
+  //
+  // Perf note: char mode hands each delta to <StreamingMarkdown>, which
+  // tries to advance a stable-prefix boundary. marked.lexer() typically
+  // emits ONE paragraph token for ongoing text, so the boundary doesn't
+  // advance and each delta re-lexes the full preview. At ~30ms/delta and
+  // <1ms/lex of typical reply lengths this is fine, but watch for
+  // regressions on very long single-paragraph responses (>5KB without
+  // newline). If perf degrades there, switch the default to 'word' or
+  // 'line' for those cases.
+  const streamGranularity = streamingTextGranularity();
+  const visibleStreamingText = streamingText && showStreamingText
+    ? truncateToBoundary(streamingText, streamGranularity)
+    : null;
   const [lastQueryCompletionTime, setLastQueryCompletionTime] = useState(0);
   const [spinnerMessage, setSpinnerMessage] = useState<string | null>(null);
   const [spinnerColor, setSpinnerColor] = useState<keyof Theme | null>(null);
@@ -3281,11 +3333,11 @@ export function REPL({
           // Skip if onDone already fired — prevents stuck isLocalJSXCommand
           // (see processSlashCommand.tsx local-jsx case for full mechanism).
           if (jsx && !doneWasCalled) {
-            // shouldHidePromptInput: false keeps Notifications mounted
-            // so the onDone result isn't lost
+            // Non-immediate local JSX commands are active dialogs, so hide the
+            // prompt while they own keyboard focus. Immediate commands keep it.
             setToolJSX({
               jsx,
-              shouldHidePromptInput: false,
+              shouldHidePromptInput: !matchingCommand.immediate,
               isLocalJSXCommand: true
             });
           }
@@ -4137,7 +4189,7 @@ export function REPL({
   useEffect(() => {
     const handleSuspend = () => {
       // Print suspension instructions
-      process.stdout.write(`\nClaude Code has been suspended. Run \`fg\` to bring Claude Code back.\nNote: ctrl + z now suspends Claude Code, ctrl + _ undoes input.\n`);
+      process.stdout.write(`\nDeepCode has been suspended. Run \`fg\` to bring DeepCode back.\nNote: ctrl + z now suspends DeepCode, ctrl + _ undoes input.\n`);
     };
     const handleResume = () => {
       // Force complete component tree replacement instead of terminal clear
@@ -4592,7 +4644,7 @@ export function REPL({
           text: placeholderText,
           type: 'text'
         }} addMargin={true} verbose={verbose} />}
-              {toolJSX && !(toolJSX.isLocalJSXCommand && toolJSX.isImmediate) && !toolJsxCentered && <Box flexDirection="column" width="100%">
+              {toolJSX && !toolJSX.isLocalJSXCommand && !toolJsxCentered && <Box flexDirection="column" width="100%">
                     {toolJSX.jsx}
                   </Box>}
               {"external" === 'ant' && <TungstenLiveMonitor />}
@@ -4614,7 +4666,7 @@ export function REPL({
                   stays in scrollable: the main loop is paused so no jiggle,
                   and their tall content (DiffDetailView renders up to 400
                   lines with no internal scroll) needs the outer ScrollBox. */}
-                {toolJSX?.isLocalJSXCommand && toolJSX.isImmediate && !toolJsxCentered && <Box flexDirection="column" width="100%">
+                {toolJSX?.isLocalJSXCommand && !toolJsxCentered && <Box flexDirection="column" width="100%">
                       {toolJSX.jsx}
                     </Box>}
                 {!showSpinner && !toolJSX?.isLocalJSXCommand && showExpandedTodos && tasksV2 && tasksV2.length > 0 && <Box width="100%" flexDirection="column">

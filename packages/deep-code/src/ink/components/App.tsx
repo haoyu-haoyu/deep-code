@@ -16,6 +16,7 @@ import { getTerminalFocused, setTerminalFocused } from '../terminal-focus-state.
 import { TerminalQuerier, xtversion } from '../terminal-querier.js';
 import { DISABLE_KITTY_KEYBOARD, DISABLE_MODIFY_OTHER_KEYS, ENABLE_KITTY_KEYBOARD, ENABLE_MODIFY_OTHER_KEYS, FOCUS_IN, FOCUS_OUT } from '../termio/csi.js';
 import { DBP, DFE, DISABLE_MOUSE_TRACKING, EBP, EFE, HIDE_CURSOR, SHOW_CURSOR } from '../termio/dec.js';
+import { dlog } from '../_input-debug.js';
 import AppContext from './AppContext.js';
 import { ClockProvider } from './ClockContext.js';
 import CursorDeclarationContext, { type CursorDeclarationSetter } from './CursorDeclarationContext.js';
@@ -136,6 +137,13 @@ export default class App extends PureComponent<Props, State> {
   // the word without also opening the browser). DOM onClick dispatch is
   // NOT deferred — it returns true from onClickAt and skips this timer.
   pendingHyperlinkTimer: ReturnType<typeof setTimeout> | null = null;
+  // Handle for the deferred XTVERSION terminal-identity probe so we can
+  // cancel it during componentWillUnmount. Without cancellation, an
+  // unmount that happens before the immediate fires would let the
+  // callback run AFTER ink.tsx's final stdin drain, write
+  // xtversion()/flush() to the TTY, and trigger terminal response
+  // bytes on stdin post-teardown — leaking input to the shell.
+  xtversionImmediate: ReturnType<typeof setImmediate> | null = null;
   // Last mode-1003 motion position. Terminals already dedupe to cell
   // granularity but this also lets us skip dispatchHover entirely on
   // repeat events (drag-then-release at same cell, etc.).
@@ -146,6 +154,17 @@ export default class App extends PureComponent<Props, State> {
   // ssh reconnect, laptop wake) and trigger terminal mode re-assert.
   // Initialized to now so startup doesn't false-trigger.
   lastStdinTime = Date.now();
+
+  // macOS pty + Node Readable mode kqueue can get stuck after rapid useInput
+  // mount/unmount churn (e.g., when a slash command opens a dialog and dozens
+  // of useInput hooks toggle isActive in one commit). Symptom: stdin's
+  // 'readable' event stops firing for new bytes even though the listener is
+  // still attached and raw mode is still on. The fd has unread data, but
+  // kqueue/EVFILT_READ never wakes Node up. Workaround: poll stdin directly.
+  // Each interval, if there's data buffered or if the fd has new data ready,
+  // we manually invoke handleReadable to drain it. read(0) is a no-op when
+  // there's nothing pending so the cost is negligible.
+  stdinHeartbeat: ReturnType<typeof setInterval> | null = null;
 
   // Determines if TTY is supported on the provided stdin
   isRawModeSupported(): boolean {
@@ -198,6 +217,15 @@ export default class App extends PureComponent<Props, State> {
       clearTimeout(this.pendingHyperlinkTimer);
       this.pendingHyperlinkTimer = null;
     }
+    // Cancel the deferred XTVERSION probe so its callback can't write
+    // to the TTY after we've completed the final input drain. Without
+    // this, a fast unmount (e.g. Ctrl+C immediately after launch)
+    // leaves the immediate scheduled; when it eventually fires it
+    // sends xtversion() to a torn-down terminal session.
+    if (this.xtversionImmediate) {
+      clearImmediate(this.xtversionImmediate);
+      this.xtversionImmediate = null;
+    }
     // ignore calling setRawMode on an handle stdin it cannot be called
     if (this.isRawModeSupported()) {
       this.handleSetRawMode(false);
@@ -210,6 +238,11 @@ export default class App extends PureComponent<Props, State> {
     const {
       stdin
     } = this.props;
+    dlog('App.handleSetRawMode enter', {
+      isEnabled,
+      countBefore: this.rawModeEnabledCount,
+      readableListenersBefore: stdin.listenerCount('readable'),
+    });
     if (!this.isRawModeSupported()) {
       if (stdin === process.stdin) {
         throw new Error('Raw mode is not supported on the current process.stdin, which Ink uses as input stream by default.\nRead about how to prevent this error on https://github.com/vadimdemedes/ink/#israwmodesupported');
@@ -229,6 +262,18 @@ export default class App extends PureComponent<Props, State> {
         stdin.ref();
         stdin.setRawMode(true);
         stdin.addListener('readable', this.handleReadable);
+        // Start heartbeat poll — works around a macOS pty/kqueue stall after
+        // rapid listener churn (see field comment). Polls every 50ms; the
+        // typical input idle is shorter than human reaction so this is
+        // imperceptible. unref() so it doesn't keep the loop alive on its own.
+        if (this.stdinHeartbeat === null) {
+          this.stdinHeartbeat = setInterval(() => {
+            if (this.rawModeEnabledCount > 0 && stdin.readable) {
+              this.handleReadable();
+            }
+          }, 50);
+          this.stdinHeartbeat.unref?.();
+        }
         // Enable bracketed paste mode
         this.props.stdout.write(EBP);
         // Enable terminal focus reporting (DECSET 1004)
@@ -250,7 +295,17 @@ export default class App extends PureComponent<Props, State> {
         // Deferred to next tick so it fires AFTER the current synchronous
         // init sequence completes — avoids interleaving with alt-screen/mouse
         // tracking enable writes that may happen in the same render cycle.
-        setImmediate(() => {
+        this.xtversionImmediate = setImmediate(() => {
+          this.xtversionImmediate = null;
+          // Known limitation: there's no way to stop terminal-reply
+          // bytes from arriving once the query is on the wire. If
+          // unmount fires AFTER this callback has issued send() but
+          // BEFORE the reply lands, the response (~5–30 bytes of
+          // terminal-name string) leaks to the shell. Mitigation
+          // would require buffering stdin past process exit, which
+          // isn't possible. The realistic-case Ctrl+C-before-immediate
+          // window IS closed by the clearImmediate in
+          // componentWillUnmount.
           void Promise.all([this.querier.send(xtversion()), this.querier.flush()]).then(([r]) => {
             if (r) {
               setXtversionName(r.name);
@@ -262,6 +317,13 @@ export default class App extends PureComponent<Props, State> {
         });
       }
       this.rawModeEnabledCount++;
+      const stdinAny = stdin as unknown as { _readableState?: { length?: number; flowing?: boolean | null }; isPaused?: () => boolean };
+      dlog('App.handleSetRawMode exit (enable)', {
+        countAfter: this.rawModeEnabledCount,
+        readableListenersAfter: stdin.listenerCount('readable'),
+        flowing: stdinAny._readableState?.flowing,
+        paused: stdinAny.isPaused?.(),
+      });
       return;
     }
 
@@ -276,6 +338,19 @@ export default class App extends PureComponent<Props, State> {
       stdin.setRawMode(false);
       stdin.removeListener('readable', this.handleReadable);
       stdin.unref();
+      if (this.stdinHeartbeat !== null) {
+        clearInterval(this.stdinHeartbeat);
+        this.stdinHeartbeat = null;
+      }
+      dlog('App.handleSetRawMode TEARDOWN', {
+        countAfter: this.rawModeEnabledCount,
+        readableListenersAfter: stdin.listenerCount('readable'),
+      });
+    } else {
+      dlog('App.handleSetRawMode exit (disable, kept alive)', {
+        countAfter: this.rawModeEnabledCount,
+        readableListenersAfter: stdin.listenerCount('readable'),
+      });
     }
   };
 
@@ -307,9 +382,16 @@ export default class App extends PureComponent<Props, State> {
 
   // Process input through the parser and handle the results
   processInput = (input: string | Buffer | null): void => {
+    dlog('App.processInput', { input: input == null ? null : String(input) });
     // Parse input using our state machine
     const [keys, newState] = parseMultipleKeypresses(this.keyParseState, input);
     this.keyParseState = newState;
+    dlog('App.processInput parsed', {
+      keysCount: keys.length,
+      mode: newState.mode,
+      incomplete: !!newState.incomplete,
+      kindList: keys.map(k => k.kind).join(','),
+    });
 
     // Process ALL keys in a SINGLE discreteUpdates call to prevent
     // "Maximum update depth exceeded" error when many keys arrive at once
@@ -330,6 +412,14 @@ export default class App extends PureComponent<Props, State> {
     }
   };
   handleReadable = (): void => {
+    const stdinAny = this.props.stdin as unknown as { _readableState?: { length?: number; reading?: boolean; flowing?: boolean | null }; isPaused?: () => boolean };
+    dlog('App.handleReadable', {
+      listenerCount: this.props.stdin.listenerCount('readable'),
+      bufferedLength: stdinAny._readableState?.length,
+      reading: stdinAny._readableState?.reading,
+      flowing: stdinAny._readableState?.flowing,
+      paused: stdinAny.isPaused?.(),
+    });
     // Detect long stdin gaps (tmux attach, ssh reconnect, laptop wake).
     // The terminal may have reset DEC private modes; re-assert mouse
     // tracking. Checked before the read loop so one Date.now() covers
@@ -341,10 +431,14 @@ export default class App extends PureComponent<Props, State> {
     this.lastStdinTime = now;
     try {
       let chunk;
+      let chunkCount = 0;
       while ((chunk = this.props.stdin.read() as string | null) !== null) {
+        chunkCount += 1;
+        dlog('App.handleReadable chunk', { chunkNum: chunkCount, chunk: String(chunk) });
         // Process the input chunk
         this.processInput(chunk);
       }
+      dlog('App.handleReadable done', { totalChunks: chunkCount });
     } catch (error) {
       // In Bun, an uncaught throw inside a stream 'readable' handler can
       // permanently wedge the stream: data stays buffered and 'readable'

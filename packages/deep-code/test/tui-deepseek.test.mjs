@@ -5,6 +5,7 @@ import { join } from 'node:path'
 
 import {
   buildDeepSeekModelHarness,
+  buildDeepSeekModelOptionsHarness,
   buildDeepSeekPrintModelInfoHarness,
   buildDeepSeekQueryDepsHarness,
   buildDeepSeekTuiQueryHarness,
@@ -393,6 +394,52 @@ test('model utilities honor DeepSeek model env overrides', async () => {
     expect(model.getUserSpecifiedModelSetting()).toBe('deepseek-v4-pro-env')
     expect(model.getMainLoopModel()).toBe('deepseek-v4-pro-env')
     expect(model.getSmallFastModel()).toBe('deepseek-v4-flash-env')
+  } finally {
+    restoreEnvSnapshot(previousEnv)
+  }
+})
+
+test('model picker options are DeepSeek-native under the Deep Code provider', async () => {
+  const previousEnv = snapshotEnv([
+    'DEEPCODE_PROVIDER',
+    'DEEP_CODE_PROVIDER',
+    'DEEPSEEK_MODEL',
+    'DEEPCODE_MODEL',
+    'DEEPSEEK_SMALL_MODEL',
+    'DEEPCODE_SMALL_MODEL',
+    'ANTHROPIC_CUSTOM_MODEL_OPTION',
+    'ANTHROPIC_CUSTOM_MODEL_OPTION_NAME',
+    'ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION',
+  ])
+  delete process.env.DEEPCODE_PROVIDER
+  delete process.env.DEEP_CODE_PROVIDER
+  delete process.env.DEEPSEEK_MODEL
+  delete process.env.DEEPCODE_MODEL
+  delete process.env.DEEPSEEK_SMALL_MODEL
+  delete process.env.DEEPCODE_SMALL_MODEL
+  process.env.ANTHROPIC_CUSTOM_MODEL_OPTION = 'claude-opus-4-6'
+  process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME = 'Opus'
+  process.env.ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION = 'Claude custom model'
+
+  try {
+    const modelOptions = await buildDeepSeekModelOptionsHarness()
+    const options = modelOptions.getModelOptions()
+    const visibleText = options
+      .flatMap(option => [
+        option.label,
+        option.description,
+        option.descriptionForModel ?? '',
+      ])
+      .join('\n')
+
+    expect(options.map(option => option.value)).toEqual([
+      null,
+      'deepseek-v4-pro',
+      'deepseek-v4-flash',
+    ])
+    expect(visibleText).toContain('DeepSeek V4 Pro')
+    expect(visibleText).toContain('DeepSeek V4 Flash')
+    expect(visibleText).not.toMatch(/Claude|Opus|Sonnet|Haiku/)
   } finally {
     restoreEnvSnapshot(previousEnv)
   }

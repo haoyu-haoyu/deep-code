@@ -1958,6 +1958,8 @@ function PromptInput({
     if (key.return && helpOpen) {
       setHelpOpen(false);
     }
+  }, {
+    isActive: !isModalOverlayActive
   });
   const swarmBanner = useSwarmBanner();
   const fastModeCooldown = isFastModeEnabled() ? isFastModeCooldown() : false;

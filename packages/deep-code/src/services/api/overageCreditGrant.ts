@@ -21,6 +21,15 @@ type CachedGrantEntry = {
 
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 
+function isDeepCodeDeepSeekProvider(): boolean {
+  const provider = (
+    process.env.DEEPCODE_PROVIDER ??
+    process.env.DEEP_CODE_PROVIDER ??
+    'deepseek'
+  ).toLowerCase()
+  return provider === 'deepseek'
+}
+
 /**
  * Fetch the current user's overage credit grant eligibility from the backend.
  * The backend resolves tier-specific amounts and role-based claim permission,
@@ -75,6 +84,7 @@ export function invalidateOverageCreditGrantCache(): void {
  * is about to render and the cache is empty.
  */
 export async function refreshOverageCreditGrantCache(): Promise<void> {
+  if (isDeepCodeDeepSeekProvider()) return
   if (isEssentialTrafficOnly()) return
   const orgId = getOauthAccountInfo()?.organizationUuid
   if (!orgId) return

@@ -11,6 +11,7 @@ import { Tabs, Tab } from '../design-system/Tabs.js';
 import { Status, buildDiagnostics } from './Status.js';
 import { Config } from './Config.js';
 import { Usage } from './Usage.js';
+import { useInput } from '../../ink.js';
 import type { LocalJSXCommandContext, CommandResultDisplay } from '../../commands.js';
 type Props = {
   onClose: (result?: string, options?: {
@@ -67,6 +68,17 @@ export function Settings(t0) {
     t3 = $[4];
   }
   useKeybinding("confirm:no", handleEscape, t3);
+  useInput((input, key, event) => {
+    if (!t2) {
+      return;
+    }
+    if (key.escape || input === "q") {
+      handleEscape();
+      event.stopImmediatePropagation();
+    }
+  }, {
+    isActive: t2
+  });
   let t4;
   if ($[5] !== context || $[6] !== diagnosticsPromise) {
     t4 = <Tab key="status" title="Status"><Status context={context} diagnosticsPromise={diagnosticsPromise} /></Tab>;

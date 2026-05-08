@@ -1,4 +1,5 @@
 import { EventEmitter as NodeEventEmitter } from 'events'
+import { dlog } from '../_input-debug.js'
 import { Event } from './event.js'
 
 // Similar to node's builtin EventEmitter, but is also aware of our `Event`
@@ -21,15 +22,34 @@ export class EventEmitter extends NodeEventEmitter {
     const listeners = this.rawListeners(type)
 
     if (listeners.length === 0) {
+      if (type === 'input') {
+        dlog('emitter.emit input', { listenerCount: 0, dropped: true })
+      }
       return false
     }
 
     const ccEvent = args[0] instanceof Event ? args[0] : null
 
+    if (type === 'input') {
+      dlog('emitter.emit input', {
+        listenerCount: listeners.length,
+        firstArgKind:
+          args[0] instanceof Event ? args[0].constructor.name : typeof args[0],
+      })
+    }
+
+    let invokedCount = 0
     for (const listener of listeners) {
       listener.apply(this, args)
+      invokedCount += 1
 
       if (ccEvent?.didStopImmediatePropagation()) {
+        if (type === 'input') {
+          dlog('emitter.emit input STOPPED', {
+            invokedBeforeStop: invokedCount,
+            of: listeners.length,
+          })
+        }
         break
       }
     }

@@ -1,5 +1,5 @@
 /**
- * Session title generation via Haiku.
+ * Session title generation.
  *
  * Standalone module with minimal dependencies so it can be imported from
  * print.ts (SDK control request handler) without pulling in the React/chalk/
@@ -69,6 +69,38 @@ Bad (wrong case): {"title": "Fix Login Button On Mobile"}`
 
 const titleSchema = lazySchema(() => z.object({ title: z.string() }))
 
+function isDeepCodeDeepSeekProvider(): boolean {
+  const provider = (
+    process.env.DEEPCODE_PROVIDER ??
+    process.env.DEEP_CODE_PROVIDER ??
+    'deepseek'
+  ).toLowerCase()
+  return provider === 'deepseek'
+}
+
+export function createDeepCodeLocalSessionTitle(
+  description: string,
+): string | null {
+  const cleaned = description
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[`*_#>{}\[\]()/|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!cleaned) return null
+
+  const firstSentence = cleaned.split(/[.!?。！？\n]/)[0]?.trim() || cleaned
+  const candidate = firstSentence.includes(' ')
+    ? firstSentence.split(/\s+/).slice(0, 7).join(' ')
+    : firstSentence.slice(0, 32)
+  const compact =
+    candidate.length > 60 ? candidate.slice(0, 60).trim() : candidate
+
+  if (!compact) return null
+
+  return compact.charAt(0).toUpperCase() + compact.slice(1)
+}
+
 /**
  * Generate a sentence-case session title from a description or first message.
  * Returns null on error or if Haiku returns an unparseable response.
@@ -82,6 +114,15 @@ export async function generateSessionTitle(
 ): Promise<string | null> {
   const trimmed = description.trim()
   if (!trimmed) return null
+
+  if (isDeepCodeDeepSeekProvider()) {
+    const title = createDeepCodeLocalSessionTitle(trimmed)
+    logForDebugging(
+      'DeepSeek provider uses local title derivation for session title',
+    )
+    logEvent('tengu_session_title_generated', { success: title !== null })
+    return title
+  }
 
   try {
     const result = await queryHaiku({

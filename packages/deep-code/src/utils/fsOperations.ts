@@ -713,6 +713,11 @@ export async function tailFile(
   }
 }
 
+// tailFileRaw + decodeUtf8AtBoundary live in a sibling .mjs module so
+// `node --test` can import them directly without the Bun TS loader.
+// Re-exported here for ergonomic access alongside tailFile().
+export { decodeUtf8AtBoundary, tailFileRaw } from './utf8Tail.mjs'
+
 /**
  * Async generator that yields lines from a file in reverse order.
  * Reads the file backwards in chunks to avoid loading the entire file into memory.

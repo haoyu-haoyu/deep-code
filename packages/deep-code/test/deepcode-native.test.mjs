@@ -98,6 +98,14 @@ import {
   getPreferredAgentMemorySnapshotDir,
   isDeepCodeAgentMemoryPath,
 } from '../src/deepcode/agent-memory-paths.mjs'
+import {
+  hasDeepSeekConfigFile,
+  loadDeepSeekConfigFile,
+  mergeDeepSeekConfigPartial,
+  resolveDeepSeekConfigPath,
+  saveDeepSeekConfigFile,
+} from '../src/services/providers/deepseek-config-store.mjs'
+import { resolveDeepSeekConfig } from '../src/services/providers/deepseek.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -1295,6 +1303,124 @@ test('streamDeepSeekQuery retries retryable HTTP failures before streaming', asy
   ])
 })
 
+test('streamDeepSeekQuery throws DEEPCODE_REQUEST_TIMEOUT when fetch outlives timeout', async () => {
+  const start = Date.now()
+  let caught
+  try {
+    for await (const _ of streamDeepSeekQuery({
+      url: 'https://api.deepseek.com/chat/completions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { model: 'deepseek-v4-pro', messages: [] },
+      maxRetries: 0,
+      requestTimeoutMs: 50,
+      sleep: () => Promise.resolve(),
+      fetch(_url, opts) {
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(resolve, 5000)
+          opts.signal?.addEventListener('abort', () => {
+            clearTimeout(timer)
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      },
+    })) {
+      // unreachable
+    }
+  } catch (error) {
+    caught = error
+  }
+  assert.ok(caught instanceof Error, 'expected timeout to throw')
+  assert.equal(caught.code, 'DEEPCODE_REQUEST_TIMEOUT')
+  assert.equal(caught.timeoutMs, 50)
+  assert.ok(Date.now() - start < 2000, 'should not wait the full mock duration')
+})
+
+test('streamDeepSeekQuery retries after timeout and then succeeds', async () => {
+  let attempts = 0
+  const delays = []
+  const events = []
+  for await (const event of streamDeepSeekQuery({
+    url: 'https://api.deepseek.com/chat/completions',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { model: 'deepseek-v4-pro', messages: [] },
+    maxRetries: 1,
+    requestTimeoutMs: 50,
+    sleep(ms) {
+      delays.push(ms)
+      return Promise.resolve()
+    },
+    fetch(_url, opts) {
+      attempts += 1
+      if (attempts === 1) {
+        return new Promise((resolve, reject) => {
+          const keepAlive = setTimeout(resolve, 5000)
+          opts.signal?.addEventListener('abort', () => {
+            clearTimeout(keepAlive)
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      }
+      return Promise.resolve(
+        new Response(sseBody([
+          'data: {"choices":[{"delta":{"content":"recovered"},"finish_reason":"stop"}]}',
+          'data: [DONE]',
+        ]), { status: 200 }),
+      )
+    },
+  })) {
+    events.push(event)
+  }
+  assert.equal(attempts, 2)
+  assert.equal(delays.length, 1)
+  assert.deepEqual(events, [
+    { type: 'content_delta', text: 'recovered' },
+    { type: 'done' },
+  ])
+})
+
+test('streamDeepSeekQuery propagates user abort without retry', async () => {
+  const ac = new AbortController()
+  let attempts = 0
+  const delays = []
+  setTimeout(() => ac.abort(new Error('user-cancel')), 30)
+  let caught
+  try {
+    for await (const _ of streamDeepSeekQuery({
+      url: 'https://api.deepseek.com/chat/completions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { model: 'deepseek-v4-pro', messages: [] },
+      maxRetries: 2,
+      requestTimeoutMs: 30000,
+      signal: ac.signal,
+      sleep(ms) {
+        delays.push(ms)
+        return Promise.resolve()
+      },
+      fetch(_url, opts) {
+        attempts += 1
+        return new Promise((resolve, reject) => {
+          const keepAlive = setTimeout(resolve, 5000)
+          opts.signal?.addEventListener('abort', () => {
+            clearTimeout(keepAlive)
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+      },
+    })) {
+      // unreachable
+    }
+  } catch (error) {
+    caught = error
+  }
+  assert.ok(caught instanceof Error, 'expected abort to throw')
+  assert.equal(caught.name, 'AbortError')
+  assert.equal(attempts, 1, 'user abort must not retry')
+  assert.deepEqual(delays, [], 'user abort must not sleep between retries')
+})
+
 test('createDeepSeekCacheUserId is deterministic and safe for DeepSeek user_id', () => {
   assert.equal(
     createDeepSeekCacheUserId('/tmp/my workspace'),
@@ -1986,10 +2112,143 @@ test('createDeepSeekCallModel yields assistant messages from provider events', a
 
   assert.equal(requests.length, 1)
   assert.equal(requests[0].model, 'deepseek-v4-pro')
-  assert.deepEqual(messages.map(message => message.message.content), [
+  const assistantMessages = messages.filter(m => m.type === 'assistant')
+  assert.deepEqual(assistantMessages.map(message => message.message.content), [
     [{ type: 'text', text: 'done' }],
   ])
-  assert.equal(messages[0].message.stop_reason, 'stop')
+  assert.equal(assistantMessages[0].message.stop_reason, 'stop')
+})
+
+test('createDeepSeekCallModel streams thinking and text events incrementally', async () => {
+  const callModel = createDeepSeekCallModel({
+    provider: {
+      streamQuery() {
+        return (async function* stream() {
+          yield { type: 'reasoning_delta', text: 'Let me think...' }
+          yield { type: 'reasoning_delta', text: ' more reasoning' }
+          yield { type: 'content_delta', text: 'Hello' }
+          yield { type: 'content_delta', text: ' world' }
+          yield { type: 'finish', finishReason: 'stop' }
+          yield { type: 'usage', usage: { prompt_tokens: 8, completion_tokens: 4 } }
+        })()
+      },
+    },
+    now: () => new Date('2026-05-04T00:00:00.000Z'),
+    uuid: () => 'uuid-fixed',
+  })
+
+  const messages = []
+  for await (const message of callModel({
+    messages: [{ role: 'user', content: 'hi' }],
+    systemPrompt: ['You are Deep Code.'],
+    tools: [],
+    signal: new AbortController().signal,
+    options: { model: 'deepseek-v4-pro' },
+  })) {
+    messages.push(message)
+  }
+
+  const streamEvents = messages
+    .filter(m => m.type === 'stream_event')
+    .map(m => m.event)
+
+  const types = streamEvents.map(e => {
+    if (e.type === 'content_block_start') return `start:${e.content_block.type}`
+    if (e.type === 'content_block_delta') return `delta:${e.delta.type}`
+    if (e.type === 'content_block_stop') return 'stop'
+    return e.type
+  })
+
+  assert.deepEqual(types, [
+    'message_start',
+    'start:thinking',
+    'delta:thinking_delta',
+    'delta:thinking_delta',
+    'stop',
+    'start:text',
+    'delta:text_delta',
+    'delta:text_delta',
+    'stop',
+    'message_delta',
+    'message_stop',
+  ])
+
+  const thinkingDeltas = streamEvents
+    .filter(e => e.type === 'content_block_delta' && e.delta.type === 'thinking_delta')
+    .map(e => e.delta.thinking)
+  assert.deepEqual(thinkingDeltas, ['Let me think...', ' more reasoning'])
+
+  const textDeltas = streamEvents
+    .filter(e => e.type === 'content_block_delta' && e.delta.type === 'text_delta')
+    .map(e => e.delta.text)
+  assert.deepEqual(textDeltas, ['Hello', ' world'])
+
+  const assistantMessages = messages.filter(m => m.type === 'assistant')
+  assert.equal(assistantMessages.length, 1)
+  const finalContent = assistantMessages[0].message.content
+  const thinkingBlock = finalContent.find(block => block.type === 'thinking')
+  const textBlock = finalContent.find(block => block.type === 'text')
+  assert.equal(thinkingBlock?.thinking, 'Let me think... more reasoning')
+  assert.equal(textBlock?.text, 'Hello world')
+})
+
+test('createDeepSeekCallModel streams tool_use as input_json_delta events', async () => {
+  const callModel = createDeepSeekCallModel({
+    provider: {
+      streamQuery() {
+        return (async function* stream() {
+          yield { type: 'reasoning_delta', text: 'I should call Read' }
+          yield {
+            type: 'tool_call_delta',
+            index: 0,
+            id: 'call_1',
+            name: 'Read',
+            argumentsDelta: '{"file_path":',
+          }
+          yield {
+            type: 'tool_call_delta',
+            index: 0,
+            argumentsDelta: '"README.md"}',
+            finishReason: 'tool_calls',
+          }
+        })()
+      },
+    },
+    now: () => new Date('2026-05-04T00:00:00.000Z'),
+    uuid: () => 'uuid-fixed',
+  })
+
+  const messages = []
+  for await (const message of callModel({
+    messages: [{ role: 'user', content: 'read the readme' }],
+    systemPrompt: ['You are Deep Code.'],
+    tools: [],
+    signal: new AbortController().signal,
+    options: { model: 'deepseek-v4-pro' },
+  })) {
+    messages.push(message)
+  }
+
+  const streamEvents = messages
+    .filter(m => m.type === 'stream_event')
+    .map(m => m.event)
+
+  const toolStart = streamEvents.find(
+    e => e.type === 'content_block_start' && e.content_block.type === 'tool_use',
+  )
+  assert.ok(toolStart, 'expected tool_use content_block_start')
+  assert.equal(toolStart.content_block.id, 'call_1')
+  assert.equal(toolStart.content_block.name, 'Read')
+
+  const jsonDeltas = streamEvents
+    .filter(e => e.type === 'content_block_delta' && e.delta.type === 'input_json_delta')
+    .map(e => e.delta.partial_json)
+  assert.deepEqual(jsonDeltas, ['{"file_path":', '"README.md"}'])
+
+  const assistantMessages = messages.filter(m => m.type === 'assistant')
+  const toolUse = assistantMessages[0].message.content.find(b => b.type === 'tool_use')
+  assert.deepEqual(toolUse.input, { file_path: 'README.md' })
+  assert.equal(assistantMessages[0].message.stop_reason, 'tool_use')
 })
 
 test('createDeepSeekCallModel forwards query runtime controls to DeepSeek provider', async () => {
@@ -2490,3 +2749,146 @@ function toolCallStream({ id, name, input, reasoning }) {
     }
   })()
 }
+
+test('saveDeepSeekConfigFile persists wizard output and loadDeepSeekConfigFile reads it back', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const env = { DEEPCODE_CONFIG_FILE: join(dir, 'deepseek.json') }
+
+  assert.equal(hasDeepSeekConfigFile({ env }), false)
+  assert.equal(loadDeepSeekConfigFile({ env }), null)
+
+  const path = saveDeepSeekConfigFile(
+    {
+      apiKey: 'sk-from-wizard',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-pro',
+      reasoningEffort: 'high',
+    },
+    { env },
+  )
+
+  assert.equal(path, join(dir, 'deepseek.json'))
+  assert.equal(hasDeepSeekConfigFile({ env }), true)
+
+  const loaded = loadDeepSeekConfigFile({ env })
+  assert.equal(loaded.apiKey, 'sk-from-wizard')
+  assert.equal(loaded.model, 'deepseek-v4-pro')
+  assert.equal(loaded.reasoningEffort, 'high')
+  assert.equal(typeof loaded.completedAt, 'string')
+})
+
+test('resolveDeepSeekConfig falls back to persisted file when env vars are absent', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = { DEEPCODE_CONFIG_FILE: filePath }
+
+  saveDeepSeekConfigFile(
+    {
+      apiKey: 'sk-from-file',
+      baseUrl: 'https://example.test/v1',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'high',
+    },
+    { env },
+  )
+
+  const config = resolveDeepSeekConfig({ env, cwd: dir })
+  assert.equal(config.apiKey, 'sk-from-file')
+  assert.equal(config.baseUrl, 'https://example.test/v1')
+  assert.equal(config.model, 'deepseek-v4-flash')
+  assert.equal(config.reasoningEffort, 'high')
+})
+
+test('resolveDeepSeekConfig env var beats persisted file', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = {
+    DEEPCODE_CONFIG_FILE: filePath,
+    DEEPSEEK_API_KEY: 'sk-from-env',
+    DEEPSEEK_MODEL: 'deepseek-v4-pro',
+  }
+
+  saveDeepSeekConfigFile(
+    {
+      apiKey: 'sk-from-file',
+      model: 'deepseek-v4-flash',
+    },
+    { env },
+  )
+
+  const config = resolveDeepSeekConfig({ env, cwd: dir })
+  assert.equal(config.apiKey, 'sk-from-env')
+  assert.equal(config.model, 'deepseek-v4-pro')
+})
+
+test('resolveDeepSeekConfigPath honours DEEPCODE_CONFIG_DIR override', () => {
+  const env = { DEEPCODE_CONFIG_DIR: '/tmp/custom-deepcode' }
+  assert.equal(
+    resolveDeepSeekConfigPath({ env }),
+    '/tmp/custom-deepcode/deepseek-config.json',
+  )
+})
+
+test('mergeDeepSeekConfigPartial preserves existing keys not touched by the wizard', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = { DEEPCODE_CONFIG_FILE: filePath }
+
+  saveDeepSeekConfigFile(
+    {
+      apiKey: 'sk-old',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-pro',
+      smallModel: 'deepseek-v4-flash',
+      thinking: 'enabled',
+      reasoningEffort: 'max',
+    },
+    { env },
+  )
+
+  const merged = mergeDeepSeekConfigPartial(
+    {
+      apiKey: 'sk-new',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'high',
+    },
+    { env },
+  )
+
+  assert.equal(merged.apiKey, 'sk-new')
+  assert.equal(merged.model, 'deepseek-v4-flash')
+  assert.equal(merged.reasoningEffort, 'high')
+  assert.equal(merged.smallModel, 'deepseek-v4-flash')
+  assert.equal(merged.thinking, 'enabled')
+})
+
+test('saveDeepSeekConfigFile writes file with 0600 permissions on POSIX systems', async () => {
+  if (process.platform === 'win32') return
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = { DEEPCODE_CONFIG_FILE: filePath }
+
+  saveDeepSeekConfigFile({ apiKey: 'sk-secret' }, { env })
+
+  const { statSync } = await import('node:fs')
+  const stats = statSync(filePath)
+  const mode = stats.mode & 0o777
+  assert.equal(mode, 0o600)
+})
+
+test('saveDeepSeekConfigFile rejects non-object payload before touching the filesystem', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-config-'))
+  const filePath = join(dir, 'deepseek.json')
+  const env = { DEEPCODE_CONFIG_FILE: filePath }
+
+  saveDeepSeekConfigFile({ apiKey: 'sk-original' }, { env })
+  const original = await readFile(filePath, 'utf8')
+
+  assert.throws(
+    () => saveDeepSeekConfigFile([] /* not a plain object */, { env }),
+    /plain object/,
+  )
+
+  const after = await readFile(filePath, 'utf8')
+  assert.equal(after, original, 'config file must be untouched after rejected save')
+})

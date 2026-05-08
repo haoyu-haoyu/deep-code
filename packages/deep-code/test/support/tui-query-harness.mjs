@@ -228,6 +228,11 @@ export function modelSupports1M(model) {
     String(model ?? '').toLowerCase().includes('opus')
 }
 `)
+registerSourceStub('utils/config', `
+export function getGlobalConfig() {
+  return globalThis.__deepcodeTuiHarness?.globalConfig ?? {}
+}
+`)
 registerSourceStub('services/analytics/growthbook', `
 export function getFeatureValue_CACHED_MAY_BE_STALE(_key, fallback) {
   return fallback
@@ -309,6 +314,9 @@ export function productionDeps() {
 }
 `)
 registerSourceStub('bootstrap/state', `
+export function getInitialMainLoopModel() {
+  return globalThis.__deepcodeTuiHarness?.initialMainLoopModel ?? null
+}
 export function getMainLoopModelOverride() {
   return globalThis.__deepcodeTuiHarness?.mainLoopModelOverride
 }
@@ -376,6 +384,9 @@ export function resolveOverriddenModel(model) {
 }
 `)
 registerSourceStub('utils/modelCost', `
+export const COST_TIER_3_15 = {}
+export const COST_HAIKU_35 = {}
+export const COST_HAIKU_45 = {}
 export function formatModelPricing() {
   return ''
 }
@@ -391,6 +402,14 @@ export function getSettings_DEPRECATED() {
 registerSourceStub('utils/model/providers', `
 export function getAPIProvider() {
   return globalThis.__deepcodeTuiHarness?.apiProvider ?? 'deepseek'
+}
+`)
+registerSourceStub('utils/model/check1mAccess', `
+export function checkOpus1mAccess() {
+  return false
+}
+export function checkSonnet1mAccess() {
+  return false
 }
 `)
 registerSourceStub('constants/figures', `
@@ -428,6 +447,15 @@ export async function buildDeepSeekQueryDepsHarness() {
 
 export async function buildDeepSeekModelHarness() {
   return await buildDeepCodeSourceHarness(join(srcRoot, 'utils/model/model.ts'))
+}
+
+export async function buildDeepSeekModelOptionsHarness() {
+  return await buildDeepCodeSourceHarness(
+    join(srcRoot, 'utils/model/modelOptions.ts'),
+    {
+      realSources: ['utils/model/model'],
+    },
+  )
 }
 
 export async function buildDeepSeekPrintModelInfoHarness() {

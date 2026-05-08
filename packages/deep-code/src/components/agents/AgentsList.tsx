@@ -3,7 +3,7 @@ import figures from 'figures';
 import * as React from 'react';
 import type { SettingSource } from 'src/utils/settings/constants.js';
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
-import { Box, Text } from '../../ink.js';
+import { Box, Text, useInput } from '../../ink.js';
 import type { ResolvedAgent } from '../../tools/AgentTool/agentDisplay.js';
 import { AGENT_SOURCE_GROUPS, compareAgentsByName, getOverrideSourceLabel, resolveAgentModelDisplay } from '../../tools/AgentTool/agentDisplay.js';
 import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js';
@@ -31,6 +31,14 @@ export function AgentsList(t0) {
   } = t0;
   const [selectedAgent, setSelectedAgent] = React.useState(null);
   const [isCreateNewSelected, setIsCreateNewSelected] = React.useState(true);
+  useInput((input, key, event) => {
+    if (key.escape || input === "q") {
+      onBack();
+      event.stopImmediatePropagation();
+    }
+  }, {
+    isActive: true
+  });
   let t1;
   if ($[0] !== agents) {
     t1 = [...agents].sort(compareAgentsByName);
@@ -242,7 +250,7 @@ export function AgentsList(t0) {
         let t25;
         let t26;
         if ($[58] === Symbol.for("react.memo_cache_sentinel")) {
-          t24 = <Text dimColor={true}>No agents found. Create specialized subagents that Claude can delegate to.</Text>;
+          t24 = <Text dimColor={true}>No agents found. Create specialized subagents that Deep Code can delegate to.</Text>;
           t25 = <Text dimColor={true}>Each subagent has its own context window, custom system prompt, and specific tools.</Text>;
           t26 = <Text dimColor={true}>Try creating: Code Reviewer, Code Simplifier, Security Reviewer, Tech Lead, or UX Reviewer.</Text>;
           $[58] = t24;

@@ -164,6 +164,68 @@ export class GoogleAuth {
 
 const cjsStubs = new Map([
   [
+    'string-width',
+    `
+// Deep Code full CLI string width shim.
+function stripAnsi(value) {
+  return String(value ?? '').replace(/[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))/g, '')
+}
+function isFullwidthCodePoint(codePoint) {
+  if (!Number.isInteger(codePoint)) return false
+  return (
+    codePoint >= 0x1100 && (
+      codePoint <= 0x115f ||
+      codePoint === 0x2329 ||
+      codePoint === 0x232a ||
+      (codePoint >= 0x2e80 && codePoint <= 0xa4cf && codePoint !== 0x303f) ||
+      (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+      (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+      (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
+      (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+      (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+      (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
+      (codePoint >= 0x1f300 && codePoint <= 0x1f64f) ||
+      (codePoint >= 0x1f900 && codePoint <= 0x1f9ff) ||
+      (codePoint >= 0x20000 && codePoint <= 0x3fffd)
+    )
+  )
+}
+function stringWidth(value) {
+  const string = stripAnsi(value)
+  let width = 0
+  for (let index = 0; index < string.length; index++) {
+    const codePoint = string.codePointAt(index)
+    if (codePoint === undefined) continue
+    if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)) continue
+    if (codePoint >= 0x300 && codePoint <= 0x36f) continue
+    if (codePoint > 0xffff) index++
+    width += isFullwidthCodePoint(codePoint) ? 2 : 1
+  }
+  return width
+}
+module.exports = stringWidth
+module.exports.default = stringWidth
+`,
+  ],
+  [
+    'signal-exit',
+    `
+function onExit(callback) {
+  if (typeof callback !== 'function') {
+    return function noop() {}
+  }
+  const handler = code => callback(code, null)
+  process.once('exit', handler)
+  return function remove() {
+    process.removeListener('exit', handler)
+  }
+}
+module.exports = onExit
+module.exports.default = onExit
+module.exports.onExit = onExit
+`,
+  ],
+  [
     'escape-string-regexp',
     `
 module.exports = function escapeStringRegexp(value) {

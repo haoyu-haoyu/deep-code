@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import {
-  collectDeepSeekStreamEvents,
   createDeepSeekProvider,
   mapDeepSeekFinishReason,
 } from '../deepcode/deepseek-native.mjs'
@@ -41,7 +40,23 @@ export function createDeepSeekCallModel({
     })
 
     const runtimeModel = resolveDeepSeekRuntimeModel(options.model)
-    const response = await collectDeepSeekStreamEvents(provider.streamQuery({
+    const messageId = `msg_deepseek_${uuid()}`
+
+    yield streamEvent({
+      type: 'message_start',
+      message: {
+        id: messageId,
+        type: 'message',
+        role: 'assistant',
+        model: runtimeModel ?? 'deepseek-v4-pro',
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+    })
+
+    const stream = provider.streamQuery({
       systemPrompt: stablePrefix.systemPrompt,
       messages,
       tools,
@@ -60,16 +75,193 @@ export function createDeepSeekCallModel({
       toolChoice: options.toolChoice,
       signal,
       fetch: options.fetchOverride,
-    }))
+    })
+
+    const state = createStreamingState()
+
+    for await (const event of stream) {
+      if (signal?.aborted) break
+
+      if (event.type === 'reasoning_delta') {
+        state.reasoning += event.text
+        if (!state.thinkingOpen) {
+          yield streamEvent({
+            type: 'content_block_start',
+            index: state.blockIndex,
+            content_block: { type: 'thinking', thinking: '' },
+          })
+          state.thinkingOpen = true
+        }
+        yield streamEvent({
+          type: 'content_block_delta',
+          index: state.blockIndex,
+          delta: { type: 'thinking_delta', thinking: event.text },
+        })
+        continue
+      }
+
+      if (event.type === 'content_delta') {
+        for (const closed of closeThinkingIfOpen(state)) yield closed
+        state.content += event.text
+        if (!state.textOpen) {
+          yield streamEvent({
+            type: 'content_block_start',
+            index: state.blockIndex,
+            content_block: { type: 'text', text: '' },
+          })
+          state.textOpen = true
+        }
+        yield streamEvent({
+          type: 'content_block_delta',
+          index: state.blockIndex,
+          delta: { type: 'text_delta', text: event.text },
+        })
+        continue
+      }
+
+      if (event.type === 'tool_call_delta') {
+        const toolIndex = event.index ?? 0
+        let entry = state.toolCalls.get(toolIndex)
+        if (!entry) {
+          for (const closed of closeOpenInlineBlocks(state)) yield closed
+          entry = {
+            blockIndex: state.blockIndex,
+            id: event.id ?? `toolu_deepseek_${uuid()}`,
+            name: event.name ?? '',
+            args: '',
+          }
+          state.toolCalls.set(toolIndex, entry)
+          yield streamEvent({
+            type: 'content_block_start',
+            index: entry.blockIndex,
+            content_block: {
+              type: 'tool_use',
+              id: entry.id,
+              name: entry.name,
+              input: {},
+            },
+          })
+          state.openToolBlockIndices.add(entry.blockIndex)
+          state.blockIndex += 1
+        }
+        if (event.id) entry.id = event.id
+        if (event.name) entry.name = event.name
+        if (event.argumentsDelta) {
+          entry.args += event.argumentsDelta
+          yield streamEvent({
+            type: 'content_block_delta',
+            index: entry.blockIndex,
+            delta: {
+              type: 'input_json_delta',
+              partial_json: event.argumentsDelta,
+            },
+          })
+        }
+        if (event.finishReason) state.finishReason = event.finishReason
+        continue
+      }
+
+      if (event.type === 'finish') {
+        state.finishReason = event.finishReason
+        continue
+      }
+
+      if (event.type === 'usage') {
+        state.usage = event.usage
+        continue
+      }
+    }
+
+    for (const closed of closeAllOpenBlocks(state)) yield closed
+
+    const finish = mapDeepSeekFinishReason(state.finishReason)
+    const stopReason = mapStopReasonForClaudeCode(finish.finishReason)
+    const usageMapped = mapUsageForClaudeCode(state.usage)
+
+    yield streamEvent({
+      type: 'message_delta',
+      delta: { stop_reason: stopReason, stop_sequence: null },
+      usage: usageMapped,
+    })
+    yield streamEvent({ type: 'message_stop' })
+
+    const aggregatedToolCalls = Array.from(state.toolCalls.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([, entry]) => ({
+        id: entry.id,
+        type: 'function',
+        function: { name: entry.name, arguments: entry.args },
+      }))
+
+    const response = {
+      content: state.content,
+      reasoning: state.reasoning,
+      toolCalls: aggregatedToolCalls,
+      usage: state.usage,
+      finishReason: state.finishReason,
+    }
 
     await recordQueryCacheUsage(response.usage, stablePrefix)
 
     yield deepSeekResponseToAssistantMessage(response, {
-      model: resolveDeepSeekRuntimeModel(options.model) ?? 'deepseek-v4-pro',
+      messageId,
+      model: runtimeModel ?? 'deepseek-v4-pro',
       now,
       uuid,
     })
   }
+}
+
+function createStreamingState() {
+  return {
+    blockIndex: 0,
+    thinkingOpen: false,
+    textOpen: false,
+    openToolBlockIndices: new Set(),
+    toolCalls: new Map(),
+    content: '',
+    reasoning: '',
+    usage: null,
+    finishReason: null,
+  }
+}
+
+function* closeThinkingIfOpen(state) {
+  if (state.thinkingOpen) {
+    yield streamEvent({
+      type: 'content_block_stop',
+      index: state.blockIndex,
+    })
+    state.thinkingOpen = false
+    state.blockIndex += 1
+  }
+}
+
+function* closeOpenInlineBlocks(state) {
+  yield* closeThinkingIfOpen(state)
+  if (state.textOpen) {
+    yield streamEvent({
+      type: 'content_block_stop',
+      index: state.blockIndex,
+    })
+    state.textOpen = false
+    state.blockIndex += 1
+  }
+}
+
+function* closeAllOpenBlocks(state) {
+  yield* closeOpenInlineBlocks(state)
+  for (const toolBlockIndex of [...state.openToolBlockIndices].sort((a, b) => a - b)) {
+    yield streamEvent({
+      type: 'content_block_stop',
+      index: toolBlockIndex,
+    })
+  }
+  state.openToolBlockIndices.clear()
+}
+
+function streamEvent(event) {
+  return { type: 'stream_event', event }
 }
 
 async function recordQueryCacheUsage(usage, stablePrefix) {
@@ -108,12 +300,17 @@ export function resolveDeepSeekReasoningEffort(effortValue) {
 
 export function deepSeekResponseToAssistantMessage(
   response,
-  { model = 'deepseek-v4-pro', now = () => new Date(), uuid = randomUUID } = {},
+  {
+    messageId,
+    model = 'deepseek-v4-pro',
+    now = () => new Date(),
+    uuid = randomUUID,
+  } = {},
 ) {
-  const messageId = `msg_deepseek_${uuid()}`
+  const id = messageId ?? `msg_deepseek_${uuid()}`
   const content = []
 
-  if (response.reasoning && response.toolCalls?.length > 0) {
+  if (response.reasoning) {
     content.push({
       type: 'thinking',
       thinking: response.reasoning,
@@ -143,7 +340,7 @@ export function deepSeekResponseToAssistantMessage(
     uuid: uuid(),
     timestamp: now().toISOString(),
     message: {
-      id: messageId,
+      id,
       type: 'message',
       role: 'assistant',
       model,

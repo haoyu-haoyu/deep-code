@@ -39,7 +39,21 @@ const bootstrapResponseSchema = lazySchema(() =>
 
 type BootstrapResponse = z.infer<ReturnType<typeof bootstrapResponseSchema>>
 
+function isDeepCodeDeepSeekProvider(): boolean {
+  const provider = (
+    process.env.DEEPCODE_PROVIDER ??
+    process.env.DEEP_CODE_PROVIDER ??
+    'deepseek'
+  ).toLowerCase()
+  return provider === 'deepseek'
+}
+
 async function fetchBootstrapAPI(): Promise<BootstrapResponse | null> {
+  if (isDeepCodeDeepSeekProvider()) {
+    logForDebugging('[Bootstrap] Skipped: DeepSeek native provider')
+    return null
+  }
+
   if (isEssentialTrafficOnly()) {
     logForDebugging('[Bootstrap] Skipped: Nonessential traffic disabled')
     return null
