@@ -479,75 +479,44 @@ export async function loadConversationForResume(sessionId, opts) {
 
 ## Task B1 — 输入热路径分配优化
 
-- [ ] **状态**：未开始
+- [x] **状态**：已关闭（前提不成立；commit `f0b14c3` 后续）
 - **优先级**：⭐⭐
 - **预估工作量**：1.5 天
 - **风险**：中（hot path，回归风险高）
 
-### 问题描述
+### 调查结论
 
-每次按键触发以下分配（来自 Phase 0 调研）：
-- `src/hooks/useTextInput.ts:32` `new Map(input_map)` — 整个 input 映射重建
-- `src/hooks/useTextInput.ts:216-217` `text.slice(0, start)` + `text.slice(start + length)` — 整段文本切两次
-- `src/components/BaseTextInput.tsx:98` `.filter(...).map(...)` — 高亮数组重映射
+逐项验证后，B1 的三个子项前提都站不住脚：
 
-大缓冲区（> 500 字符）+ 多高亮场景下，每键 GC 压力 2-5ms。
+#### B1.1 — `mapInput` 的 `new Map(input_map)`
 
-### 实现步骤
+实测每按键开销 **0.55 µs**（100,000 次迭代 ≈ 55ms）。TODO 原文的 "2-5ms" 估算高了 **~4000 倍**。优化收益微秒级，但 ref-based 改造会改变闭包语义（捕获时刻 → 调用时刻），属于中风险结构改动。**收益/风险比不划算。**
 
-#### B1.1 input_map 用 ref 缓存
-```typescript
-// 现状每键 new Map()
-// 改为：用 ref 存 frozen map，仅 schema 变化时重建
-const inputMapRef = useRef<Map<...>>()
-if (!inputMapRef.current || schemaVersion !== lastSchemaVersionRef.current) {
-  inputMapRef.current = new Map(input_map)
-  lastSchemaVersionRef.current = schemaVersion
-}
+```
+Total: 55.2ms over 100,000 iterations
+Per keystroke: 0.55µs
+(B1 budget claim: 2,000-5,000µs/keystroke)
 ```
 
-#### B1.2 text edit 用索引视图代替 slice
-```typescript
-// 现状：const next = before.slice(0, start) + insert + before.slice(start + length)
-// 改为：用 piece-table 或 CursorBuffer 类，避免每键 O(n) 拷贝
-class TextBuffer {
-  private chunks: string[]
-  insert(pos, text) { /* O(log n) */ }
-  toString() { /* lazy join */ }
-}
-```
+#### B1.2 — `text.slice` 双拷贝
 
-#### B1.3 高亮缓存 viewport-bound
-```typescript
-const visibleHighlights = useMemo(
-  () => filteredHighlights.filter(h => isInViewport(h)).map(remapPosition),
-  [filteredHighlights, viewportCharOffset, viewportCharWidth]
-)
-```
+引用错位置：`src/hooks/useTextInput.ts:216-217` 是 `handleYankPop`（Meta+Y），每会话触发 ≤ 1 次的功能键，不是 hot path。
 
-文件：`src/hooks/useTextInput.ts:32, 216-217`、`src/components/BaseTextInput.tsx:98`
+真正的热点 slice 在 `src/utils/Cursor.ts:849-852`（`modifyText`），insert/del/backspace 共用。但 500 字符缓冲下 V8 的 rope-string 优化让两次 slice + concat 远低于 1ms。改 piece-table 需要重写 1530 行的 `Cursor` + 数十处调用方，**收益不抵成本**。
 
-### 验收标准
+#### B1.3 — 高亮 viewport-bound 缓存
 
-- 大缓冲区（500 字）+ 5 高亮场景 keystroke→paint p99 减少 30%+
-- GC pressure（heap allocation/keystroke）减少 50%+
-- 已有 textinput 测试 100% 通过
+`useMemo` 提议的依赖列表 `[filteredHighlights, viewportCharOffset, viewportCharWidth]` 中：`cursorOffset` → `cursorFiltered` → `filteredHighlights` 每按键变化，memo 命中率为 0。**方案前提与 React memo 语义冲突。**
 
-### 测试方案
+### 不修改的决定
 
-**自动化：**
-- `test/textinput-perf.test.mjs`：1000 次模拟按键，断言总耗时 < 100ms
-- 用 `--expose-gc` + `process.memoryUsage()` 测 GC 压力
-
-**手工：**
-- 在 prompt 里输入大量代码（含 markdown 高亮），输入流畅度对比
-- 长 paste（10KB）后立刻打字，确认不卡
+与 A3、B2 同性质——审计假设的"GC pressure 2-5ms"在实测中不存在。以微秒级理论收益换中风险结构改动不划算。如果未来 keystroke→paint p99 出现真问题，应该从 React render 链路 / Yoga layout 入手，而不是这些字符串/Map 分配。
 
 ---
 
 ## Task B2 — Cursor blink 中心化
 
-- [x] **状态**：已关闭（无需改动）
+- [x] **状态**：已关闭（无需改动；commit `f0b14c3`）
 - **优先级**：⭐
 - **预估工作量**：0.5 天
 - **风险**：低
@@ -565,7 +534,7 @@ const visibleHighlights = useMemo(
 
 ## Task B3 — Voice waveform 完全 unmount
 
-- [x] **状态**：已完成
+- [x] **状态**：已完成（commit `f0b14c3`）
 - **优先级**：⭐
 - **实际工作量**：0.5 天（缩小作用域到条件 Box 包装）
 - **风险**：低
