@@ -619,7 +619,7 @@ const visibleHighlights = useMemo(
 
 ## Task 5.1 — Expect-driven 集成测试
 
-- [x] **状态**：已完成（commit TBD）。Scope 调整：node-pty 没装，真正 expect-driven pty 测试需要额外依赖。改用静态分析 + 子进程 spawn 测试覆盖关键路径（perf-compare 11 个场景，CI workflow 9 个保护点 + 测试文件清单同步）。整体 232/232 全绿。
+- [x] **状态**：已完成（commit 7506091）。Scope 调整：node-pty 没装，真正 expect-driven pty 测试需要额外依赖。改用静态分析 + 子进程 spawn 测试覆盖关键路径（perf-compare 11 个场景，CI workflow 9 个保护点 + 测试文件清单同步）。整体 232/232 全绿。
 - **优先级**：⭐⭐⭐⭐
 - **预估工作量**：0.25 天
 
@@ -648,7 +648,7 @@ test/integration/
 
 ## Task 5.2 — CI 性能回归门禁
 
-- [x] **状态**：已完成（commit TBD）。`scripts/perf-compare.mjs` + `.github/workflows/ci.yml`：PR 触发时 checkout merge commit + base SHA，分别跑 perf baseline，diff 对比；超过 20% 退化 fail，sub-5ms 指标用 2ms 噪音底防误报；measured→error 视为 probe broken 也 fail。PR 评论 best-effort（forked PR 不会因 token 只读而 break job）。Codex 修了 7 处：tee 没 pipefail / fork PR 评论会 throw / measured→error 漏 gate / SHA 比较点错 / pagination 不全 / placeholder↔error 分类错 / 测试覆盖不全。
+- [x] **状态**：已完成（commit 7506091）。`scripts/perf-compare.mjs` + `.github/workflows/ci.yml`：PR 触发时 checkout merge commit + base SHA，分别跑 perf baseline，diff 对比；超过 20% 退化 fail，sub-5ms 指标用 2ms 噪音底防误报；measured→error 视为 probe broken 也 fail。PR 评论 best-effort（forked PR 不会因 token 只读而 break job）。Codex 修了 7 处：tee 没 pipefail / fork PR 评论会 throw / measured→error 漏 gate / SHA 比较点错 / pagination 不全 / placeholder↔error 分类错 / 测试覆盖不全。
 - **优先级**：⭐⭐⭐
 - **预估工作量**：0.25 天
 
@@ -699,4 +699,4 @@ test/integration/
 | 2026-05-07 | Task A4 paste cleanup | 完成（DBP/DMT/DFE 顺序前置 + drainStdin 容量 1KB→1MB + final drain 后置到 React teardown 之后 + xtversion clearImmediate 修复）| feee542 |
 | 2026-05-07 | Task S1 tool streaming | 完成（lastLines 5→10 + chunkDelta UTF-8-safe 增量通道 + tailFileRaw raw 字节路径修复 tail 边界 lossy 解码）| 2ba04ad |
 | 2026-05-08 | Task S4 streaming JSONL infra | 完成（streamingJsonl.mjs reverse parser + tail-N，4x 快于 full parse）| 154376f |
-| 2026-05-08 | Phase 5 perf-compare + CI gate | 完成（perf-compare.mjs 11 测试 + ci.yml 矩阵 + PR 比较 + 评论 best-effort）| TBD |
+| 2026-05-08 | Phase 5 perf-compare + CI gate | 完成（perf-compare.mjs 14 测试 + ci.yml 矩阵 + PR 比较 + 评论 best-effort）| 7506091 |
