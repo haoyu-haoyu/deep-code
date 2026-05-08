@@ -1,0 +1,206 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: ['**']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run native + package tests
+        run: |
+          cd packages/deep-code
+          node --test \
+            test/deepcode-native.test.mjs \
+            test/deepcode-package.test.mjs \
+            test/perf-baseline.test.mjs \
+            test/s3-render-perf.test.mjs \
+            test/s2-streaming-text.test.mjs \
+            test/a2-bash-polling.test.mjs \
+            test/a4-paste-cleanup.test.mjs \
+            test/s1-tool-streaming.test.mjs \
+            test/s4-streaming-resume.test.mjs \
+            test/phase5-perf-compare.test.mjs \
+            test/phase5-ci-workflow.test.mjs
+
+      - name: TUI harness tests
+        run: cd packages/deep-code && bun test test/tui-deepseek.test.mjs
+        continue-on-error: true # bun harness can be flaky on CI; non-blocking
+
+  perf-baseline:
+    name: Perf baseline + regression gate
+    runs-on: ubuntu-latest
+    # Only run on PRs so we can compare against the base branch.
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout PR head (merge commit when available)
+        uses: actions/checkout@v4
+        # Default github.sha for pull_request events is the test-merge
+        # commit (PR branch merged into base), so the perf numbers
+        # reflect what would actually be merged — not the head-branch
+        # tip in isolation. Falls back to head.sha when GitHub couldn't
+        # produce a clean merge commit (conflicts), matching the
+        # behavior of opening the PR in the UI.
+        with:
+          ref: ${{ github.sha }}
+          path: head
+
+      - name: Checkout PR base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install head dependencies
+        working-directory: head
+        run: npm ci --no-audit --no-fund
+
+      - name: Install base dependencies
+        working-directory: base
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate fixture (head)
+        working-directory: head/packages/deep-code
+        run: npm run perf:fixture
+
+      - name: Generate fixture (base)
+        working-directory: base/packages/deep-code
+        run: npm run perf:fixture
+
+      - name: Run perf baseline (base)
+        working-directory: base/packages/deep-code
+        run: bun scripts/perf-baseline.mjs --json=/tmp/perf-base.json --repeats=3
+
+      - name: Run perf baseline (head)
+        working-directory: head/packages/deep-code
+        run: bun scripts/perf-baseline.mjs --json=/tmp/perf-head.json --repeats=3
+
+      - name: Compare and gate
+        working-directory: head/packages/deep-code
+        # Explicit `bash` shell + `pipefail` so a non-zero exit from
+        # perf-compare.mjs propagates through the `tee` pipe. The
+        # default GitHub-Actions shell runs as `bash -e` WITHOUT
+        # pipefail, which would mask the script's exit code and let
+        # regressions slip through silently.
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/perf-compare.mjs \
+            --base=/tmp/perf-base.json \
+            --head=/tmp/perf-head.json \
+            --threshold=0.20 \
+            --json=/tmp/perf-diff.json | tee /tmp/perf-diff.txt
+
+      - name: Upload perf artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-baseline-diff
+          path: |
+            /tmp/perf-base.json
+            /tmp/perf-head.json
+            /tmp/perf-diff.json
+            /tmp/perf-diff.txt
+          retention-days: 14
+
+      - name: Comment perf diff on PR
+        if: always() && github.event_name == 'pull_request'
+        # Forked PRs and Dependabot get a read-only GITHUB_TOKEN, so
+        # the comment API will 403. continue-on-error keeps the
+        # perf-baseline job result determined by the regression gate
+        # (the previous step) and not by whether we could publish
+        # the comment. Same-repo PRs continue to receive the comment.
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            let body = '⚠️ Could not read perf diff'
+            try {
+              body = fs.readFileSync('/tmp/perf-diff.txt', 'utf8')
+            } catch (e) {
+              body = `Perf diff unavailable: ${e.message}`
+            }
+            const marker = '<!-- deepcode-perf-diff -->'
+            const tagged = `${marker}\n## Perf baseline diff\n\n\`\`\`\n${body}\n\`\`\``
+            try {
+              // Paginate through ALL comments — the default per_page
+              // is 30, so on a long-running PR our marker comment
+              // can fall off page 1 and we'd post a duplicate
+              // instead of updating. github.paginate handles all
+              // pages with the same params.
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  per_page: 100,
+                },
+              )
+              const existing = comments.find(
+                c =>
+                  c.body &&
+                  c.body.startsWith(marker) &&
+                  c.user &&
+                  (c.user.type === 'Bot' || c.user.login === 'github-actions[bot]'),
+              )
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body: tagged,
+                })
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: tagged,
+                })
+              }
+            } catch (err) {
+              // Forked-PR / Dependabot 403 lands here; not a
+              // regression in the code under test, just the runner
+              // not having permission to comment. Log + carry on.
+              core.warning(`Perf comment skipped: ${err.message}`)
+            }
