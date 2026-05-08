@@ -333,39 +333,69 @@ export async function loadConversationForResume(sessionId, opts) {
 
 ## Task A1 — MCP 连接非阻塞化
 
-- [ ] **状态**：未开始
+- [x] **状态**：已关闭（前提不成立；交互模式已经非阻塞）
 - **优先级**：⭐⭐⭐
 - **预估工作量**：0.5-1 天
 - **风险**：低
 
-### 问题描述
+### 调查结论
 
-`src/main.tsx:2412, 2694-2726` 的 `await connectMcpBatch()` 在 REPL 渲染前串行等所有 MCP 服务器握手。3 个 MCP server 大约阻塞 500ms，用户感觉"启动慢"。
+逐行追代码，A1 的核心假设站不住脚——**交互 REPL 的冷启动从来没被 MCP 连接阻塞过**。
 
-### 实现步骤
+#### 证据 1：`main.tsx:2442-2455` 的明确不变量注释
 
-1. 把 `await connectMcpBatch()` 从 main.tsx 的 preAction 阶段移到 REPL `useEffect` 里
-2. 工具列表初始化时显示 "MCP loading..." skeleton，对应工具调用临时排队
-3. MCP ready 后通过 `setTools(mergedTools)` 触发重渲染
-4. 保留 `--print` 模式的同步等待逻辑（CI 场景需要工具齐全才能跑）
+```js
+// MCP never blocks REPL render OR turn 1 TTFT. useManageMCPConnections
+// populates appState.mcp async as servers connect (connectToServer is
+// memoized — the prefetch calls above and the hook converge on the same
+// connections). getToolUseContext reads store.getState() fresh via
+// computeTools(), so turn 1 sees whatever's connected by query time.
+// Slow servers populate for turn 2+. Matches interactive-no-prompt
+// behavior. Print mode: per-server push into headlessStore (below).
+```
 
-文件：`src/main.tsx:2412, 2694-2726`、`src/screens/REPL.tsx`
+这是上游 Claude Code 团队留下的设计文档，明确"MCP 永不阻塞 REPL 渲染或第 1 轮 TTFT"。
 
-### 验收标准
+#### 证据 2：`main.tsx:2452` 的 fire-and-forget 模式
 
-- Cold start 到 first paint 减少 300-500ms（取决于 MCP 配置）
-- MCP 加载期间打字不阻塞
-- MCP 加载完成后，新对话能正确使用 MCP 工具
+```js
+mcpPromise.catch(() => {});
+```
 
-### 测试方案
+`mcpPromise`（包含 `prefetchAllMcpResources` 调用）只挂了 `.catch` 抑制 unhandledRejection，**没有任何 `await`**。Promise 在后台运行，`useManageMCPConnections` 通过 memoize 复用同一连接。
 
-**自动化：**
-- `test/mcp-async-init.test.mjs`：mock 一个 1s 才响应的 MCP server，断言 REPL render 在 100ms 内完成（而不是等 1s）
+#### 证据 3：唯一同步 `await` 在 print 模式块内
 
-**手工：**
-- 配 3 个 MCP server，对比启动时间
-- 启动后立刻打字，确认输入流畅
-- MCP ready 后用一个 MCP 工具，确认调用成功
+`main.tsx:2733` 的 `await connectMcpBatch(regularMcpConfigs, 'regular')` 位于 `-p/--print` 处理块内，注释（2723-2730）解释为何必须同步：单轮调用需要 turn-1 工具齐全，否则 SDK init message 缺工具。这是设计选择，不是 bug。
+
+#### 证据 4：`useManageMCPConnections.ts:894-902` 的非阻塞模式
+
+```js
+getMcpToolsCommandsAndResources(onConnectionAttempt, enabledConfigs)
+  .catch(error => { /* log only */ })
+```
+
+Hook 内连接也是 fire-and-forget，工具通过回调 `onConnectionAttempt` 增量推到 `appState.mcp`。
+
+### 不变量护栏
+
+新增 `test/a1-mcp-nonblocking.test.mjs` (4 个静态分析断言)：
+1. `mcpPromise.catch(() => {})` 模式存在 + 不存在 `await mcpPromise`
+2. `await connectMcpBatch` 全文件唯一（即在 print 块内那一处）
+3. `useManageMCPConnections` 包含 fire-and-forget `getMcpToolsCommandsAndResources(...).catch(`，且不存在 `await getMcpToolsCommandsAndResources`
+4. `main.tsx` 必须保留"MCP never blocks REPL render OR turn 1 TTFT"注释
+
+任何后续 PR 不小心加了 `await` 就会被 CI 拦下来。
+
+### 与其他已关闭任务的同性
+
+A1、A3、B1、B2 是同一类——审计 agent 在没有真正读源码的情况下给出建议，逐项验证后发现假设错误：
+- A3：throttle 配置和 Claude Code 上游一字不差
+- B1：`new Map(input_map)` 实测 0.55µs/键，比 audit 估算低 ~4000 倍
+- B2：`useBlink` 已经用共享 `ClockContext`
+- A1：交互模式 MCP 已经是 fire-and-forget，print 模式同步是设计
+
+收益：通过 4 次代码审计 + 实测，建立了对"先量再改"的纪律。
 
 ---
 
