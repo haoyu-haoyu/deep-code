@@ -99,23 +99,48 @@ jobs:
         working-directory: base
         run: npm ci --no-audit --no-fund
 
+      # Detect whether base has the perf infrastructure. The first PR that
+      # introduces this workflow lands a base (main) that predates the
+      # `perf:fixture` / `perf:baseline` scripts and `scripts/perf-baseline.mjs`.
+      # Without this guard, the gate self-destructs on the very PR that
+      # creates it (and on any future PR whose base is older than the perf
+      # infra). Skip-with-success in that case so the PR isn't held up.
+      - name: Detect perf infra on base
+        id: base-perf
+        working-directory: base/packages/deep-code
+        shell: bash
+        run: |
+          if [ -f scripts/perf-baseline.mjs ] && \
+             node -e "process.exit(require('./package.json').scripts['perf:fixture'] ? 0 : 1)"
+          then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::perf-baseline gate skipped: base lacks perf:fixture or scripts/perf-baseline.mjs (likely the first PR introducing the gate)"
+          fi
+
       - name: Generate fixture (head)
+        if: steps.base-perf.outputs.available == 'true'
         working-directory: head/packages/deep-code
         run: npm run perf:fixture
 
       - name: Generate fixture (base)
+        if: steps.base-perf.outputs.available == 'true'
         working-directory: base/packages/deep-code
         run: npm run perf:fixture
 
       - name: Run perf baseline (base)
+        if: steps.base-perf.outputs.available == 'true'
         working-directory: base/packages/deep-code
         run: bun scripts/perf-baseline.mjs --json=/tmp/perf-base.json --repeats=3
 
       - name: Run perf baseline (head)
+        if: steps.base-perf.outputs.available == 'true'
         working-directory: head/packages/deep-code
         run: bun scripts/perf-baseline.mjs --json=/tmp/perf-head.json --repeats=3
 
       - name: Compare and gate
+        if: steps.base-perf.outputs.available == 'true'
         working-directory: head/packages/deep-code
         # Explicit `bash` shell + `pipefail` so a non-zero exit from
         # perf-compare.mjs propagates through the `tee` pipe. The
@@ -132,7 +157,7 @@ jobs:
             --json=/tmp/perf-diff.json | tee /tmp/perf-diff.txt
 
       - name: Upload perf artifacts
-        if: always()
+        if: always() && steps.base-perf.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: perf-baseline-diff
@@ -144,7 +169,7 @@ jobs:
           retention-days: 14
 
       - name: Comment perf diff on PR
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && steps.base-perf.outputs.available == 'true'
         # Forked PRs and Dependabot get a read-only GITHUB_TOKEN, so
         # the comment API will 403. continue-on-error keeps the
         # perf-baseline job result determined by the regression gate
