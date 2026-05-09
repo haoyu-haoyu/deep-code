@@ -1,0 +1,1591 @@
+[
+  {
+    "file": "src/bootstrap/state.ts",
+    "line": 1,
+    "import": "BetaMessageStreamParams",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/bridge/inboundAttachments.ts",
+    "line": 13,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/bridge/inboundMessages.ts",
+    "line": 5,
+    "import": "Base64ImageSource",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/bridge/inboundMessages.ts",
+    "line": 5,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/bridge/inboundMessages.ts",
+    "line": 5,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/cli/print.ts",
+    "line": 131,
+    "import": "PermissionMode",
+    "from": "@anthropic-ai/claude-agent-sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/cli/print.ts",
+    "line": 295,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/commands/createMovedToPluginCommand.ts",
+    "line": 1,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.js",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/commands/review.ts",
+    "line": 1,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.js",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/commands/review/reviewRemote.ts",
+    "line": 12,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.js",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/commands/review/ultrareviewCommand.tsx",
+    "line": 1,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.js",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/commands/statusline.tsx",
+    "line": 1,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/agents/generateAgent.ts",
+    "line": 1,
+    "import": "ContentBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/agents/new-agent-creation/wizard-steps/GenerateStep.tsx",
+    "line": 1,
+    "import": "APIUserAbortError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/components/FallbackToolUseErrorMessage.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/Message.tsx",
+    "line": 3,
+    "import": "BetaContentBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/Message.tsx",
+    "line": 4,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/Message.tsx",
+    "line": 4,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/Message.tsx",
+    "line": 4,
+    "import": "ThinkingBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/Message.tsx",
+    "line": 4,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/Message.tsx",
+    "line": 4,
+    "import": "ToolUseBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/AssistantTextMessage.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/AssistantThinkingMessage.tsx",
+    "line": 2,
+    "import": "ThinkingBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/AssistantThinkingMessage.tsx",
+    "line": 2,
+    "import": "ThinkingBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/AssistantToolUseMessage.tsx",
+    "line": 2,
+    "import": "ToolUseBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/GroupedToolUseContent.tsx",
+    "line": 1,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/GroupedToolUseContent.tsx",
+    "line": 1,
+    "import": "ToolUseBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserAgentNotificationMessage.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserBashInputMessage.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserChannelMessage.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserCommandMessage.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserPromptMessage.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserResourceUpdateMessage.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserTeammateMessage.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserTextMessage.tsx",
+    "line": 3,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserToolResultMessage/UserToolErrorMessage.tsx",
+    "line": 3,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserToolResultMessage/UserToolResultMessage.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/messages/UserToolResultMessage/utils.tsx",
+    "line": 2,
+    "import": "ToolUseBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/MessageSelector.tsx",
+    "line": 2,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/MessageSelector.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/permissions/AskUserQuestionPermissionRequest/AskUserQuestionPermissionRequest.tsx",
+    "line": 2,
+    "import": "Base64ImageSource",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/permissions/AskUserQuestionPermissionRequest/AskUserQuestionPermissionRequest.tsx",
+    "line": 2,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx",
+    "line": 44,
+    "import": "Base64ImageSource",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx",
+    "line": 44,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/components/permissions/PermissionRequest.tsx",
+    "line": 42,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/cost-tracker.ts",
+    "line": 1,
+    "import": "BetaUsage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/hooks/toolPermission/handlers/interactiveHandler.ts",
+    "line": 2,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/hooks/toolPermission/handlers/swarmWorkerHandler.ts",
+    "line": 2,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/hooks/toolPermission/PermissionContext.ts",
+    "line": 2,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/hooks/useCanUseTool.tsx",
+    "line": 3,
+    "import": "APIUserAbortError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/hooks/usePromptsFromClaudeInChrome.tsx",
+    "line": 2,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/query.ts",
+    "line": 5,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/query.ts",
+    "line": 5,
+    "import": "ToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/QueryEngine.ts",
+    "line": 2,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/screens/REPL.tsx",
+    "line": 177,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/screens/REPL.tsx",
+    "line": 177,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaContentBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaJSONOutputFormat",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaMessage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaMessageDeltaUsage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaMessageStreamParams",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaOutputConfig",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaRawMessageStreamEvent",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaRequestDocumentBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaStopReason",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaToolChoiceAuto",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaToolChoiceTool",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaToolUnion",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaUsage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 19,
+    "import": "BetaMessageParam",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 20,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 21,
+    "import": "Stream",
+    "from": "@anthropic-ai/sdk/streaming.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 110,
+    "import": "ClientOptions",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 115,
+    "import": "APIConnectionTimeoutError",
+    "from": "@anthropic-ai/sdk/error",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 115,
+    "import": "APIError",
+    "from": "@anthropic-ai/sdk/error",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/claude.ts",
+    "line": 115,
+    "import": "APIUserAbortError",
+    "from": "@anthropic-ai/sdk/error",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/client.ts",
+    "line": 1,
+    "import": "ClientOptions",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/client.ts",
+    "line": 1,
+    "import": "Anthropic",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/dumpPrompts.ts",
+    "line": 1,
+    "import": "ClientOptions",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/errors.ts",
+    "line": 5,
+    "import": "APIConnectionError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/errors.ts",
+    "line": 5,
+    "import": "APIConnectionTimeoutError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/errors.ts",
+    "line": 5,
+    "import": "APIError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/errors.ts",
+    "line": 9,
+    "import": "BetaMessage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/errors.ts",
+    "line": 9,
+    "import": "BetaStopReason",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/errorUtils.ts",
+    "line": 1,
+    "import": "APIError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/logging.ts",
+    "line": 2,
+    "import": "APIError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/logging.ts",
+    "line": 6,
+    "import": "BetaStopReason",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/logging.ts",
+    "line": 6,
+    "import": "BetaUsage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/promptCacheBreakDetection.ts",
+    "line": 1,
+    "import": "BetaToolUnion",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/promptCacheBreakDetection.ts",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/withRetry.ts",
+    "line": 2,
+    "import": "Anthropic",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/api/withRetry.ts",
+    "line": 7,
+    "import": "APIConnectionError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/withRetry.ts",
+    "line": 7,
+    "import": "APIError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/api/withRetry.ts",
+    "line": 7,
+    "import": "APIUserAbortError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/awaySummary.ts",
+    "line": 1,
+    "import": "APIUserAbortError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/claudeAiLimits.ts",
+    "line": 1,
+    "import": "APIError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/claudeAiLimits.ts",
+    "line": 2,
+    "import": "MessageParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/compact/compact.ts",
+    "line": 10,
+    "import": "APIUserAbortError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/compact/microCompact.ts",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/mcp/client.ts",
+    "line": 6,
+    "import": "Base64ImageSource",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/mcp/client.ts",
+    "line": 6,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/mcp/client.ts",
+    "line": 6,
+    "import": "MessageParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/rateLimitMocking.ts",
+    "line": 6,
+    "import": "APIError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/services/tokenEstimation.ts",
+    "line": 1,
+    "import": "Anthropic",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/tokenEstimation.ts",
+    "line": 2,
+    "import": "BetaMessageParam",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/tools/StreamingToolExecutor.ts",
+    "line": 1,
+    "import": "ToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/tools/toolExecution.ts",
+    "line": 6,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/tools/toolExecution.ts",
+    "line": 6,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/tools/toolExecution.ts",
+    "line": 6,
+    "import": "ToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/tools/toolOrchestration.ts",
+    "line": 1,
+    "import": "ToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/services/vcr.ts",
+    "line": 1,
+    "import": "BetaContentBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/skills/bundledSkills.ts",
+    "line": 1,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tasks/RemoteAgentTask/RemoteAgentTask.tsx",
+    "line": 1,
+    "import": "ToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/Tool.ts",
+    "line": 4,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/Tool.ts",
+    "line": 4,
+    "import": "ToolUseBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/AgentTool/forkSubagent.ts",
+    "line": 2,
+    "import": "BetaToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/AgentTool/UI.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/AgentTool/UI.tsx",
+    "line": 2,
+    "import": "ToolUseBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/BashTool/bashPermissions.ts",
+    "line": 2,
+    "import": "APIUserAbortError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/tools/BashTool/BashTool.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/BashTool/UI.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/BashTool/utils.ts",
+    "line": 5,
+    "import": "Base64ImageSource",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/BashTool/utils.ts",
+    "line": 5,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/BashTool/utils.ts",
+    "line": 5,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/FileEditTool/UI.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/FileReadTool/FileReadTool.ts",
+    "line": 1,
+    "import": "Base64ImageSource",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/FileReadTool/UI.tsx",
+    "line": 1,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/FileWriteTool/UI.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/GlobTool/UI.tsx",
+    "line": 1,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/GrepTool/UI.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/LSPTool/UI.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/NotebookEditTool/UI.tsx",
+    "line": 1,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/PowerShellTool/PowerShellTool.tsx",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/PowerShellTool/UI.tsx",
+    "line": 1,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/SkillTool/SkillTool.ts",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/SkillTool/UI.tsx",
+    "line": 1,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/ToolSearchTool/ToolSearchTool.ts",
+    "line": 1,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/WebSearchTool/WebSearchTool.ts",
+    "line": 4,
+    "import": "BetaContentBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/tools/WebSearchTool/WebSearchTool.ts",
+    "line": 4,
+    "import": "BetaWebSearchTool20250305",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/types/command.ts",
+    "line": 1,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/types/permissions.ts",
+    "line": 10,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/types/textInputTypes.ts",
+    "line": 1,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/advisor.ts",
+    "line": 1,
+    "import": "BetaUsage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/analyzeContext.ts",
+    "line": 2,
+    "import": "Anthropic",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/api.ts",
+    "line": 1,
+    "import": "Anthropic",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/api.ts",
+    "line": 5,
+    "import": "BetaTool",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/api.ts",
+    "line": 5,
+    "import": "BetaToolUnion",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/attachments.ts",
+    "line": 72,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/attachments.ts",
+    "line": 72,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/attachments.ts",
+    "line": 72,
+    "import": "Base64ImageSource",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/contextAnalysis.ts",
+    "line": 1,
+    "import": "BetaContentBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/contextAnalysis.ts",
+    "line": 5,
+    "import": "ContentBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/contextAnalysis.ts",
+    "line": 5,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/dxt/helpers.ts",
+    "line": 1,
+    "import": "McpbManifest",
+    "from": "@anthropic-ai/mcpb",
+    "category": "sdk-mcpb"
+  },
+  {
+    "file": "src/utils/errors.ts",
+    "line": 1,
+    "import": "APIUserAbortError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/utils/groupToolUses.ts",
+    "line": 1,
+    "import": "BetaToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/groupToolUses.ts",
+    "line": 2,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/imageResizer.ts",
+    "line": 4,
+    "import": "Base64ImageSource",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/imageResizer.ts",
+    "line": 4,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/log.ts",
+    "line": 2,
+    "import": "BetaMessageStreamParams",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/mcpValidation.ts",
+    "line": 5,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/mcpValidation.ts",
+    "line": 5,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/mcpValidation.ts",
+    "line": 5,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messageQueueManager.ts",
+    "line": 2,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 2,
+    "import": "BetaUsage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "ContentBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "RedactedThinkingBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "RedactedThinkingBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "ThinkingBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "ThinkingBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "ToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 14,
+    "import": "ToolUseBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 94,
+    "import": "APIError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 101,
+    "import": "BetaContentBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 101,
+    "import": "BetaMessage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 101,
+    "import": "BetaRedactedThinkingBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 101,
+    "import": "BetaThinkingBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages.ts",
+    "line": 101,
+    "import": "BetaToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/messages/mappers.ts",
+    "line": 1,
+    "import": "BetaContentBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/model/validateModel.ts",
+    "line": 11,
+    "import": "NotFoundError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/utils/model/validateModel.ts",
+    "line": 11,
+    "import": "APIError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/utils/model/validateModel.ts",
+    "line": 11,
+    "import": "APIConnectionError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/utils/model/validateModel.ts",
+    "line": 11,
+    "import": "AuthenticationError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/utils/modelCost.ts",
+    "line": 1,
+    "import": "BetaUsage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/notebook.ts",
+    "line": 5,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/notebook.ts",
+    "line": 5,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/notebook.ts",
+    "line": 5,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/permissions/classifierShared.ts",
+    "line": 9,
+    "import": "BetaContentBlock",
+    "from": "@anthropic-ai/sdk/resources/beta/messages.js",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/permissions/permissions.ts",
+    "line": 2,
+    "import": "APIUserAbortError",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/utils/permissions/yoloClassifier.ts",
+    "line": 2,
+    "import": "Anthropic",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/permissions/yoloClassifier.ts",
+    "line": 3,
+    "import": "BetaToolUnion",
+    "from": "@anthropic-ai/sdk/resources/beta/messages.js",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/plugins/mcpbHandler.ts",
+    "line": 4,
+    "import": "McpbManifest",
+    "from": "@anthropic-ai/mcpb",
+    "category": "sdk-mcpb"
+  },
+  {
+    "file": "src/utils/plugins/mcpbHandler.ts",
+    "line": 4,
+    "import": "McpbUserConfigurationOption",
+    "from": "@anthropic-ai/mcpb",
+    "category": "sdk-mcpb"
+  },
+  {
+    "file": "src/utils/processUserInput/processBashCommand.tsx",
+    "line": 1,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/processUserInput/processSlashCommand.tsx",
+    "line": 2,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/processUserInput/processSlashCommand.tsx",
+    "line": 2,
+    "import": "TextBlockParam",
+    "from": "@anthropic-ai/sdk/resources",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/processUserInput/processTextPrompt.ts",
+    "line": 1,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/processUserInput/processUserInput.ts",
+    "line": 6,
+    "import": "Base64ImageSource",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/processUserInput/processUserInput.ts",
+    "line": 6,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/processUserInput/processUserInput.ts",
+    "line": 6,
+    "import": "ImageBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/queryHelpers.ts",
+    "line": 1,
+    "import": "ToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 17,
+    "import": "FsReadRestrictionConfig",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 17,
+    "import": "FsWriteRestrictionConfig",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 17,
+    "import": "IgnoreViolationsConfig",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 17,
+    "import": "NetworkHostPattern",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 17,
+    "import": "NetworkRestrictionConfig",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 17,
+    "import": "SandboxAskCallback",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 17,
+    "import": "SandboxDependencyCheck",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 17,
+    "import": "SandboxRuntimeConfig",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 17,
+    "import": "SandboxViolationEvent",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 22,
+    "import": "SandboxManager",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 22,
+    "import": "SandboxRuntimeConfigSchema",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/utils/sandbox/sandbox-adapter.ts",
+    "line": 22,
+    "import": "SandboxViolationStore",
+    "from": "@anthropic-ai/sandbox-runtime",
+    "category": "sdk-runtime"
+  },
+  {
+    "file": "src/utils/sideQuery.ts",
+    "line": 1,
+    "import": "Anthropic",
+    "from": "@anthropic-ai/sdk",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/sideQuery.ts",
+    "line": 2,
+    "import": "BetaToolUnion",
+    "from": "@anthropic-ai/sdk/resources/beta/messages.js",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/swarm/inProcessRunner.ts",
+    "line": 13,
+    "import": "ContentBlockParam",
+    "from": "@anthropic-ai/sdk/resources/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/tokens.ts",
+    "line": 1,
+    "import": "BetaUsage",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/toolResultStorage.ts",
+    "line": 5,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources/index.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/toolSchemaCache.ts",
+    "line": 1,
+    "import": "BetaTool",
+    "from": "@anthropic-ai/sdk/resources/beta/messages/messages.mjs",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/ultraplan/ccrSession.ts",
+    "line": 10,
+    "import": "ToolResultBlockParam",
+    "from": "@anthropic-ai/sdk/resources",
+    "category": "sdk-types"
+  },
+  {
+    "file": "src/utils/ultraplan/ccrSession.ts",
+    "line": 10,
+    "import": "ToolUseBlock",
+    "from": "@anthropic-ai/sdk/resources",
+    "category": "sdk-types"
+  }
+]
