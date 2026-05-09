@@ -38,6 +38,7 @@ jobs:
       - name: Run native + package tests
         run: |
           cd packages/deep-code
+          shopt -s nullglob
           node --test \
             test/deepcode-native.test.mjs \
             test/deepcode-package.test.mjs \
@@ -51,7 +52,10 @@ jobs:
             test/phase5-perf-compare.test.mjs \
             test/phase5-ci-workflow.test.mjs \
             test/b3-voice-unmount.test.mjs \
-            test/a1-mcp-nonblocking.test.mjs
+            test/a1-mcp-nonblocking.test.mjs \
+            test/sandbox-fortress/unit/*.test.mjs \
+            test/sandbox-fortress/integration/*.test.mjs \
+            test/sandbox-fortress/redteam/*.test.mjs
 
       - name: TUI harness tests
         run: cd packages/deep-code && bun test test/tui-deepseek.test.mjs
