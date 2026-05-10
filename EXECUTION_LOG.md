@@ -78,7 +78,7 @@ phase entry.
 | Task | Status | PR | Commit | Notes |
 |---|---|---|---|---|
 | F1.1 migrate adapter into fortress | done | #17 | `cbe57d4` | git mv plus shim |
-| F1.2 per-tool sandbox profiles | done | #24 | `MERGE_SHA` | TOOL_PROFILES + mergeProfileIntoConfig + Shell/Bash/manager plumbing; FS enforcement working; network enforcement deferred to F2.x |
+| F1.2 per-tool sandbox profiles | done | #24 | `a0a72c2` | TOOL_PROFILES + mergeProfileIntoConfig + Shell/Bash/manager plumbing; FS enforcement working; network enforcement deferred to F2.x |
 | F1.3 adapter test coverage hardening | ready | — | — | depends on F1.2 |
 
 ### F2-F5
