@@ -1,7 +1,6 @@
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { memo, type ReactNode, useMemo, useRef } from 'react';
-import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
 import { getBridgeStatus } from '../../bridge/bridgeStatusUtil.js';
 import { useSetPromptOverlay } from '../../context/promptOverlayContext.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
@@ -171,7 +170,7 @@ function BridgeStatusIndicator({
   const explicit = useAppState(s_3 => s_3.replBridgeExplicit);
 
   // Failed state is surfaced via notification (useReplBridge), not a footer pill.
-  if (!isBridgeEnabled() || !enabled) return null;
+  if (!enabled) return null;
   const status = getBridgeStatus({
     error: undefined,
     connected,
