@@ -44,6 +44,10 @@ import {
   updateSettingsForSource,
 } from '../../utils/settings/settings.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
+import {
+  mergeProfileIntoConfig,
+  TOOL_PROFILES,
+} from './per-tool-profiles.js'
 
 // ============================================================================
 // Settings Converter
@@ -706,6 +710,7 @@ async function wrapWithSandbox(
   binShell?: string,
   customConfig?: Partial<SandboxRuntimeConfig>,
   abortSignal?: AbortSignal,
+  toolName?: string,
 ): Promise<string> {
   // If sandboxing is enabled, ensure initialization is complete
   if (isSandboxingEnabled()) {
@@ -714,6 +719,15 @@ async function wrapWithSandbox(
     } else {
       throw new Error('Sandbox failed to initialize. ')
     }
+  }
+
+  const profile = toolName ? TOOL_PROFILES[toolName] : undefined
+  if (profile) {
+    customConfig = mergeProfileIntoConfig(
+      profile,
+      customConfig,
+      convertToSandboxRuntimeConfig(getSettings_DEPRECATED()),
+    )
   }
 
   return BaseSandboxManager.wrapWithSandbox(
@@ -912,6 +926,7 @@ export interface ISandboxManager {
     binShell?: string,
     customConfig?: Partial<SandboxRuntimeConfig>,
     abortSignal?: AbortSignal,
+    toolName?: string,
   ): Promise<string>
   cleanupAfterCommand(): void
   getSandboxViolationStore(): SandboxViolationStore

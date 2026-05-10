@@ -905,7 +905,8 @@ async function* runShellCommand({
     },
     preventCwdChanges,
     shouldUseSandbox: shouldUseSandbox(input),
-    shouldAutoBackground
+    shouldAutoBackground,
+    toolName: BASH_TOOL_NAME
   });
 
   // Start the command execution

@@ -170,6 +170,7 @@ export type ExecOptions = {
   preventCwdChanges?: boolean
   shouldUseSandbox?: boolean
   shouldAutoBackground?: boolean
+  toolName?: string
   /** When provided, stdout is piped (not sent to file) and this callback fires on each data chunk. */
   onStdout?: (data: string) => void
 }
@@ -190,6 +191,7 @@ export async function exec(
     preventCwdChanges,
     shouldUseSandbox,
     shouldAutoBackground,
+    toolName,
     onStdout,
   } = options ?? {}
   const commandTimeout = timeout || DEFAULT_TIMEOUT
@@ -262,6 +264,7 @@ export async function exec(
       sandboxBinShell,
       undefined,
       abortSignal,
+      toolName,
     )
     // Create sandbox temp directory for sandboxed processes with secure permissions
     try {
