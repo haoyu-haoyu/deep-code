@@ -50,7 +50,6 @@ import { isLocalAgentTask, queuePendingMessage, appendMessageToLocalAgent, type 
 import { registerLeaderToolUseConfirmQueue, unregisterLeaderToolUseConfirmQueue, registerLeaderSetToolPermissionContext, unregisterLeaderSetToolPermissionContext } from '../utils/swarm/leaderPermissionBridge.js';
 import { endInteractionSpan } from '../utils/telemetry/sessionTracing.js';
 import { useLogMessages } from '../hooks/useLogMessages.js';
-import { useReplBridge } from '../hooks/useReplBridge.js';
 import { type Command, type CommandResultDisplay, type ResumeEntrypoint, getCommandName, isCommandEnabled } from '../commands.js';
 import type { PromptInputMode, QueuedCommand, VimMode } from '../types/textInputTypes.js';
 import { MessageSelector, selectableUserMessagesFilter, messagesAfterAreOnlySynthetic } from '../components/MessageSelector.js';
@@ -222,7 +221,6 @@ import { handleSpeculationAccept, type ActiveSpeculationState } from '../service
 import { IdeOnboardingDialog } from '../components/IdeOnboardingDialog.js';
 import { EffortCallout, shouldShowEffortCallout } from '../components/EffortCallout.js';
 import type { EffortValue } from '../utils/effort.js';
-import { RemoteCallout } from '../components/RemoteCallout.js';
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 const AntModelSwitchCallout = "external" === 'ant' ? require('../components/AntModelSwitchCallout.js').AntModelSwitchCallout : null;
 const shouldShowAntModelSwitch = "external" === 'ant' ? require('../components/AntModelSwitchCallout.js').shouldShowModelSwitchCallout : (): boolean => false;
@@ -750,7 +748,6 @@ export function REPL({
     return false;
   });
   const [showEffortCallout, setShowEffortCallout] = useState(() => shouldShowEffortCallout(mainLoopModel));
-  const showRemoteCallout = useAppState(s => s.showRemoteCallout);
   const [showDesktopUpsellStartup, setShowDesktopUpsellStartup] = useState(() => shouldShowDesktopUpsellStartup());
   // notifications
   useModelMigrationNotifications();
@@ -878,10 +875,6 @@ export function REPL({
   // REPL bridge to abort the active query when a remote interrupt arrives.
   const abortControllerRef = useRef<AbortController | null>(null);
   abortControllerRef.current = abortController;
-
-  // Ref for the bridge result callback — set after useReplBridge initializes,
-  // read in the onQuery finally block to notify mobile clients that a turn ended.
-  const sendBridgeResultRef = useRef<() => void>(() => {});
 
   // Ref for the synchronous restore callback — set after restoreMessageSync is
   // defined, read in the onQuery finally block for auto-restore on interrupt.
@@ -2103,9 +2096,6 @@ export function REPL({
     // Effort callout (shown once for Opus 4.6 users when effort is enabled)
     if (allowDialogsWithAnimation && showEffortCallout) return 'effort-callout';
 
-    // Remote callout (shown once before first bridge enable)
-    if (allowDialogsWithAnimation && showRemoteCallout) return 'remote-callout';
-
     // LSP plugin recommendation (lowest priority - non-blocking suggestion)
     if (allowDialogsWithAnimation && lspRecommendation) return 'lsp-recommendation';
 
@@ -2994,10 +2984,6 @@ export function REPL({
         // onQueryImpl only on successful completion.
         resetLoadingState();
         await mrOnTurnComplete(messagesRef.current, abortController.signal.aborted);
-
-        // Notify bridge clients that the turn is complete so mobile apps
-        // can stop the spark animation and show post-turn UI.
-        sendBridgeResultRef.current();
 
         // Auto-hide tungsten panel content at turn end (ant-only), but keep
         // tungstenActiveSession set so the pill stays in the footer and the user
@@ -3894,12 +3880,6 @@ export function REPL({
   // anything else
   useLogMessages(messages, messages.length === initialMessages?.length);
 
-  // REPL Bridge: replicate user/assistant messages to the bridge session
-  // for remote access via claude.ai. No-op in external builds or when not enabled.
-  const {
-    sendBridgeResult
-  } = useReplBridge(messages, setMessages, abortControllerRef, commands, mainLoopModel);
-  sendBridgeResultRef.current = sendBridgeResult;
   useAfterFirstRender();
 
   // Track prompt queue usage for analytics. Fire once per transition from
@@ -4890,21 +4870,6 @@ export function REPL({
               }));
             }
           }} />}
-                {focusedInputDialog === 'remote-callout' && <RemoteCallout onDone={selection => {
-            setAppState(prev => {
-              if (!prev.showRemoteCallout) return prev;
-              return {
-                ...prev,
-                showRemoteCallout: false,
-                ...(selection === 'enable' && {
-                  replBridgeEnabled: true,
-                  replBridgeExplicit: true,
-                  replBridgeOutboundOnly: false
-                })
-              };
-            });
-          }} />}
-
                 {exitFlow}
 
                 {focusedInputDialog === 'plugin-hint' && hintRecommendation && <PluginHintMenu pluginName={hintRecommendation.pluginName} pluginDescription={hintRecommendation.pluginDescription} marketplaceName={hintRecommendation.marketplaceName} sourceCommand={hintRecommendation.sourceCommand} onResponse={handleHintResponse} />}
