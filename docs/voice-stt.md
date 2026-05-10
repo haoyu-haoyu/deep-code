@@ -1,71 +1,73 @@
-Voice STT replacement plan
+# Voice STT replacement plan
 
 Status: Decided
 Decision date: 2026-05-10
 
-Summary
+## Summary
 
-Replace Anthropic's private voice_stream websocket (claude.ai OAuth) with
-bundled local Whisper.cpp. No cloud STT alternative.
+Replace Anthropic's private `voice_stream` websocket (claude.ai OAuth) with
+**bundled local Whisper.cpp**. No cloud STT alternative.
 
-Architecture
+## Architecture
 
-- STT runs fully local — audio never leaves the user's machine.
-- Whisper.cpp binary plus chosen Whisper model are bundled with the npm
-package (per Q5.2=b).
+- STT runs **fully local** — audio never leaves the user's machine.
+- Whisper.cpp binary plus chosen Whisper model are **bundled with the npm
+  package** (per Q5.2=b).
 - DeepCode TUI captures microphone audio, pipes to bundled Whisper.cpp
-binary, receives transcribed text, submits as prompt.
+  binary, receives transcribed text, submits as prompt.
 
-Bundled assets
+## Bundled assets
 
-- bin/whisper-cpp-darwin-arm64, bin/whisper-cpp-darwin-x64,
-bin/whisper-cpp-linux-x64 — built from upstream ggerganov/whisper.cpp
-at a pinned tag.
-- models/ggml-base.en.bin (~140 MB) — small enough to ship, accurate
-enough for English coding-domain prompts.
+- `bin/whisper-cpp-darwin-arm64`, `bin/whisper-cpp-darwin-x64`,
+  `bin/whisper-cpp-linux-x64` — built from upstream `ggerganov/whisper.cpp`
+  at a pinned tag.
+- `models/ggml-base.en.bin` (~140 MB) — small enough to ship, accurate
+  enough for English coding-domain prompts.
 - The npm package install size grows by ~150 MB. Acceptable for self-use.
 
-Disabled state
+## Disabled state
 
 - If Whisper binary fails to launch (e.g., unsupported platform like Windows
-ARM), voice mode is silently disabled.
+  ARM), voice mode is silently disabled.
 - TUI does not show the voice button.
-- /voice slash command prints voice mode is unavailable on this platform.
+- `/voice` slash command prints `voice mode is unavailable on this platform`.
 - No fallback to cloud STT (see Removed cloud options).
 
-Cancellation and unmount
+## Cancellation and unmount
 
-- User presses Esc while recording. Child process killed via SIGTERM,
-partial transcription discarded.
+- User presses `Esc` while recording. Child process killed via `SIGTERM`,
+  partial transcription discarded.
 - User unmounts voice component. Child process killed.
-- b3-voice-unmount.test.mjs covers unmount cleanup.
+- `b3-voice-unmount.test.mjs` covers unmount cleanup.
 
-Removed cloud STT options
+## Removed cloud STT options
 
-- No Deepgram integration.
-- The original Anthropic flow used Deepgram for streaming partials; we drop this entirely.
-- No OpenAI Whisper API integration.
-- No DeepSeek STT (DeepSeek does not currently offer a public STT API).
+- **No Deepgram integration.** The original Anthropic flow used Deepgram
+  for streaming partials; we drop this entirely.
+- **No OpenAI Whisper API integration.**
+- **No DeepSeek STT** (DeepSeek does not currently offer a public STT API).
 
 Rationale: self-use single-user, local Whisper is sufficient. Adding cloud
 paths means additional auth surface, privacy considerations, and dependency
 on third-party uptime.
 
-Removed surfaces
-- voiceStreamSTT.ts — Anthropic websocket client deleted entirely.
-- claude.ai OAuth requirement for voice — deleted with the auth flow.
+## Removed surfaces
 
-Tests required before P1.7
+- `voiceStreamSTT.ts` — Anthropic websocket client deleted entirely.
+- claude.ai OAuth requirement for voice — deleted with the auth flow.
+- Deepgram client (if any) — deleted.
+
+## Tests required before P1.7
 
 - Whisper binary discovery: bundled binary path resolves on macOS arm64,
-macOS x64, Linux x64.
+  macOS x64, Linux x64.
 - Cancellation: recording for 3 s, press Esc, child process exits within 1 s.
 - Unmount: mount voice component, start recording, unmount. No orphaned
-child process.
-- Disabled state: rename binary path. /voice shows unavailable message,
-no crash.
+  child process.
+- Disabled state: rename binary path. `/voice` shows unavailable message,
+  no crash.
 - End-to-end: 5 s clip. Whisper returns text. TUI inserts as prompt.
 
-Phase 1 unblock
+## Phase 1 unblock
 
-This decision unblocks P1.7 (replace voice STT).
+This decision unblocks **P1.7** (replace voice STT).
