@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-10 (this PR)
+Last updated: 2026-05-10 (P1.1.A)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 0 to 1 | Phase 1 decision docs | P1.1 bridge plus LICENSE replace | no |
+| A: Pure-DeepSeek | 1 | P1.1.A force-disable bridge gate | P1.1.B remove dead bridge branches | no |
 | B: Sandbox Fortress | F1 | F1.1 adapter migration | F1.2 per-tool profiles | no |
 
 ## How to use this file
@@ -42,7 +42,9 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 | Task | Status | PR | Commit | Notes |
 |---|---|---|---|---|
-| P1.1 delete bridge / Remote Control plus LICENSE replace | ready | — | — | unblocked by `LICENSE-DECISION.md` |
+| P1.1.A force-disable bridge gate | done | #22 | `239be40` | bridgeEnabled.ts gate functions hard-coded to false/null |
+| P1.1.B remove dead bridge branches and dead UI | ready | — | — | depends on P1.1.A |
+| P1.1.C final src/bridge deletion plus LICENSE replace | ready | — | — | depends on P1.1.B; LICENSE.md replacement happens here |
 | P1.2 delete Teleport / Ultraplan / CCR | ready | — | — | depends on P1.1 stubs |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
 | P1.4 config paths `~/.claude` to `~/.deepcode` | ready | — | — | depends on P1.3 |
