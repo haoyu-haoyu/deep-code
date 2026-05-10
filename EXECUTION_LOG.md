@@ -43,7 +43,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | Task | Status | PR | Commit | Notes |
 |---|---|---|---|---|
 | P1.1.A force-disable bridge gate | done | #22 | `c4fa7d3` | bridgeEnabled.ts gate functions hard-coded to false/null |
-| P1.1.B.1 remove dead `isBridgeEnabled()` branches | done | #PR_NUM | `MERGE_SHA` | PromptInputFooter, Settings/Config, main.tsx --rc and ccrMirror checks |
+| P1.1.B.1 remove dead `isBridgeEnabled()` branches | done | #25 | `d057278` | PromptInputFooter, Settings/Config, main.tsx --rc and ccrMirror checks |
 | P1.1.B.2 delete dead bridge UI / hooks / state | ready | — | — | depends on P1.1.B.1 |
 | P1.1.B.3 delete dead bridge tools / CLI | ready | — | — | depends on P1.1.B.2 |
 | P1.1.C final src/bridge deletion plus LICENSE replace | ready | — | — | depends on P1.1.B; LICENSE.md replacement happens here |
