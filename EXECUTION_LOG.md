@@ -42,7 +42,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 | Task | Status | PR | Commit | Notes |
 |---|---|---|---|---|
-| P1.1.A force-disable bridge gate | done | #22 | `239be40` | bridgeEnabled.ts gate functions hard-coded to false/null |
+| P1.1.A force-disable bridge gate | done | #22 | `c4fa7d3` | bridgeEnabled.ts gate functions hard-coded to false/null |
 | P1.1.B remove dead bridge branches and dead UI | ready | — | — | depends on P1.1.A |
 | P1.1.C final src/bridge deletion plus LICENSE replace | ready | — | — | depends on P1.1.B; LICENSE.md replacement happens here |
 | P1.2 delete Teleport / Ultraplan / CCR | ready | — | — | depends on P1.1 stubs |
