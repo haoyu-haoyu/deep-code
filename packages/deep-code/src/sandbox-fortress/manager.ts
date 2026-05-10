@@ -151,12 +151,14 @@ export class FortressSandboxManager implements IFortressSandboxManager {
     binShell?: Parameters<ISandboxManager['wrapWithSandbox']>[1],
     customConfig?: Parameters<ISandboxManager['wrapWithSandbox']>[2],
     abortSignal?: Parameters<ISandboxManager['wrapWithSandbox']>[3],
+    toolName?: string,
   ): Promise<string> {
     return baseSandboxManager.wrapWithSandbox(
       command,
       binShell,
       customConfig,
       abortSignal,
+      toolName,
     )
   }
 

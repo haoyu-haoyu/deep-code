@@ -1,6 +1,6 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-10 (P1.1.A)
+Last updated: 2026-05-10 (F1.2)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
@@ -8,7 +8,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
 | A: Pure-DeepSeek | 1 | P1.1.A force-disable bridge gate | P1.1.B remove dead bridge branches | no |
-| B: Sandbox Fortress | F1 | F1.1 adapter migration | F1.2 per-tool profiles | no |
+| B: Sandbox Fortress | F1 | F1.2 per-tool profiles | F1.3 adapter test coverage hardening | no |
 
 ## How to use this file
 
@@ -78,13 +78,16 @@ phase entry.
 | Task | Status | PR | Commit | Notes |
 |---|---|---|---|---|
 | F1.1 migrate adapter into fortress | done | #17 | `cbe57d4` | git mv plus shim |
-| F1.2 per-tool sandbox profiles | ready | — | — | Next ready |
+| F1.2 per-tool sandbox profiles | done | #24 | `MERGE_SHA` | TOOL_PROFILES + mergeProfileIntoConfig + Shell/Bash/manager plumbing; FS enforcement working; network enforcement deferred to F2.x |
 | F1.3 adapter test coverage hardening | ready | — | — | depends on F1.2 |
 
 ### F2-F5
 
-Not decomposed yet; refer to `SANDBOX_FORTRESS_PLAN.md` and expand here on
-phase entry.
+### F2: hardening and enforcement
+
+| Task | Status | PR | Commit | Notes |
+|---|---|---|---|---|
+| F2.x Layer 2 network outbound enforcement | ready | — | — | enforce per-tool networkMode via outbound proxy interceptor; surfaced as gap during F1.2 |
 
 ## External decisions
 
