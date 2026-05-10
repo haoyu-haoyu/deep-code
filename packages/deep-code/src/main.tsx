@@ -2241,17 +2241,12 @@ async function run(): Promise<CommanderCommand> {
       const onboardingShown = await showSetupScreens(root, permissionMode, allowDangerouslySkipPermissions, commands, enableClaudeInChrome, devChannels);
       logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
 
-      // Now that trust is established and GrowthBook has auth headers,
-      // resolve the --remote-control / --rc entitlement gate.
+      // --rc / --remote-control flag is permanently disabled (see P1.1.A).
+      // If the user passes the flag, print a deprecation notice and proceed
+      // without remote control.
       if (feature('BRIDGE_MODE') && remoteControlOption !== undefined) {
-        const {
-          getBridgeDisabledReason
-        } = await import('./bridge/bridgeEnabled.js');
-        const disabledReason = await getBridgeDisabledReason();
-        remoteControl = disabledReason === null;
-        if (disabledReason) {
-          process.stderr.write(chalk.yellow(`${disabledReason}\n--rc flag ignored.\n`));
-        }
+        process.stderr.write(chalk.yellow('Remote Control is not available in this build.\n--rc flag ignored.\n'));
+        remoteControl = false;
       }
 
       // Check for pending agent memory snapshot updates (only for --agent mode, ant-only)
@@ -2922,15 +2917,9 @@ async function run(): Promise<CommanderCommand> {
     // above; initialIsBriefOnly just reads the resulting state.
     const initialIsBriefOnly = feature('KAIROS') || feature('KAIROS_BRIEF') ? getUserMsgOptIn() : false;
     const fullRemoteControl = remoteControl || getRemoteControlAtStartup() || kairosEnabled;
-    let ccrMirrorEnabled = false;
-    if (feature('CCR_MIRROR') && !fullRemoteControl) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const {
-        isCcrMirrorEnabled
-      } = require('./bridge/bridgeEnabled.js') as typeof import('./bridge/bridgeEnabled.js');
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      ccrMirrorEnabled = isCcrMirrorEnabled();
-    }
+    // ccrMirrorEnabled is permanently false (see P1.1.A). The require + call
+    // is dropped.
+    const ccrMirrorEnabled = false;
     const initialState: AppState = {
       settings: getInitialSettings(),
       tasks: {},
@@ -3884,7 +3873,7 @@ async function run(): Promise<CommanderCommand> {
   // (mcp, auth, plugin, skill, task, config, doctor, update, etc.) are
   // never dispatched in print mode — commander routes the prompt to the
   // default action. The subcommand registration path was measured at ~65ms
-  // on baseline — mostly the isBridgeEnabled() call (25ms settings Zod parse
+  // on baseline — mostly the legacy bridge gate call (25ms settings Zod parse
   // + 40ms sync keychain subprocess), both hidden by the try/catch that
   // always returns false before enableConfigs(). cc:// URLs are rewritten to
   // `open` at main() line ~851 BEFORE this runs, so argv check is safe here.
@@ -4322,7 +4311,7 @@ async function run(): Promise<CommanderCommand> {
   // Remote Control command — connect local environment to claude.ai/code.
   // The actual command is intercepted by the fast-path in cli.tsx before
   // Commander.js runs, so this registration exists only for help output.
-  // Always hidden: isBridgeEnabled() at this point (before enableConfigs)
+  // Always hidden: bridge gate is false at this point (before enableConfigs)
   // would throw inside isClaudeAISubscriber → getGlobalConfig and return
   // false via the try/catch — but not before paying ~65ms of side effects
   // (25ms settings Zod parse + 40ms sync `security` keychain subprocess).
