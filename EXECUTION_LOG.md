@@ -45,7 +45,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.1.A force-disable bridge gate | done | #22 | `c4fa7d3` | bridgeEnabled.ts gate functions hard-coded to false/null |
 | P1.1.B.1 remove dead `isBridgeEnabled()` branches | done | #25 | `d057278` | PromptInputFooter, Settings/Config, main.tsx --rc and ccrMirror checks |
 | P1.1.B.2 strip Remote Control UI hookups from REPL and PromptInput | done | #26 | `2ccab93` | REPL.tsx and PromptInput.tsx no longer reference useReplBridge, RemoteCallout, BridgeDialog, showBridgeDialog, sendBridgeResultRef, or showRemoteCallout |
-| P1.1.B.3 strip bridge URI scheme + BRIDGE_MODE upload guard + deregister bridge commands and prompt.ts | done | #PR_NUM | `MERGE_SHA` | SendMessageTool bridge scheme out (impl + model prompt); BriefTool attachments guard out; commands.ts deregisters btw and bridge-kick |
+| P1.1.B.3 strip bridge URI scheme + BRIDGE_MODE upload guard + deregister bridge commands and prompt.ts | done | #27 | `a3446c6` | SendMessageTool bridge scheme out (impl + model prompt); BriefTool attachments guard out; commands.ts deregisters btw and bridge-kick |
 | P1.1.B.4 strip bridge-only CLI transports | ready | — | — | depends on P1.1.B.3; deletes cli/remoteIO and cli/transports/ccrClient; strips print.ts, onChangeAppState, sessionState |
 | P1.1.B.5 strip /btw and Remote Control UI affordances | ready | — | — | deferred from B.3 self-review; PromptInputHelpMenu, Spinner, PromptInput.tsx still advertise /btw and bridge features after B.2/B.3 cleanup |
 | P1.1.C final src/bridge deletion plus LICENSE replace | ready | — | — | depends on P1.1.B; LICENSE.md replacement happens here |
