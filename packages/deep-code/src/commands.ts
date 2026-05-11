@@ -2,7 +2,6 @@
 import addDir from './commands/add-dir/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
 import backfillSessions from './commands/backfill-sessions/index.js'
-import btw from './commands/btw/index.js'
 import goodClaude from './commands/good-claude/index.js'
 import issue from './commands/issue/index.js'
 import feedback from './commands/feedback/index.js'
@@ -138,7 +137,6 @@ import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
 import harness from './commands/harness/index.js'
 import mockLimits from './commands/mock-limits/index.js'
-import bridgeKick from './commands/bridge-kick.js'
 import version from './commands/version.js'
 import summary from './commands/summary/index.js'
 import {
@@ -235,7 +233,6 @@ export const INTERNAL_ONLY_COMMANDS = [
   initVerifiers,
   ...(forceSnip ? [forceSnip] : []),
   mockLimits,
-  bridgeKick,
   version,
   ...(ultraplan ? [ultraplan] : []),
   ...(subscribePr ? [subscribePr] : []),
@@ -279,7 +276,6 @@ const COMMANDS = memoize((): Command[] => [
   advisor,
   agents,
   branch,
-  btw,
   clear,
   color,
   compact,
@@ -645,7 +641,6 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   cost, // Show session cost (local cost tracking)
   usage, // Show usage info
   copy, // Copy last message
-  btw, // Quick note
   feedback, // Send feedback
   plan, // Plan mode toggle
   keybindings, // Keybinding management
