@@ -3855,7 +3855,6 @@ async function run(): Promise<CommanderCommand> {
   program.addOption(new Option('--agent-type <type>', 'Custom agent type for this teammate').hideHelp());
 
   // Enable SDK URL for all builds but hide from help
-  program.addOption(new Option('--sdk-url <url>', 'Use remote WebSocket endpoint for SDK I/O streaming (only with -p and stream-json format)').hideHelp());
 
   // Enable teleport/remote flags for all builds but keep them undocumented until GA
   program.addOption(new Option('--teleport [session]', 'Resume a teleport session, optionally specify session ID').hideHelp());
