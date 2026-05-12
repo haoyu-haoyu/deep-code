@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { clearTrustedDeviceTokenCache } from '../../bridge/trustedDevice.js';
 import { Text } from '../../ink.js';
 import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js';
 import { getGroveNoticeConfig, getGroveSettings } from '../../services/api/grove.js';
@@ -13,6 +12,11 @@ import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
 import { getSecureStorage } from '../../utils/secureStorage/index.js';
 import { clearToolSchemaCache } from '../../utils/toolSchemaCache.js';
 import { resetUserCache } from '../../utils/user.js';
+
+// Local no-op stub — trusted-device bridge module removed in P1.1.C.
+// P1.3 will rewrite logout for DeepSeek API-key clear.
+function clearTrustedDeviceTokenCache(): void {}
+
 export async function performLogout({
   clearOnboarding = false
 }): Promise<void> {
