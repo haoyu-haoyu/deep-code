@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-12 (P1.1.C.1)
+Last updated: 2026-05-12 (P1.1.C.2.a)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.1.C.1 extract bridge-borrowed utilities | P1.1.C.2.a stub residual bridge imports in command files | no |
+| A: Pure-DeepSeek | 1 | P1.1.C.2.a stub residual bridge imports in command files | P1.1.C.2.b strip residual bridge imports in CLI and state | no |
 | B: Sandbox Fortress | F1 | F1.2 per-tool profiles | F1.3 adapter test coverage hardening | no |
 
 ## How to use this file
@@ -49,7 +49,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.1.B.4 delete cli/remoteIO and strip CCR v2 from print.ts | done | #28 | `ca8210a` | cli/remoteIO.ts gone; print.ts no longer references RemoteIO, hydrateFromCCRv2InternalEvents, or CLAUDE_CODE_USE_CCR_V2; ccrClient.ts deletion deferred to P1.1.C; --sdk-url option declaration removed from main.tsx (downstream readers left dead for P1.11) |
 | P1.1.B.5 strip /btw UI affordances | done | #29 | `e3bd1b9` | PromptInputHelpMenu /btw menu entry, Spinner /btw tip, PromptInput btw highlighting all removed; Remote Control state-read dead branches deferred to P1.11; bridgeStatusUtil shimmer utility extraction deferred to P1.1.C |
 | P1.1.C.1 extract bridge-borrowed utilities | done | #30 | `319d3d5` | shimmer animation + BoundedUUIDSet moved to src/utils; Spinner and useRemoteSession import paths updated |
-| P1.1.C.2.a stub residual bridge imports in command files | ready | — | — | depends on P1.1.C.1; stubs trustedDevice / bridgeConfig / createSession / REMOTE_CONTROL_DISCONNECTED_MSG in login, logout, rename, ultraplan |
+| P1.1.C.2.a stub residual bridge imports in command files | done | #PR_NUM | `MERGE_SHA` | login + logout: local trustedDevice no-op stubs; rename: bridge rename block removed; ultraplan: REMOTE_CONTROL_DISCONNECTED_MSG inlined |
 | P1.1.C.2.b strip residual bridge imports in CLI and state | ready | — | — | depends on P1.1.C.2.a; strips print.ts, PromptInputFooter, constants/product, entrypoints/cli, interactiveHandler, AppStateStore, main.tsx |
 | P1.1.C.3 delete src/bridge, src/commands/bridge, src/commands/btw, orphan files, replace LICENSE.md | ready | — | — | depends on P1.1.C.2.b; final mass deletion; AGPL-3.0 LICENSE per LICENSE-DECISION.md |
 | P1.2 delete Teleport / Ultraplan / CCR | ready | — | — | depends on P1.1 stubs |
