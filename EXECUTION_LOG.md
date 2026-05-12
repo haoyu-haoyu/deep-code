@@ -52,7 +52,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.1.C.2.a stub residual bridge imports in command files | done | #31 | `28c2999` | login + logout: local trustedDevice no-op stubs; rename: bridge rename block removed; ultraplan: REMOTE_CONTROL_DISCONNECTED_MSG inlined |
 | P1.1.C.2.b.1 replace BridgePermissionCallbacks type + simplify sessionIdCompat | done | #32 | `54b1f73` | AppStateStore + interactiveHandler use local BridgePermissionCallbacks type; constants/product getRemoteSessionUrl no longer requires bridge/sessionIdCompat |
 | P1.1.C.2.b.2 strip bridge imports in CLI / footer / cli entrypoint / main | done | #33 | `251e28b` | print.ts: remote_control SDK branch deleted, bridgeHandle + forwardMessagesToBridge + resolveAndPrepend gone; PromptInputFooter BridgeStatusIndicator deleted; cli.tsx bridge fast-path deleted; main.tsx trustedDevice + remote-control commander deleted |
-| P1.1.C.3 delete src/bridge, src/commands/bridge, src/commands/btw, orphan files, replace LICENSE.md | done | #PR_NUM | `MERGE_SHA` | 35 bridge dir files + 6 orphans deleted; commands.ts bridge conditional require cleaned; LICENSE.md replaced with AGPL-3.0 |
+| P1.1.C.3 delete src/bridge, src/commands/bridge, src/commands/btw, orphan files, replace LICENSE.md | done | #34 | `87a40b7` | 35 bridge dir files + 6 orphans deleted; commands.ts bridge conditional require cleaned; LICENSE.md replaced with AGPL-3.0 |
 | P1.2 delete Teleport / Ultraplan / CCR | ready | — | — | depends on P1.1 stubs |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
 | P1.4 config paths `~/.claude` to `~/.deepcode` | ready | — | — | depends on P1.3 |
