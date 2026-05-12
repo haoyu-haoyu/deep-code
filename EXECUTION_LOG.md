@@ -87,7 +87,7 @@ phase entry.
 |---|---|---|---|---|
 | F1.1 migrate adapter into fortress | done | #17 | `cbe57d4` | git mv plus shim |
 | F1.2 per-tool sandbox profiles | done | #24 | `a0a72c2` | TOOL_PROFILES + mergeProfileIntoConfig + Shell/Bash/manager plumbing; FS enforcement working; network enforcement deferred to F2.x |
-| F1.3 adapter test coverage hardening | done | #PR_NUM | `MERGE_SHA` | adapter-*.test.mjs files covering resolvePathPatternForSandbox, resolveSandboxFilesystemPath, shouldAllowManagedSandboxDomainsOnly, convertToSandboxRuntimeConfig, addToExcludedCommands, SandboxManager lifecycle |
+| F1.3 adapter test coverage hardening | done | #35 | `1a81f5e` | adapter-*.test.mjs files covering resolvePathPatternForSandbox, resolveSandboxFilesystemPath, shouldAllowManagedSandboxDomainsOnly, convertToSandboxRuntimeConfig, addToExcludedCommands, SandboxManager lifecycle |
 
 ### F2-F5
 
