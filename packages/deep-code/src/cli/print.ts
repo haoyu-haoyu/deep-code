@@ -8,7 +8,6 @@ import {
 } from 'src/services/settingsSync/index.js'
 import { waitForRemoteManagedSettingsToLoad } from 'src/services/remoteManagedSettings/index.js'
 import { StructuredIO } from 'src/cli/structuredIO.js'
-import { RemoteIO } from 'src/cli/remoteIO.js'
 import { buildPrintModelInfos } from 'src/cli/printModelInfo.js'
 import {
   type Command,
@@ -59,7 +58,6 @@ import {
   type RequiresActionDetails,
   type SessionExternalMetadata,
 } from 'src/utils/sessionState.js'
-import { externalMetadataToAppState } from 'src/state/onChangeAppState.js'
 import { getInMemoryErrors, logError, logMCPDebug } from 'src/utils/log.js'
 import {
   writeToStdout,
@@ -204,7 +202,6 @@ import { createSyntheticOutputTool } from 'src/tools/SyntheticOutputTool/Synthet
 import { parseSessionIdentifier } from 'src/utils/sessionUrl.js'
 import {
   hydrateRemoteSession,
-  hydrateFromCCRv2InternalEvents,
   resetSessionFilePointer,
   doesMessageExistInSession,
   findUnresolvedToolUse,
@@ -2064,12 +2061,6 @@ function runHeadlessStreaming(
           }
 
           const input = command.value
-
-          if (structuredIO instanceof RemoteIO && command.mode === 'prompt') {
-            logEvent('tengu_bridge_message_received', {
-              is_repl: false,
-            })
-          }
 
           // Abort any in-flight suggestion generation and track acceptance
           suggestionState.abortController?.abort()
@@ -5015,26 +5006,12 @@ async function loadInitialMessages(
         return { messages: [] }
       }
 
-      // Hydrate local transcript from remote before loading
-      if (isEnvTruthy(process.env.CLAUDE_CODE_USE_CCR_V2)) {
-        // Await restore alongside hydration so SSE catchup lands on
-        // restored state, not a fresh default.
-        const [, metadata] = await Promise.all([
-          hydrateFromCCRv2InternalEvents(parsedSessionId.sessionId),
-          options.restoredWorkerState,
-        ])
-        if (metadata) {
-          setAppState(externalMetadataToAppState(metadata))
-          if (typeof metadata.model === 'string') {
-            setMainLoopModelOverride(metadata.model)
-          }
-        }
-      } else if (
+      if (
         parsedSessionId.isUrl &&
         parsedSessionId.ingressUrl &&
         isEnvTruthy(process.env.ENABLE_SESSION_PERSISTENCE)
       ) {
-        // v1: fetch session logs from Session Ingress
+        // Fetch session logs from Session Ingress (URL-based --ingress mode)
         await hydrateRemoteSession(
           parsedSessionId.sessionId,
           parsedSessionId.ingressUrl,
@@ -5047,16 +5024,13 @@ async function loadInitialMessages(
         parsedSessionId.jsonlFile || undefined,
       )
 
-      // hydrateFromCCRv2InternalEvents writes an empty transcript file for
-      // fresh sessions (writeFile(sessionFile, '') with zero events), so
+      // hydrateRemoteSession writes an empty transcript file for fresh
+      // URL-based sessions (writeFile(sessionFile, '') with zero events), so
       // loadConversationForResume returns {messages: []} not null. Treat
       // empty the same as null so SessionStart still fires.
       if (!result || result.messages.length === 0) {
-        // For URL-based or CCR v2 resume, start with empty session (it was hydrated but empty)
-        if (
-          parsedSessionId.isUrl ||
-          isEnvTruthy(process.env.CLAUDE_CODE_USE_CCR_V2)
-        ) {
+        // For URL-based resume, start with empty session (it was hydrated but empty)
+        if (parsedSessionId.isUrl) {
           // Execute SessionStart hooks for startup since we're starting a new session
           return {
             messages: await (options.sessionStartHooksPromise ??
@@ -5196,10 +5170,7 @@ function getStructuredIO(
     inputStream = inputPrompt
   }
 
-  // Use RemoteIO if sdkUrl is provided, otherwise use regular StructuredIO
-  return options.sdkUrl
-    ? new RemoteIO(options.sdkUrl, inputStream, options.replayUserMessages)
-    : new StructuredIO(inputStream, options.replayUserMessages)
+  return new StructuredIO(inputStream, options.replayUserMessages)
 }
 
 /**

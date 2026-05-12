@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-11 (P1.1.B.3)
+Last updated: 2026-05-12 (P1.1.B.4)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.1.B.3 strip bridge URI scheme + BRIDGE_MODE upload guard | P1.1.B.4 strip bridge-only CLI transports | no |
+| A: Pure-DeepSeek | 1 | P1.1.B.4 delete cli/remoteIO and strip CCR v2 | P1.1.B.5 strip /btw and Remote Control UI affordances | no |
 | B: Sandbox Fortress | F1 | F1.2 per-tool profiles | F1.3 adapter test coverage hardening | no |
 
 ## How to use this file
@@ -46,7 +46,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.1.B.1 remove dead `isBridgeEnabled()` branches | done | #25 | `d057278` | PromptInputFooter, Settings/Config, main.tsx --rc and ccrMirror checks |
 | P1.1.B.2 strip Remote Control UI hookups from REPL and PromptInput | done | #26 | `2ccab93` | REPL.tsx and PromptInput.tsx no longer reference useReplBridge, RemoteCallout, BridgeDialog, showBridgeDialog, sendBridgeResultRef, or showRemoteCallout |
 | P1.1.B.3 strip bridge URI scheme + BRIDGE_MODE upload guard + deregister bridge commands and prompt.ts | done | #27 | `a3446c6` | SendMessageTool bridge scheme out (impl + model prompt); BriefTool attachments guard out; commands.ts deregisters btw and bridge-kick |
-| P1.1.B.4 strip bridge-only CLI transports | ready | — | — | depends on P1.1.B.3; deletes cli/remoteIO and cli/transports/ccrClient; strips print.ts, onChangeAppState, sessionState |
+| P1.1.B.4 delete cli/remoteIO and strip CCR v2 from print.ts | done | #PR_NUM | `MERGE_SHA` | cli/remoteIO.ts gone; print.ts no longer references RemoteIO, hydrateFromCCRv2InternalEvents, or CLAUDE_CODE_USE_CCR_V2; ccrClient.ts deletion deferred to P1.1.C; --sdk-url option declaration removed from main.tsx (downstream readers left dead for P1.11) |
 | P1.1.B.5 strip /btw and Remote Control UI affordances | ready | — | — | deferred from B.3 self-review; PromptInputHelpMenu, Spinner, PromptInput.tsx still advertise /btw and bridge features after B.2/B.3 cleanup |
 | P1.1.C final src/bridge deletion plus LICENSE replace | ready | — | — | depends on P1.1.B; LICENSE.md replacement happens here |
 | P1.2 delete Teleport / Ultraplan / CCR | ready | — | — | depends on P1.1 stubs |
