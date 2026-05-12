@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-12 (P1.2.0)
+Last updated: 2026-05-12 (P1.2.1)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.2.0 extract RemoteMessageContent type to src/types | P1.2.1 remove --remote CLI flag option | no |
+| A: Pure-DeepSeek | 1 | P1.2.1 remove --remote CLI flag option | P1.2.2 strip --remote / teleport / ultraplan dead branches | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -54,7 +54,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.1.C.2.b.2 strip bridge imports in CLI / footer / cli entrypoint / main | done | #33 | `251e28b` | print.ts: remote_control SDK branch deleted, bridgeHandle + forwardMessagesToBridge + resolveAndPrepend gone; PromptInputFooter BridgeStatusIndicator deleted; cli.tsx bridge fast-path deleted; main.tsx trustedDevice + remote-control commander deleted |
 | P1.1.C.3 delete src/bridge, src/commands/bridge, src/commands/btw, orphan files, replace LICENSE.md | done | #34 | `87a40b7` | 35 bridge dir files + 6 orphans deleted; commands.ts bridge conditional require cleaned; LICENSE.md replaced with AGPL-3.0 |
 | P1.2.0 extract RemoteMessageContent type to src/types | done | #36 | `666cbed` | C.1-style mini extraction; useDirectConnect + useSSHSession import paths updated; original type stays in teleport/api.ts as duplicate until teleport dir deletion |
-| P1.2.1 remove --remote CLI flag option | ready | — | — | depends on P1.2.0; main.tsx commander option declaration removed (mirror --sdk-url removal in B.4) |
+| P1.2.1 remove --remote CLI flag option | done | #PR_NUM | `MERGE_SHA` | main.tsx --remote [description] option declaration removed; downstream options.remote / remote !== null readers left dead for P1.2.2 |
 | P1.2.2 strip --remote / teleport / ultraplan dead branches | ready | — | — | depends on P1.2.1; multi-file consumer strip including main.tsx ~3389-3500, REPL.tsx, downstream UI |
 | P1.2.3 stub residual teleport imports in remaining consumers | ready | — | — | depends on P1.2.2; analog to P1.1.C.2.a/b for command + state files |
 | P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | ready | — | — | depends on P1.2.3; final teleport sweep mirroring P1.1.C.3 |
