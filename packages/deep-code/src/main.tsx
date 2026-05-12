@@ -2280,15 +2280,6 @@ async function run(): Promise<CommanderCommand> {
         resetUserCache();
         // Refresh GrowthBook after login to get updated feature flags (e.g., for claude.ai MCPs)
         refreshGrowthBookAfterAuthChange();
-        // Clear any stale trusted device token then enroll for Remote Control.
-        // Both self-gate on tengu_sessions_elevated_auth_enforcement internally
-        // — enrollTrustedDevice() via checkGate_CACHED_OR_BLOCKING (awaits
-        // the GrowthBook reinit above), clearTrustedDeviceToken() via the
-        // sync cached check (acceptable since clear is idempotent).
-        void import('./bridge/trustedDevice.js').then(m => {
-          m.clearTrustedDeviceToken();
-          return m.enrollTrustedDevice();
-        });
       }
 
       // Validate that the active token's org matches forceLoginOrgUUID (if set
@@ -4307,26 +4298,6 @@ async function run(): Promise<CommanderCommand> {
     }
   }
 
-  // Remote Control command — connect local environment to claude.ai/code.
-  // The actual command is intercepted by the fast-path in cli.tsx before
-  // Commander.js runs, so this registration exists only for help output.
-  // Always hidden: bridge gate is false at this point (before enableConfigs)
-  // would throw inside isClaudeAISubscriber → getGlobalConfig and return
-  // false via the try/catch — but not before paying ~65ms of side effects
-  // (25ms settings Zod parse + 40ms sync `security` keychain subprocess).
-  // The dynamic visibility never worked; the command was always hidden.
-  if (feature('BRIDGE_MODE')) {
-    program.command('remote-control', {
-      hidden: true
-    }).alias('rc').description('Connect your local environment for remote-control sessions via claude.ai/code').action(async () => {
-      // Unreachable — cli.tsx fast-path handles this command before main.tsx loads.
-      // If somehow reached, delegate to bridgeMain.
-      const {
-        bridgeMain
-      } = await import('./bridge/bridgeMain.js');
-      await bridgeMain(process.argv.slice(3));
-    });
-  }
   if (feature('KAIROS')) {
     program.command('assistant [sessionId]').description('Attach the REPL as a client to a running bridge session. Discovers sessions via API if no sessionId given.').action(() => {
       // Argv rewriting above should have consumed `assistant [id]`
