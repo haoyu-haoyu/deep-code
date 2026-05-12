@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-12 (P1.1.C.2.b.1)
+Last updated: 2026-05-12 (P1.1.C.2.b.2)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.1.C.2.b.1 replace BridgePermissionCallbacks type | P1.1.C.2.b.2 strip bridge imports in CLI / footer / cli entrypoint / main | no |
+| A: Pure-DeepSeek | 1 | P1.1.C.2.b.2 strip bridge imports in CLI / footer / cli entrypoint / main | P1.1.C.3 delete src/bridge, src/commands/bridge, src/commands/btw, orphan files, replace LICENSE.md | no |
 | B: Sandbox Fortress | F1 | F1.2 per-tool profiles | F1.3 adapter test coverage hardening | no |
 
 ## How to use this file
@@ -51,7 +51,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.1.C.1 extract bridge-borrowed utilities | done | #30 | `319d3d5` | shimmer animation + BoundedUUIDSet moved to src/utils; Spinner and useRemoteSession import paths updated |
 | P1.1.C.2.a stub residual bridge imports in command files | done | #31 | `28c2999` | login + logout: local trustedDevice no-op stubs; rename: bridge rename block removed; ultraplan: REMOTE_CONTROL_DISCONNECTED_MSG inlined |
 | P1.1.C.2.b.1 replace BridgePermissionCallbacks type + simplify sessionIdCompat | done | #32 | `54b1f73` | AppStateStore + interactiveHandler use local BridgePermissionCallbacks type; constants/product getRemoteSessionUrl no longer requires bridge/sessionIdCompat |
-| P1.1.C.2.b.2 strip bridge imports in CLI / footer / cli entrypoint / main | ready | — | — | depends on P1.1.C.2.b.1; cli/print.ts, PromptInputFooter (BridgeStatusIndicator), entrypoints/cli.tsx fast-path, main.tsx trustedDevice + bridge commander |
+| P1.1.C.2.b.2 strip bridge imports in CLI / footer / cli entrypoint / main | done | #PR_NUM | `MERGE_SHA` | print.ts: remote_control SDK branch deleted, bridgeHandle + forwardMessagesToBridge + resolveAndPrepend gone; PromptInputFooter BridgeStatusIndicator deleted; cli.tsx bridge fast-path deleted; main.tsx trustedDevice + remote-control commander deleted |
 | P1.1.C.3 delete src/bridge, src/commands/bridge, src/commands/btw, orphan files, replace LICENSE.md | ready | — | — | depends on P1.1.C.2.b; final mass deletion; AGPL-3.0 LICENSE per LICENSE-DECISION.md |
 | P1.2 delete Teleport / Ultraplan / CCR | ready | — | — | depends on P1.1 stubs |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |

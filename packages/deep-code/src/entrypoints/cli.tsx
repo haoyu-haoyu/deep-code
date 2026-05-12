@@ -105,49 +105,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Fast-path for `claude remote-control` (also accepts legacy `claude remote` / `claude sync` / `claude bridge`):
-  // serve local machine as bridge environment.
-  // feature() must stay inline for build-time dead code elimination;
-  // isBridgeEnabled() checks the runtime GrowthBook gate.
-  if (feature('BRIDGE_MODE') && (args[0] === 'remote-control' || args[0] === 'rc' || args[0] === 'remote' || args[0] === 'sync' || args[0] === 'bridge')) {
-    profileCheckpoint('cli_bridge_path');
-    const {
-      enableConfigs
-    } = await import('../utils/config.js');
-    enableConfigs();
-    const {
-      getBridgeDisabledReason,
-      checkBridgeMinVersion
-    } = await import('../bridge/bridgeEnabled.js');
-    const {
-      bridgeMain
-    } = await import('../bridge/bridgeMain.js');
+  if (args[0] === 'remote-control' || args[0] === 'rc' || args[0] === 'remote' || args[0] === 'sync' || args[0] === 'bridge') {
+    profileCheckpoint('cli_removed_remote_control_path');
     const {
       exitWithError
     } = await import('../utils/process.js');
-
-    // Legacy OAuth gate removed — bridge is permanently disabled, so
-    // getBridgeDisabledReason returns the user-facing message.
-    const disabledReason = await getBridgeDisabledReason();
-    if (disabledReason) {
-      exitWithError(`Error: ${disabledReason}`);
-    }
-    const versionError = checkBridgeMinVersion();
-    if (versionError) {
-      exitWithError(versionError);
-    }
-
-    // Bridge is a remote control feature - check policy limits
-    const {
-      waitForPolicyLimitsToLoad,
-      isPolicyAllowed
-    } = await import('../services/policyLimits/index.js');
-    await waitForPolicyLimitsToLoad();
-    if (!isPolicyAllowed('allow_remote_control')) {
-      exitWithError("Error: Remote Control is disabled by your organization's policy.");
-    }
-    await bridgeMain(args.slice(1));
-    return;
+    exitWithError('Error: Remote Control is not available in this build.');
   }
 
   // Fast-path for `claude daemon [subcommand]`: long-running supervisor.
