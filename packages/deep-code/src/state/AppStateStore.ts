@@ -1,6 +1,5 @@
 import type { Notification } from 'src/context/notifications.js'
 import type { TodoList } from 'src/utils/todo/types.js'
-import type { BridgePermissionCallbacks } from '../bridge/bridgePermissionCallbacks.js'
 import type { Command } from '../commands.js'
 import type { ChannelPermissionCallbacks } from '../services/mcp/channelPermissions.js'
 import type { ElicitationRequestEvent } from '../services/mcp/elicitationHandler.js'
@@ -33,10 +32,42 @@ import type { SessionHooksState } from '../utils/hooks/sessionHooks.js'
 import type { ModelSetting } from '../utils/model/model.js'
 import type { DenialTrackingState } from '../utils/permissions/denialTracking.js'
 import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
+import type { PermissionUpdate } from '../utils/permissions/PermissionUpdateSchema.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import type { SettingsJson } from '../utils/settings/types.js'
 import { shouldEnableThinkingByDefault } from '../utils/thinking.js'
 import type { Store } from './store.js'
+
+/**
+ * Permission callback contract for the now-disabled bridge feature.
+ * Replicated locally because the original bridge callback module is
+ * scheduled for deletion in P1.1.C.3. Call sites in REPL.tsx
+ * still reference this contract through dead bridge branches after P1.1.A.
+ */
+type BridgePermissionResponse = {
+  behavior: 'allow' | 'deny'
+  updatedInput?: Record<string, unknown>
+  updatedPermissions?: PermissionUpdate[]
+  message?: string
+}
+
+export type BridgePermissionCallbacks = {
+  sendRequest(
+    requestId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    toolUseId: string,
+    description: string,
+    permissionSuggestions?: PermissionUpdate[],
+    blockedPath?: string,
+  ): void
+  sendResponse(requestId: string, response: BridgePermissionResponse): void
+  cancelRequest(requestId: string): void
+  onResponse(
+    requestId: string,
+    handler: (response: BridgePermissionResponse) => void,
+  ): () => void
+}
 
 export type CompletionBoundary =
   | { type: 'complete'; completedAt: number; outputTokens: number }
