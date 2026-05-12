@@ -1,6 +1,6 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-12 (P1.1.C.3)
+Last updated: 2026-05-12 (F1.3)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
@@ -8,7 +8,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
 | A: Pure-DeepSeek | 1 | P1.1.C.3 delete src/bridge + LICENSE replace | P1.2 delete Teleport / Ultraplan / CCR | no |
-| B: Sandbox Fortress | F1 | F1.2 per-tool profiles | F1.3 adapter test coverage hardening | no |
+| B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
 
@@ -87,7 +87,7 @@ phase entry.
 |---|---|---|---|---|
 | F1.1 migrate adapter into fortress | done | #17 | `cbe57d4` | git mv plus shim |
 | F1.2 per-tool sandbox profiles | done | #24 | `a0a72c2` | TOOL_PROFILES + mergeProfileIntoConfig + Shell/Bash/manager plumbing; FS enforcement working; network enforcement deferred to F2.x |
-| F1.3 adapter test coverage hardening | ready | — | — | depends on F1.2 |
+| F1.3 adapter test coverage hardening | done | #PR_NUM | `MERGE_SHA` | adapter-*.test.mjs files covering resolvePathPatternForSandbox, resolveSandboxFilesystemPath, shouldAllowManagedSandboxDomainsOnly, convertToSandboxRuntimeConfig, addToExcludedCommands, SandboxManager lifecycle |
 
 ### F2-F5
 
