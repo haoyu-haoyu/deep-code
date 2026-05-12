@@ -170,14 +170,7 @@ export function PromptInputHelpMenu(props) {
   } else {
     t25 = $[30];
   }
-  let t26;
-  if ($[31] !== dimColor) {
-    t26 = <Box><Text dimColor={dimColor}>/btw for side question</Text></Box>;
-    $[31] = dimColor;
-    $[32] = t26;
-  } else {
-    t26 = $[32];
-  }
+  const t26 = null;
   let t27;
   if ($[33] !== t21 || $[34] !== t22 || $[35] !== t23 || $[36] !== t24 || $[37] !== t25 || $[38] !== t26) {
     t27 = <Box flexDirection="column" width={t21}>{t22}{t23}{t24}{t25}{t26}</Box>;
