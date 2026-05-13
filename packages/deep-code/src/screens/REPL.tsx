@@ -60,11 +60,9 @@ import { PromptDialog } from '../components/hooks/PromptDialog.js';
 import type { PromptRequest, PromptResponse } from '../types/hooks.js';
 import PromptInput from '../components/PromptInput/PromptInput.js';
 import { PromptInputQueuedCommands } from '../components/PromptInput/PromptInputQueuedCommands.js';
-import { useRemoteSession } from '../hooks/useRemoteSession.js';
 import { useDirectConnect } from '../hooks/useDirectConnect.js';
 import type { DirectConnectConfig } from '../server/directConnectManager.js';
 import { useSSHSession } from '../hooks/useSSHSession.js';
-import { useAssistantHistory } from '../hooks/useAssistantHistory.js';
 import type { SSHSession } from '../ssh/createSSHSession.js';
 import { SkillImprovementSurvey } from '../components/SkillImprovementSurvey.js';
 import { useSkillImprovementSurvey } from '../hooks/useSkillImprovementSurvey.js';
@@ -279,9 +277,6 @@ import { IssueFlagBanner } from '../components/PromptInput/IssueFlagBanner.js';
 import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js';
 import { CompanionSprite, CompanionFloatingBubble, MIN_COLS_FOR_FULL_SPRITE } from '../buddy/CompanionSprite.js';
 import { DevBar } from '../components/DevBar.js';
-// Session manager removed - using AppState now
-import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
-import { REMOTE_SAFE_COMMANDS } from '../commands.js';
 import type { RemoteMessageContent } from '../utils/teleport/api.js';
 import { FullscreenLayout, useUnseenDivider, computeUnseenDivider } from '../components/FullscreenLayout.js';
 import { isFullscreenEnvEnabled, maybeGetTmuxMouseHint, isMouseTrackingEnabled } from '../utils/fullscreen.js';
@@ -292,16 +287,6 @@ import { setClipboard } from '../ink/termio/osc.js';
 import type { ScrollBoxHandle } from '../ink/components/ScrollBox.js';
 import { createAttachmentMessage, getQueuedCommandAttachments } from '../utils/attachments.js';
 
-// Stable empty array for hooks that accept MCPServerConnection[] — avoids
-// creating a new [] literal on every render in remote mode, which would
-// cause useEffect dependency changes and infinite re-render loops.
-const EMPTY_MCP_CLIENTS: MCPServerConnection[] = [];
-
-// Stable stub for useAssistantHistory's non-KAIROS branch — avoids a new
-// function identity each render, which would break composedOnScroll's memo.
-const HISTORY_STUB = {
-  maybeLoadOlder: (_: ScrollBoxHandle) => {}
-};
 // Window after a user-initiated scroll during which type-into-empty does NOT
 // repin to bottom. Josh Rosen's workflow: Claude emits long output → scroll
 // up to read the start → start typing → before this fix, snapped to bottom.
@@ -563,8 +548,6 @@ export type Props = {
   disableSlashCommands?: boolean;
   // Task list id: when set, enables tasks mode that watches a task list and auto-processes tasks.
   taskListId?: string;
-  // Remote session config for --remote mode (uses CCR as execution engine)
-  remoteSessionConfig?: RemoteSessionConfig;
   // Direct connect config for `claude connect` mode (connects to a claude server)
   directConnectConfig?: DirectConnectConfig;
   // SSH session for `claude ssh` mode (local REPL, remote tools over ssh)
@@ -595,13 +578,10 @@ export function REPL({
   mainThreadAgentDefinition: initialMainThreadAgentDefinition,
   disableSlashCommands = false,
   taskListId,
-  remoteSessionConfig,
   directConnectConfig,
   sshSession,
   thinkingConfig
 }: Props): React.ReactNode {
-  const isRemoteSession = !!remoteSessionConfig;
-
   // Env-var gates hoisted to mount-time — isEnvTruthy does toLowerCase+trim+
   // includes, and these were on the render path (hot during PageUp spam).
   const titleDisabled = useMemo(() => isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE), []);
@@ -690,7 +670,7 @@ export function REPL({
   const [localCommands, setLocalCommands] = useState(initialCommands);
 
   // Watch for skill file changes and reload all commands
-  useSkillsChange(isRemoteSession ? undefined : getProjectRoot(), setLocalCommands);
+  useSkillsChange(getProjectRoot(), setLocalCommands);
 
   // Track proactive mode for tools dependency - SleepTool filters by proactive state
   const proactiveActive = React.useSyncExternalStore(proactiveModule?.subscribeToProactiveChanges ?? PROACTIVE_NO_OP_SUBSCRIBE, proactiveModule?.isProactiveActive ?? PROACTIVE_FALSE);
@@ -789,9 +769,7 @@ export function REPL({
   }, [localTools, initialTools]);
 
   // Initialize plugin management
-  useManagePlugins({
-    enabled: !isRemoteSession
-  });
+  useManagePlugins();
   const tasksV2 = useTasksV2WithCollapseEffect();
 
   // Start background plugin installations
@@ -803,19 +781,16 @@ export function REPL({
   // This ensures that plugin installations from repository and user settings only
   // happen after explicit user consent to trust the current working directory.
   useEffect(() => {
-    if (isRemoteSession) return;
     void performStartupChecks(setAppState);
-  }, [setAppState, isRemoteSession]);
+  }, [setAppState]);
 
   // Allow Claude in Chrome MCP to send prompts through MCP notifications
   // and sync permission mode changes to the Chrome extension
-  usePromptsFromClaudeInChrome(isRemoteSession ? EMPTY_MCP_CLIENTS : mcpClients, toolPermissionContext.mode);
+  usePromptsFromClaudeInChrome(mcpClients, toolPermissionContext.mode);
 
   // Initialize swarm features: teammate hooks and context
   // Handles both fresh spawns and resumed teammate sessions
-  useSwarmInitialization(setAppState, initialMessages, {
-    enabled: !isRemoteSession
-  });
+  useSwarmInitialization(setAppState, initialMessages);
   const mergedTools = useMergedTools(combinedInitialTools, mcp.tools, toolPermissionContext);
 
   // Apply agent tool restrictions if mainThreadAgentDefinition is set
@@ -841,8 +816,8 @@ export function REPL({
   const mergedCommands = useMergedCommands(commandsWithPlugins, mcp.commands as Command[]);
   // Filter out all commands if disableSlashCommands is true
   const commands = useMemo(() => disableSlashCommands ? [] : mergedCommands, [disableSlashCommands, mergedCommands]);
-  useIdeLogging(isRemoteSession ? EMPTY_MCP_CLIENTS : mcp.clients);
-  useIdeSelection(isRemoteSession ? EMPTY_MCP_CLIENTS : mcp.clients, setIDESelection);
+  useIdeLogging(mcp.clients);
+  useIdeSelection(mcp.clients, setIDESelection);
   const [streamMode, setStreamMode] = useState<SpinnerMode>('responding');
   // Ref mirror so onSubmit can read the latest value without adding
   // streamMode to its deps. streamMode flips between
@@ -908,11 +883,10 @@ export function REPL({
   const isQueryActive = React.useSyncExternalStore(queryGuard.subscribe, queryGuard.getSnapshot);
 
   // Separate loading flag for operations outside the local query guard:
-  // remote sessions (useRemoteSession / useDirectConnect) and foregrounded
-  // background tasks (useSessionBackgrounding). These don't route through
-  // onQuery / queryGuard, so they need their own spinner-visibility state.
-  // Initialize true if remote mode with initial prompt (CCR processing it).
-  const [isExternalLoading, setIsExternalLoadingRaw] = React.useState(remoteSessionConfig?.hasInitialPrompt ?? false);
+  // direct-connect / SSH sessions and foregrounded background tasks
+  // (useSessionBackgrounding). These don't route through onQuery /
+  // queryGuard, so they need their own spinner-visibility state.
+  const [isExternalLoading, setIsExternalLoadingRaw] = React.useState(false);
 
   // Derived: any loading source active. Read-only — no setter. Local query
   // loading is driven by queryGuard (reserve/tryStart/end/cancelReservation),
@@ -1244,8 +1218,7 @@ export function REPL({
     dividerYRef,
     onScrollAway,
     onRepin,
-    jumpToNew,
-    shiftDivider
+    jumpToNew
   } = useUnseenDivider(messages.length);
   if (feature('AWAY_SUMMARY')) {
     // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
@@ -1270,7 +1243,7 @@ export function REPL({
   // handler's scrollToBottom can be undone. This effect fires on the render
   // where the user's message actually lands — tied to React's commit cycle,
   // so it can't race with stdin. Keyed on lastMsg identity (not messages.length)
-  // so useAssistantHistory's prepends don't spuriously repin.
+  // so prepended history doesn't spuriously repin.
   const lastMsg = messages.at(-1);
   const lastMsgIsHuman = lastMsg != null && isHumanTurn(lastMsg);
   useEffect(() => {
@@ -1278,28 +1251,13 @@ export function REPL({
       repinScroll();
     }
   }, [lastMsgIsHuman, lastMsg, repinScroll]);
-  // Assistant-chat: lazy-load remote history on scroll-up. No-op unless
-  // KAIROS build + config.viewerOnly. feature() is build-time constant so
-  // the branch is dead-code-eliminated in non-KAIROS builds (same pattern
-  // as useUnseenDivider above).
-  const {
-    maybeLoadOlder
-  } = feature('KAIROS') ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useAssistantHistory({
-    config: remoteSessionConfig,
-    setMessages,
-    scrollRef,
-    onPrepend: shiftDivider
-  }) : HISTORY_STUB;
-  // Compose useUnseenDivider's callbacks with the lazy-load trigger.
+  // Compose useUnseenDivider's callbacks with scroll-side effects.
   const composedOnScroll = useCallback((sticky: boolean, handle: ScrollBoxHandle) => {
     lastUserScrollTsRef.current = Date.now();
     if (sticky) {
       onRepin();
     } else {
       onScrollAway(handle);
-      if (feature('KAIROS')) maybeLoadOlder(handle);
       // Dismiss the companion bubble on scroll — it's absolute-positioned
       // at bottom-right and covers transcript content. Scrolling = user is
       // trying to read something under it.
@@ -1310,7 +1268,7 @@ export function REPL({
         });
       }
     }
-  }, [onRepin, onScrollAway, maybeLoadOlder, setAppState]);
+  }, [onRepin, onScrollAway, setAppState]);
   // Deferred SessionStart hook messages — REPL renders immediately and
   // hook messages are injected when they resolve. awaitPendingHooks()
   // must be called before the first API call so the model sees hook context.
@@ -1380,27 +1338,8 @@ export function REPL({
     pastedContents: Record<number, PastedContent>;
   } | undefined>();
 
-  // Callback to filter commands based on CCR's available slash commands
-  const handleRemoteInit = useCallback((remoteSlashCommands: string[]) => {
-    const remoteCommandSet = new Set(remoteSlashCommands);
-    // Keep commands that CCR lists OR that are in the local-safe set
-    setLocalCommands(prev => prev.filter(cmd => remoteCommandSet.has(cmd.name) || REMOTE_SAFE_COMMANDS.has(cmd)));
-  }, [setLocalCommands]);
   const [inProgressToolUseIDs, setInProgressToolUseIDs] = useState<Set<string>>(new Set());
   const hasInterruptibleToolInProgressRef = useRef(false);
-
-  // Remote session hook - manages WebSocket connection and message handling for --remote mode
-  const remoteSession = useRemoteSession({
-    config: remoteSessionConfig,
-    setMessages,
-    setIsLoading: setIsExternalLoading,
-    onInit: handleRemoteInit,
-    setToolUseConfirmQueue,
-    tools: combinedInitialTools,
-    setStreamingToolUses,
-    setStreamMode,
-    setInProgressToolUseIDs
-  });
 
   // Direct connect hook - manages WebSocket to a claude server for `claude connect` mode
   const directConnect = useDirectConnect({
@@ -1422,8 +1361,11 @@ export function REPL({
     tools: combinedInitialTools
   });
 
-  // Use whichever remote mode is active
-  const activeRemote = sshRemote.isRemoteMode ? sshRemote : directConnect.isRemoteMode ? directConnect : remoteSession;
+  // Use whichever remote mode is active. Sentinel preserves the
+  // activeRemote.isRemoteMode access pattern at downstream call sites.
+  const activeRemote = sshRemote.isRemoteMode ? sshRemote : directConnect.isRemoteMode ? directConnect : {
+    isRemoteMode: false as const
+  };
   const [pastedContents, setPastedContents] = useState<Record<number, PastedContent>>({});
   const [submitCount, setSubmitCount] = useState(0);
   // Ref instead of state to avoid triggering React re-renders on every
@@ -1754,15 +1696,11 @@ export function REPL({
   }), [feedbackSurveyOriginal]);
 
   // Post-compact survey: shown after compaction if feature gate is enabled
-  const postCompactSurvey = usePostCompactSurvey(messages, isLoading, hasActivePrompt, {
-    enabled: !isRemoteSession
-  });
+  const postCompactSurvey = usePostCompactSurvey(messages, isLoading, hasActivePrompt);
 
   // Memory survey: shown when the assistant mentions memory and a memory file
   // was read this conversation
-  const memorySurvey = useMemorySurvey(messages, isLoading, hasActivePrompt, {
-    enabled: !isRemoteSession
-  });
+  const memorySurvey = useMemorySurvey(messages, isLoading, hasActivePrompt);
 
   // Frustration detection: show transcript sharing prompt after detecting frustrated messages
   const frustrationDetection = useFrustrationDetection(messages, isLoading, hasActivePrompt, feedbackSurvey.state !== 'closed' || postCompactSurvey.state !== 'closed' || memorySurvey.state !== 'closed');
@@ -3594,7 +3532,7 @@ export function REPL({
   // messages array in downstream closures (PromptInput, handleAutoRunIssue).
   // Heap analysis showed ~9 REPL scopes and ~15 messages array versions
   // accumulating after #20174/#20175, all traced to this dep.
-  mainLoopModel, pastedContents, ideSelection, setUserInputOnProcessing, setAbortController, addNotification, onQuery, stashedPrompt, setStashedPrompt, setAppState, onBeforeQuery, canUseTool, remoteSession, setMessages, awaitPendingHooks, repinScroll]);
+  mainLoopModel, pastedContents, ideSelection, setUserInputOnProcessing, setAbortController, addNotification, onQuery, stashedPrompt, setStashedPrompt, setAppState, onBeforeQuery, canUseTool, setMessages, awaitPendingHooks, repinScroll]);
 
   // Callback for when user submits input while viewing a teammate's transcript
   const onAgentSubmit = useCallback(async (input: string, task: InProcessTeammateTaskState | LocalAgentTaskState, helpers: PromptInputHelpers) => {

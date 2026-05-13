@@ -181,7 +181,6 @@ import { migrateSonnet1mToSonnet45 } from './migrations/migrateSonnet1mToSonnet4
 import { migrateSonnet45ToSonnet46 } from './migrations/migrateSonnet45ToSonnet46.js';
 import { resetAutoModeOptInForDefaultOffer } from './migrations/resetAutoModeOptInForDefaultOffer.js';
 import { resetProToOpusDefault } from './migrations/resetProToOpusDefault.js';
-import { createRemoteSessionConfig } from './remote/RemoteSessionManager.js';
 /* eslint-enable @typescript-eslint/no-require-imports */
 // teleportWithProgress dynamically imported at call site
 import { createDirectConnectSession, DirectConnectError } from './server/createDirectConnectSession.js';
@@ -3239,8 +3238,7 @@ async function run(): Promise<CommanderCommand> {
     } else if (feature('KAIROS') && _pendingAssistantChat && (_pendingAssistantChat.sessionId || _pendingAssistantChat.discover)) {
       // `claude assistant [sessionId]` — REPL as a pure viewer client
       // of a remote assistant session. The agentic loop runs remotely; this
-      // process streams live events and POSTs messages. History is lazy-
-      // loaded by useAssistantHistory on scroll-up (no blocking fetch here).
+      // process streams live events and POSTs messages.
       const {
         discoverAssistantSessions
       } = await import('./assistant/sessionDiscovery.js');
@@ -3306,7 +3304,6 @@ async function run(): Promise<CommanderCommand> {
       setKairosActive(true);
       setUserMsgOptIn(true);
       setIsRemoteMode(true);
-      const remoteSessionConfig = createRemoteSessionConfig(targetSessionId, getAccessToken, apiCreds.orgUUID, /* hasInitialPrompt */false, /* viewerOnly */true);
       const infoMessage = createSystemMessage(`Attached to assistant session ${targetSessionId.slice(0, 8)}…`, 'info');
       const assistantInitialState: AppState = {
         ...initialState,
@@ -3328,7 +3325,6 @@ async function run(): Promise<CommanderCommand> {
         autoConnectIdeFlag: ide,
         mainThreadAgentDefinition,
         disableSlashCommands,
-        remoteSessionConfig,
         thinkingConfig
       }, renderAndRun);
       return;
