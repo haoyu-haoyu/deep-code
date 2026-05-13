@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-13 (P1.2.2.a)
+Last updated: 2026-05-13 (P1.2.2.b)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.2.2.a delete --remote dead block in main.tsx | P1.2.2.b strip useRemoteSession + remoteSessionConfig | no |
+| A: Pure-DeepSeek | 1 | P1.2.2.b strip useRemoteSession + remoteSessionConfig | P1.2.3 stub residual teleport imports in remaining consumers | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -56,7 +56,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.2.0 extract RemoteMessageContent type to src/types | done | #36 | `666cbed` | C.1-style mini extraction; useDirectConnect + useSSHSession import paths updated; original type stays in teleport/api.ts as duplicate until teleport dir deletion |
 | P1.2.1 remove --remote CLI flag option | done | #37 | `6f1618d` | main.tsx --remote [description] option declaration removed; downstream options.remote / remote !== null readers left dead for P1.2.2 |
 | P1.2.2.a delete --remote dead block in main.tsx | done | #38 | `55284e9` | main.tsx remoteOption + remote derivation removed; outer OR chain and policy check simplified; ~100-line `if (remote !== null)` block deleted; teleport branch promoted to primary if |
-| P1.2.2.b strip useRemoteSession + remoteSessionConfig from REPL and main launchRepl callers | ready | — | — | depends on P1.2.2.a; REPL.tsx useRemoteSession hook + isRemoteSession state + 10+ branches; main.tsx launchRepl callers stop passing remoteSessionConfig |
+| P1.2.2.b strip useRemoteSession + remoteSessionConfig from REPL and main launchRepl callers | done | #PR_NUM | `MERGE_SHA` | REPL.tsx: useRemoteSession hook + isRemoteSession state + 10+ dead branches removed; activeRemote uses sentinel fallback; main.tsx KAIROS attach block no longer passes remoteSessionConfig |
 | P1.2.3 stub residual teleport imports in remaining consumers | ready | — | — | depends on P1.2.2; analog to P1.1.C.2.a/b for command + state files |
 | P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | ready | — | — | depends on P1.2.3; final teleport sweep mirroring P1.1.C.3 |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
