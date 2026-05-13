@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-13 (P1.2.10)
+Last updated: 2026-05-14 (P1.2.11.a)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.2.10 strip RemoteAgent UI consumers + delete RemoteSession UI files | P1.2.11 strip ultraplan command + AppStateStore residual + downstream readers | no |
+| A: Pure-DeepSeek | 1 | P1.2.11.a strip ExitPlanModePermissionRequest ultraplan dead branches | P1.2.11.b delete commands/ultraplan.tsx + AppStateStore residual + 3 reader strips | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -66,6 +66,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.2.8.b delete orphan commands/review/* and ultrareviewQuota.ts | done | #46 | `656c5c6` | git rm of 5 files: reviewRemote.ts, ultrareviewCommand.tsx, UltrareviewOverageDialog.tsx, ultrareviewEnabled.ts, services/api/ultrareviewQuota.ts; commands/review/ directory empty and gone; zero source edits |
 | P1.2.9 strip restoreRemoteAgentTasks from REPL.tsx | done | #47 | `8610c77` | REPL.tsx: drop line-192 import + two `void restoreRemoteAgentTasks({...})` call sites (resume callback + initialMessages useEffect); -11 net lines; restoreReadFileState/exitRestoredWorktree/restoreWorktreeForResume/adoptResumedSessionFile preserved; RemoteAgentTask def site + 4 other live consumers (tasks.ts, tasks/types.ts, TaskOutputTool, commands/ultraplan.tsx) deferred to P1.2.10/.11 |
 | P1.2.10 strip RemoteAgent UI consumers + delete RemoteSession UI files | done | #48 | `9d7457b` | tasks/pillLabel.ts: drop remote_agent case + simplify pillNeedsCta; BackgroundTask.tsx: drop case "remote_agent" + RemoteSessionProgress import; TaskOutputTool.tsx: drop 2 discriminated branches + RemoteAgentTaskState import; BackgroundTasksDialog.tsx: 13 sites (2 imports + ListItem union member + filter + return field + keybinding kill + killRemoteAgentTask fn + detail switch case + runningAgentCount + actions array + toListItem switch case); DELETE RemoteSessionDetailDialog.tsx (903 lines) + RemoteSessionProgress.tsx (242 lines); type system untouched (P1.2.12); ultraplan command untouched (P1.2.11) |
+| P1.2.11.a strip ExitPlanModePermissionRequest ultraplan dead branches | done | #XX | `<7-char-merge-SHA>` | ExitPlanModePermissionRequest.tsx: 8 sites — drop launchUltraplan import + 'ultraplan' from ResponseValue union + showUltraplan const + showUltraplan from useMemo callback/deps + dead `if (value === 'ultraplan')` block (incl. launchUltraplan call) + showUltraplan from buildPlanApprovalOptions signature + dead `if (showUltraplan)` option-push; commands/ultraplan.tsx now 0 external consumers (P1.2.11.b deletes it) |
 | P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | ready | — | — | depends on P1.2.9-P1.2.11 stripping remaining live consumers; final teleport sweep mirroring P1.1.C.3 |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
 | P1.4 config paths `~/.claude` to `~/.deepcode` | ready | — | — | depends on P1.3 |
