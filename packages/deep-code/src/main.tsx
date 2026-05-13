@@ -27,7 +27,6 @@ import pickBy from 'lodash-es/pickBy.js';
 import uniqBy from 'lodash-es/uniqBy.js';
 import React from 'react';
 import { getOauthConfig } from './constants/oauth.js';
-import { getRemoteSessionUrl } from './constants/product.js';
 import { getSystemContext, getUserContext } from './context.js';
 import { init, initializeTelemetryAfterTrust } from './entrypoints/init.js';
 import { addToHistory } from './history.js';
@@ -110,7 +109,7 @@ import { hasNodeOption, isBareMode, isEnvTruthy, isInProtectedNamespace } from '
 import { refreshExampleCommands } from './utils/exampleCommands.js';
 import type { FpsMetrics } from './utils/fpsTracker.js';
 import { getWorktreePaths } from './utils/getWorktreePaths.js';
-import { findGitRoot, getBranch, getIsGit, getWorktreeCount } from './utils/git.js';
+import { findGitRoot, getIsGit, getWorktreeCount } from './utils/git.js';
 import { getGhAuthStatus } from './utils/github/ghAuthStatus.js';
 import { safeParseJSON } from './utils/json.js';
 import { logError } from './utils/log.js';
@@ -155,7 +154,7 @@ import { createEmptyAttributionState } from 'src/utils/commitAttribution.js';
 import { countConcurrentSessions, registerSession, updateSessionName } from 'src/utils/concurrentSessions.js';
 import { getCwd } from 'src/utils/cwd.js';
 import { logForDebugging, setHasFormattedOutput } from 'src/utils/debug.js';
-import { errorMessage, getErrnoCode, isENOENT, TeleportOperationError, toError } from 'src/utils/errors.js';
+import { errorMessage, getErrnoCode, isENOENT, TeleportOperationError } from 'src/utils/errors.js';
 import { getFsImplementation, safeResolvePath } from 'src/utils/fsOperations.js';
 import { gracefulShutdown, gracefulShutdownSync } from 'src/utils/gracefulShutdown.js';
 import { setAllHookEventsEnabled } from 'src/utils/hooks/hookEvents.js';
@@ -165,7 +164,7 @@ import { setCwd } from 'src/utils/Shell.js';
 import { type ProcessedResume, processResumedConversation } from 'src/utils/sessionRestore.js';
 import { parseSettingSourcesFlag } from 'src/utils/settings/constants.js';
 import { plural } from 'src/utils/stringUtils.js';
-import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession, getSdkBetas, getSessionId, getUserMsgOptIn, setAllowedChannels, setAllowedSettingSources, setChromeFlagOverride, setClientType, setCwdState, setDirectConnectServerUrl, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setKairosActive, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
+import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession, getSdkBetas, getSessionId, getUserMsgOptIn, setAllowedChannels, setAllowedSettingSources, setChromeFlagOverride, setClientType, setCwdState, setDirectConnectServerUrl, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setKairosActive, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setUserMsgOptIn } from './bootstrap/state.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('./utils/permissions/autoModeState.js') as typeof import('./utils/permissions/autoModeState.js') : null;
@@ -191,7 +190,6 @@ import { shouldEnablePromptSuggestion } from './services/PromptSuggestion/prompt
 import { type AppState, getDefaultAppState, IDLE_SPECULATION_STATE } from './state/AppStateStore.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { createStore } from './state/store.js';
-import { asSessionId } from './types/ids.js';
 import { filterAllowedSdkBetas } from './utils/betas.js';
 import { isInBundledMode, isRunningWithBun } from './utils/bundledMode.js';
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js';
@@ -200,7 +198,7 @@ import { clearPluginCache, loadAllPluginsCacheOnly } from './utils/plugins/plugi
 import { migrateChangelogFromConfig } from './utils/releaseNotes.js';
 import { SandboxManager } from './utils/sandbox/sandbox-adapter.js';
 import { fetchSession, prepareApiRequest } from './utils/teleport/api.js';
-import { checkOutTeleportedSessionBranch, processMessagesForTeleportResume, teleportToRemoteWithErrorHandling, validateGitState, validateSessionRepository } from './utils/teleport.js';
+import { checkOutTeleportedSessionBranch, processMessagesForTeleportResume, validateGitState, validateSessionRepository } from './utils/teleport.js';
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from './utils/thinking.js';
 import { initUser, resetUserCache } from './utils/user.js';
 import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from './utils/worktree.js';
@@ -1255,12 +1253,6 @@ async function run(): Promise<CommanderCommand> {
     const teleport = (options as {
       teleport?: string | true;
     }).teleport ?? null;
-
-    // Extract remote option (can be true if no description provided, or a string)
-    const remoteOption = (options as {
-      remote?: string | true;
-    }).remote;
-    const remote = remoteOption === true ? '' : remoteOption ?? null;
 
     // Extract --remote-control / --rc flag (enable bridge in interactive session)
     const remoteControlOption = (options as {
@@ -3340,7 +3332,7 @@ async function run(): Promise<CommanderCommand> {
         thinkingConfig
       }, renderAndRun);
       return;
-    } else if (options.resume || options.fromPr || teleport || remote !== null) {
+    } else if (options.resume || options.fromPr || teleport) {
       // Handle resume flow - from file (ant-only), session ID, or interactive selector
 
       // Clear stale caches before resuming to ensure fresh file/skill discovery
@@ -3386,110 +3378,13 @@ async function run(): Promise<CommanderCommand> {
         }
       }
 
-      // --remote and --teleport both create/resume Claude Code Web (CCR) sessions.
-      // Remote Control (--rc) is a separate feature gated in initReplBridge.ts.
-      if (remote !== null || teleport) {
+      if (teleport) {
         await waitForPolicyLimitsToLoad();
         if (!isPolicyAllowed('allow_remote_sessions')) {
           return await exitWithError(root, "Error: Remote sessions are disabled by your organization's policy.", () => gracefulShutdown(1));
         }
       }
-      if (remote !== null) {
-        // Create remote session (optionally with initial prompt)
-        const hasInitialPrompt = remote.length > 0;
-
-        // Check if TUI mode is enabled - description is only optional in TUI mode
-        const isRemoteTuiEnabled = getFeatureValue_CACHED_MAY_BE_STALE('tengu_remote_backend', false);
-        if (!isRemoteTuiEnabled && !hasInitialPrompt) {
-          return await exitWithError(root, 'Error: --remote requires a description.\nUsage: claude --remote "your task description"', () => gracefulShutdown(1));
-        }
-        logEvent('tengu_remote_create_session', {
-          has_initial_prompt: String(hasInitialPrompt) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
-
-        // Pass current branch so CCR clones the repo at the right revision
-        const currentBranch = await getBranch();
-        const createdSession = await teleportToRemoteWithErrorHandling(root, hasInitialPrompt ? remote : null, new AbortController().signal, currentBranch || undefined);
-        if (!createdSession) {
-          logEvent('tengu_remote_create_session_error', {
-            error: 'unable_to_create_session' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-          });
-          return await exitWithError(root, 'Error: Unable to create remote session', () => gracefulShutdown(1));
-        }
-        logEvent('tengu_remote_create_session_success', {
-          session_id: createdSession.id as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        });
-
-        // Check if new remote TUI mode is enabled via feature gate
-        if (!isRemoteTuiEnabled) {
-          // Original behavior: print session info and exit
-          process.stdout.write(`Created remote session: ${createdSession.title}\n`);
-          process.stdout.write(`View: ${getRemoteSessionUrl(createdSession.id)}?m=0\n`);
-          process.stdout.write(`Resume with: claude --teleport ${createdSession.id}\n`);
-          await gracefulShutdown(0);
-          process.exit(0);
-        }
-
-        // New behavior: start local TUI with CCR engine
-        // Mark that we're in remote mode for command visibility
-        setIsRemoteMode(true);
-        switchSession(asSessionId(createdSession.id));
-
-        // Get OAuth credentials for remote session
-        let apiCreds: {
-          accessToken: string;
-          orgUUID: string;
-        };
-        try {
-          apiCreds = await prepareApiRequest();
-        } catch (error) {
-          logError(toError(error));
-          return await exitWithError(root, `Error: ${errorMessage(error) || 'Failed to authenticate'}`, () => gracefulShutdown(1));
-        }
-
-        // Create remote session config for the REPL
-        const {
-          getClaudeAIOAuthTokens: getTokensForRemote
-        } = await import('./utils/auth.js');
-        const getAccessTokenForRemote = (): string => getTokensForRemote()?.accessToken ?? apiCreds.accessToken;
-        const remoteSessionConfig = createRemoteSessionConfig(createdSession.id, getAccessTokenForRemote, apiCreds.orgUUID, hasInitialPrompt);
-
-        // Add remote session info as initial system message
-        const remoteSessionUrl = `${getRemoteSessionUrl(createdSession.id)}?m=0`;
-        const remoteInfoMessage = createSystemMessage(`/remote-control is active. Code in CLI or at ${remoteSessionUrl}`, 'info');
-
-        // Create initial user message from the prompt if provided (CCR echoes it back but we ignore that)
-        const initialUserMessage = hasInitialPrompt ? createUserMessage({
-          content: remote
-        }) : null;
-
-        // Set remote session URL in app state for footer indicator
-        const remoteInitialState = {
-          ...initialState,
-          remoteSessionUrl
-        };
-
-        // Pre-filter commands to only include remote-safe ones.
-        // CCR's init response may further refine the list (via handleRemoteInit in REPL).
-        const remoteCommands = filterCommandsForRemoteMode(commands);
-        await launchRepl(root, {
-          getFpsMetrics,
-          stats,
-          initialState: remoteInitialState
-        }, {
-          debug: debug || debugToStderr,
-          commands: remoteCommands,
-          initialTools: [],
-          initialMessages: initialUserMessage ? [remoteInfoMessage, initialUserMessage] : [remoteInfoMessage],
-          mcpClients: [],
-          autoConnectIdeFlag: ide,
-          mainThreadAgentDefinition,
-          disableSlashCommands,
-          remoteSessionConfig,
-          thinkingConfig
-        }, renderAndRun);
-        return;
-      } else if (teleport) {
+      if (teleport) {
         if (teleport === true || teleport === '') {
           // Interactive mode: show task selector and handle resume
           logEvent('tengu_teleport_interactive_mode', {});
