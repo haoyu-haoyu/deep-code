@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-13 (P1.2.8.a)
+Last updated: 2026-05-13 (P1.2.8.b)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.2.8.a strip ultrareview consumers | P1.2.8.b delete orphan commands/review/* + ultrareviewQuota.ts | no |
+| A: Pure-DeepSeek | 1 | P1.2.8.b delete orphan commands/review/* + ultrareviewQuota.ts | P1.2.9 strip restoreRemoteAgentTasks from REPL.tsx | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -63,7 +63,8 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.2.6 deregister scheduleRemoteAgents and RemoteTriggerTool | done | #43 | `9b5bb2f` | tools.ts RemoteTriggerTool conditional require + spread removed; skills/bundled/index.ts scheduleRemoteAgents registration removed; implementation files dying in P1.2.N |
 | P1.2.7 strip RemoteAgentTask dead branches from AgentTool | done | #44 | `2b0e44a` | AgentTool.tsx + UI.tsx; 1 import line + RemoteLaunchedOutput type + isolation 'remote' enum + remote launch block + remote_launched discriminated branch all gone |
 | P1.2.8.a strip ultrareview consumers (PromptInput, barrel, registry, keyword util) | done | #45 | `dc0c2ea` | commands.ts: drop `{ ultrareview }` named import + array entry; commands/review.ts: drop ultrareview Command + isUltrareviewEnabled import + DEEPCODE_REMOTE_REVIEW_URL const + named export; PromptInput.tsx: drop 2 imports + ultrareviewTriggers useMemo + rainbow loop + deps array entry + notification useEffect; utils/ultraplan/keyword.ts: drop findUltrareviewTriggerPositions + hasUltrareviewKeyword; 5 files (commands/review/* + services/api/ultrareviewQuota.ts) become orphan for P1.2.8.b; intra-cluster import reviewRemote→ultrareviewQuota left in place (mirrors P1.2.6 deregister pattern, P1.2.8.b cleans both together) |
-| P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | ready | — | — | depends on P1.2.6; final teleport sweep mirroring P1.1.C.3 |
+| P1.2.8.b delete orphan commands/review/* and ultrareviewQuota.ts | done | #XX | `<7-char-merge-SHA>` | git rm of 5 files: reviewRemote.ts, ultrareviewCommand.tsx, UltrareviewOverageDialog.tsx, ultrareviewEnabled.ts, services/api/ultrareviewQuota.ts; commands/review/ directory empty and gone; zero source edits |
+| P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | ready | — | — | depends on P1.2.9-P1.2.11 stripping remaining live consumers; final teleport sweep mirroring P1.1.C.3 |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
 | P1.4 config paths `~/.claude` to `~/.deepcode` | ready | — | — | depends on P1.3 |
 | P1.5 `CLAUDE.md` to `DEEPCODE.md` memory | ready | — | — | depends on P1.4 |
