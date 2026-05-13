@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-13 (P1.2.3)
+Last updated: 2026-05-13 (P1.2.4)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.2.3 remove --teleport CLI flag option | P1.2.4 strip teleport dead branches in main.tsx and cli/print.ts | no |
+| A: Pure-DeepSeek | 1 | P1.2.4 strip teleport dead branches | P1.2.5 ULTRAPLAN + scheduleRemoteAgents + RemoteTriggerTool cleanup | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -58,8 +58,9 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.2.2.a delete --remote dead block in main.tsx | done | #38 | `55284e9` | main.tsx remoteOption + remote derivation removed; outer OR chain and policy check simplified; ~100-line `if (remote !== null)` block deleted; teleport branch promoted to primary if |
 | P1.2.2.b strip useRemoteSession + remoteSessionConfig from REPL and main launchRepl callers | done | #39 | `6e8f697` | REPL.tsx: useRemoteSession hook + isRemoteSession state + 10+ dead branches removed; activeRemote uses sentinel fallback; main.tsx KAIROS attach block no longer passes remoteSessionConfig |
 | P1.2.3 remove --teleport CLI flag option | done | #40 | `181efc0` | main.tsx --teleport [session] option declaration removed (mirror P1.2.1); downstream teleport variable / branches left dead for P1.2.4 |
-| P1.2.4 strip teleport dead branches in main.tsx and cli/print.ts | ready | — | — | depends on P1.2.3; mirror P1.2.2.a |
-| P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | ready | — | — | depends on P1.2.3; final teleport sweep mirroring P1.1.C.3 |
+| P1.2.4 strip teleport dead branches in main.tsx and cli/print.ts | done | #PR_NUM | `MERGE_SHA` | main.tsx teleport variable + outer if + 70-line teleport block deleted; cli/print.ts teleport print handler deleted; prepareApiRequest kept (used by non-teleport callers); fetchSession + 4 teleport.js symbols removed |
+| P1.2.5 ULTRAPLAN + scheduleRemoteAgents + RemoteTriggerTool cleanup | ready | — | — | depends on P1.2.4; next teleport-adjacent consumer cleanup before final P1.2.N deletion |
+| P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | ready | — | — | depends on P1.2.5; final teleport sweep mirroring P1.1.C.3 |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
 | P1.4 config paths `~/.claude` to `~/.deepcode` | ready | — | — | depends on P1.3 |
 | P1.5 `CLAUDE.md` to `DEEPCODE.md` memory | ready | — | — | depends on P1.4 |
