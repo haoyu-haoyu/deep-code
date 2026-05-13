@@ -7,7 +7,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.2.6 deregister scheduleRemoteAgents and RemoteTriggerTool | P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | no |
+| A: Pure-DeepSeek | 1 | P1.2.7 strip RemoteAgentTask dead branches from AgentTool | P1.2.8 delete /ultrareview command + reviewRemote.ts | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -61,6 +61,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.2.4 strip teleport dead branches in main.tsx and cli/print.ts | done | #41 | `a7b1e3f` | main.tsx teleport variable + outer if + 70-line teleport block deleted; cli/print.ts teleport print handler deleted; prepareApiRequest kept (used by non-teleport callers); fetchSession + 4 teleport.js symbols removed |
 | P1.2.5 simplify feature('ULTRAPLAN') sites to constant false | done | #42 | `3c165df` | commands.ts ultraplan const + spread; processUserInput.ts gate; REPL.tsx 4 sites including dialogs; ExitPlanModePermissionRequest.tsx showUltraplan; PromptInput.tsx 3 sites; orphan state vars left for P1.11 |
 | P1.2.6 deregister scheduleRemoteAgents and RemoteTriggerTool | done | #43 | `9b5bb2f` | tools.ts RemoteTriggerTool conditional require + spread removed; skills/bundled/index.ts scheduleRemoteAgents registration removed; implementation files dying in P1.2.N |
+| P1.2.7 strip RemoteAgentTask dead branches from AgentTool | done | #XX | `<7-char-merge-SHA>` | AgentTool.tsx + UI.tsx; 1 import line + RemoteLaunchedOutput type + isolation 'remote' enum + remote launch block + remote_launched discriminated branch all gone |
 | P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | ready | — | — | depends on P1.2.6; final teleport sweep mirroring P1.1.C.3 |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
 | P1.4 config paths `~/.claude` to `~/.deepcode` | ready | — | — | depends on P1.3 |
