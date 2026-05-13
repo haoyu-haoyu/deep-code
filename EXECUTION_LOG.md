@@ -57,7 +57,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.2.1 remove --remote CLI flag option | done | #37 | `6f1618d` | main.tsx --remote [description] option declaration removed; downstream options.remote / remote !== null readers left dead for P1.2.2 |
 | P1.2.2.a delete --remote dead block in main.tsx | done | #38 | `55284e9` | main.tsx remoteOption + remote derivation removed; outer OR chain and policy check simplified; ~100-line `if (remote !== null)` block deleted; teleport branch promoted to primary if |
 | P1.2.2.b strip useRemoteSession + remoteSessionConfig from REPL and main launchRepl callers | done | #39 | `6e8f697` | REPL.tsx: useRemoteSession hook + isRemoteSession state + 10+ dead branches removed; activeRemote uses sentinel fallback; main.tsx KAIROS attach block no longer passes remoteSessionConfig |
-| P1.2.3 remove --teleport CLI flag option | done | #PR_NUM | `MERGE_SHA` | main.tsx --teleport [session] option declaration removed (mirror P1.2.1); downstream teleport variable / branches left dead for P1.2.4 |
+| P1.2.3 remove --teleport CLI flag option | done | #40 | `181efc0` | main.tsx --teleport [session] option declaration removed (mirror P1.2.1); downstream teleport variable / branches left dead for P1.2.4 |
 | P1.2.4 strip teleport dead branches in main.tsx and cli/print.ts | ready | — | — | depends on P1.2.3; mirror P1.2.2.a |
 | P1.2.N final mass deletion of teleport / ultraplan / src/remote dirs and orphan files | ready | — | — | depends on P1.2.3; final teleport sweep mirroring P1.1.C.3 |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
