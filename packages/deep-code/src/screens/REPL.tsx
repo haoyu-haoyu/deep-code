@@ -95,7 +95,6 @@ import { useSwarmInitialization } from '../hooks/useSwarmInitialization.js';
 import { useTeammateViewAutoExit } from '../hooks/useTeammateViewAutoExit.js';
 import { errorMessage } from '../utils/errors.js';
 import { isHumanTurn } from '../utils/messagePredicates.js';
-import { logError } from '../utils/log.js';
 // Dead code elimination: conditional imports
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 const useVoiceIntegration: typeof import('../hooks/useVoiceIntegration.js').useVoiceIntegration = feature('VOICE_MODE') ? require('../hooks/useVoiceIntegration.js').useVoiceIntegration : () => ({
@@ -624,7 +623,6 @@ export function REPL({
   const workerSandboxPermissions = useAppState(s => s.workerSandboxPermissions);
   const elicitation = useAppState(s => s.elicitation);
   const ultraplanPendingChoice = useAppState(s => s.ultraplanPendingChoice);
-  const ultraplanLaunchPending = useAppState(s => s.ultraplanLaunchPending);
   const viewingAgentTaskId = useAppState(s => s.viewingAgentTaskId);
   const setAppState = useSetAppState();
 
@@ -2019,8 +2017,6 @@ export function REPL({
     if (allowDialogsWithAnimation && elicitation.queue[0]) return 'elicitation';
     if (allowDialogsWithAnimation && showingCostDialog) return 'cost';
     if (allowDialogsWithAnimation && idleReturnPending) return 'idle-return';
-    if (feature('ULTRAPLAN') && allowDialogsWithAnimation && !isLoading && ultraplanPendingChoice) return 'ultraplan-choice';
-    if (feature('ULTRAPLAN') && allowDialogsWithAnimation && !isLoading && ultraplanLaunchPending) return 'ultraplan-launch';
 
     // Onboarding dialogs (special conditions)
     if (allowDialogsWithAnimation && showIdeOnboarding) return 'ide-onboarding';
@@ -4398,7 +4394,7 @@ export function REPL({
       // Its raw useInput handler only stops propagation when a selection
       // exists — without one, ctrl+c falls through to CancelRequestHandler.
       <ScrollKeybindingHandler scrollRef={scrollRef}
-      // Yield wheel/ctrl+u/d to UltraplanChoiceDialog's own scroll
+      // Yield wheel/ctrl+u/d to the focused choice dialog's own scroll
       // handler while the modal is showing.
       isActive={focusedInputDialog !== 'ultraplan-choice'}
       // g/G/j/k/ctrl+u/ctrl+d would eat keystrokes the search bar
@@ -4815,48 +4811,6 @@ export function REPL({
                 {focusedInputDialog === 'lsp-recommendation' && lspRecommendation && <LspRecommendationMenu pluginName={lspRecommendation.pluginName} pluginDescription={lspRecommendation.pluginDescription} fileExtension={lspRecommendation.fileExtension} onResponse={handleLspResponse} />}
 
                 {focusedInputDialog === 'desktop-upsell' && <DesktopUpsellStartup onDone={() => setShowDesktopUpsellStartup(false)} />}
-
-                {feature('ULTRAPLAN') ? focusedInputDialog === 'ultraplan-choice' && ultraplanPendingChoice && <UltraplanChoiceDialog plan={ultraplanPendingChoice.plan} sessionId={ultraplanPendingChoice.sessionId} taskId={ultraplanPendingChoice.taskId} setMessages={setMessages} readFileState={readFileState.current} getAppState={() => store.getState()} setConversationId={setConversationId} /> : null}
-
-                {feature('ULTRAPLAN') ? focusedInputDialog === 'ultraplan-launch' && ultraplanLaunchPending && <UltraplanLaunchDialog onChoice={(choice, opts) => {
-            const blurb = ultraplanLaunchPending.blurb;
-            setAppState(prev => prev.ultraplanLaunchPending ? {
-              ...prev,
-              ultraplanLaunchPending: undefined
-            } : prev);
-            if (choice === 'cancel') return;
-            // Command's onDone used display:'skip', so add the
-            // echo here — gives immediate feedback before the
-            // ~5s teleportToRemote resolves.
-            setMessages(prev => [...prev, createCommandInputMessage(formatCommandInputTags('ultraplan', blurb))]);
-            const appendStdout = (msg: string) => setMessages(prev => [...prev, createCommandInputMessage(`<${LOCAL_COMMAND_STDOUT_TAG}>${escapeXml(msg)}</${LOCAL_COMMAND_STDOUT_TAG}>`)]);
-            // Defer the second message if a query is mid-turn
-            // so it lands after the assistant reply, not
-            // between the user's prompt and the reply.
-            const appendWhenIdle = (msg: string) => {
-              if (!queryGuard.isActive) {
-                appendStdout(msg);
-                return;
-              }
-              const unsub = queryGuard.subscribe(() => {
-                if (queryGuard.isActive) return;
-                unsub();
-                // Skip if the user stopped ultraplan while we
-                // were waiting — avoids a stale "Monitoring
-                // <url>" message for a session that's gone.
-                if (!store.getState().ultraplanSessionUrl) return;
-                appendStdout(msg);
-              });
-            };
-            void launchUltraplan({
-              blurb,
-              getAppState: () => store.getState(),
-              setAppState,
-              signal: createAbortController().signal,
-              disconnectedBridge: opts?.disconnectedBridge,
-              onSessionReady: appendWhenIdle
-            }).then(appendStdout).catch(logError);
-          }} /> : null}
 
                 {mrRender()}
 
