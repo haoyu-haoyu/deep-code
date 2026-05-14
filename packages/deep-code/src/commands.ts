@@ -131,7 +131,6 @@ import {
 import antTrace from './commands/ant-trace/index.js'
 import perfIssue from './commands/perf-issue/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
-import chrome from './commands/chrome/index.js'
 import advisor from './commands/advisor.js'
 import { logError } from './utils/log.js'
 import { toError } from './utils/errors.js'
@@ -235,7 +234,6 @@ function includeLegacyClaudeServiceCommands(): boolean {
 }
 
 const LEGACY_CLAUDE_SERVICE_COMMANDS: Command[] = [
-  chrome,
   desktop,
   mobile,
   ...(webCmd ? [webCmd] : []),
