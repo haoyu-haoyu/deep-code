@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-14 (P1.2.N.a)
+Last updated: 2026-05-14 (P1.2.N.b)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 1 | P1.2.N.a delete RemoteAgent + ultraplan cluster | P1.2.N.b delete teleport resume picker chain | no |
+| A: Pure-DeepSeek | 1 | P1.2.N.b delete teleport resume picker chain + sessionStorage RemoteAgentMetadata cluster | P1.2.N.c deregister + delete /teleport and /remote-env slash commands | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -70,7 +70,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.2.11.b delete commands/ultraplan.tsx + AppStateStore residual + 3 reader strips | done | #50 | `98b2f8c` | DELETE commands/ultraplan.tsx (470 LOC); AppStateStore.ts: drop 5 ultraplan fields + comments (lines 459-476); REPL.tsx: drop ultraplanPendingChoice const + useEffect block + 2 type union enum members + simplify isActive comparison (4 sites); cli/print.ts: drop isUltraplanMode merge line; onChangeAppState.ts: drop is_ultraplan_mode read spread + write field (atomic with AppStateStore); SessionExternalMetadata wire type kept (deferred to P1.3/P1.10) |
 | P1.2.12 strip RemoteAgentTask from type system + tasks registry | done | #51 | `235a257` | tasks.ts: drop RemoteAgentTask import + array entry; tasks/types.ts: drop RemoteAgentTaskState import + remove from TaskState + BackgroundTaskState unions; Task.ts: drop remote_agent map entry from TASK_ID_PREFIXES; `Task.ts:9` `'remote_agent'` in TaskType union deliberately kept (would break RemoteAgentTask.tsx self-discriminator until P1.2.N deletes the file) |
 | P1.2.N.a delete RemoteAgent + ultraplan cluster | done | #52 | `ed25425` | Task.ts: drop `| 'remote_agent'` from TaskType union (atomic with RemoteAgentTask.tsx delete); DELETE 8 tracked files across tasks/RemoteAgentTask/ + utils/ultraplan/ + utils/background/remote/remoteSession.ts + skills/bundled/scheduleRemoteAgents.ts + tools/RemoteTriggerTool/ (3 dirs disappear); `utils/ultraplan/prompt.txt` was absent/untracked at base; bundle delta expected ~0 (P1.2.12 already tree-shook the chain); RemoteAgentMetadata helpers in utils/sessionStorage.ts orphan after this PR, deferred to P1.2.N.b/c |
-| P1.2.N.b delete teleport resume picker chain | ready | — | — | depends on P1.2.N.a; DELETE hooks/useTeleportResume.tsx + components/TeleportResumeWrapper.tsx + components/ResumeTask.tsx + components/TeleportProgress.tsx; MODIFY dialogLaunchers.tsx to drop launchTeleportResumeWrapper (0 caller verified); also potentially clean utils/sessionStorage.ts RemoteAgentMetadata helpers if orphan |
+| P1.2.N.b delete teleport resume picker chain + sessionStorage RemoteAgentMetadata cluster | done | #XX | `<7-char-merge-SHA>` | DELETE hooks/useTeleportResume.tsx + components/TeleportResumeWrapper.tsx + components/ResumeTask.tsx + components/TeleportProgress.tsx; MODIFY dialogLaunchers.tsx (drop launchTeleportResumeWrapper + TeleportRemoteResponse import; 0 caller verified); MODIFY utils/sessionStorage.ts (drop RemoteAgentMetadata type + 4 export functions + private helper + orphan `unlink` import — ~95 LOC; entire cluster was RemoteAgentTask-only consumer, orphan after P1.2.N.a); `utils/teleport.tsx` exports `teleportResumeCodeSession`/`checkOutTeleportedSessionBranch`/`processMessagesForTeleportResume`/`TeleportProgressStep`/`TeleportResult` may become orphan but kept (P1.3 territory) |
 | P1.2.N.c deregister + delete /teleport and /remote-env slash commands | ready | — | — | depends on P1.2.N.b; MODIFY commands.ts to drop teleport + remoteEnv imports + array entries; DELETE commands/teleport/index.js + commands/remote-env/ dir + components/RemoteEnvironmentDialog.tsx; finishes P1.2 source-side cleanup |
 | P1.2.Z chore: refresh prebuilt dist bundle | ready | — | — | after P1.2.N: run `bun run build:full-cli` and commit fresh `dist/deepcode-full.mjs` + `cli.js` once; absorbs all source-vs-bundle drift accumulated across the P1.2 series (Codex review P1 surfaced in PR #50) |
 | P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
