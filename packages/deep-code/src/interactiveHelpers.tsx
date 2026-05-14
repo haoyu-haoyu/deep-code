@@ -158,7 +158,7 @@ async function maybeShowDeepSeekSetupWizard(root: Root): Promise<void> {
   }
 }
 
-export async function showSetupScreens(root: Root, permissionMode: PermissionMode, allowDangerouslySkipPermissions: boolean, commands?: Command[], claudeInChrome?: boolean, devChannels?: ChannelEntry[]): Promise<boolean> {
+export async function showSetupScreens(root: Root, permissionMode: PermissionMode, allowDangerouslySkipPermissions: boolean, commands?: Command[], devChannels?: ChannelEntry[]): Promise<boolean> {
   if (isEnvTruthy(process.env.DEEPCODE_FULL_TUI_SKIP_SETUP)) {
     logForDebugging('Skip Deep Code full TUI setup screens for experimental startup');
     await maybeShowDeepSeekSetupWizard(root);
@@ -350,13 +350,6 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
     }
   }
 
-  // Show Chrome onboarding for first-time Claude in Chrome users
-  if (claudeInChrome && !getGlobalConfig().hasCompletedClaudeInChromeOnboarding) {
-    const {
-      ClaudeInChromeOnboarding
-    } = await import('./components/ClaudeInChromeOnboarding.js');
-    await showSetupDialog(root, done => <ClaudeInChromeOnboarding onDone={done} />);
-  }
   return onboardingShown;
 }
 export function getRenderContext(exitOnCtrlC: boolean): {
