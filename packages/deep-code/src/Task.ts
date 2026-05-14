@@ -6,7 +6,6 @@ import { getTaskOutputPath } from './utils/task/diskOutput.js'
 export type TaskType =
   | 'local_bash'
   | 'local_agent'
-  | 'remote_agent'
   | 'in_process_teammate'
   | 'local_workflow'
   | 'monitor_mcp'
