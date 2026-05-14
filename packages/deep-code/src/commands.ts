@@ -27,7 +27,6 @@ import keybindings from './commands/keybindings/index.js'
 import login from './commands/login/index.js'
 import logout from './commands/logout/index.js'
 import installGitHubApp from './commands/install-github-app/index.js'
-import installSlackApp from './commands/install-slack-app/index.js'
 import breakCache from './commands/break-cache/index.js'
 import mcp from './commands/mcp/index.js'
 import mobile from './commands/mobile/index.js'
@@ -136,7 +135,6 @@ import antTrace from './commands/ant-trace/index.js'
 import perfIssue from './commands/perf-issue/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
 import chrome from './commands/chrome/index.js'
-import stickers from './commands/stickers/index.js'
 import advisor from './commands/advisor.js'
 import { logError } from './utils/log.js'
 import { toError } from './utils/errors.js'
@@ -249,7 +247,6 @@ const LEGACY_CLAUDE_SERVICE_COMMANDS: Command[] = [
   chrome,
   desktop,
   installGitHubApp,
-  installSlackApp,
   mobile,
   ...(webCmd ? [webCmd] : []),
   ...(voiceCommand ? [voiceCommand] : []),
@@ -297,7 +294,6 @@ const COMMANDS = memoize((): Command[] => [
   stats,
   status,
   statusline,
-  stickers,
   tag,
   theme,
   feedback,
@@ -628,7 +624,6 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   keybindings, // Keybinding management
   harness, // Show DeepSeek Harness configuration
   statusline, // Status line toggle
-  stickers, // Stickers
 ])
 
 /**

@@ -340,10 +340,6 @@ const chromeCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/chrome/index.ts'),
   'utf8',
 )
-const installSlackAppCommandSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/commands/install-slack-app/index.ts'),
-  'utf8',
-)
 const installGitHubAppCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/install-github-app/index.ts'),
   'utf8',
@@ -366,10 +362,6 @@ const logoutCommandSource = readFileSync(
 )
 const passesCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/passes/index.ts'),
-  'utf8',
-)
-const stickersCommandSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/commands/stickers/index.ts'),
   'utf8',
 )
 const statsCommandSource = readFileSync(
@@ -1610,7 +1602,6 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
     desktopCommandSource,
     mobileCommandSource,
     chromeCommandSource,
-    installSlackAppCommandSource,
     installGitHubAppCommandSource,
     logoutCommandSource,
   ].map(stripInlineSourceMap).join('\n')
@@ -1643,7 +1634,6 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
 test('default visible slash command descriptions use Deep Code branding', () => {
   const defaultSlashCommandSources = [
     passesCommandSource,
-    stickersCommandSource,
     statsCommandSource,
     reviewCommandSource,
     thinkbackCommandSource,

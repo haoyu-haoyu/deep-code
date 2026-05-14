@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-14 (P1.2.Z)
+Last updated: 2026-05-14 (P1.3.A)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 2 | P1.2.Z chore: refresh prebuilt dist bundle (P1.2 phase complete) | P1.3 delete Chrome / Desktop / OAuth UI | no |
+| A: Pure-DeepSeek | 2 | P1.3.A delete /stickers and /install-slack-app slash commands | P1.3.A.2 delete /install-github-app multi-step UI flow | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -73,7 +73,17 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.2.N.b delete teleport resume picker chain + sessionStorage RemoteAgentMetadata cluster | done | #53 | `6e58b34` | DELETE hooks/useTeleportResume.tsx + components/TeleportResumeWrapper.tsx + components/ResumeTask.tsx + components/TeleportProgress.tsx; MODIFY dialogLaunchers.tsx (drop launchTeleportResumeWrapper + TeleportRemoteResponse import; 0 caller verified); MODIFY utils/sessionStorage.ts (drop RemoteAgentMetadata type + 4 export functions + private helper + orphan `unlink` import — ~95 LOC; entire cluster was RemoteAgentTask-only consumer, orphan after P1.2.N.a); `utils/teleport.tsx` exports `teleportResumeCodeSession`/`checkOutTeleportedSessionBranch`/`processMessagesForTeleportResume`/`TeleportProgressStep`/`TeleportResult` may become orphan but kept (P1.3 territory) |
 | P1.2.N.c deregister + delete /teleport and /remote-env slash commands | done | #54 | `d5f8408` | commands.ts: drop teleport + remoteEnv imports (lines 45 + 167) + array entries (lines 233 + 292); DELETE commands/teleport/index.js (1-line stub `{ isEnabled: () => false, isHidden: true, name: 'stub' }`); DELETE commands/remote-env/index.ts + remote-env.tsx (commands/remote-env/ dir gone); DELETE components/RemoteEnvironmentDialog.tsx; orphan exports left for P1.3 (utils/teleport/environmentSelection.ts now 0 consumer; utils/teleport.tsx `teleportResumeCodeSession`/`checkOutTeleportedSessionBranch`/`processMessagesForTeleportResume`/`TeleportProgressStep`/`TeleportResult` all 0 external consumer but file kept due to 9 non-teleport Anthropic service consumers); P1.2 source-side cleanup COMPLETE |
 | P1.2.Z chore: refresh prebuilt dist bundle | done | #55 | `be8e33b` | `bun run build:full-cli` rebuilds dist/deepcode-full.mjs from current source (post-P1.2.N.c state); commits the remaining -2537 line generated-bundle delta from the current committed baseline (committed dist had already been refreshed through P1.2.10); absorbs Codex review P1/P2 from PR #50/#54 about committed prebuilt bundle drift; idempotency verified (second build produced unchanged diff); P1.2 PHASE 100% COMPLETE, next phase P1.3 |
-| P1.3 delete Chrome / Desktop / OAuth UI | ready | — | — | depends on P1.2; `docs/deepseek-auth.md` done |
+| P1.3.A delete /stickers and /install-slack-app slash commands | done | #XX | `<7-char-merge-SHA>` | DELETE commands/{stickers,install-slack-app}/; commands.ts: drop 2 imports + array entries; services/tips/tipRegistry.ts: drop stale /install-slack-app spinner tip; /upgrade + /feedback + /install-github-app + /extra-usage all deferred to follow-up sub-PRs (P1.3.A.2: /install-github-app 14-file UI flow; P1.3.A.3: claude.ai rate-limit UX cluster incl. /upgrade + /extra-usage + rate-limit-options + RateLimitMessage; P1.3.A.4: /feedback + redactSensitiveInfo extraction) |
+| P1.3.A.2 delete /install-github-app multi-step UI flow | ready | — | — | depends on P1.3.A; 14 files in commands/install-github-app/ + commands.ts deregister + components/WorkflowMultiselectDialog.tsx Workflow type import |
+| P1.3.A.3 delete claude.ai rate-limit UX cluster | ready | — | — | depends on P1.3.A; DELETE commands/upgrade/ + commands/extra-usage/ + commands/rate-limit-options/ + components/messages/RateLimitMessage.tsx; MODIFY REPL.tsx (handleOpenRateLimitOptions + 2 JSX sites) + commands.ts (4 imports + array entries) + components/Settings/Usage.tsx (drop extraUsage import) |
+| P1.3.A.4 delete /feedback + extract redactSensitiveInfo | ready | — | — | depends on P1.3.A; FIRST extract redactSensitiveInfo from components/Feedback.tsx to new utils/redact.ts; UPDATE components/FeedbackSurvey/submitTranscriptShare.ts import; THEN delete commands/feedback/ + components/Feedback.tsx + commands.ts deregister |
+| P1.3.B Chrome handoff feature delete | ready | — | — | depends on P1.3.A; delete commands/chrome + utils/claudeInChrome (7 files) + ClaudeInChromeOnboarding + 12+ cross-module consumers (main.tsx, skills/bundled, services/mcp, services/api/claude, attachments, hooks/usePromptsFromClaudeInChrome, hooks/useChromeExtensionNotification) |
+| P1.3.C Desktop handoff + deep-link delete | ready | — | — | depends on P1.3.B; delete DesktopHandoff + utils/desktopDeepLink + utils/deepLink/banner (3 files) |
+| P1.3.D Login/Logout/Profile UX rewrite to DeepSeek API key | ready | — | — | depends on P1.3.C; per docs/deepseek-auth.md: new ~/.deepcode/config.json reader/writer + paste TUI + rewritten /login + new /profile slash command + delete ConsoleOAuthFlow.tsx |
+| P1.3.E OAuth core dismantle | ready | — | — | depends on P1.3.D; utils/auth.ts (2002 LOC) rewrite + services/oauth/ delete (5 files, ~1050 LOC) + all getClaudeAIOAuthTokens callers updated |
+| P1.3.F Anthropic API services strip | ready | — | — | depends on P1.3.E; ~15-20 files in services/api/* + services/claudeAiLimits + services/mcp/claudeai + assistant/sessionHistory + commands/remote-setup |
+| P1.3.G teleport.tsx + utils/teleport/* + background/remote/preconditions final mass delete | ready | — | — | depends on P1.3.F; all OAuth-protected consumers gone, ~2500 LOC teleport infrastructure deletable |
+| P1.3.H UI/utils residual cleanup | ready | — | — | depends on P1.3.G; utils/{billing,extraUsage,fastMode,effort,betas}.ts, components/LogoV2/ChannelsNotice, residual claude.ai-specific code |
 | P1.4 config paths `~/.claude` to `~/.deepcode` | ready | — | — | depends on P1.3 |
 | P1.5 `CLAUDE.md` to `DEEPCODE.md` memory | ready | — | — | depends on P1.4 |
 | P1.6 remove `CLAUDE_CODE_*` env reads | ready | — | — | depends on P1.4/P1.5 |
