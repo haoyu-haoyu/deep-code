@@ -4,7 +4,6 @@ import autofixPr from './commands/autofix-pr/index.js'
 import backfillSessions from './commands/backfill-sessions/index.js'
 import goodClaude from './commands/good-claude/index.js'
 import issue from './commands/issue/index.js'
-import feedback from './commands/feedback/index.js'
 import clear from './commands/clear/index.js'
 import color from './commands/color/index.js'
 import commit from './commands/commit.js'
@@ -296,7 +295,6 @@ const COMMANDS = memoize((): Command[] => [
   statusline,
   tag,
   theme,
-  feedback,
   review,
   rewind,
   securityReview,
@@ -619,7 +617,6 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   cost, // Show session cost (local cost tracking)
   usage, // Show usage info
   copy, // Copy last message
-  feedback, // Send feedback
   plan, // Plan mode toggle
   keybindings, // Keybinding management
   harness, // Show DeepSeek Harness configuration

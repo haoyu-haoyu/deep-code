@@ -344,10 +344,6 @@ const installGitHubAppCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/install-github-app/index.ts'),
   'utf8',
 )
-const feedbackCommandSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/commands/feedback/index.ts'),
-  'utf8',
-)
 const pluginCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/plugin/index.tsx'),
   'utf8',
@@ -1594,7 +1590,6 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
     commandsSource.indexOf('export const BRIDGE_SAFE_COMMANDS'),
   )
   const publicCommandSources = [
-    feedbackCommandSource,
     pluginCommandSource,
     memoryCommandSource,
   ].map(stripInlineSourceMap).join('\n')
