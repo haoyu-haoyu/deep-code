@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-14 (P1.3.A.3.c)
+Last updated: 2026-05-14 (P1.3.B.a1)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 2 | P1.3.A.3.c delete Settings/Usage tab + /usage command | P1.3.A.3.d delete OverageCreditUpsell + LogoV2 surgery (or defer to P1.3.H) | no |
+| A: Pure-DeepSeek | 2 | P1.3.B.a1 strip Chrome from MCP/API/attachments | P1.3.B.a2 strip Chrome from boot/REPL/commands/CLI | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -80,7 +80,10 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.3.A.3.c delete Settings/Usage tab + /usage command | done | #61 | `3768c2f` | DELETE components/Settings/Usage.tsx (claude.ai usage UI no longer meaningful in DeepCode) + commands/usage/{index.ts,usage.tsx} (2 files, dir gone); MODIFY components/Settings/Settings.tsx (drop Usage import + 'Usage' from defaultTab union + t6 cache block + Tab JSX + tabs array entry); MODIFY commands.ts (drop usage import line 51 + 2 array entries lines 294 + 606); MODIFY tipRegistry/test per P1.3 precedent (if applicable); usageReport (lazy /insights shim, unrelated) preserved |
 | P1.3.A.3.d delete OverageCreditUpsell + LogoV2 surgery | ready | — | — | deferred candidate for P1.3.H or independent sub-PR; OverageCreditUpsell.tsx deeply integrated with LogoV2.tsx, CondensedLogo.tsx, tipRegistry.ts — requires Welcome screen / LogoV2 refactor |
 | P1.3.A.4 extract redactSensitiveInfo + delete /feedback | done | #57 | `66a5ef5` | NEW utils/redact.ts (extracted redactSensitiveInfo function from Feedback.tsx); MODIFY components/FeedbackSurvey/submitTranscriptShare.ts (line 16 import path); DELETE commands/feedback/{index.ts,feedback.tsx} + components/Feedback.tsx (591 LOC); MODIFY commands.ts (drop feedback import + 2 array entries); MODIFY FeedbackSurvey.tsx + REPL.tsx to remove the now-broken optional /feedback follow-up while preserving survey/transcript sharing; MODIFY services/tips/tipRegistry.ts + test/deepcode-package.test.mjs to drop stale /feedback references; MODIFY claudeCodeGuideAgent.ts + UserToolErrorMessage.tsx to replace stale /feedback guidance with MACRO.ISSUES_EXPLAINER |
-| P1.3.B Chrome handoff feature delete | ready | — | — | depends on P1.3.A; delete commands/chrome + utils/claudeInChrome (7 files) + ClaudeInChromeOnboarding + 12+ cross-module consumers (main.tsx, skills/bundled, services/mcp, services/api/claude, attachments, hooks/usePromptsFromClaudeInChrome, hooks/useChromeExtensionNotification) |
+| P1.3.B.a1 strip Chrome from MCP/API/attachments | done | #XX | `<7-char-merge-SHA>` | MODIFY services/mcp/config.ts (drop isClaudeInChromeMCPServer import + reserved-name validation block at lines 636-639); MODIFY services/mcp/client.ts (drop import + lazy claudeInChromeToolRendering + Chrome MCP in-process else-if branch + tool rendering spread); MODIFY services/api/claude.ts (drop 2 imports + hasChromeTools + injectChromeHere + CHROME_TOOL_SEARCH_INSTRUCTIONS spread); MODIFY utils/attachments.ts (drop 2 imports + clientSide.push Chrome block); utils/claudeInChrome/ + commands/chrome/ + 2 hooks + ClaudeInChromeOnboarding + skills/bundled/claudeInChrome.ts still have consumers (P1.3.B.a2/.a3 strip remaining, .b mass delete) |
+| P1.3.B.a2 strip Chrome from boot/REPL/commands/CLI | ready | — | — | depends on P1.3.B.a1; MODIFY main.tsx (3 imports + MCP validation + Chrome setup decision block ~50 lines at 1456-1554) + screens/REPL.tsx (2 hook imports + call sites at lines 749 + 785) + commands.ts (drop chrome import + array entry) + skills/bundled/index.ts (drop registerClaudeInChromeSkill + shouldAutoEnableClaudeInChrome) + entrypoints/cli.tsx (drop 2 CLI flag handlers --claude-in-chrome-mcp + --chrome-native-host) |
+| P1.3.B.a3 strip Chrome config + onboarding + state chain | ready | — | — | depends on P1.3.B.a2; MODIFY components/Settings/Config.tsx (drop claudeInChromeDefaultEnabled setting entry) + utils/config.ts (drop 3 config fields + fieldsToReset entries) + interactiveHelpers.tsx (drop claudeInChrome param + onboarding trigger) + bootstrap/state.ts (drop chromeFlagOverride STATE field + getter/setter) + utils/swarm/spawnUtils.ts + tools/shared/spawnMultiAgent.ts (drop getChromeFlagOverride usage) |
+| P1.3.B.b mass delete Chrome cluster files | ready | — | — | depends on P1.3.B.a3; DELETE utils/claudeInChrome/ (7 files: chromeNativeHost, common, mcpServer, prompt, setup, setupPortable, toolRendering) + commands/chrome/ (2 files) + components/ClaudeInChromeOnboarding.tsx + hooks/useChromeExtensionNotification.tsx + hooks/usePromptsFromClaudeInChrome.tsx + skills/bundled/claudeInChrome.ts; ~2900 LOC nuked |
 | P1.3.C Desktop handoff + deep-link delete | ready | — | — | depends on P1.3.B; delete DesktopHandoff + utils/desktopDeepLink + utils/deepLink/banner (3 files) |
 | P1.3.D Login/Logout/Profile UX rewrite to DeepSeek API key | ready | — | — | depends on P1.3.C; per docs/deepseek-auth.md: new ~/.deepcode/config.json reader/writer + paste TUI + rewritten /login + new /profile slash command + delete ConsoleOAuthFlow.tsx |
 | P1.3.E OAuth core dismantle | ready | — | — | depends on P1.3.D; utils/auth.ts (2002 LOC) rewrite + services/oauth/ delete (5 files, ~1050 LOC) + all getClaudeAIOAuthTokens callers updated |
