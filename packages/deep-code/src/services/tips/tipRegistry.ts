@@ -323,13 +323,6 @@ const externalTips: Tip[] = [
     },
   },
   {
-    id: 'install-github-app',
-    content: async () =>
-      'Run /install-github-app to tag @deepcode right from your Github issues and PRs',
-    cooldownSessions: 10,
-    isRelevant: async () => !getGlobalConfig().githubActionSetupCount,
-  },
-  {
     id: 'permissions',
     content: async () =>
       'Use /permissions to pre-approve and pre-deny bash, edit, and MCP tools',

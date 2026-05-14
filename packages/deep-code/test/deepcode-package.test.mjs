@@ -297,10 +297,6 @@ const mcpDialogCopySource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/MCPServerDialogCopy.tsx'),
   'utf8',
 )
-const workflowMultiselectSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/components/WorkflowMultiselectDialog.tsx'),
-  'utf8',
-)
 const themePickerSource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/ThemePicker.tsx'),
   'utf8',
@@ -338,10 +334,6 @@ const mobileCommandSource = readFileSync(
 )
 const chromeCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/chrome/index.ts'),
-  'utf8',
-)
-const installGitHubAppCommandSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/commands/install-github-app/index.ts'),
   'utf8',
 )
 const pluginCommandSource = readFileSync(
@@ -1370,7 +1362,6 @@ test('TUI visible copy uses Deep Code and DeepSeek branding', () => {
   const visibleSources = [
     autoModeOptInSource,
     mcpDialogCopySource,
-    workflowMultiselectSource,
     themePickerSource,
     managedSettingsSecuritySource,
   ].join('\n')
@@ -1378,8 +1369,6 @@ test('TUI visible copy uses Deep Code and DeepSeek branding', () => {
   assert.match(autoModeOptInSource, /Deep Code checks each tool call/)
   assert.match(autoModeOptInSource, /https:\/\/api-docs\.deepseek\.com/)
   assert.match(mcpDialogCopySource, /Deep Code repository/)
-  assert.match(workflowMultiselectSource, /Deep Code - Tag @deepcode/)
-  assert.match(workflowMultiselectSource, /haoyu-haoyu\/deep-code/)
   assert.match(themePickerSource, /Hello, Deep Code!/)
   assert.match(managedSettingsSecuritySource, /No, exit Deep Code/)
   assert.doesNotMatch(visibleSources, /Claude Code/)
@@ -1597,14 +1586,12 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
     desktopCommandSource,
     mobileCommandSource,
     chromeCommandSource,
-    installGitHubAppCommandSource,
     logoutCommandSource,
   ].map(stripInlineSourceMap).join('\n')
 
   for (const legacyCommand of [
     'chrome',
     'desktop',
-    'installGitHubApp',
     'installSlackApp',
     'mobile',
   ]) {
@@ -1622,7 +1609,6 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
   assert.doesNotMatch(legacyCommandSources, /Claude mobile app/)
   assert.doesNotMatch(legacyCommandSources, /Claude in Chrome/)
   assert.doesNotMatch(legacyCommandSources, /Claude Slack app/)
-  assert.doesNotMatch(legacyCommandSources, /Claude GitHub Actions/)
   assert.doesNotMatch(legacyCommandSources, /Anthropic account/)
 })
 
@@ -1690,7 +1676,6 @@ test('TUI inline source maps use Deep Code and DeepSeek branding', () => {
   const sourceMapSources = [
     autoModeOptInSource,
     mcpDialogCopySource,
-    workflowMultiselectSource,
     themePickerSource,
     managedSettingsSecuritySource,
   ].map(inlineSourceMapSources).join('\n')
@@ -1698,8 +1683,6 @@ test('TUI inline source maps use Deep Code and DeepSeek branding', () => {
   assert.match(sourceMapSources, /Deep Code checks each tool call/)
   assert.match(sourceMapSources, /https:\/\/api-docs\.deepseek\.com/)
   assert.match(sourceMapSources, /Deep Code repository/)
-  assert.match(sourceMapSources, /Deep Code - Tag @deepcode/)
-  assert.match(sourceMapSources, /haoyu-haoyu\/deep-code/)
   assert.match(sourceMapSources, /Hello, Deep Code!/)
   assert.match(sourceMapSources, /No, exit Deep Code/)
   assert.doesNotMatch(sourceMapSources, /Claude Code/)
