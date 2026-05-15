@@ -74,10 +74,22 @@ export async function clearAuthRelatedCaches(): Promise<void> {
   await clearPolicyLimitsCache();
 }
 export async function call(): Promise<React.ReactNode> {
+  // Clear DeepSeek config (primary credential store)
+  const { deleteDeepSeekConfigFile } = await import('../../services/providers/deepseek-config-store.mjs');
+  try {
+    deleteDeepSeekConfigFile();
+  } catch (error) {
+    // Best-effort: surface the error to the user but still proceed with OAuth cleanup.
+    return <Text>Failed to clear DeepSeek config: {(error as Error).message}</Text>;
+  }
+
+  // Clear residual OAuth state (legacy; this branch goes away in P1.3.E
+  // when utils/auth.ts is dismantled).
   await performLogout({
     clearOnboarding: true
   });
-  const message = <Text>Successfully logged out from your Anthropic account.</Text>;
+
+  const message = <Text>Successfully cleared DeepSeek credentials. Restart Deep Code to configure a new key.</Text>;
   setTimeout(() => {
     gracefulShutdownSync(0, 'logout');
   }, 200);

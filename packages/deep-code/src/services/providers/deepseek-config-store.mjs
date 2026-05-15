@@ -103,3 +103,14 @@ export function mergeDeepSeekConfigPartial(partial, { env = process.env } = {}) 
 export function hasDeepSeekConfigFile({ env = process.env } = {}) {
   return existsSync(resolveDeepSeekConfigPath({ env }))
 }
+
+/**
+ * Delete the DeepSeek config file if present. No-op when the file does not
+ * exist. Errors during unlink propagate (caller decides whether to swallow).
+ */
+export function deleteDeepSeekConfigFile({ env = process.env } = {}) {
+  const path = resolveDeepSeekConfigPath({ env })
+  if (!existsSync(path)) return false
+  unlinkSync(path)
+  return true
+}
