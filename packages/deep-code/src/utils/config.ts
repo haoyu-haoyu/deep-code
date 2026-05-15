@@ -418,10 +418,6 @@ export type GlobalConfig = {
   bridgeOauthDeadExpiresAt?: number
   bridgeOauthDeadFailCount?: number
 
-  // Desktop upsell startup dialog tracking
-  desktopUpsellSeenCount?: number // Total showings (max 3)
-  desktopUpsellDismissed?: boolean // "Don't ask again" picked
-
   // Idle-return dialog tracking
   idleReturnDismissed?: boolean // "Don't ask again" picked
 
@@ -468,11 +464,6 @@ export type GlobalConfig = {
   // GitHub repo path mapping for teleport directory switching
   // Key: "owner/repo" (lowercase), Value: array of absolute paths where repo is cloned
   githubRepoPaths?: Record<string, string[]>
-
-  // Terminal emulator to launch for claude-cli:// deep links. Captured from
-  // TERM_PROGRAM during interactive sessions since the deep link handler runs
-  // headless (LaunchServices/xdg) with no TERM_PROGRAM set.
-  deepLinkTerminal?: string
 
   // iTerm2 it2 CLI setup
   iterm2It2SetupComplete?: boolean // Whether it2 setup has been verified
