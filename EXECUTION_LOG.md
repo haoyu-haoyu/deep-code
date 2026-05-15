@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-15 (P1.3.Z.1)
+Last updated: 2026-05-15 (P1.3.E.a2)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 2 | P1.3.Z.1 mid-phase bundle refresh | P1.3.E.a2 OAuth consumer cleanup | no |
+| A: Pure-DeepSeek | 2 | P1.3.E.a2 auth CLI subcommands strip | P1.3.E.a3 OAuth consumer cleanup | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -90,7 +90,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.3.D Login/Logout UX rewrite to DeepSeek API key | done | #69 | `866c1e9` | MODIFY services/providers/deepseek-config-store.mjs (add deleteDeepSeekConfigFile helper); MODIFY commands/login/index.ts (static DeepSeek credentials metadata); MODIFY commands/login/login.tsx (replace OAuth ConsoleOAuthFlow with DeepSeekSetupDialog and preserve signature-block strip + authVersion bump); MODIFY commands/logout/logout.tsx (delete DeepSeek config before legacy OAuth cleanup, update user-facing success copy); performLogout/clearAuthRelatedCaches preserved for P1.3.E; source delta -59 LOC |
 | P1.3.E.a1 stub auth.ts subscription / auth-gate functions | done | #70 | `de9007b` | MODIFY utils/auth.ts only: stub 15 Anthropic auth/subscription gate functions (isAnthropicAuthEnabled, isClaudeAISubscriber, hasProfileScope, is1PApiCustomer, getOauthAccountInfo, isOverageProvisioningAllowed, getSubscriptionType, isMaxSubscriber, isTeamSubscriber, isTeamPremiumSubscriber, isEnterpriseSubscriber, isProSubscriber, getRateLimitTier, isUsing3PServices, validateForceLoginOrg); signatures/imports/exports preserved; downstream callers now compile through no-subscription/no-Anthropic-auth/no-3P paths; source delta -193 LOC |
 | P1.3.Z.1 mid-phase bundle refresh | done | #71 | `2f5fd2e` | MODIFY dist/deepcode-full.mjs only: regenerated prebuilt bundle from main source after B/C/D/E.a1 drift; no source changes; idempotency SHA-256 `61074ffab4af398558992a957a65256fc4515fc5210be1edf04dfc717ed1369d`; generated bundle delta 180141 insertions / 190151 deletions; establishes clean dist baseline for P1.3.E.a2+ |
-| P1.3.E.a2 OAuth consumer cleanup | ready | — | — | depends on P1.3.E.a1; continue dismantling downstream getClaudeAIOAuthTokens/getOauthAccountInfo/auth gate consumers before services/oauth/ mass delete |
+| P1.3.E.a2 strip cli/handlers/auth.ts OAuth subcommands + remove claude auth command tree | done | #72 | `efdb434` | MODIFY cli/handlers/auth.ts (retain installOAuthTokens only; delete authLogin/authStatus/authLogout and unique imports); MODIFY main.tsx (delete program.command('auth') tree for login/status/logout); MODIFY test/deepcode-package.test.mjs (deleted auth help text assertions now negative); MODIFY dist/deepcode-full.mjs (regenerated bundle from E.a2 source); installOAuthTokens still consumed by cli/print.ts SDK-mode OAuth flow for P1.3.E.a4; source/test delta 13 insertions / 283 deletions, bundle delta 50 insertions / 272 deletions, overall delta 63 insertions / 555 deletions |
 | P1.3.F Anthropic API services strip | ready | — | — | depends on P1.3.E; ~15-20 files in services/api/* + services/claudeAiLimits + services/mcp/claudeai + assistant/sessionHistory + commands/remote-setup |
 | P1.3.G teleport.tsx + utils/teleport/* + background/remote/preconditions final mass delete | ready | — | — | depends on P1.3.F; all OAuth-protected consumers gone, ~2500 LOC teleport infrastructure deletable |
 | P1.3.H UI/utils residual cleanup | ready | — | — | depends on P1.3.G; utils/{billing,extraUsage,fastMode,effort,betas}.ts, components/LogoV2/ChannelsNotice, residual claude.ai-specific code |
