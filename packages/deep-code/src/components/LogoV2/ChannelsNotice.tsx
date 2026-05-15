@@ -12,7 +12,6 @@ import { Box, Text } from '../../ink.js';
 import { isChannelsEnabled } from '../../services/mcp/channelAllowlist.js';
 import { getEffectiveChannelAllowlist } from '../../services/mcp/channelNotification.js';
 import { getMcpConfigsByScope } from '../../services/mcp/config.js';
-import { getClaudeAIOAuthTokens, getSubscriptionType } from '../../utils/auth.js';
 import { loadInstalledPluginsV2 } from '../../utils/plugins/installedPluginsManager.js';
 import { getSettingsForSource } from '../../utils/settings/settings.js';
 export function ChannelsNotice() {
@@ -183,15 +182,13 @@ function _temp() {
     };
   }
   const l = ch.map(formatEntry).join(", ");
-  const sub = getSubscriptionType();
-  const managed = sub === "team" || sub === "enterprise";
   const policy = getSettingsForSource("policySettings");
-  const allowlist = getEffectiveChannelAllowlist(sub, policy?.allowedChannelPlugins);
+  const allowlist = getEffectiveChannelAllowlist(null, policy?.allowedChannelPlugins);
   return {
     channels: ch,
     disabled: !isChannelsEnabled(),
-    noAuth: !getClaudeAIOAuthTokens()?.accessToken,
-    policyBlocked: managed && policy?.channelsEnabled !== true,
+    noAuth: true,
+    policyBlocked: false,
     list: l,
     unmatched: findUnmatched(ch, allowlist)
   };

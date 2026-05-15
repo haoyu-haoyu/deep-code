@@ -2,7 +2,6 @@ import { execa } from 'execa'
 import memoize from 'lodash-es/memoize.js'
 import { getSessionId } from '../bootstrap/state.js'
 import {
-  getOauthAccountInfo,
   getRateLimitTier,
   getSubscriptionType,
 } from './auth.js'
@@ -96,10 +95,8 @@ export const getCoreUserData = memoize(
       }
     }
 
-    // Only include OAuth account data when actively using OAuth authentication
-    const oauthAccount = getOauthAccountInfo()
-    const organizationUuid = oauthAccount?.organizationUuid
-    const accountUuid = oauthAccount?.accountUuid
+    const organizationUuid: string | undefined = undefined
+    const accountUuid: string | undefined = undefined
 
     return {
       deviceId,
@@ -140,12 +137,6 @@ function getEmail(): string | undefined {
     return cachedEmail
   }
 
-  // Only include OAuth email when actively using OAuth authentication
-  const oauthAccount = getOauthAccountInfo()
-  if (oauthAccount?.emailAddress) {
-    return oauthAccount.emailAddress
-  }
-
   // Ant-only fallbacks below (no execSync)
   if (process.env.USER_TYPE !== 'ant') {
     return undefined
@@ -160,12 +151,6 @@ function getEmail(): string | undefined {
 }
 
 async function getEmailAsync(): Promise<string | undefined> {
-  // Only include OAuth email when actively using OAuth authentication
-  const oauthAccount = getOauthAccountInfo()
-  if (oauthAccount?.emailAddress) {
-    return oauthAccount.emailAddress
-  }
-
   // Ant-only fallbacks below
   if (process.env.USER_TYPE !== 'ant') {
     return undefined
