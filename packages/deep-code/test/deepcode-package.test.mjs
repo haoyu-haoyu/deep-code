@@ -332,10 +332,6 @@ const mobileCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/mobile/index.ts'),
   'utf8',
 )
-const chromeCommandSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/commands/chrome/index.ts'),
-  'utf8',
-)
 const pluginCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/plugin/index.tsx'),
   'utf8',
@@ -1585,7 +1581,6 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
   const legacyCommandSources = [
     desktopCommandSource,
     mobileCommandSource,
-    chromeCommandSource,
     logoutCommandSource,
   ].map(stripInlineSourceMap).join('\n')
 
@@ -1607,7 +1602,6 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
   assert.doesNotMatch(publicCommandSources, /Claude Code|Anthropic/)
   assert.doesNotMatch(legacyCommandSources, /Continue the current session in Claude Desktop/)
   assert.doesNotMatch(legacyCommandSources, /Claude mobile app/)
-  assert.doesNotMatch(legacyCommandSources, /Claude in Chrome/)
   assert.doesNotMatch(legacyCommandSources, /Claude Slack app/)
   assert.doesNotMatch(legacyCommandSources, /Anthropic account/)
 })
