@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-15 (P1.3.E.a3.2)
+Last updated: 2026-05-15 (P1.3.E.a4.0)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 2 | P1.3.E.a3.2 oauthAccount data consumer strip | P1.3.F Anthropic API services strip | no |
+| A: Pure-DeepSeek | 2 | P1.3.E.a4.0 extended auth.ts stubs | P1.3.E.a4.1 auth consumer cleanup | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -93,6 +93,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.3.E.a2 strip cli/handlers/auth.ts OAuth subcommands + remove claude auth command tree | done | #72 | `efdb434` | MODIFY cli/handlers/auth.ts (retain installOAuthTokens only; delete authLogin/authStatus/authLogout and unique imports); MODIFY main.tsx (delete program.command('auth') tree for login/status/logout); MODIFY test/deepcode-package.test.mjs (deleted auth help text assertions now negative); MODIFY dist/deepcode-full.mjs (regenerated bundle from E.a2 source); installOAuthTokens still consumed by cli/print.ts SDK-mode OAuth flow for P1.3.E.a4; source/test delta 13 insertions / 283 deletions, bundle delta 50 insertions / 272 deletions, overall delta 63 insertions / 555 deletions |
 | P1.3.E.a3.1 strip ConsoleOAuthFlow consumers + setup-token CLI | done | #73 | `978c2d3` | MODIFY components/Onboarding.tsx (drop dead preflight/oauth step chain, ConsoleOAuthFlow import, and SkippableStep helper after isAnthropicAuthEnabled false stub); MODIFY cli/handlers/util.tsx (delete setupTokenHandler and setup-token-only imports); MODIFY main.tsx (delete setup-token command registration); MODIFY dist/deepcode-full.mjs regenerated from E.a3.1 source; TeleportError.tsx ConsoleOAuthFlow usage intentionally retained for P1.3.G and ConsoleOAuthFlow.tsx deferred to P1.3.E.b; source delta 8 insertions / 111 deletions, bundle delta 587 insertions / 1782 deletions, overall delta 595 insertions / 1893 deletions |
 | P1.3.E.a3.2 strip oauthAccount data consumers | done | #74 | `c8482bf` | MODIFY buddy/companion.ts (userID fallback only); MODIFY telemetryAttributes.ts (drop OAuth account telemetry injection); MODIFY utils/user.ts (organization/account UUID undefined, remove OAuth email blocks); MODIFY utils/billing.ts (role-backed billing access false while preserving functions/mock override); MODIFY LogoV2.tsx (drop displayName/organizationName lines); MODIFY ChannelsNotice.tsx (no token/subscription lookup, noAuth true, policyBlocked false); MODIFY MCPRemoteServerMenu.tsx (connector settings fallback URL only); MODIFY rateLimitMessages.ts (hasExtraUsageEnabled false); MODIFY dist/deepcode-full.mjs regenerated; corrected getOauthAccountInfo allowlist excludes deferred services/api + ConsoleOAuthFlow consumers; source delta 20 insertions / 102 deletions, bundle delta 25 insertions / 123 deletions, overall delta 45 insertions / 225 deletions |
+| P1.3.E.a4.0 extended stubs for auth.ts data getters / prefetch / OAuth tokens | done | #75 | `50e18fd` | MODIFY utils/auth.ts only: stub 19 remaining Anthropic auth data getter / helper / OAuth token / account-info functions (getAnthropicApiKey, hasAnthropicApiKeyAuth, getAnthropicApiKeyWithSource, isCustomApiKeyApproved, getApiKeyFromConfigOrMacOSKeychain, getConfiguredApiKeyHelper, getApiKeyHelperElapsedMs, calculateApiKeyHelperTTL, getApiKeyFromApiKeyHelper, getApiKeyFromApiKeyHelperCached, clearApiKeyHelperCache, prefetchApiKeyFromApiKeyHelperIfSafe, getClaudeAIOAuthTokens, getClaudeAIOAuthTokensAsync, clearOAuthTokenCache, handleOAuth401Error, checkAndRefreshOAuthTokenIfNeeded, saveOAuthTokensIfNeeded, getAccountInformation); signatures/export count preserved; downstream consumers now follow no Anthropic API key / no OAuth token path; MODIFY dist/deepcode-full.mjs regenerated; source delta 26 insertions / 406 deletions, bundle delta 4924 insertions / 5463 deletions, overall delta 4950 insertions / 5869 deletions |
 | P1.3.F Anthropic API services strip | ready | — | — | depends on P1.3.E; ~15-20 files in services/api/* + services/claudeAiLimits + services/mcp/claudeai + assistant/sessionHistory + commands/remote-setup |
 | P1.3.G teleport.tsx + utils/teleport/* + background/remote/preconditions final mass delete | ready | — | — | depends on P1.3.F; all OAuth-protected consumers gone, ~2500 LOC teleport infrastructure deletable |
 | P1.3.H UI/utils residual cleanup | ready | — | — | depends on P1.3.G; utils/{billing,extraUsage,fastMode,effort,betas}.ts, components/LogoV2/ChannelsNotice, residual claude.ai-specific code |
