@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-15 (P1.3.D)
+Last updated: 2026-05-15 (P1.3.E.a1)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | 2 | P1.3.D Login/Logout UX rewrite to DeepSeek API key | P1.3.E OAuth core dismantle | no |
+| A: Pure-DeepSeek | 2 | P1.3.E.a1 stub auth.ts subscription / auth-gate functions | P1.3.E.a2 OAuth consumer cleanup | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -88,7 +88,8 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.3.C.a2 strip Desktop / DeepLink remaining consumer surfaces | done | #67 | `2d0247e` | MODIFY screens/REPL.tsx (drop DesktopUpsell startup import/state/dialog branch/render) + services/tips/tipRegistry.ts (drop desktop-app + desktop-shortcut tips) + cli/handlers/mcp.tsx (drop mcpAddFromDesktopHandler + stale imports; inline sourcemap synced) + commands.ts (drop desktop import + legacy array entry) + utils/config.ts (drop desktop upsell counters + deepLinkTerminal) + utils/settings/types.ts (drop LODESTONE-gated disableDeepLinkRegistration schema) + components/CustomSelect/use-multi-select-state.ts (generic async-loaded dialog comment); source delta -91 LOC; rebuilt bundle delta -9828 lines verified but not committed; feature('LODESTONE') now 0 prod refs; remaining Desktop/DeepLink cluster files deferred to P1.3.C.b mass delete |
 | P1.3.C.b mass delete Desktop / DeepLink cluster | done | #68 | `c3ce38d` | DELETE commands/desktop/ (2 files) + utils/deepLink/ (6 files) + components/DesktopUpsell/DesktopUpsellStartup.tsx + components/DesktopHandoff.tsx + components/MCPServerDesktopImportDialog.tsx + utils/desktopDeepLink.ts + utils/claudeDesktop.ts; MODIFY test/deepcode-package.test.mjs (drop desktopCommandSource fixture + legacyCommandSources entry + deleted Claude Desktop content assertion; keep `'desktop',` forward guard); source delta -2384 LOC; rebuilt bundle delta -9828 lines verified but not committed; only remaining Claude Desktop strings in src are utils/sanitization.ts HackerOne #3086545 citation + utils/auth.ts OAuth comment deferred to P1.3.E |
 | P1.3.D Login/Logout UX rewrite to DeepSeek API key | done | #69 | `866c1e9` | MODIFY services/providers/deepseek-config-store.mjs (add deleteDeepSeekConfigFile helper); MODIFY commands/login/index.ts (static DeepSeek credentials metadata); MODIFY commands/login/login.tsx (replace OAuth ConsoleOAuthFlow with DeepSeekSetupDialog and preserve signature-block strip + authVersion bump); MODIFY commands/logout/logout.tsx (delete DeepSeek config before legacy OAuth cleanup, update user-facing success copy); performLogout/clearAuthRelatedCaches preserved for P1.3.E; source delta -59 LOC |
-| P1.3.E OAuth core dismantle | ready | — | — | depends on P1.3.D; utils/auth.ts (2002 LOC) rewrite + services/oauth/ delete (5 files, ~1050 LOC) + all getClaudeAIOAuthTokens callers updated |
+| P1.3.E.a1 stub auth.ts subscription / auth-gate functions | done | #70 | `de9007b` | MODIFY utils/auth.ts only: stub 15 Anthropic auth/subscription gate functions (isAnthropicAuthEnabled, isClaudeAISubscriber, hasProfileScope, is1PApiCustomer, getOauthAccountInfo, isOverageProvisioningAllowed, getSubscriptionType, isMaxSubscriber, isTeamSubscriber, isTeamPremiumSubscriber, isEnterpriseSubscriber, isProSubscriber, getRateLimitTier, isUsing3PServices, validateForceLoginOrg); signatures/imports/exports preserved; downstream callers now compile through no-subscription/no-Anthropic-auth/no-3P paths; source delta -193 LOC |
+| P1.3.E.a2 OAuth consumer cleanup | ready | — | — | depends on P1.3.E.a1; continue dismantling downstream getClaudeAIOAuthTokens/getOauthAccountInfo/auth gate consumers before services/oauth/ mass delete |
 | P1.3.F Anthropic API services strip | ready | — | — | depends on P1.3.E; ~15-20 files in services/api/* + services/claudeAiLimits + services/mcp/claudeai + assistant/sessionHistory + commands/remote-setup |
 | P1.3.G teleport.tsx + utils/teleport/* + background/remote/preconditions final mass delete | ready | — | — | depends on P1.3.F; all OAuth-protected consumers gone, ~2500 LOC teleport infrastructure deletable |
 | P1.3.H UI/utils residual cleanup | ready | — | — | depends on P1.3.G; utils/{billing,extraUsage,fastMode,effort,betas}.ts, components/LogoV2/ChannelsNotice, residual claude.ai-specific code |
