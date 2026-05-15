@@ -3879,17 +3879,6 @@ async function run(): Promise<CommanderCommand> {
   });
   // END ANT-ONLY
 
-  // Setup token command
-  program.command('setup-token').description('Set up a long-lived authentication token').action(async () => {
-    const [{
-      setupTokenHandler
-    }, {
-      createRoot
-    }] = await Promise.all([import('./cli/handlers/util.js'), import('./ink.js')]);
-    const root = await createRoot(getBaseRenderOptions(false));
-    await setupTokenHandler(root);
-  });
-
   // Agents command - list configured agents
   program.command('agents').description('List configured agents').option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).').action(async () => {
     const {
