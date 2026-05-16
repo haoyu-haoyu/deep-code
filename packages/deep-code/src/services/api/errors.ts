@@ -15,12 +15,6 @@ import type {
   UserMessage,
 } from 'src/types/message.js'
 import {
-  getAnthropicApiKeyWithSource,
-  getClaudeAIOAuthTokens,
-  getOauthAccountInfo,
-  isClaudeAISubscriber,
-} from 'src/utils/auth.js'
-import {
   createAssistantAPIErrorMessage,
   NO_RESPONSE_REQUESTED,
 } from 'src/utils/messages.js'
@@ -465,7 +459,7 @@ export function getAssistantMessageFromError(
   if (
     error instanceof APIError &&
     error.status === 429 &&
-    shouldProcessRateLimits(isClaudeAISubscriber())
+    shouldProcessRateLimits(false)
   ) {
     // Check if this is the new API with multiple rate limit headers
     const rateLimitType = error.headers?.get?.(
@@ -732,21 +726,6 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Check for invalid model name error for subscription users trying to use Opus
-  if (
-    isClaudeAISubscriber() &&
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.toLowerCase().includes('invalid model name') &&
-    (isNonCustomOpusModel(model) || model === 'opus')
-  ) {
-    return createAssistantAPIErrorMessage({
-      content:
-        'Claude Opus is not available with the Claude Pro plan. If you have updated your subscription plan recently, run /logout and /login for the plan to take effect.',
-      error: 'invalid_request',
-    })
-  }
-
   // Check for invalid model name error for Ant users. Claude Code may be
   // defaulting to a custom internal-only model for Ants, and there might be
   // Ants using new or unknown org IDs that haven't been gated in.
@@ -756,8 +735,7 @@ export function getAssistantMessageFromError(
     error instanceof Error &&
     error.message.toLowerCase().includes('invalid model name')
   ) {
-    // Get organization ID from config - only use OAuth account data when actively using OAuth
-    const orgId = getOauthAccountInfo()?.organizationUuid
+    const orgId: string | undefined = undefined
     const baseMsg = `[ANT-ONLY] Your org isn't gated into the \`${model}\` model. Either run \`claude\` with \`ANTHROPIC_MODEL=${getDefaultMainLoopModelSetting()}\``
     const msg = orgId
       ? `${baseMsg} or share your orgId (${orgId}) in ${MACRO.FEEDBACK_CHANNEL} for help getting access.`
@@ -787,17 +765,13 @@ export function getAssistantMessageFromError(
     error.status === 400 &&
     error.message.toLowerCase().includes('organization has been disabled')
   ) {
-    const { source } = getAnthropicApiKeyWithSource()
-    // getAnthropicApiKeyWithSource conflates the env var with FD-passed keys
-    // under the same source value, and in CCR mode OAuth stays active despite
-    // the env var. The three guards ensure we only blame the env var when it's
-    // actually set and actually on the wire.
+    const source: string = 'none'
     if (
       source === 'ANTHROPIC_API_KEY' &&
       process.env.ANTHROPIC_API_KEY &&
-      !isClaudeAISubscriber()
+      true
     ) {
-      const hasStoredOAuth = getClaudeAIOAuthTokens()?.accessToken != null
+      const hasStoredOAuth = false
       // Not 'authentication_failed' — that triggers VS Code's showLogin(), but
       // login can't fix this (approved env var keeps overriding OAuth). The fix
       // is configuration-based (unset the var), so invalid_request is correct.
@@ -822,8 +796,7 @@ export function getAssistantMessageFromError(
       })
     }
 
-    // Check if the API key is from an external source
-    const { source } = getAnthropicApiKeyWithSource()
+    const source: string = 'none'
     const isExternalSource =
       source === 'ANTHROPIC_API_KEY' || source === 'apiKeyHelper'
 
