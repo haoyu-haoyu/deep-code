@@ -483,3 +483,11 @@ function normalizeRuntimeError(
   }
   return toRuntimeError(error)
 }
+
+// Re-export DeepSeek-native callModel adapter as the runtime entry point
+// for query.ts main hot path consumers via query/deps.ts. The DeepSeek
+// adapter already encapsulates stable-prefix hashing, cache telemetry, and
+// streaming-event normalization; runtime layer just shims it.
+// @ts-expect-error DeepSeek call-model adapter is JS; query/deps.ts uses
+// ReturnType<> for typing instead of a .d.ts.
+export { createDeepSeekCallModel as createRuntimeCallModel } from '../../query/deepseek-call-model.mjs'

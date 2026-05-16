@@ -1,9 +1,7 @@
 import { randomUUID } from 'crypto'
-import { queryModelWithStreaming } from '../services/api/claude.js'
 import { autoCompactIfNeeded } from '../services/compact/autoCompact.js'
 import { microcompactMessages } from '../services/compact/microCompact.js'
-// @ts-expect-error DeepSeek provider adapter is JS while the legacy query layer remains TypeScript.
-import { createDeepSeekCallModel } from './deepseek-call-model.mjs'
+import { createRuntimeCallModel } from '../services/runtime/messageSend.js'
 
 // -- deps
 
@@ -12,17 +10,12 @@ import { createDeepSeekCallModel } from './deepseek-call-model.mjs'
 // common mocks (callModel, autocompact) are each spied in 6-8 test files
 // today with module-import-and-spy boilerplate.
 //
-// Using `typeof fn` keeps signatures in sync with the real implementations
-// automatically. This file imports the real functions for both typing and
-// the production factory — tests that import this file for typing are
-// already importing query.ts (which imports everything), so there's no
-// new module-graph cost.
-//
-// Scope is intentionally narrow (4 deps) to prove the pattern. Followup
-// PRs can add runTools, handleStopHooks, logEvent, queue ops, etc.
+// callModel is typed by ReturnType<typeof createRuntimeCallModel> so the
+// signature tracks the DeepSeek-native adapter automatically. Scope is
+// intentionally narrow (4 deps) to prove the pattern.
 export type QueryDeps = {
   // -- model
-  callModel: typeof queryModelWithStreaming
+  callModel: ReturnType<typeof createRuntimeCallModel>
 
   // -- compaction
   microcompact: typeof microcompactMessages
@@ -33,16 +26,8 @@ export type QueryDeps = {
 }
 
 export function productionDeps(): QueryDeps {
-  const provider = (
-    process.env.DEEPCODE_PROVIDER ??
-    process.env.DEEP_CODE_PROVIDER ??
-    'deepseek'
-  ).toLowerCase()
   return {
-    callModel:
-      provider === 'deepseek'
-        ? (createDeepSeekCallModel() as typeof queryModelWithStreaming)
-        : queryModelWithStreaming,
+    callModel: createRuntimeCallModel(),
     microcompact: microcompactMessages,
     autocompact: autoCompactIfNeeded,
     uuid: randomUUID,

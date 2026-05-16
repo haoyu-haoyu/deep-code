@@ -17,16 +17,35 @@ type ProviderEvent =
 let providerEvents: ProviderEvent[] = []
 let providerCalls: unknown[] = []
 
+function createMockDeepSeekProvider() {
+  return {
+    async *streamQuery(context: unknown) {
+      providerCalls.push(context)
+      for (const event of providerEvents) {
+        yield event
+      }
+    },
+  }
+}
+
 mock.module('../../providers/deepseek.mjs', () => ({
   DEFAULT_DEEPSEEK_SMALL_MODEL: 'deepseek-v4-flash',
-  createDeepSeekProvider() {
+  createDeepSeekProvider: createMockDeepSeekProvider,
+  resolveDeepSeekConfig() {
     return {
-      async *streamQuery(context: unknown) {
-        providerCalls.push(context)
-        for (const event of providerEvents) {
-          yield event
-        }
-      },
+      model: 'deepseek-v4-pro',
+      smallModel: 'deepseek-v4-flash',
+    }
+  },
+}))
+
+mock.module('../../../deepcode/deepseek-native.mjs', () => ({
+  createDeepSeekProvider: createMockDeepSeekProvider,
+  mapDeepSeekFinishReason(finishReason?: string) {
+    return {
+      finishReason: finishReason ?? 'stop',
+      action: 'stop',
+      retryable: false,
     }
   },
 }))
@@ -186,4 +205,45 @@ test('queryRuntimeSmall uses the DeepSeek small model and returns an assistant m
     model: 'deepseek-v4-flash',
     messages: [{ role: 'user', content: 'summarize' }],
   })
+})
+
+test('isPromptTooLongMessage detects prompt-too-long error in assistant message', async () => {
+  const errors = await import('../errors.ts')
+  const { isPromptTooLongMessage, PROMPT_TOO_LONG_ERROR_MESSAGE } = errors
+
+  expect(isPromptTooLongMessage(null)).toBe(false)
+  expect(isPromptTooLongMessage(undefined)).toBe(false)
+  expect(isPromptTooLongMessage({ type: 'user' })).toBe(false)
+  expect(isPromptTooLongMessage({ type: 'assistant' })).toBe(false)
+  expect(
+    isPromptTooLongMessage({ type: 'assistant', isApiErrorMessage: true }),
+  ).toBe(false)
+  expect(
+    isPromptTooLongMessage({
+      type: 'assistant',
+      isApiErrorMessage: true,
+      message: { content: [{ type: 'text', text: 'unrelated error' }] },
+    }),
+  ).toBe(false)
+  expect(
+    isPromptTooLongMessage({
+      type: 'assistant',
+      isApiErrorMessage: true,
+      message: {
+        content: [
+          {
+            type: 'text',
+            text: `${PROMPT_TOO_LONG_ERROR_MESSAGE}: context exceeded`,
+          },
+        ],
+      },
+    }),
+  ).toBe(true)
+})
+
+test('createRuntimeCallModel re-export matches DeepSeek call-model factory shape', async () => {
+  const runtime = await import('../messageSend.ts')
+  expect(typeof runtime.createRuntimeCallModel).toBe('function')
+  const callModel = runtime.createRuntimeCallModel()
+  expect(typeof callModel).toBe('function')
 })
