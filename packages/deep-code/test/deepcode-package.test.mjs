@@ -416,10 +416,6 @@ const modelCommandCopySource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/model/model.tsx'),
   'utf8',
 )
-const privacySettingsCommandSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/commands/privacy-settings/privacy-settings.tsx'),
-  'utf8',
-)
 const fastCommandCopySource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/fast/fast.tsx'),
   'utf8',
@@ -1624,7 +1620,6 @@ test('common public command copy uses Deep Code branding', () => {
     memoryCommandCopySource,
     copyCommandSource,
     modelCommandCopySource,
-    privacySettingsCommandSource,
     fastCommandCopySource,
   ].map(stripInlineSourceMap).join('\n')
 

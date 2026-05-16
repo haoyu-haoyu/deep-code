@@ -12,11 +12,6 @@ import { logForDebugging } from 'src/utils/debug.js'
 import { logError } from 'src/utils/log.js'
 import { createSystemAPIErrorMessage } from 'src/utils/messages.js'
 import { getAPIProviderForStatsig } from 'src/utils/model/providers.js'
-import {
-  clearApiKeyHelperCache,
-  clearAwsCredentialsCache,
-  clearGcpCredentialsCache,
-} from '../../utils/auth.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import {
@@ -635,7 +630,6 @@ function isBedrockAuthError(error: unknown): boolean {
  */
 function handleAwsCredentialError(error: unknown): boolean {
   if (isBedrockAuthError(error)) {
-    clearAwsCredentialsCache()
     return true
   }
   return false
@@ -673,7 +667,6 @@ function isVertexAuthError(error: unknown): boolean {
  */
 function handleGcpCredentialError(error: unknown): boolean {
   if (isVertexAuthError(error)) {
-    clearGcpCredentialsCache()
     return true
   }
   return false
@@ -755,7 +748,6 @@ function shouldRetry(error: APIError): boolean {
 
   // Clear API key cache on 401 and allow retry.
   if (error.status === 401) {
-    clearApiKeyHelperCache()
     return true
   }
 
