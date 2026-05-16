@@ -7,7 +7,6 @@ import {
 } from 'src/utils/settings/settings.js'
 import { shouldOfferTerminalSetup } from '../../commands/terminalSetup/terminalSetup.js'
 import { color } from '../../components/design-system/color.js'
-import { shouldShowOverageCreditUpsell } from '../../components/LogoV2/OverageCreditUpsell.js'
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
 import { countConcurrentSessions } from '../../utils/concurrentSessions.js'
 import { getGlobalConfig } from '../../utils/config.js'
@@ -38,7 +37,6 @@ import {
   getCachedOverageCreditGrant,
 } from '../api/overageCreditGrant.js'
 import {
-  checkCachedPassesEligibility,
   formatCreditAmount,
   getCachedReferrerReward,
 } from '../api/referral.js'
@@ -519,14 +517,7 @@ const externalTips: Tip[] = [
         : `You have free guest passes to share · ${claude('/passes')}`
     },
     cooldownSessions: 3,
-    isRelevant: async () => {
-      const config = getGlobalConfig()
-      if (config.hasVisitedPasses) {
-        return false
-      }
-      const { eligible } = checkCachedPassesEligibility()
-      return eligible
-    },
+    isRelevant: async () => false,
   },
   {
     id: 'overage-credit',
@@ -539,7 +530,7 @@ const externalTips: Tip[] = [
       return `${claude(`${amount} in extra usage, on us`)} · third-party apps · ${MACRO.ISSUES_EXPLAINER}`
     },
     cooldownSessions: 3,
-    isRelevant: async () => shouldShowOverageCreditUpsell(),
+    isRelevant: async () => false,
   },
 ]
 const internalOnlyTips: Tip[] =

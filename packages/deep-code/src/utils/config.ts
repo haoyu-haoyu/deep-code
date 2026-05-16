@@ -13,10 +13,6 @@ import {
 import { getAutoMemEntrypoint } from '../memdir/paths.js'
 import { logEvent } from '../services/analytics/index.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
-import type {
-  BillingType,
-  ReferralEligibilityResponse,
-} from '../services/oauth/types.js'
 import { getCwd } from '../utils/cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
@@ -45,6 +41,15 @@ const teamMemPaths = feature('TEAMMEM')
 import type { ImageDimensions } from './imageResizer.js'
 import type { ModelOption } from './model/modelOptions.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
+
+type ReferralEligibilityResponse = {
+  eligible: boolean
+  remaining_passes?: number | null
+  referrer_reward?: {
+    currency: string
+    amount_minor_units: number
+  } | null
+}
 
 // Re-entrancy guard: prevents getConfig → logEvent → getGlobalConfig → getConfig
 // infinite recursion when the config file is corrupted. logEvent's sampling check
@@ -159,21 +164,6 @@ import type { EDITOR_MODES, NOTIFICATION_CHANNELS } from './configConstants.js'
 
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number]
 
-export type AccountInfo = {
-  accountUuid: string
-  emailAddress: string
-  organizationUuid?: string
-  organizationName?: string | null // added 4/23/2025, not populated for existing users
-  organizationRole?: string | null
-  workspaceRole?: string | null
-  // Populated by /api/oauth/profile
-  displayName?: string
-  hasExtraUsageEnabled?: boolean
-  billingType?: BillingType | null
-  accountCreatedAt?: string
-  subscriptionCreatedAt?: string
-}
-
 // TODO: 'emacs' is kept for backward compatibility - remove after a few releases
 export type EditorMode = 'emacs' | (typeof EDITOR_MODES)[number]
 
@@ -218,16 +208,11 @@ export type GlobalConfig = {
    */
   customNotifyCommand?: string
   verbose: boolean
-  customApiKeyResponses?: {
-    approved?: string[]
-    rejected?: string[]
-  }
   primaryApiKey?: string // Primary API key for the user when no environment variable is set, set via oauth (TODO: rename)
   hasAcknowledgedCostThreshold?: boolean
   hasSeenUndercoverAutoNotice?: boolean // ant-only: whether the one-time auto-undercover explainer has been shown
   hasSeenUltraplanTerms?: boolean // ant-only: whether the one-time CCR terms notice has been shown in the ultraplan launch dialog
   hasResetAutoModeOptInForDefaultOffer?: boolean // ant-only: one-shot migration guard, re-prompts churned auto-mode users
-  oauthAccount?: AccountInfo
   iterm2KeyBindingInstalled?: boolean // Legacy - keeping for backward compatibility
   editorMode?: EditorMode
   bypassPermissionsModeAccepted?: boolean
@@ -360,8 +345,6 @@ export type GlobalConfig = {
   lastPlanModeUse?: number // Timestamp of last plan mode usage
 
   // Subscription notice tracking
-  subscriptionNoticeCount?: number // Number of times the subscription notice has been shown
-  hasAvailableSubscription?: boolean // Cached result of whether user has a subscription available
   subscriptionUpsellShownCount?: number // Number of times the subscription upsell has been shown (deprecated)
   recommendedSubscription?: string // Cached config value from Statsig (deprecated)
 
@@ -394,9 +377,6 @@ export type GlobalConfig = {
   inputNeededNotifEnabled?: boolean
   agentPushNotifEnabled?: boolean
 
-  // Claude Code usage tracking
-  claudeCodeFirstTokenDate?: string // ISO timestamp of the user's first Claude Code OAuth token
-
   // Model switch callout tracking (ant-only)
   modelSwitchCalloutDismissed?: boolean // Whether user chose "Don't show again"
   modelSwitchCalloutLastShown?: number // Timestamp of last shown (don't show for 24h)
@@ -421,18 +401,11 @@ export type GlobalConfig = {
   // Idle-return dialog tracking
   idleReturnDismissed?: boolean // "Don't ask again" picked
 
-  // Opus 4.5 Pro migration tracking
-  opusProMigrationComplete?: boolean
-  opusProMigrationTimestamp?: number
-
   // Sonnet 4.5 1m migration tracking
   sonnet1m45MigrationComplete?: boolean
 
   // Opus 4.0/4.1 → current Opus migration (shows one-time notif)
   legacyOpusMigrationTimestamp?: number
-
-  // Sonnet 4.5 → 4.6 migration (pro/max/team premium)
-  sonnet45To46MigrationTimestamp?: number
 
   // Cached statsig gate values
   cachedStatsigGates: {
@@ -579,10 +552,6 @@ function createDefaultGlobalConfig(): GlobalConfig {
     hasUsedBackgroundTask: false,
     queuedCommandUpHintCount: 0,
     diffTool: 'auto',
-    customApiKeyResponses: {
-      approved: [],
-      rejected: [],
-    },
     env: {},
     tipsHistory: {},
     memoryUsageCount: 0,
@@ -760,17 +729,14 @@ export function isProjectConfigKey(key: string): key is ProjectConfigKey {
  * wipe auth. See GH #3117.
  */
 function wouldLoseAuthState(fresh: {
-  oauthAccount?: unknown
   hasCompletedOnboarding?: boolean
 }): boolean {
   const cached = globalConfigCache.config
   if (!cached) return false
-  const lostOauth =
-    cached.oauthAccount !== undefined && fresh.oauthAccount === undefined
   const lostOnboarding =
     cached.hasCompletedOnboarding === true &&
     fresh.hasCompletedOnboarding !== true
-  return lostOauth || lostOnboarding
+  return lostOnboarding
 }
 
 export function saveGlobalConfig(
@@ -1076,15 +1042,8 @@ export function getRemoteControlAtStartup(): boolean {
 }
 
 export function getCustomApiKeyStatus(
-  truncatedApiKey: string,
+  _truncatedApiKey: string,
 ): 'approved' | 'rejected' | 'new' {
-  const config = getGlobalConfig()
-  if (config.customApiKeyResponses?.approved?.includes(truncatedApiKey)) {
-    return 'approved'
-  }
-  if (config.customApiKeyResponses?.rejected?.includes(truncatedApiKey)) {
-    return 'rejected'
-  }
   return 'new'
 }
 

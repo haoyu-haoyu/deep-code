@@ -1,5 +1,4 @@
 import memoize from 'lodash-es/memoize.js'
-import { refreshAndGetAwsCredentials } from '../auth.js'
 import { getAWSRegion, isEnvTruthy } from '../envUtils.js'
 import { logError } from '../log.js'
 import { getAWSClientProxyConfig } from '../proxy.js'
@@ -80,7 +79,7 @@ async function createBedrockClient() {
 
   if (!skipAuth && !process.env.AWS_BEARER_TOKEN_BEDROCK) {
     // Only refresh credentials if not using API key authentication
-    const cachedCredentials = await refreshAndGetAwsCredentials()
+    const cachedCredentials = null
     if (cachedCredentials) {
       clientConfig.credentials = {
         accessKeyId: cachedCredentials.accessKeyId,
@@ -125,7 +124,7 @@ export async function createBedrockRuntimeClient() {
 
   if (!skipAuth && !process.env.AWS_BEARER_TOKEN_BEDROCK) {
     // Only refresh credentials if not using API key authentication
-    const cachedCredentials = await refreshAndGetAwsCredentials()
+    const cachedCredentials = null
     if (cachedCredentials) {
       clientConfig.credentials = {
         accessKeyId: cachedCredentials.accessKeyId,
