@@ -56,18 +56,6 @@ const sessionTitleSource = readFileSync(
   resolve(root, 'packages/deep-code/src/utils/sessionTitle.ts'),
   'utf8',
 )
-const claudeAiLimitsSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/services/claudeAiLimits.ts'),
-  'utf8',
-)
-const bootstrapApiSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/services/api/bootstrap.ts'),
-  'utf8',
-)
-const overageCreditGrantSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/services/api/overageCreditGrant.ts'),
-  'utf8',
-)
 const claudeAiMcpSource = readFileSync(
   resolve(root, 'packages/deep-code/src/services/mcp/claudeai.ts'),
   'utf8',
@@ -1032,12 +1020,18 @@ test('Deep Code full TUI avoids legacy Anthropic preflight calls under DeepSeek 
   assert.match(sessionTitleSource, /isDeepCodeDeepSeekProvider/)
   assert.match(sessionTitleSource, /createDeepCodeLocalSessionTitle/)
   assert.match(sessionTitleSource, /DeepSeek provider uses local title derivation/)
-  assert.match(claudeAiLimitsSource, /DEEPCODE_PROVIDER/)
-  assert.match(claudeAiLimitsSource, /DeepSeek native provider does not use Claude\.ai quota checks/)
-  assert.match(bootstrapApiSource, /isDeepCodeDeepSeekProvider/)
-  assert.match(bootstrapApiSource, /\[Bootstrap\] Skipped: DeepSeek native provider/)
-  assert.match(overageCreditGrantSource, /isDeepCodeDeepSeekProvider/)
-  assert.match(overageCreditGrantSource, /if \(isDeepCodeDeepSeekProvider\(\)\) return/)
+  assert.equal(
+    existsSync(resolve(root, 'packages/deep-code/src/services/claudeAiLimits.ts')),
+    false,
+  )
+  assert.equal(
+    existsSync(resolve(root, 'packages/deep-code/src/services/api/bootstrap.ts')),
+    false,
+  )
+  assert.equal(
+    existsSync(resolve(root, 'packages/deep-code/src/services/api/overageCreditGrant.ts')),
+    false,
+  )
   assert.match(claudeAiMcpSource, /isDeepCodeDeepSeekProvider/)
   assert.match(claudeAiMcpSource, /\[claudeai-mcp\] Disabled for DeepSeek native provider/)
 })

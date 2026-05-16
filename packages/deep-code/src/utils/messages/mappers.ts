@@ -9,9 +9,7 @@ import type {
   SDKAssistantMessage,
   SDKCompactBoundaryMessage,
   SDKMessage,
-  SDKRateLimitInfo,
 } from 'src/entrypoints/agentSdkTypes.js'
-import type { ClaudeAILimits } from 'src/services/claudeAiLimits.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from 'src/tools/ExitPlanModeTool/constants.js'
 import type {
   AssistantMessage,
@@ -211,43 +209,6 @@ export function localCommandOutputToSDKAssistantMessage(
     parent_tool_use_id: null,
     session_id: getSessionId(),
     uuid,
-  }
-}
-
-/**
- * Maps internal ClaudeAILimits to the SDK-facing SDKRateLimitInfo type,
- * stripping internal-only fields like unifiedRateLimitFallbackAvailable.
- */
-export function toSDKRateLimitInfo(
-  limits: ClaudeAILimits | undefined,
-): SDKRateLimitInfo | undefined {
-  if (!limits) {
-    return undefined
-  }
-  return {
-    status: limits.status,
-    ...(limits.resetsAt !== undefined && { resetsAt: limits.resetsAt }),
-    ...(limits.rateLimitType !== undefined && {
-      rateLimitType: limits.rateLimitType,
-    }),
-    ...(limits.utilization !== undefined && {
-      utilization: limits.utilization,
-    }),
-    ...(limits.overageStatus !== undefined && {
-      overageStatus: limits.overageStatus,
-    }),
-    ...(limits.overageResetsAt !== undefined && {
-      overageResetsAt: limits.overageResetsAt,
-    }),
-    ...(limits.overageDisabledReason !== undefined && {
-      overageDisabledReason: limits.overageDisabledReason,
-    }),
-    ...(limits.isUsingOverage !== undefined && {
-      isUsingOverage: limits.isUsingOverage,
-    }),
-    ...(limits.surpassedThreshold !== undefined && {
-      surpassedThreshold: limits.surpassedThreshold,
-    }),
   }
 }
 

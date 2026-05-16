@@ -15,7 +15,6 @@ import {
   logEvent,
 } from 'src/services/analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { type FilesApiConfig, uploadFile } from '../../services/api/filesApi.js'
 import { getCwd } from '../cwd.js'
 import { logForDebugging } from '../debug.js'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
@@ -26,6 +25,7 @@ import { generateTempFilePath } from '../tempfile.js'
 const DEFAULT_BUNDLE_MAX_BYTES = 100 * 1024 * 1024
 
 type BundleScope = 'all' | 'head' | 'squashed'
+type FilesApiConfig = unknown
 
 export type BundleUploadResult =
   | {
@@ -153,6 +153,7 @@ export async function createAndUploadGitBundle(
   config: FilesApiConfig,
   opts?: { cwd?: string; signal?: AbortSignal },
 ): Promise<BundleUploadResult> {
+  void config
   const workdir = opts?.cwd ?? getCwd()
   const gitRoot = findGitRoot(workdir)
   if (!gitRoot) {
@@ -244,36 +245,18 @@ export async function createAndUploadGitBundle(
       }
     }
 
-    // Fixed relativePath so CCR can locate it.
-    const upload = await uploadFile(bundlePath, '_source_seed.bundle', config, {
-      signal: opts?.signal,
-    })
-
-    if (!upload.success) {
-      logEvent('tengu_ccr_bundle_upload', {
-        outcome:
-          'failed' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      })
-      return { success: false, error: upload.error }
-    }
-
-    logForDebugging(
-      `[gitBundle] Uploaded ${upload.size} bytes as file_id ${upload.fileId}`,
-    )
+    logForDebugging('[gitBundle] File upload is not supported in DeepCode')
     logEvent('tengu_ccr_bundle_upload', {
       outcome:
-        'success' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      size_bytes: upload.size,
+        'failed' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       scope:
         bundle.scope as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       has_wip: hasWip,
     })
     return {
-      success: true,
-      fileId: upload.fileId,
-      bundleSizeBytes: upload.size,
-      scope: bundle.scope,
-      hasWip,
+      success: false,
+      error: 'File upload not supported in DeepCode',
+      failReason: 'git_error',
     }
   } finally {
     try {
