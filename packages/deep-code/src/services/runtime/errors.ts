@@ -1,3 +1,7 @@
+import type { SDKAssistantMessageError } from '../../entrypoints/agentSdkTypes.js'
+
+export type { SDKAssistantMessageError }
+
 export class RuntimeRequestError extends Error {
   constructor(
     message: string,
@@ -92,4 +96,24 @@ export function isPromptTooLongMessage(
         block.text.startsWith(PROMPT_TOO_LONG_ERROR_MESSAGE),
     ) ?? false
   )
+}
+
+export function categorizeRetryableAPIError(
+  error: { status?: number; message?: string } | null | undefined,
+): SDKAssistantMessageError {
+  if (!error) return 'unknown'
+  if (
+    error.status === 529 ||
+    error.message?.includes('"type":"overloaded_error"')
+  ) {
+    return 'rate_limit'
+  }
+  if (error.status === 429) return 'rate_limit'
+  if (error.status === 401 || error.status === 403) {
+    return 'authentication_failed'
+  }
+  if (error.status !== undefined && error.status >= 408) {
+    return 'server_error'
+  }
+  return 'unknown'
 }
