@@ -14,9 +14,12 @@ import type {
   SDKStatus,
   SDKUserMessageReplay,
 } from 'src/entrypoints/agentSdkTypes.js'
-import { accumulateUsage, updateUsage } from 'src/services/api/claude.js'
-import type { NonNullableUsage } from 'src/services/api/logging.js'
-import { EMPTY_USAGE } from 'src/services/api/logging.js'
+import {
+  accumulateUsage,
+  EMPTY_USAGE,
+  type NonNullableUsage,
+  updateUsage,
+} from 'src/services/runtime/usage.js'
 import stripAnsi from 'strip-ansi'
 import type { Command } from './commands.js'
 import { getSlashCommandToolSkills } from './commands.js'
@@ -33,7 +36,7 @@ import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { loadMemoryPrompt } from './memdir/memdir.js'
 import { hasAutoMemPathOverride } from './memdir/paths.js'
 import { query } from './query.js'
-import { categorizeRetryableAPIError } from './services/api/errors.js'
+import { categorizeRetryableAPIError } from './services/runtime/errors.js'
 import type { MCPServerConnection } from './services/mcp/types.js'
 import type { AppState } from './state/AppState.js'
 import { type Tools, type ToolUseContext, toolMatchesName } from './Tool.js'

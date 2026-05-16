@@ -247,3 +247,31 @@ test('createRuntimeCallModel re-export matches DeepSeek call-model factory shape
   const callModel = runtime.createRuntimeCallModel()
   expect(typeof callModel).toBe('function')
 })
+
+test('categorizeRetryableAPIError classifies HTTP errors per SDK semantics', async () => {
+  const errors = await import('../errors.ts')
+  const { categorizeRetryableAPIError } = errors
+
+  expect(categorizeRetryableAPIError(null)).toBe('unknown')
+  expect(categorizeRetryableAPIError(undefined)).toBe('unknown')
+  expect(categorizeRetryableAPIError({ status: 529 })).toBe('rate_limit')
+  expect(
+    categorizeRetryableAPIError({
+      status: 500,
+      message: '{"type":"overloaded_error","message":"server overloaded"}',
+    }),
+  ).toBe('rate_limit')
+  expect(categorizeRetryableAPIError({ status: 429 })).toBe('rate_limit')
+  expect(categorizeRetryableAPIError({ status: 401 })).toBe(
+    'authentication_failed',
+  )
+  expect(categorizeRetryableAPIError({ status: 403 })).toBe(
+    'authentication_failed',
+  )
+  expect(categorizeRetryableAPIError({ status: 500 })).toBe('server_error')
+  expect(categorizeRetryableAPIError({ status: 502 })).toBe('server_error')
+  expect(categorizeRetryableAPIError({ status: 408 })).toBe('server_error')
+  expect(categorizeRetryableAPIError({ status: 400 })).toBe('unknown')
+  expect(categorizeRetryableAPIError({ status: 200 })).toBe('unknown')
+  expect(categorizeRetryableAPIError({})).toBe('unknown')
+})
