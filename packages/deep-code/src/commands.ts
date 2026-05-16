@@ -148,8 +148,6 @@ import {
   clearPluginSkillsCache,
 } from './utils/plugins/loadPluginCommands.js'
 import memoize from 'lodash-es/memoize.js'
-import { isUsing3PServices, isClaudeAISubscriber } from './utils/auth.js'
-import { isFirstPartyAnthropicBaseUrl } from './utils/model/providers.js'
 import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
@@ -304,7 +302,8 @@ const COMMANDS = memoize((): Command[] => [
   ...(includeLegacyClaudeServiceCommands()
     ? [
         ...LEGACY_CLAUDE_SERVICE_COMMANDS,
-        ...(!isUsing3PServices() ? [logout, login()] : []),
+        logout,
+        login(),
       ]
     : []),
   passes,
@@ -391,18 +390,10 @@ export function meetsAvailabilityRequirement(cmd: Command): boolean {
   for (const a of cmd.availability) {
     switch (a) {
       case 'claude-ai':
-        if (isClaudeAISubscriber()) return true
+        // DeepCode is not a Claude.ai subscriber.
         break
       case 'console':
-        // Console API key user = direct 1P API customer (not 3P, not claude.ai).
-        // Excludes 3P (Bedrock/Vertex/Foundry) who don't set ANTHROPIC_BASE_URL
-        // and gateway users who proxy through a custom base URL.
-        if (
-          !isClaudeAISubscriber() &&
-          !isUsing3PServices() &&
-          isFirstPartyAnthropicBaseUrl()
-        )
-          return true
+        // 'console' = direct 1P Anthropic API customer. DeepCode never matches.
         break
       default: {
         const _exhaustive: never = a
