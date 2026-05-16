@@ -1072,8 +1072,9 @@ test('Deep Code full TUI removes legacy Claude chrome from visible DeepSeek star
 
   assert.match(
     fullTuiStatusSource,
-    /isDeepSeekProvider[\s\S]*label: 'DeepSeek API key'[\s\S]*return properties[\s\S]*getAccountInformation/,
+    /isDeepSeekProvider[\s\S]*label: 'DeepSeek API key'[\s\S]*return properties[\s\S]*const accountInfo: UserAccountInfo = \{\}/,
   )
+  assert.doesNotMatch(fullTuiStatusSource, /getAccountInformation/)
 
   assert.match(notifierSource, /DEFAULT_TITLE = 'Deep Code'/)
 })
