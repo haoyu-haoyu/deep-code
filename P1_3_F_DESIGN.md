@@ -13,6 +13,8 @@ Primary files:
 - `packages/deep-code/src/deepcode/deepseek-native.mjs`
 - `packages/deep-code/src/services/providers/registry.mjs`
 
+Path sanity check for this proposal: `packages/deep-code/src/query/deepseek-call-model.mjs` and `packages/deep-code/src/cache/deepseek-warmup.mjs` both exist in the current tree.
+
 `deepseek.mjs` exports these public APIs:
 
 - Message and schema mapping: `mapMessagesToDeepSeek`, `sanitizeSchemaForDeepSeekStrict`, `toolToDeepSeekFunctionSchema`
@@ -216,7 +218,8 @@ The abstraction should not dispatch to Anthropic in normal builds. A short trans
 - F.0: Runtime adapter scaffold
   - Scope: add `services/runtime/messageSend.ts`, `usage.ts`, `errors.ts`, and unit tests; no consumer migration.
   - Estimated files: 4-8.
-  - Risk: medium. Must define exact TypeScript shapes without dragging `services/api/claude.ts` types into the new layer.
+  - Risk: high. Must define exact TypeScript shapes without dragging `services/api/claude.ts` types into the new layer.
+  - Type signatures of `services/runtime/messageSend.ts` exports drive every subsequent F.a* migration. Unit tests plus signature review required before merge.
 
 - F.a1: Main query send loop import cleanup
   - Scope: migrate `query/deps.ts` and `query.ts` from `services/api/{claude,withRetry,errors,dumpPrompts}` to runtime modules.
@@ -228,25 +231,41 @@ The abstraction should not dispatch to Anthropic in normal builds. A short trans
   - Estimated files: 4-7.
   - Risk: medium. Mostly mechanical, but result usage and `modelUsage` must remain stable.
 
-- F.a3: Non-streaming and small-model helper migration
-  - Scope: migrate `queryHaiku`, `queryWithModel`, and `queryModelWithoutStreaming` consumers: `services/toolUseSummary`, `services/awaySummary`, `commands/rename`, `commands/insights`, `utils/sessionTitle`, `utils/mcp/dateTimeParser`, `utils/shell/prefix`, `utils/hooks/*`, and `components/agents/generateAgent.ts`.
-  - Estimated files: 12-18.
-  - Risk: high. These are many small paths with different expectations about aborts, error text, model choice, and returned assistant message shape.
+- F.a3.1: Non-streaming and small-model helper migration for utils
+  - Scope: migrate `utils/sessionTitle.ts`, `utils/mcp/dateTimeParser.ts`, `utils/shell/prefix.ts`, and `utils/hooks/{execPromptHook,apiQueryHookHelper,skillImprovement}.ts`.
+  - Estimated files: 6-8.
+  - Risk: high. These utility paths have different expectations about aborts, error text, model choice, and returned assistant message shape.
+
+- F.a3.2: Non-streaming and small-model helper migration for commands/components/services
+  - Scope: migrate `commands/rename/generateSessionName.ts`, `commands/insights.ts`, `services/awaySummary.ts`, `services/toolUseSummary/toolUseSummaryGenerator.ts`, `components/agents/generateAgent.ts`, and the `queryHaiku` usage in `utils/teleport.tsx` without expanding teleport itself.
+  - Estimated files: 6-8.
+  - Risk: high. Commands and UI helpers need behavior-preserving output text and error handling while teleport remains a P1.3.G boundary.
 
 - F.a4: WebSearchTool and WebFetchTool native migration
   - Scope: migrate `tools/WebSearchTool/WebSearchTool.ts` from direct `queryModelWithStreaming`, and `tools/WebFetchTool/utils.ts` from `queryHaiku`.
   - Estimated files: 3-5.
   - Risk: high. WebSearch currently forces an Anthropic-style tool schema and parses streamed `tool_use` blocks; DeepSeek tool-call deltas need careful compatibility tests.
 
-- F.a5: Compaction, token policy, and token estimation
-  - Scope: migrate `services/compact/{compact,autoCompact,microCompact}.ts`, `services/tokenEstimation.ts`, and `utils/context.ts` comments/policy references.
-  - Estimated files: 5-8.
-  - Risk: high. Token counting and prompt-too-long handling are the weakest DeepSeek-native coverage area.
+- F.a5.1: Compaction token policy migration
+  - Scope: migrate `services/compact/{compact,autoCompact,microCompact}.ts` and `utils/context.ts` comments/policy references.
+  - Estimated files: about 4.
+  - Risk: high. Prompt-too-long handling and max-output-token policy are behavior-sensitive and must be validated before deleting token-estimation code.
+
+- F.a5.2: Token-estimation delete and consumer cleanup
+  - Scope: delete `services/tokenEstimation.ts` and replace consumers with `null` / `undefined` displayed counts per the Q2 proposed default.
+  - Estimated files: 3-5.
+  - Risk: medium-high. This is narrower than exact token-count migration, but callers must tolerate absent counts cleanly.
 
 - F.a6: AgentTool debug and prompt-cache tracking removal
   - Scope: migrate or delete `dumpPrompts.ts` consumers in AgentTool, LogoV2, processSlashCommand, clear-caches; replace prompt-cache-break notifications with DeepSeek cache diagnostics or no-ops.
   - Estimated files: 8-12.
   - Risk: medium. Most paths are debug/ant-only, but cleanup hooks must not leak agent state.
+
+- F.Z: Mid-phase bundle refresh (chore)
+  - Scope: rebuild `dist/deepcode-full.mjs` to absorb accumulated drift from F.0 through F.a6.
+  - Estimated files: 1 (`dist/deepcode-full.mjs`).
+  - Risk: low.
+  - Mirrors P1.3.Z.1 precedent: keeps subsequent F.a7/F.a8/F.b dist diffs at source-delta scale instead of accumulating 6+ sub-PRs of drift.
 
 - F.a7: Error and retry utility extraction
   - Scope: migrate `components/messages/*`, `utils/messages.ts`, `utils/preflightChecks.tsx`, `utils/sideQuestion.ts`, `utils/permissions/yoloClassifier.ts`, and non-runtime service users of `getRetryDelay`.
@@ -262,6 +281,9 @@ The abstraction should not dispatch to Anthropic in normal builds. A short trans
   - Scope: delete `services/api/{claude,client,errors,withRetry,dumpPrompts,errorUtils,logging,sessionIngress,promptCacheBreakDetection,emptyUsage}.ts`; run final import audits.
   - Estimated files: 10 deletes plus any final trim.
   - Risk: medium if F.a* import audits are clean; high if any consumer remains.
+  - Assumes Q2 default (`tokenEstimation.ts` deleted) and Q5 default (fallback removed) are adopted. If user overrides either, F.b scope adjusts accordingly.
+
+Total planned P1.3.F sub-PRs: 13 (`F.0`, `F.a1`, `F.a2`, `F.a3.1`, `F.a3.2`, `F.a4`, `F.a5.1`, `F.a5.2`, `F.a6`, `F.Z`, `F.a7`, `F.a8`, `F.b`), up from the original 10.
 
 ### B3. Risk assessment
 
@@ -280,7 +302,7 @@ Anthropic-specific paths to skip or stub:
 - `getCacheControl()` callers should not attempt to emulate Anthropic cache-control blocks. Replace with no-op or DeepSeek cache policy at the runtime request level.
 - `dumpPrompts.ts` ant-only request logging can be deleted unless a DeepSeek debug dump is explicitly required.
 - `promptCacheBreakDetection.ts` should become no-op notifications or DeepSeek cache diagnostics; do not preserve Anthropic cache-break assumptions.
-- `FallbackTriggeredError` should be replaced by a DeepSeek-native fallback/downgrade signal only if a real fallback model policy exists. Otherwise remove query-loop fallback handling in a dedicated PR.
+- Per the Q5 proposed default, `FallbackTriggeredError` and query-loop fallback handling should be removed rather than replaced with a DeepSeek downgrade signal.
 - Teleport OAuth session retrieval should not be rebuilt. Keep it as a boundary for P1.3.G.
 
 ### B4. Validation strategy
@@ -318,11 +340,10 @@ Final F.b delete validation:
 ### B5. Open questions for user decision
 
 1. Should P1.3.F remove the legacy `DEEPCODE_PROVIDER=anthropic|claude` fallback completely, or keep an explicit unsupported-provider error until a later cleanup?
-2. Should DeepSeek-native token estimation be exact, approximate, or API-backed? This determines whether `services/tokenEstimation.ts` is rewritten or reduced.
+2. Token estimation strategy - PROPOSED DEFAULT: delete `services/tokenEstimation.ts` entirely. Rationale: DeepCode users do not need Anthropic-style block-level token UI; DeepSeek does not expose a token-count endpoint. Replace any caller-displayed counts with `null` / `undefined`. If a future feature needs estimates, add a heuristic-based DeepSeek-native helper then, for example a `chars / 4` upper bound. User can override this default before F.a5.2 starts.
 3. Do we keep any request-dump/debug equivalent for DeepSeek, or delete `dumpPrompts.ts` behavior entirely as ant-only legacy surface?
 4. Should `promptCacheBreakDetection.ts` become DeepSeek cache diagnostics, or should cache-break UI/telemetry be removed outright?
-5. Should `FallbackTriggeredError` behavior survive as DeepSeek model downgrade, for example pro to flash, or should fallback be deleted until a real DeepSeek fallback policy is designed?
+5. `FallbackTriggeredError` behavior - PROPOSED DEFAULT: remove fallback functionality entirely. Rationale: Anthropic's multi-model fallback (`opus` to `sonnet` to `haiku`) is a subscription-tier policy that does not apply to DeepSeek. DeepCode users explicitly configure their model. Auto-downgrade to `deepseek-v4-flash` is not in scope. Strip fallback handling from `query.ts`, remove the `FallbackTriggeredError` reference, and remove the `--fallback-model` CLI option later; verified it is still present in `main.tsx`, `cli/print.ts`, and `QueryEngine.ts` wiring. User can override this default before F.a1 starts.
 6. Should P1.3.F touch `utils/teleport.tsx` only enough to remove `sessionIngress.ts` imports, or defer all teleport-related import cleanup to P1.3.G even if that means `sessionIngress.ts` survives longer?
 7. What is the desired user-facing wording for provider/runtime errors after `errors.ts` is split: "API Error", "DeepSeek API Error", or "DeepCode runtime error"?
 8. Should P1.3.F include a live DeepSeek e2e check in CI when credentials are available, or keep all CI validation fixture-only?
-
