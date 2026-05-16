@@ -39,7 +39,6 @@ import {
   setMeterProvider,
   setTracerProvider,
 } from 'src/bootstrap/state.js'
-import { getOtelHeadersFromHelper } from 'src/utils/auth.js'
 import { getPlatform, getWslVersion } from 'src/utils/platform.js'
 
 import { getCACertificates } from '../caCerts.js'
@@ -762,13 +761,9 @@ function getOTLPExporterConfig() {
   // Parse static headers from env var once (doesn't change at runtime)
   const staticHeaders = parseOtelHeadersEnvVar()
 
-  // If otelHeadersHelper is configured, use async headers function for dynamic refresh
-  // Otherwise just return static headers if any exist
+  // If otelHeadersHelper is configured, keep the async shape but use static headers.
   if (settings?.otelHeadersHelper) {
-    config.headers = async (): Promise<Record<string, string>> => {
-      const dynamicHeaders = getOtelHeadersFromHelper()
-      return { ...staticHeaders, ...dynamicHeaders }
-    }
+    config.headers = async (): Promise<Record<string, string>> => staticHeaders
   } else if (Object.keys(staticHeaders).length > 0) {
     config.headers = async (): Promise<Record<string, string>> => staticHeaders
   }
