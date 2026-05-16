@@ -15,15 +15,7 @@ import { mkdir, readFile, stat, writeFile } from 'fs/promises'
 import pickBy from 'lodash-es/pickBy.js'
 import { dirname } from 'path'
 import { getIsInteractive } from '../../bootstrap/state.js'
-import {
-  CLAUDE_AI_INFERENCE_SCOPE,
-  getOauthConfig,
-  OAUTH_BETA_HEADER,
-} from '../../constants/oauth.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-} from '../../utils/auth.js'
+import { getOauthConfig } from '../../constants/oauth.js'
 import { clearMemoryFileCaches } from '../../utils/claudemd.js'
 import { getMemoryPath } from '../../utils/config.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
@@ -213,11 +205,7 @@ function isUsingOAuth(): boolean {
   if (getAPIProvider() !== 'firstParty' || !isFirstPartyAnthropicBaseUrl()) {
     return false
   }
-
-  const tokens = getClaudeAIOAuthTokens()
-  return Boolean(
-    tokens?.accessToken && tokens.scopes?.includes(CLAUDE_AI_INFERENCE_SCOPE),
-  )
+  return false
 }
 
 function getSettingsSyncEndpoint(): string {
@@ -228,16 +216,6 @@ function getSettingsSyncAuthHeaders(): {
   headers: Record<string, string>
   error?: string
 } {
-  const oauthTokens = getClaudeAIOAuthTokens()
-  if (oauthTokens?.accessToken) {
-    return {
-      headers: {
-        Authorization: `Bearer ${oauthTokens.accessToken}`,
-        'anthropic-beta': OAUTH_BETA_HEADER,
-      },
-    }
-  }
-
   return {
     headers: {},
     error: 'No OAuth token available',
@@ -246,8 +224,6 @@ function getSettingsSyncAuthHeaders(): {
 
 async function fetchUserSettingsOnce(): Promise<SettingsSyncFetchResult> {
   try {
-    await checkAndRefreshOAuthTokenIfNeeded()
-
     const authHeaders = getSettingsSyncAuthHeaders()
     if (authHeaders.error) {
       return {
@@ -348,8 +324,6 @@ async function uploadUserSettings(
   entries: Record<string, string>,
 ): Promise<SettingsSyncUploadResult> {
   try {
-    await checkAndRefreshOAuthTokenIfNeeded()
-
     const authHeaders = getSettingsSyncAuthHeaders()
     if (authHeaders.error) {
       return {

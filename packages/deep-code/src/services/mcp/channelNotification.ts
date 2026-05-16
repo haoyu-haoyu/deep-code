@@ -20,10 +20,6 @@ import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod/v4'
 import { type ChannelEntry, getAllowedChannels } from '../../bootstrap/state.js'
 import { CHANNEL_TAG } from '../../constants/xml.js'
-import {
-  getClaudeAIOAuthTokens,
-  getSubscriptionType,
-} from '../../utils/auth.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { parsePluginIdentifier } from '../../utils/plugins/pluginIdentifier.js'
 import { getSettingsForSource } from '../../utils/settings/settings.js'
@@ -103,6 +99,8 @@ export type ChannelPermissionRequestParams = {
  */
 const SAFE_META_KEY = /^[a-zA-Z_][a-zA-Z0-9_]*$/
 
+type SubscriptionType = 'max' | 'pro' | 'team' | 'enterprise' | null
+
 export function wrapChannelMessage(
   serverName: string,
   content: string,
@@ -125,7 +123,7 @@ export function wrapChannelMessage(
  * avoid double-reading getSettingsForSource (uncached).
  */
 export function getEffectiveChannelAllowlist(
-  sub: ReturnType<typeof getSubscriptionType>,
+  sub: SubscriptionType,
   orgList: ChannelAllowlistEntry[] | undefined,
 ): {
   entries: ChannelAllowlistEntry[]
@@ -219,7 +217,8 @@ export function gateChannelServer(
   // OAuth-only. API key users (console) are blocked — there's no
   // channelsEnabled admin surface in console yet, so the policy opt-in
   // flow doesn't exist for them. Drop this when console parity lands.
-  if (!getClaudeAIOAuthTokens()?.accessToken) {
+  const hasClaudeAiAuth = false
+  if (!hasClaudeAiAuth) {
     return {
       action: 'skip',
       kind: 'auth',
@@ -232,7 +231,7 @@ export function gateChannelServer(
   // "policy settings exist" — a team org with zero configured policy keys
   // (remote endpoint returns 404) is still a managed org and must not fall
   // through to the unmanaged path.
-  const sub = getSubscriptionType()
+  const sub: SubscriptionType = null
   const managed = sub === 'team' || sub === 'enterprise'
   const policy = managed ? getSettingsForSource('policySettings') : undefined
   if (managed && policy?.channelsEnabled !== true) {
