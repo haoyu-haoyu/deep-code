@@ -8,7 +8,6 @@ import {
   type ResourceMetrics,
 } from '@opentelemetry/sdk-metrics'
 import axios from 'axios'
-import { checkMetricsEnabled } from 'src/services/api/metricsOptOut.js'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
 import { checkHasTrustDialogAccepted } from '../config.js'
 import { logForDebugging } from '../debug.js'
@@ -96,14 +95,6 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
         logForDebugging(
           'BigQuery metrics export: trust not established, skipping',
         )
-        resultCallback({ code: ExportResultCode.SUCCESS })
-        return
-      }
-
-      // Check organization-level metrics opt-out
-      const metricsStatus = await checkMetricsEnabled()
-      if (!metricsStatus.enabled) {
-        logForDebugging('Metrics export disabled by organization setting')
         resultCallback({ code: ExportResultCode.SUCCESS })
         return
       }

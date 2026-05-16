@@ -16,7 +16,6 @@ import type {
 } from 'src/types/message.js'
 import {
   createAssistantAPIErrorMessage,
-  NO_RESPONSE_REQUESTED,
 } from 'src/utils/messages.js'
 import {
   getDefaultMainLoopModelSetting,
@@ -37,11 +36,6 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import {
-  type ClaudeAILimits,
-  getRateLimitErrorMessage,
-  type OverageDisabledReason,
-} from '../claudeAiLimits.js'
 import { shouldProcessRateLimits } from '../rateLimitMocking.js' // Used for /mock-limits command
 import { extractConnectionErrorDetails, formatAPIError } from './errorUtils.js'
 
@@ -472,58 +466,8 @@ export function getAssistantMessageFromError(
 
     // If we have the new headers, use the new message generation
     if (rateLimitType || overageStatus) {
-      // Build limits object from error headers to determine the appropriate message
-      const limits: ClaudeAILimits = {
-        status: 'rejected',
-        unifiedRateLimitFallbackAvailable: false,
-        isUsingOverage: false,
-      }
-
-      // Extract rate limit information from headers
-      const resetHeader = error.headers?.get?.(
-        'anthropic-ratelimit-unified-reset',
-      )
-      if (resetHeader) {
-        limits.resetsAt = Number(resetHeader)
-      }
-
-      if (rateLimitType) {
-        limits.rateLimitType = rateLimitType
-      }
-
-      if (overageStatus) {
-        limits.overageStatus = overageStatus
-      }
-
-      const overageResetHeader = error.headers?.get?.(
-        'anthropic-ratelimit-unified-overage-reset',
-      )
-      if (overageResetHeader) {
-        limits.overageResetsAt = Number(overageResetHeader)
-      }
-
-      const overageDisabledReason = error.headers?.get?.(
-        'anthropic-ratelimit-unified-overage-disabled-reason',
-      ) as OverageDisabledReason | null
-      if (overageDisabledReason) {
-        limits.overageDisabledReason = overageDisabledReason
-      }
-
-      // Use the new message format for all new API rate limits
-      const specificErrorMessage = getRateLimitErrorMessage(limits, model)
-      if (specificErrorMessage) {
-        return createAssistantAPIErrorMessage({
-          content: specificErrorMessage,
-          error: 'rate_limit',
-        })
-      }
-
-      // If getRateLimitErrorMessage returned null, it means the fallback mechanism
-      // will handle this silently (e.g., Opus -> Sonnet fallback for eligible users).
-      // Return NO_RESPONSE_REQUESTED so no error is shown to the user, but the
-      // message is still recorded in conversation history for Claude to see.
       return createAssistantAPIErrorMessage({
-        content: NO_RESPONSE_REQUESTED,
+        content: 'Rate limit exceeded',
         error: 'rate_limit',
       })
     }
