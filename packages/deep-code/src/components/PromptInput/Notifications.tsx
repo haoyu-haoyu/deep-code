@@ -1,7 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
 import * as React from 'react';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { type Notification, useNotifications } from 'src/context/notifications.js';
 import { logEvent } from 'src/services/analytics/index.js';
 import { useAppState } from 'src/state/AppState.js';
@@ -16,11 +16,9 @@ import { useClaudeAiLimits } from '../../services/claudeAiLimitsHook.js';
 import { calculateTokenWarningState } from '../../services/compact/autoCompact.js';
 import type { MCPServerConnection } from '../../services/mcp/types.js';
 import type { Message } from '../../types/message.js';
-import { getApiKeyHelperElapsedMs, getConfiguredApiKeyHelper, getSubscriptionType } from '../../utils/auth.js';
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js';
 import { getExternalEditor } from '../../utils/editor.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
-import { formatDuration } from '../../utils/format.js';
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js';
 import { toIDEDisplayName } from '../../utils/ide.js';
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js';
@@ -129,7 +127,7 @@ export function Notifications(t0) {
   const isInOverageMode = claudeAiLimits.isUsingOverage;
   let t7;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = getSubscriptionType();
+    t7 = null;
     $[8] = t7;
   } else {
     t7 = $[8];
@@ -251,19 +249,7 @@ function NotificationContent({
   onAutoUpdaterResult: (result: AutoUpdaterResult) => void;
   onChangeIsUpdating: (isUpdating: boolean) => void;
 }): ReactNode {
-  // Poll apiKeyHelper inflight state to show slow-helper notice.
-  // Gated on configuration — most users never set apiKeyHelper, so the
-  // effect is a no-op for them (no interval allocated).
-  const [apiKeyHelperSlow, setApiKeyHelperSlow] = useState<string | null>(null);
-  useEffect(() => {
-    if (!getConfiguredApiKeyHelper()) return;
-    const interval = setInterval((setSlow: React.Dispatch<React.SetStateAction<string | null>>) => {
-      const ms = getApiKeyHelperElapsedMs();
-      const next = ms >= 10_000 ? formatDuration(ms) : null;
-      setSlow(prev => next === prev ? prev : next);
-    }, 1000, setApiKeyHelperSlow);
-    return () => clearInterval(interval);
-  }, []);
+  const apiKeyHelperSlow = null;
 
   // Voice state (VOICE_MODE builds only, runtime-gated by GrowthBook)
   const voiceState = feature('VOICE_MODE') ?
