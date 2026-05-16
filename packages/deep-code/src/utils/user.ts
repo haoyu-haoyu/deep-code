@@ -1,11 +1,7 @@
 import { execa } from 'execa'
 import memoize from 'lodash-es/memoize.js'
 import { getSessionId } from '../bootstrap/state.js'
-import {
-  getRateLimitTier,
-  getSubscriptionType,
-} from './auth.js'
-import { getGlobalConfig, getOrCreateUserID } from './config.js'
+import { getOrCreateUserID } from './config.js'
 import { getCwd } from './cwd.js'
 import { type env, getHostPlatformForAnalytics } from './env.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -77,22 +73,13 @@ export function resetUserCache(): void {
 export const getCoreUserData = memoize(
   (includeAnalyticsMetadata?: boolean): CoreUserData => {
     const deviceId = getOrCreateUserID()
-    const config = getGlobalConfig()
-
     let subscriptionType: string | undefined
     let rateLimitTier: string | undefined
     let firstTokenTime: number | undefined
     if (includeAnalyticsMetadata) {
-      subscriptionType = getSubscriptionType() ?? undefined
-      rateLimitTier = getRateLimitTier() ?? undefined
-      if (subscriptionType && config.claudeCodeFirstTokenDate) {
-        const configFirstTokenTime = new Date(
-          config.claudeCodeFirstTokenDate,
-        ).getTime()
-        if (!isNaN(configFirstTokenTime)) {
-          firstTokenTime = configFirstTokenTime
-        }
-      }
+      subscriptionType = undefined
+      rateLimitTier = undefined
+      firstTokenTime = undefined
     }
 
     const organizationUuid: string | undefined = undefined

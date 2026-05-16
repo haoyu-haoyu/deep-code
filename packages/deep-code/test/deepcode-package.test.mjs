@@ -273,14 +273,6 @@ const deepSeekLogoSource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/LogoV2/DeepSeekLogo.tsx'),
   'utf8',
 )
-const guestPassesUpsellSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/components/LogoV2/GuestPassesUpsell.tsx'),
-  'utf8',
-)
-const logoFeedConfigsSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/components/LogoV2/feedConfigs.tsx'),
-  'utf8',
-)
 const channelsNoticeSource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/LogoV2/ChannelsNotice.tsx'),
   'utf8',
@@ -338,10 +330,6 @@ const memoryCommandSource = readFileSync(
 )
 const logoutCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/logout/index.ts'),
-  'utf8',
-)
-const passesCommandSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/commands/passes/index.ts'),
   'utf8',
 )
 const statsCommandSource = readFileSync(
@@ -1372,8 +1360,6 @@ test('README and welcome surfaces use Deep Code and DeepSeek branding', () => {
     condensedLogoSource,
     logoV2Source,
     deepSeekLogoSource,
-    guestPassesUpsellSource,
-    logoFeedConfigsSource,
     channelsNoticeSource,
   ].map(stripInlineSourceMap).join('\n')
 
@@ -1599,7 +1585,6 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
 
 test('default visible slash command descriptions use Deep Code branding', () => {
   const defaultSlashCommandSources = [
-    passesCommandSource,
     statsCommandSource,
     reviewCommandSource,
     thinkbackCommandSource,
