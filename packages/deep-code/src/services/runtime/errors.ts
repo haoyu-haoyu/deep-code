@@ -70,3 +70,26 @@ function readStatus(err: unknown): number | undefined {
     ? status
     : undefined
 }
+
+export const PROMPT_TOO_LONG_ERROR_MESSAGE = 'Prompt is too long'
+
+export function isPromptTooLongMessage(
+  msg:
+    | {
+        type?: string
+        isApiErrorMessage?: boolean
+        message?: { content?: ReadonlyArray<{ type?: string; text?: string }> }
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!msg || msg.type !== 'assistant' || !msg.isApiErrorMessage) return false
+  return (
+    msg.message?.content?.some(
+      block =>
+        block.type === 'text' &&
+        typeof block.text === 'string' &&
+        block.text.startsWith(PROMPT_TOO_LONG_ERROR_MESSAGE),
+    ) ?? false
+  )
+}
