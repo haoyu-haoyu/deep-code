@@ -1,7 +1,6 @@
 import { getDirectConnectServerUrl, getSessionId } from '../bootstrap/state.js'
 import { stringWidth } from '../ink/stringWidth.js'
 import type { LogOption } from '../types/logs.js'
-import { getSubscriptionName, isClaudeAISubscriber } from './auth.js'
 import { getCwd } from './cwd.js'
 import { getDisplayPath } from './file.js'
 import {
@@ -27,7 +26,8 @@ export function getDeepCodeBillingType(): string {
   if (isDeepCodeDeepSeekProvider()) {
     return 'DeepSeek native'
   }
-  return isClaudeAISubscriber() ? getSubscriptionName() : 'API Usage Billing'
+  // Non-DeepSeek provider fallback: DeepCode is not a Claude.ai subscriber.
+  return 'API Usage Billing'
 }
 
 // Layout constants

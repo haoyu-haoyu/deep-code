@@ -1,5 +1,4 @@
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
-import { getRateLimitTier, getSubscriptionType } from './auth.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 
 export function getPlanModeV2AgentCount(): number {
@@ -9,20 +8,6 @@ export function getPlanModeV2AgentCount(): number {
     if (!isNaN(count) && count > 0 && count <= 10) {
       return count
     }
-  }
-
-  const subscriptionType = getSubscriptionType()
-  const rateLimitTier = getRateLimitTier()
-
-  if (
-    subscriptionType === 'max' &&
-    rateLimitTier === 'default_claude_max_20x'
-  ) {
-    return 3
-  }
-
-  if (subscriptionType === 'enterprise' || subscriptionType === 'team') {
-    return 3
   }
 
   return 1
