@@ -16,10 +16,6 @@ import {
   clearApiKeyHelperCache,
   clearAwsCredentialsCache,
   clearGcpCredentialsCache,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
-  isClaudeAISubscriber,
-  isEnterpriseSubscriber,
 } from '../../utils/auth.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
@@ -237,16 +233,6 @@ export async function* withRetry<T>(
         isVertexAuthError(lastError) ||
         isStaleConnection
       ) {
-        // On 401 "token expired" or 403 "token revoked", force a token refresh
-        if (
-          (lastError instanceof APIError && lastError.status === 401) ||
-          isOAuthTokenRevokedError(lastError)
-        ) {
-          const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
-          if (failedAccessToken) {
-            await handleOAuth401Error(failedAccessToken)
-          }
-        }
         client = await getClient()
       }
 
@@ -329,7 +315,7 @@ export async function* withRetry<T>(
         // If FALLBACK_FOR_ALL_PRIMARY_MODELS is not set, fall through only if the primary model is a non-custom Opus model.
         // TODO: Revisit if the isNonCustomOpusModel check should still exist, or if isNonCustomOpusModel is a stale artifact of when Claude Code was hardcoded on Opus.
         (process.env.FALLBACK_FOR_ALL_PRIMARY_MODELS ||
-          (!isClaudeAISubscriber() && isNonCustomOpusModel(options.model)))
+          isNonCustomOpusModel(options.model))
       ) {
         consecutive529Errors++
         if (consecutive529Errors >= MAX_529_RETRIES) {
@@ -735,8 +721,7 @@ function shouldRetry(error: APIError): boolean {
   // For Max and Pro users, should-retry is true, but in several hours, so we shouldn't.
   // Enterprise users can retry because they typically use PAYG instead of rate limits.
   if (
-    shouldRetryHeader === 'true' &&
-    (!isClaudeAISubscriber() || isEnterpriseSubscriber())
+    shouldRetryHeader === 'true'
   ) {
     return true
   }
@@ -765,11 +750,10 @@ function shouldRetry(error: APIError): boolean {
   // Retry on rate limits, but not for ClaudeAI Subscription users
   // Enterprise users can retry because they typically use PAYG instead of rate limits
   if (error.status === 429) {
-    return !isClaudeAISubscriber() || isEnterpriseSubscriber()
+    return true
   }
 
   // Clear API key cache on 401 and allow retry.
-  // OAuth token handling is done in the main retry loop via handleOAuth401Error.
   if (error.status === 401) {
     clearApiKeyHelperCache()
     return true
