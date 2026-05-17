@@ -377,3 +377,17 @@ test('queryRuntimeHaiku allows options.model to override DEFAULT_DEEPSEEK_SMALL_
   const firstCall = providerCalls[0] as { model?: unknown }
   expect(firstCall.model).toBe('deepseek-v4-pro')
 })
+
+test('startsWithApiErrorPrefix matches API Error prefix and /login wrapped variant', async () => {
+  const errors = await import('../errors.ts')
+  const { startsWithApiErrorPrefix, API_ERROR_MESSAGE_PREFIX } = errors
+
+  expect(API_ERROR_MESSAGE_PREFIX).toBe('API Error')
+  expect(startsWithApiErrorPrefix('API Error: 401')).toBe(true)
+  expect(startsWithApiErrorPrefix('API Error 500 Internal')).toBe(true)
+  expect(startsWithApiErrorPrefix(`Please run /login · API Error: 401`)).toBe(
+    true,
+  )
+  expect(startsWithApiErrorPrefix('Some other error')).toBe(false)
+  expect(startsWithApiErrorPrefix('')).toBe(false)
+})

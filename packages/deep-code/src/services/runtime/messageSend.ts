@@ -18,6 +18,10 @@ import {
   type NonNullableUsage,
   updateUsage,
 } from './usage.js'
+// AssistantMessage type is required for native primitives' return type so
+// utility callers can consume the runtime result without casting. The
+// types/message layer is project-neutral, not part of services/api/*.
+import type { AssistantMessage } from '../../types/message.js'
 
 export {
   formatRuntimeErrorForUser,
@@ -500,13 +504,13 @@ async function collectFinalAssistantFromCallModel(args: {
   tools: ReadonlyArray<unknown>
   signal: AbortSignal
   options: Record<string, unknown>
-}): Promise<unknown> {
+}): Promise<AssistantMessage> {
   const callModel = createDeepSeekCallModel()
-  let lastAssistant: unknown
+  let lastAssistant: AssistantMessage | undefined
   try {
     for await (const message of callModel(args)) {
       if ((message as { type?: string })?.type === 'assistant') {
-        lastAssistant = message
+        lastAssistant = message as AssistantMessage
       }
     }
   } catch (error) {
@@ -535,7 +539,7 @@ export async function queryRuntimeModelWithoutStreaming(args: {
   tools: ReadonlyArray<unknown>
   signal: AbortSignal
   options: Record<string, unknown>
-}): Promise<unknown> {
+}): Promise<AssistantMessage> {
   return collectFinalAssistantFromCallModel(args)
 }
 
@@ -549,7 +553,7 @@ export async function queryRuntimeHaiku(args: {
   outputFormat?: unknown
   signal: AbortSignal
   options: Record<string, unknown>
-}): Promise<unknown> {
+}): Promise<AssistantMessage> {
   const baseSystemPrompt = Array.isArray(args.systemPrompt)
     ? Array.from(args.systemPrompt)
     : []

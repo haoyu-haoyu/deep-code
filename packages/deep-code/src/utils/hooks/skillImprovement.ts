@@ -6,7 +6,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryModelWithoutStreaming } from '../../services/api/claude.js'
+import { queryRuntimeModelWithoutStreaming } from '../../services/runtime/messageSend.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
 import { createAbortController } from '../abortController.js'
@@ -209,7 +209,7 @@ export async function applySkillImprovement(
 
   const updateList = updates.map(u => `- ${u.section}: ${u.change}`).join('\n')
 
-  const response = await queryModelWithoutStreaming({
+  const response = await queryRuntimeModelWithoutStreaming({
     messages: [
       createUserMessage({
         content: `You are editing a skill definition file. Apply the following improvements to the skill.

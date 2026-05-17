@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import type { QuerySource } from '../../constants/querySource.js'
-import { queryModelWithoutStreaming } from '../../services/api/claude.js'
+import { queryRuntimeModelWithoutStreaming } from '../../services/runtime/messageSend.js'
 import type { Message } from '../../types/message.js'
 import { createAbortController } from '../../utils/abortController.js'
 import { logError } from '../../utils/log.js'
@@ -82,7 +82,7 @@ export function createApiQueryHook<TResult>(
       const model = config.getModel(context)
 
       // Make API call
-      const response = await queryModelWithoutStreaming({
+      const response = await queryRuntimeModelWithoutStreaming({
         messages,
         systemPrompt,
         thinkingConfig: { type: 'disabled' as const },

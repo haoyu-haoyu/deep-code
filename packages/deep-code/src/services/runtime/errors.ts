@@ -117,3 +117,15 @@ export function categorizeRetryableAPIError(
   }
   return 'unknown'
 }
+
+// API_ERROR_MESSAGE_PREFIX mirrors the literal emitted by assistant API-error
+// messages so runtime callers can detect API-error responses without depending
+// on services/api/*.
+export const API_ERROR_MESSAGE_PREFIX = 'API Error'
+
+export function startsWithApiErrorPrefix(text: string): boolean {
+  return (
+    text.startsWith(API_ERROR_MESSAGE_PREFIX) ||
+    text.startsWith(`Please run /login · ${API_ERROR_MESSAGE_PREFIX}`)
+  )
+}
