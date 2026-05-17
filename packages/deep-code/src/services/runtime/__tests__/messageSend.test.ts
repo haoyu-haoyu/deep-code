@@ -391,3 +391,64 @@ test('startsWithApiErrorPrefix matches API Error prefix and /login wrapped varia
   expect(startsWithApiErrorPrefix('Some other error')).toBe(false)
   expect(startsWithApiErrorPrefix('')).toBe(false)
 })
+
+test('queryRuntimeWithModelNonStreaming uses caller-provided model and returns assistant message', async () => {
+  providerEvents = [
+    { type: 'content_delta', text: 'analyzed' },
+    { type: 'finish', finishReason: 'stop' },
+  ]
+  providerCalls = []
+
+  const runtime = await import('../messageSend.ts')
+  const result = await runtime.queryRuntimeWithModelNonStreaming({
+    systemPrompt: ['You are an analyzer.'],
+    userPrompt: 'analyze this',
+    signal: new AbortController().signal,
+    options: {
+      model: 'deepseek-v4-pro',
+      querySource: 'insights',
+    },
+  })
+
+  expect(result.type).toBe('assistant')
+  expect(providerCalls.length).toBeGreaterThanOrEqual(1)
+  const firstCall = providerCalls[0] as { model?: unknown }
+  expect(firstCall.model).toBe('deepseek-v4-pro')
+})
+
+test('queryRuntimeWithModelNonStreaming throws RuntimeRequestError when options.model missing', async () => {
+  const runtime = await import('../messageSend.ts')
+  await expect(
+    runtime.queryRuntimeWithModelNonStreaming({
+      systemPrompt: [],
+      userPrompt: 'x',
+      signal: new AbortController().signal,
+      // @ts-expect-error intentionally omitting model to verify guard
+      options: {},
+    }),
+  ).rejects.toBeInstanceOf(runtime.RuntimeRequestError)
+})
+
+test('queryRuntimeWithModelNonStreaming appends outputFormat schema hint to system prompt', async () => {
+  providerEvents = [
+    { type: 'content_delta', text: '{"k":"v"}' },
+    { type: 'finish', finishReason: 'stop' },
+  ]
+  providerCalls = []
+
+  const runtime = await import('../messageSend.ts')
+  await runtime.queryRuntimeWithModelNonStreaming({
+    systemPrompt: ['Base prompt.'],
+    userPrompt: 'q',
+    outputFormat: {
+      type: 'json_schema',
+      schema: { type: 'object', properties: { k: { type: 'string' } } },
+    },
+    signal: new AbortController().signal,
+    options: { model: 'deepseek-v4-pro' },
+  })
+
+  const firstCall = providerCalls[0] as { systemPrompt?: ReadonlyArray<string> }
+  const hint = firstCall.systemPrompt?.find(s => s.includes('json_schema'))
+  expect(hint).toBeDefined()
+})
