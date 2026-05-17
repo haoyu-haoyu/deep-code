@@ -7,7 +7,6 @@ const sessionTranscriptModule = feature('KAIROS')
   ? (require('../sessionTranscript/sessionTranscript.js') as typeof import('../sessionTranscript/sessionTranscript.js'))
   : null
 
-import { APIUserAbortError } from '@anthropic-ai/sdk'
 import { markPostCompaction } from 'src/bootstrap/state.js'
 import { getInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
@@ -96,15 +95,14 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
+import { queryRuntimeModelWithStreaming } from '../runtime/messageSend.js'
+import { getMaxOutputTokensForModel } from '../runtime/tokenPolicy.js'
 import {
-  getMaxOutputTokensForModel,
-  queryModelWithStreaming,
-} from '../api/claude.js'
-import {
+  RuntimeAbortError,
   getPromptTooLongTokenGap,
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   startsWithApiErrorPrefix,
-} from '../api/errors.js'
+} from '../runtime/errors.js'
 import { notifyCompaction } from '../api/promptCacheBreakDetection.js'
 import { getRetryDelay } from '../api/withRetry.js'
 import { logPermissionContextForAnts } from '../internalLogging.js'
@@ -1203,7 +1201,7 @@ async function streamCompactSummary({
           ? getAssistantMessageText(assistantMsg)
           : null
         // Guard isApiErrorMessage: query() catches API errors (including
-        // APIUserAbortError on ESC) and yields them as synthetic assistant
+        // user aborts on ESC) and yields them as synthetic assistant
         // messages. Without this check, an aborted compact "succeeds" with
         // "Request was aborted." as the summary — the text doesn't start with
         // "API Error" so the caller's startsWithApiErrorPrefix guard misses it.
@@ -1289,7 +1287,7 @@ async function streamCompactSummary({
           )
         : [FileReadTool]
 
-      const streamingGen = queryModelWithStreaming({
+      const streamingGen = queryRuntimeModelWithStreaming({
         messages: normalizeMessagesForAPI(
           stripImagesFromMessages(
             stripReinjectedAttachments([
@@ -1367,7 +1365,7 @@ async function streamCompactSummary({
           hasStartedStreaming,
         })
         await sleep(getRetryDelay(attempt), context.abortController.signal, {
-          abortError: () => new APIUserAbortError(),
+          abortError: () => new RuntimeAbortError(),
         })
         continue
       }
