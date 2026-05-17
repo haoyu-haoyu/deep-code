@@ -584,6 +584,53 @@ export async function queryRuntimeHaiku(args: {
   })
 }
 
+/**
+ * Native DeepSeek non-streaming helper with explicit model selection.
+ * Provider-neutral equivalent of services/api/claude.queryWithModel:
+ * same shape as queryRuntimeHaiku but options.model is required (no
+ * DEFAULT_DEEPSEEK_SMALL_MODEL fallback).
+ *
+ * Used by F.a3.2 callers (commands/insights.ts) that drive analysis with
+ * a specific non-small model.
+ */
+export async function queryRuntimeWithModelNonStreaming(args: {
+  systemPrompt: ReadonlyArray<string>
+  userPrompt: string
+  outputFormat?: unknown
+  signal: AbortSignal
+  options: Record<string, unknown> & { model: string }
+}): Promise<AssistantMessage> {
+  if (typeof args.options.model !== 'string' || !args.options.model) {
+    throw new RuntimeRequestError(
+      'queryRuntimeWithModelNonStreaming requires options.model',
+    )
+  }
+  const baseSystemPrompt = Array.isArray(args.systemPrompt)
+    ? Array.from(args.systemPrompt)
+    : []
+  const effectiveSystemPrompt = args.outputFormat
+    ? [
+        ...baseSystemPrompt,
+        `Respond with JSON conforming to this schema: ${safeJsonStringify(args.outputFormat)}`,
+      ]
+    : baseSystemPrompt
+
+  const userMessage = {
+    type: 'user' as const,
+    message: { role: 'user' as const, content: args.userPrompt },
+    uuid: '00000000-0000-0000-0000-000000000000',
+  }
+
+  return collectFinalAssistantFromCallModel({
+    messages: [userMessage],
+    systemPrompt: effectiveSystemPrompt,
+    thinkingConfig: { type: 'disabled' as const },
+    tools: [],
+    signal: args.signal,
+    options: args.options,
+  })
+}
+
 function safeJsonStringify(value: unknown): string {
   try {
     return JSON.stringify(value)

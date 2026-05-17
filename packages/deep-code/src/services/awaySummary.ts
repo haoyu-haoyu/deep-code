@@ -1,4 +1,4 @@
-import { APIUserAbortError } from '@anthropic-ai/sdk'
+import { RuntimeAbortError } from '../services/runtime/errors.js'
 import { getEmptyToolPermissionContext } from '../Tool.js'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from '../utils/debug.js'
@@ -8,7 +8,7 @@ import {
 } from '../utils/messages.js'
 import { getSmallFastModel } from '../utils/model/model.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'
-import { queryModelWithoutStreaming } from './api/claude.js'
+import { queryRuntimeModelWithoutStreaming } from './runtime/messageSend.js'
 import { getSessionMemoryContent } from './SessionMemory/sessionMemoryUtils.js'
 
 // Recap only needs recent context — truncate to avoid "prompt too long" on
@@ -38,7 +38,7 @@ export async function generateAwaySummary(
     const memory = await getSessionMemoryContent()
     const recent = messages.slice(-RECENT_MESSAGE_WINDOW)
     recent.push(createUserMessage({ content: buildAwaySummaryPrompt(memory) }))
-    const response = await queryModelWithoutStreaming({
+    const response = await queryRuntimeModelWithoutStreaming({
       messages: recent,
       systemPrompt: asSystemPrompt([]),
       thinkingConfig: { type: 'disabled' },
@@ -65,7 +65,7 @@ export async function generateAwaySummary(
     }
     return getAssistantMessageText(response)
   } catch (err) {
-    if (err instanceof APIUserAbortError || signal.aborted) {
+    if (err instanceof RuntimeAbortError || signal.aborted) {
       return null
     }
     logForDebugging(`[awaySummary] generation failed: ${err}`)
