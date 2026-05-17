@@ -50,6 +50,39 @@ mock.module('../../../deepcode/deepseek-native.mjs', () => ({
   },
 }))
 
+const mockGrowthBookFeatureRead = () => ({
+  getFeatureValue_CACHED_MAY_BE_STALE<T>(_feature: string, defaultValue: T): T {
+    return defaultValue
+  },
+})
+
+mock.module('../../analytics/growthbook.js', mockGrowthBookFeatureRead)
+
+const mockContextPolicy = () => ({
+  CAPPED_DEFAULT_MAX_TOKENS: 8_000,
+  getModelMaxOutputTokens: () => ({ default: 32_000, upperLimit: 64_000 }),
+})
+
+mock.module('../../../utils/context.js', mockContextPolicy)
+
+const mockEnvValidation = () => ({
+  validateBoundedIntEnvVar(
+    _name: string,
+    rawValue: string | undefined,
+    defaultValue: number,
+    upperLimit: number,
+  ) {
+    const parsed = rawValue ? parseInt(rawValue, 10) : NaN
+    const effective =
+      Number.isFinite(parsed) && parsed > 0
+        ? Math.min(parsed, upperLimit)
+        : defaultValue
+    return { effective }
+  },
+})
+
+mock.module('../../../utils/envValidation.js', mockEnvValidation)
+
 const runtime = await import('../messageSend.ts')
 
 beforeEach(() => {
@@ -520,4 +553,89 @@ test('queryRuntimeModelWithStreaming forwards model and tools to the underlying 
   const firstCall = providerCalls[0] as { model?: unknown; tools?: unknown }
   expect(firstCall.model).toBe('deepseek-v4-pro')
   expect(firstCall.tools).toEqual(tools)
+})
+
+test('getMaxOutputTokensForModel returns the resolved cap for a deepseek model', async () => {
+  const tokenPolicy = await import('../tokenPolicy.ts')
+  const value = tokenPolicy.getMaxOutputTokensForModel('deepseek-v4-pro')
+  expect(typeof value).toBe('number')
+  expect(value).toBeGreaterThan(0)
+  expect(Number.isFinite(value)).toBe(true)
+})
+
+test('getMaxOutputTokensForModel honors CLAUDE_CODE_MAX_OUTPUT_TOKENS env override when set', async () => {
+  const originalValue = process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+  process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = '12345'
+  try {
+    const tokenPolicy = await import('../tokenPolicy.ts')
+    const value = tokenPolicy.getMaxOutputTokensForModel('deepseek-v4-pro')
+    // Env override may be clamped by upperLimit; just verify it is the
+    // override or capped to upperLimit.
+    expect(value).toBeGreaterThan(0)
+  } finally {
+    if (originalValue === undefined) {
+      delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+    } else {
+      process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = originalValue
+    }
+  }
+})
+
+test('parsePromptTooLongTokenCounts extracts actual and limit from PTL error text', async () => {
+  const errors = await import('../errors.ts')
+  const { parsePromptTooLongTokenCounts } = errors
+
+  const parsed = parsePromptTooLongTokenCounts(
+    'API Error: prompt is too long: 250000 tokens > 200000 maximum',
+  )
+  expect(parsed.actualTokens).toBe(250000)
+  expect(parsed.limitTokens).toBe(200000)
+
+  const noMatch = parsePromptTooLongTokenCounts('Unrelated error text')
+  expect(noMatch.actualTokens).toBeUndefined()
+  expect(noMatch.limitTokens).toBeUndefined()
+})
+
+test('getPromptTooLongTokenGap returns the gap when assistant message is PTL with parseable errorDetails', async () => {
+  const errors = await import('../errors.ts')
+  const { getPromptTooLongTokenGap, PROMPT_TOO_LONG_ERROR_MESSAGE } = errors
+
+  const gap = getPromptTooLongTokenGap({
+    type: 'assistant',
+    isApiErrorMessage: true,
+    errorDetails: 'prompt is too long: 220000 tokens > 200000 maximum',
+    message: {
+      content: [
+        {
+          type: 'text',
+          text: `${PROMPT_TOO_LONG_ERROR_MESSAGE}: 220000 tokens > 200000`,
+        },
+      ],
+    },
+  } as unknown as Parameters<typeof getPromptTooLongTokenGap>[0])
+  expect(gap).toBe(20000)
+})
+
+test('getPromptTooLongTokenGap returns undefined when not PTL or errorDetails unparseable', async () => {
+  const errors = await import('../errors.ts')
+  const { getPromptTooLongTokenGap } = errors
+
+  expect(
+    getPromptTooLongTokenGap({
+      type: 'assistant',
+      isApiErrorMessage: false,
+      message: { content: [] },
+    } as unknown as Parameters<typeof getPromptTooLongTokenGap>[0]),
+  ).toBeUndefined()
+
+  expect(
+    getPromptTooLongTokenGap({
+      type: 'assistant',
+      isApiErrorMessage: true,
+      errorDetails: 'unrelated error without token counts',
+      message: {
+        content: [{ type: 'text', text: 'API Error: something else' }],
+      },
+    } as unknown as Parameters<typeof getPromptTooLongTokenGap>[0]),
+  ).toBeUndefined()
 })

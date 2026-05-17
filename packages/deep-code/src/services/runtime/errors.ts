@@ -1,4 +1,5 @@
 import type { SDKAssistantMessageError } from '../../entrypoints/agentSdkTypes.js'
+import type { AssistantMessage } from '../../types/message.js'
 
 export type { SDKAssistantMessageError }
 
@@ -128,4 +129,41 @@ export function startsWithApiErrorPrefix(text: string): boolean {
     text.startsWith(API_ERROR_MESSAGE_PREFIX) ||
     text.startsWith(`Please run /login · ${API_ERROR_MESSAGE_PREFIX}`)
   )
+}
+
+/**
+ * Parse an "API Error: prompt is too long: N tokens > M maximum" error
+ * message into structured token counts.
+ */
+export function parsePromptTooLongTokenCounts(rawMessage: string): {
+  actualTokens: number | undefined
+  limitTokens: number | undefined
+} {
+  const match = rawMessage.match(
+    /prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i,
+  )
+  return {
+    actualTokens: match ? parseInt(match[1]!, 10) : undefined,
+    limitTokens: match ? parseInt(match[2]!, 10) : undefined,
+  }
+}
+
+/**
+ * Returns how many tokens over the limit a prompt-too-long error reports,
+ * or undefined if the message isn't PTL or its errorDetails are unparseable.
+ */
+export function getPromptTooLongTokenGap(
+  msg: AssistantMessage,
+): number | undefined {
+  if (!isPromptTooLongMessage(msg) || !msg.errorDetails) {
+    return undefined
+  }
+  const { actualTokens, limitTokens } = parsePromptTooLongTokenCounts(
+    msg.errorDetails,
+  )
+  if (actualTokens === undefined || limitTokens === undefined) {
+    return undefined
+  }
+  const gap = actualTokens - limitTokens
+  return gap > 0 ? gap : undefined
 }
