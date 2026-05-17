@@ -631,6 +631,28 @@ export async function queryRuntimeWithModelNonStreaming(args: {
   })
 }
 
+/**
+ * Native DeepSeek streaming helper. One-step entry point that calls
+ * createDeepSeekCallModel() and returns its async generator. Provider-neutral
+ * equivalent of services/api/claude.queryModelWithStreaming for callers that
+ * consume the call-model stream directly (currently F.a4 WebSearchTool).
+ *
+ * Stream event shape matches what createDeepSeekCallModel yields:
+ * { type: 'stream_event', event: {...} } interleaved with the final
+ * { type: 'assistant', ...AssistantMessage } yield.
+ */
+export function queryRuntimeModelWithStreaming(args: {
+  messages: ReadonlyArray<unknown>
+  systemPrompt: unknown
+  thinkingConfig: unknown
+  tools: ReadonlyArray<unknown>
+  signal: AbortSignal
+  options: Record<string, unknown>
+}): ReturnType<ReturnType<typeof createDeepSeekCallModel>> {
+  const callModel = createDeepSeekCallModel()
+  return callModel(args) as ReturnType<ReturnType<typeof createDeepSeekCallModel>>
+}
+
 function safeJsonStringify(value: unknown): string {
   try {
     return JSON.stringify(value)

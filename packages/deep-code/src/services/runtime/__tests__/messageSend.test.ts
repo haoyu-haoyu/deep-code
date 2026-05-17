@@ -452,3 +452,72 @@ test('queryRuntimeWithModelNonStreaming appends outputFormat schema hint to syst
   const hint = firstCall.systemPrompt?.find(s => s.includes('json_schema'))
   expect(hint).toBeDefined()
 })
+
+test('queryRuntimeModelWithStreaming yields stream events and final assistant message', async () => {
+  providerEvents = [
+    { type: 'content_delta', text: 'first' },
+    { type: 'content_delta', text: ' second' },
+    { type: 'finish', finishReason: 'stop' },
+  ]
+  providerCalls = []
+
+  const runtime = await import('../messageSend.ts')
+  const events: unknown[] = []
+  for await (const event of runtime.queryRuntimeModelWithStreaming({
+    messages: [
+      {
+        type: 'user',
+        message: { role: 'user', content: 'go' },
+        uuid: '22222222-2222-2222-2222-222222222222',
+      },
+    ],
+    systemPrompt: ['Tool agent.'],
+    thinkingConfig: { type: 'disabled' },
+    tools: [],
+    signal: new AbortController().signal,
+    options: { model: 'deepseek-v4-pro' },
+  })) {
+    events.push(event)
+  }
+
+  expect(events.length).toBeGreaterThan(0)
+  const streamEvents = events.filter(
+    (e): e is { type: 'stream_event' } =>
+      (e as { type?: string }).type === 'stream_event',
+  )
+  expect(streamEvents.length).toBeGreaterThan(0)
+  const finalAssistant = events.find(
+    (e): e is { type: 'assistant' } =>
+      (e as { type?: string }).type === 'assistant',
+  )
+  expect(finalAssistant).toBeDefined()
+})
+
+test('queryRuntimeModelWithStreaming forwards model and tools to the underlying callModel', async () => {
+  providerEvents = [{ type: 'finish', finishReason: 'stop' }]
+  providerCalls = []
+
+  const runtime = await import('../messageSend.ts')
+  const tools = [{ name: 'web_search', description: 'search' }]
+  for await (const _ of runtime.queryRuntimeModelWithStreaming({
+    messages: [
+      {
+        type: 'user',
+        message: { role: 'user', content: 'q' },
+        uuid: '33333333-3333-3333-3333-333333333333',
+      },
+    ],
+    systemPrompt: [],
+    thinkingConfig: { type: 'disabled' },
+    tools,
+    signal: new AbortController().signal,
+    options: { model: 'deepseek-v4-pro' },
+  })) {
+    // drain
+  }
+
+  expect(providerCalls.length).toBeGreaterThanOrEqual(1)
+  const firstCall = providerCalls[0] as { model?: unknown; tools?: unknown }
+  expect(firstCall.model).toBe('deepseek-v4-pro')
+  expect(firstCall.tools).toEqual(tools)
+})

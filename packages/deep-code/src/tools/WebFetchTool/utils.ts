@@ -4,7 +4,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryHaiku } from '../../services/api/claude.js'
+import { queryRuntimeHaiku } from '../../services/runtime/messageSend.js'
 import { AbortError } from '../../utils/errors.js'
 import { getWebFetchUserAgent } from '../../utils/http.js'
 import { logError } from '../../utils/log.js'
@@ -500,7 +500,7 @@ export async function applyPromptToMarkdown(
     prompt,
     isPreapprovedDomain,
   )
-  const assistantMessage = await queryHaiku({
+  const assistantMessage = await queryRuntimeHaiku({
     systemPrompt: asSystemPrompt([]),
     userPrompt: modelPrompt,
     signal,
