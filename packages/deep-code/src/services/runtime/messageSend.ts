@@ -4,6 +4,10 @@ import {
   createDeepSeekProvider,
   DEFAULT_DEEPSEEK_SMALL_MODEL,
 } from '../providers/deepseek.mjs'
+// @ts-expect-error DeepSeek call-model adapter is JS; runtime native primitives use it
+// internally for non-streaming collection. Exposed externally via the
+// local re-export at the bottom of this file.
+import { createDeepSeekCallModel } from '../../query/deepseek-call-model.mjs'
 import {
   RuntimeAbortError,
   RuntimeRequestError,
@@ -484,10 +488,109 @@ function normalizeRuntimeError(
   return toRuntimeError(error)
 }
 
+/**
+ * Internal helper: consume a DeepSeek streaming callModel async generator
+ * and return the final AssistantMessage. Used by non-streaming runtime
+ * primitives.
+ */
+async function collectFinalAssistantFromCallModel(args: {
+  messages: ReadonlyArray<unknown>
+  systemPrompt: unknown
+  thinkingConfig: unknown
+  tools: ReadonlyArray<unknown>
+  signal: AbortSignal
+  options: Record<string, unknown>
+}): Promise<unknown> {
+  const callModel = createDeepSeekCallModel()
+  let lastAssistant: unknown
+  try {
+    for await (const message of callModel(args)) {
+      if ((message as { type?: string })?.type === 'assistant') {
+        lastAssistant = message
+      }
+    }
+  } catch (error) {
+    if (args.signal.aborted && !lastAssistant) {
+      throw new RuntimeAbortError('Runtime non-streaming request aborted')
+    }
+    throw error
+  }
+  if (!lastAssistant) {
+    if (args.signal.aborted) {
+      throw new RuntimeAbortError('Runtime non-streaming request aborted')
+    }
+    throw new RuntimeRequestError('Runtime produced no assistant message')
+  }
+  return lastAssistant
+}
+
+/**
+ * Native DeepSeek non-streaming message helper. Input shape mirrors the
+ * legacy non-streaming helper so caller migration can be mechanical.
+ */
+export async function queryRuntimeModelWithoutStreaming(args: {
+  messages: ReadonlyArray<unknown>
+  systemPrompt: unknown
+  thinkingConfig: unknown
+  tools: ReadonlyArray<unknown>
+  signal: AbortSignal
+  options: Record<string, unknown>
+}): Promise<unknown> {
+  return collectFinalAssistantFromCallModel(args)
+}
+
+/**
+ * Native DeepSeek small-model helper. If outputFormat is provided, it is
+ * appended to the system prompt as a best-effort JSON schema hint.
+ */
+export async function queryRuntimeHaiku(args: {
+  systemPrompt: ReadonlyArray<string>
+  userPrompt: string
+  outputFormat?: unknown
+  signal: AbortSignal
+  options: Record<string, unknown>
+}): Promise<unknown> {
+  const baseSystemPrompt = Array.isArray(args.systemPrompt)
+    ? Array.from(args.systemPrompt)
+    : []
+  const effectiveSystemPrompt = args.outputFormat
+    ? [
+        ...baseSystemPrompt,
+        `Respond with JSON conforming to this schema: ${safeJsonStringify(args.outputFormat)}`,
+      ]
+    : baseSystemPrompt
+
+  const userMessage = {
+    type: 'user' as const,
+    message: { role: 'user' as const, content: args.userPrompt },
+    uuid: '00000000-0000-0000-0000-000000000000',
+  }
+
+  return collectFinalAssistantFromCallModel({
+    messages: [userMessage],
+    systemPrompt: effectiveSystemPrompt,
+    thinkingConfig: { type: 'disabled' as const },
+    tools: [],
+    signal: args.signal,
+    options: {
+      ...args.options,
+      model:
+        (args.options.model as string | undefined) ?? DEFAULT_DEEPSEEK_SMALL_MODEL,
+    },
+  })
+}
+
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
 // Re-export DeepSeek-native callModel adapter as the runtime entry point
 // for query.ts main hot path consumers via query/deps.ts. The DeepSeek
 // adapter already encapsulates stable-prefix hashing, cache telemetry, and
 // streaming-event normalization; runtime layer just shims it.
-// @ts-expect-error DeepSeek call-model adapter is JS; query/deps.ts uses
-// ReturnType<> for typing instead of a .d.ts.
-export { createDeepSeekCallModel as createRuntimeCallModel } from '../../query/deepseek-call-model.mjs'
+// The same factory is used internally by non-streaming helpers above.
+export { createDeepSeekCallModel as createRuntimeCallModel }
