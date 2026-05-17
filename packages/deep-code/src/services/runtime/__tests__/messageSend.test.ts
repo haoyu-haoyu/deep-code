@@ -275,3 +275,105 @@ test('categorizeRetryableAPIError classifies HTTP errors per SDK semantics', asy
   expect(categorizeRetryableAPIError({ status: 200 })).toBe('unknown')
   expect(categorizeRetryableAPIError({})).toBe('unknown')
 })
+
+test('queryRuntimeModelWithoutStreaming returns the final assistant message', async () => {
+  providerEvents = [
+    { type: 'content_delta', text: 'hello' },
+    { type: 'finish', finishReason: 'stop' },
+  ]
+  providerCalls = []
+
+  const runtime = await import('../messageSend.ts')
+  const result = (await runtime.queryRuntimeModelWithoutStreaming({
+    messages: [
+      {
+        type: 'user',
+        message: { role: 'user', content: 'hi' },
+        uuid: '11111111-1111-1111-1111-111111111111',
+      },
+    ],
+    systemPrompt: ['You are Deep Code.'],
+    thinkingConfig: { type: 'disabled' },
+    tools: [],
+    signal: new AbortController().signal,
+    options: {},
+  })) as { type: string; message: { content: ReadonlyArray<unknown> } }
+
+  expect(result.type).toBe('assistant')
+  expect(Array.isArray(result.message.content)).toBe(true)
+})
+
+test('queryRuntimeHaiku constructs a single user message with DEFAULT_DEEPSEEK_SMALL_MODEL', async () => {
+  providerEvents = [
+    { type: 'content_delta', text: 'short' },
+    { type: 'finish', finishReason: 'stop' },
+  ]
+  providerCalls = []
+
+  const runtime = await import('../messageSend.ts')
+  const result = (await runtime.queryRuntimeHaiku({
+    systemPrompt: ['Be concise.'],
+    userPrompt: 'ping',
+    signal: new AbortController().signal,
+    options: {},
+  })) as { type: string }
+
+  expect(result.type).toBe('assistant')
+  expect(providerCalls.length).toBeGreaterThanOrEqual(1)
+  const firstCall = providerCalls[0] as {
+    model?: unknown
+    messages?: ReadonlyArray<unknown>
+  }
+  expect(firstCall.model).toBe('deepseek-v4-flash')
+  expect(firstCall.messages?.length).toBe(1)
+})
+
+test('queryRuntimeHaiku appends outputFormat schema hint to system prompt', async () => {
+  providerEvents = [
+    { type: 'content_delta', text: '{"answer":"yes"}' },
+    { type: 'finish', finishReason: 'stop' },
+  ]
+  providerCalls = []
+
+  const runtime = await import('../messageSend.ts')
+  const outputFormat = {
+    type: 'json_schema',
+    schema: {
+      type: 'object',
+      properties: { answer: { type: 'string' } },
+      required: ['answer'],
+      additionalProperties: false,
+    },
+  }
+  await runtime.queryRuntimeHaiku({
+    systemPrompt: ['Help me.'],
+    userPrompt: 'ask',
+    outputFormat,
+    signal: new AbortController().signal,
+    options: {},
+  })
+
+  const firstCall = providerCalls[0] as { systemPrompt?: ReadonlyArray<string> }
+  const hint = firstCall.systemPrompt?.find(s => s.includes('json_schema'))
+  expect(hint).toBeDefined()
+  expect(hint).toContain('answer')
+})
+
+test('queryRuntimeHaiku allows options.model to override DEFAULT_DEEPSEEK_SMALL_MODEL', async () => {
+  providerEvents = [
+    { type: 'content_delta', text: 'ok' },
+    { type: 'finish', finishReason: 'stop' },
+  ]
+  providerCalls = []
+
+  const runtime = await import('../messageSend.ts')
+  await runtime.queryRuntimeHaiku({
+    systemPrompt: [],
+    userPrompt: 'test',
+    signal: new AbortController().signal,
+    options: { model: 'deepseek-v4-pro' },
+  })
+
+  const firstCall = providerCalls[0] as { model?: unknown }
+  expect(firstCall.model).toBe('deepseek-v4-pro')
+})
