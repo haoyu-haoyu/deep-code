@@ -14,8 +14,8 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryHaiku } from '../../services/api/claude.js'
-import { startsWithApiErrorPrefix } from '../../services/api/errors.js'
+import { queryRuntimeHaiku } from '../../services/runtime/messageSend.js'
+import { startsWithApiErrorPrefix } from '../../services/runtime/errors.js'
 import { memoizeWithLRU } from '../memoize.js'
 import { jsonStringify } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'
@@ -217,7 +217,7 @@ async function getCommandPrefixImpl(
       false,
     )
 
-    const response = await queryHaiku({
+    const response = await queryRuntimeHaiku({
       systemPrompt: asSystemPrompt(
         useSystemPromptPolicySpec
           ? [

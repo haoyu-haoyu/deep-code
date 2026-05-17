@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js'
-import { queryModelWithoutStreaming } from '../../services/api/claude.js'
+import { queryRuntimeModelWithoutStreaming } from '../../services/runtime/messageSend.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
 import { createAttachmentMessage } from '../attachments.js'
@@ -59,7 +59,7 @@ export async function execPromptHook(
       createCombinedAbortSignal(signal, { timeoutMs: hookTimeoutMs })
 
     try {
-      const response = await queryModelWithoutStreaming({
+      const response = await queryRuntimeModelWithoutStreaming({
         messages: messagesToQuery,
         systemPrompt: asSystemPrompt([
           `You are evaluating a hook in Claude Code.

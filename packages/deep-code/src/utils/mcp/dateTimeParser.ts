@@ -1,4 +1,4 @@
-import { queryHaiku } from '../../services/api/claude.js'
+import { queryRuntimeHaiku } from '../../services/runtime/messageSend.js'
 import { logError } from '../log.js'
 import { extractTextContent } from '../messages.js'
 import { asSystemPrompt } from '../systemPromptType.js'
@@ -65,7 +65,7 @@ Output format: ${formatDescription}
 Parse the user's input into ISO 8601 format. Return ONLY the formatted string, or "INVALID" if the input is incomplete or unparseable.`
 
   try {
-    const result = await queryHaiku({
+    const result = await queryRuntimeHaiku({
       systemPrompt,
       userPrompt,
       signal,
