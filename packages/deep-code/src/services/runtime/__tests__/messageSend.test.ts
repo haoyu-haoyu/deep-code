@@ -65,6 +65,10 @@ const mockContextPolicy = () => ({
 
 mock.module('../../../utils/context.js', mockContextPolicy)
 
+mock.module('../../../bootstrap/state.js', () => ({
+  getIsNonInteractiveSession: () => false,
+}))
+
 const mockEnvValidation = () => ({
   validateBoundedIntEnvVar(
     _name: string,
@@ -750,4 +754,26 @@ test('runtime error message constants carry API-compatible strings', async () =>
 test('getCacheControl is a DeepSeek stub returning undefined', async () => {
   const { getCacheControl } = await import('../errors.ts')
   expect(getCacheControl()).toBeUndefined()
+})
+
+test('getCacheControl accepts the legacy services/api options shape and returns undefined', async () => {
+  const { getCacheControl } = await import('../errors.ts')
+  expect(getCacheControl()).toBeUndefined()
+  expect(getCacheControl({})).toBeUndefined()
+  expect(
+    getCacheControl({ scope: 'system', querySource: 'auto_mode' }),
+  ).toBeUndefined()
+})
+
+test('size/format error message helpers return strings without throwing', async () => {
+  const errors = await import('../errors.ts')
+  expect(typeof errors.getPdfTooLargeErrorMessage()).toBe('string')
+  expect(typeof errors.getPdfPasswordProtectedErrorMessage()).toBe('string')
+  expect(typeof errors.getPdfInvalidErrorMessage()).toBe('string')
+  expect(typeof errors.getImageTooLargeErrorMessage()).toBe('string')
+  expect(typeof errors.getRequestTooLargeErrorMessage()).toBe('string')
+  expect(errors.getPdfTooLargeErrorMessage()).toContain('PDF too large')
+  expect(errors.getImageTooLargeErrorMessage()).toContain(
+    'Image was too large',
+  )
 })
