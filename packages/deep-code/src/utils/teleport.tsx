@@ -13,7 +13,7 @@ import type { SDKMessage } from '../entrypoints/agentSdkTypes.js';
 import type { Root } from '../ink.js';
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
 import { queryRuntimeHaiku } from '../services/runtime/messageSend.js';
-import { getSessionLogsViaOAuth, getTeleportEvents } from '../services/api/sessionIngress.js';
+import { getSessionLogsViaOAuth, getTeleportEvents } from '../services/sessionLog.js';
 import { AppStateProvider } from '../state/AppState.js';
 import type { Message, SystemMessage } from '../types/message.js';
 import type { PermissionMode } from '../types/permissions.js';
