@@ -639,3 +639,115 @@ test('getPromptTooLongTokenGap returns undefined when not PTL or errorDetails un
     } as unknown as Parameters<typeof getPromptTooLongTokenGap>[0]),
   ).toBeUndefined()
 })
+
+test('getDefaultMaxRetries returns the default retry count and honors env override', async () => {
+  const { getDefaultMaxRetries } = await import('../errors.ts')
+  const originalValue = process.env.CLAUDE_CODE_MAX_RETRIES
+  try {
+    delete process.env.CLAUDE_CODE_MAX_RETRIES
+    expect(getDefaultMaxRetries()).toBe(10)
+    process.env.CLAUDE_CODE_MAX_RETRIES = '4'
+    expect(getDefaultMaxRetries()).toBe(4)
+  } finally {
+    if (originalValue === undefined) {
+      delete process.env.CLAUDE_CODE_MAX_RETRIES
+    } else {
+      process.env.CLAUDE_CODE_MAX_RETRIES = originalValue
+    }
+  }
+})
+
+test('getRetryDelay applies exponential backoff with API-compatible jitter and cap', async () => {
+  const { getRetryDelay } = await import('../errors.ts')
+  const originalRandom = Math.random
+  try {
+    Math.random = () => 0
+    expect(getRetryDelay(1)).toBe(500)
+    expect(getRetryDelay(2)).toBe(1000)
+    expect(getRetryDelay(3)).toBe(2000)
+    expect(getRetryDelay(7)).toBe(32000)
+    expect(getRetryDelay(100)).toBe(32000)
+
+    Math.random = () => 0.5
+    expect(getRetryDelay(1)).toBe(562.5)
+  } finally {
+    Math.random = originalRandom
+  }
+})
+
+test('getRetryDelay honors retry-after header without applying max delay cap', async () => {
+  const { getRetryDelay } = await import('../errors.ts')
+  expect(getRetryDelay(1, '5')).toBe(5000)
+  expect(getRetryDelay(1, '100')).toBe(100000)
+})
+
+test('formatAPIError mirrors API formatting for connection, nested, and HTML errors', async () => {
+  const { formatAPIError } = await import('../errors.ts')
+
+  expect(formatAPIError('plain string')).toBe('plain string')
+  expect(formatAPIError(new Error('boom'))).toBe('boom')
+
+  const timeout = new Error('Connection error.') as Error & { code: string }
+  timeout.code = 'ETIMEDOUT'
+  expect(formatAPIError(timeout)).toBe(
+    'Request timed out. Check your internet connection and proxy settings',
+  )
+
+  const ssl = new Error('Connection error.') as Error & { code: string }
+  ssl.code = 'SELF_SIGNED_CERT_IN_CHAIN'
+  expect(formatAPIError(ssl)).toBe(
+    'Unable to connect to API: Self-signed certificate detected. Check your proxy or corporate SSL certificates',
+  )
+
+  expect(
+    formatAPIError({
+      status: 500,
+      error: { error: { message: 'nested message' } },
+    }),
+  ).toBe('nested message')
+  expect(
+    formatAPIError({
+      status: 502,
+      error: { message: '<html><title>Cloudflare down</title></html>' },
+    }),
+  ).toBe('Cloudflare down')
+  expect(formatAPIError({ unknown: 'shape' })).toBe(
+    'API error (status unknown)',
+  )
+})
+
+test('getSSLErrorHint detects SSL errors from the cause chain', async () => {
+  const { getSSLErrorHint } = await import('../errors.ts')
+  expect(getSSLErrorHint(undefined)).toBeNull()
+  expect(getSSLErrorHint(new Error('something else'))).toBeNull()
+
+  const cause = new Error('certificate failed') as Error & { code: string }
+  cause.code = 'CERT_HAS_EXPIRED'
+  const wrapped = new Error('Connection error.', { cause })
+  expect(getSSLErrorHint(wrapped)).toContain('SSL certificate error')
+})
+
+test('runtime error message constants carry API-compatible strings', async () => {
+  const errors = await import('../errors.ts')
+  expect(errors.API_TIMEOUT_ERROR_MESSAGE).toBe('Request timed out')
+  expect(errors.CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE).toBe(
+    'Credit balance is too low',
+  )
+  expect(errors.INVALID_API_KEY_ERROR_MESSAGE).toBe(
+    'Not logged in · Please run /login',
+  )
+  expect(errors.ORG_DISABLED_ERROR_MESSAGE_ENV_KEY).toBe(
+    'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable',
+  )
+  expect(errors.TOKEN_REVOKED_ERROR_MESSAGE).toBe(
+    'OAuth token revoked · Please run /login',
+  )
+  expect(errors.CUSTOM_OFF_SWITCH_MESSAGE).toBe(
+    'Opus is experiencing high load, please use /model to switch to Sonnet',
+  )
+})
+
+test('getCacheControl is a DeepSeek stub returning undefined', async () => {
+  const { getCacheControl } = await import('../errors.ts')
+  expect(getCacheControl()).toBeUndefined()
+})
