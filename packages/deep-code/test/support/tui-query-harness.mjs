@@ -326,6 +326,9 @@ export function getCurrentTurnTokenBudget() {
 export function getTurnOutputTokens() {
   return 0
 }
+export function getIsNonInteractiveSession() {
+  return false
+}
 export function incrementBudgetContinuationCount() {}
 `)
 registerSourceStub('query/tokenBudget', `

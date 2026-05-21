@@ -49,7 +49,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
 import { logEvent } from '../analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics/metadata.js'
-import { getRetryDelay } from '../api/withRetry.js'
+import { getRetryDelay } from '../runtime/errors.js'
 import { scanForSecrets } from './secretScanner.js'
 import {
   type SkippedSecretFile,

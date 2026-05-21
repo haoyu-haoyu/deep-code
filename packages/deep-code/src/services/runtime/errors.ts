@@ -1,5 +1,11 @@
 import type { SDKAssistantMessageError } from '../../entrypoints/agentSdkTypes.js'
 import type { AssistantMessage } from '../../types/message.js'
+import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
+import {
+  API_PDF_MAX_PAGES,
+  PDF_TARGET_RAW_SIZE,
+} from '../../constants/apiLimits.js'
+import { formatFileSize } from '../../utils/format.js'
 
 export type { SDKAssistantMessageError }
 
@@ -391,10 +397,50 @@ export function formatAPIError(error: unknown): string {
 // ========== Cache-control stub (Anthropic-only concept; DeepSeek no-op) ==========
 
 /**
- * Provider-neutral stub for services/api/claude.getCacheControl. The Anthropic
- * cache_control block-level concept does not map to DeepSeek. DeepSeek runtime
- * returns undefined so callers that conditionally apply cache_control skip it.
+ * Provider-neutral stub for services/api/claude.getCacheControl.
  */
-export function getCacheControl(): undefined {
+export function getCacheControl(_opts?: {
+  scope?: unknown
+  querySource?: unknown
+}): undefined {
+  // Anthropic cache_control block-level concept does not map to DeepSeek
+  // (see P1_3_F_DESIGN.md B3 line 294). Accept the original
+  // services/api/claude.getCacheControl options shape so callers can switch
+  // import without changing call form; return undefined so the resulting
+  // cache_control field is JSON-omitted.
   return undefined
+}
+
+// ========== Size/format error messages (migrated from services/api/errors.ts) ==========
+
+export function getPdfTooLargeErrorMessage(): string {
+  const limits = `max ${API_PDF_MAX_PAGES} pages, ${formatFileSize(PDF_TARGET_RAW_SIZE)}`
+  return getIsNonInteractiveSession()
+    ? `PDF too large (${limits}). Try reading the file a different way (e.g., extract text with pdftotext).`
+    : `PDF too large (${limits}). Double press esc to go back and try again, or use pdftotext to convert to text first.`
+}
+
+export function getPdfPasswordProtectedErrorMessage(): string {
+  return getIsNonInteractiveSession()
+    ? 'PDF is password protected. Try using a CLI tool to extract or convert the PDF.'
+    : 'PDF is password protected. Please double press esc to edit your message and try again.'
+}
+
+export function getPdfInvalidErrorMessage(): string {
+  return getIsNonInteractiveSession()
+    ? 'The PDF file was not valid. Try converting it to text first (e.g., pdftotext).'
+    : 'The PDF file was not valid. Double press esc to go back and try again with a different file.'
+}
+
+export function getImageTooLargeErrorMessage(): string {
+  return getIsNonInteractiveSession()
+    ? 'Image was too large. Try resizing the image or using a different approach.'
+    : 'Image was too large. Double press esc to go back and try again with a smaller image.'
+}
+
+export function getRequestTooLargeErrorMessage(): string {
+  const limits = `max ${formatFileSize(PDF_TARGET_RAW_SIZE)}`
+  return getIsNonInteractiveSession()
+    ? `Request too large (${limits}). Try with a smaller file.`
+    : `Request too large (${limits}). Double press esc to go back and try with a smaller file.`
 }

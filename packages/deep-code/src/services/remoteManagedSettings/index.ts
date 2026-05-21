@@ -27,7 +27,7 @@ import {
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { getClaudeCodeUserAgent } from '../../utils/userAgent.js'
-import { getRetryDelay } from '../api/withRetry.js'
+import { getRetryDelay } from '../runtime/errors.js'
 import {
   checkManagedSettingsSecurity,
   handleSecurityCheckResult,
