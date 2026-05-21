@@ -167,3 +167,234 @@ export function getPromptTooLongTokenGap(
   const gap = actualTokens - limitTokens
   return gap > 0 ? gap : undefined
 }
+
+// ========== Error message constants (migrated from services/api/errors.ts) ==========
+// API_ERROR_MESSAGE_PREFIX already defined above.
+
+export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'
+export const INVALID_API_KEY_ERROR_MESSAGE = 'Not logged in · Please run /login'
+export const INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL =
+  'Invalid API key · Fix external API key'
+export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH =
+  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Unset the environment variable to use your subscription instead'
+export const ORG_DISABLED_ERROR_MESSAGE_ENV_KEY =
+  'Your ANTHROPIC_API_KEY belongs to a disabled organization · Update or unset the environment variable'
+export const TOKEN_REVOKED_ERROR_MESSAGE =
+  'OAuth token revoked · Please run /login'
+export const CCR_AUTH_ERROR_MESSAGE =
+  'Authentication error · This may be a temporary network issue, please try again'
+export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'
+export const CUSTOM_OFF_SWITCH_MESSAGE =
+  'Opus is experiencing high load, please use /model to switch to Sonnet'
+export const API_TIMEOUT_ERROR_MESSAGE = 'Request timed out'
+
+// ========== Retry helpers (migrated from services/api/withRetry.ts) ==========
+
+const DEFAULT_MAX_RETRIES = 10
+const BASE_DELAY_MS = 500
+
+export function getDefaultMaxRetries(): number {
+  if (process.env.CLAUDE_CODE_MAX_RETRIES) {
+    return parseInt(process.env.CLAUDE_CODE_MAX_RETRIES, 10)
+  }
+  return DEFAULT_MAX_RETRIES
+}
+
+export function getRetryDelay(
+  attempt: number,
+  retryAfterHeader?: string | null,
+  maxDelayMs = 32_000,
+): number {
+  if (retryAfterHeader) {
+    const seconds = parseInt(retryAfterHeader, 10)
+    if (!isNaN(seconds)) {
+      return seconds * 1000
+    }
+  }
+
+  const baseDelay = Math.min(
+    BASE_DELAY_MS * Math.pow(2, attempt - 1),
+    maxDelayMs,
+  )
+  const jitter = Math.random() * 0.25 * baseDelay
+  return baseDelay + jitter
+}
+
+// ========== Error format helpers (migrated from services/api/errorUtils.ts) ==========
+
+const SSL_ERROR_CODES = new Set([
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'CERT_SIGNATURE_FAILURE',
+  'CERT_NOT_YET_VALID',
+  'CERT_HAS_EXPIRED',
+  'CERT_REVOKED',
+  'CERT_REJECTED',
+  'CERT_UNTRUSTED',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'CERT_CHAIN_TOO_LONG',
+  'PATH_LENGTH_EXCEEDED',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+  'HOSTNAME_MISMATCH',
+  'ERR_TLS_HANDSHAKE_TIMEOUT',
+  'ERR_SSL_WRONG_VERSION_NUMBER',
+  'ERR_SSL_DECRYPTION_FAILED_OR_BAD_RECORD_MAC',
+])
+
+type ConnectionErrorDetails = {
+  code: string
+  message: string
+  isSSLError: boolean
+}
+
+function extractConnectionErrorDetails(
+  error: unknown,
+): ConnectionErrorDetails | null {
+  if (!error || typeof error !== 'object') return null
+
+  let current: unknown = error
+  let depth = 0
+  while (current && depth < 5) {
+    if (current instanceof Error) {
+      const record = current as Error & { code?: unknown; cause?: unknown }
+      if (typeof record.code === 'string') {
+        return {
+          code: record.code,
+          message: current.message,
+          isSSLError: SSL_ERROR_CODES.has(record.code),
+        }
+      }
+      if (record.cause !== undefined && record.cause !== current) {
+        current = record.cause
+        depth++
+        continue
+      }
+    }
+    break
+  }
+
+  return null
+}
+
+export function getSSLErrorHint(error: unknown): string | null {
+  const details = extractConnectionErrorDetails(error)
+  if (!details?.isSSLError) return null
+  return `SSL certificate error (${details.code}). If you are behind a corporate proxy or TLS-intercepting firewall, set NODE_EXTRA_CA_CERTS to your CA bundle path, or ask IT to allowlist *.anthropic.com. Run /doctor for details.`
+}
+
+function sanitizeMessageHTML(message: string): string {
+  if (message.includes('<!DOCTYPE html') || message.includes('<html')) {
+    const titleMatch = message.match(/<title>([^<]+)<\/title>/)
+    if (titleMatch?.[1]) {
+      return titleMatch[1].trim()
+    }
+    return ''
+  }
+  return message
+}
+
+type NestedAPIError = {
+  error?: {
+    message?: string
+    error?: { message?: string }
+  }
+}
+
+function hasNestedError(value: unknown): value is NestedAPIError {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'error' in value &&
+    typeof (value as { error?: unknown }).error === 'object' &&
+    (value as { error?: unknown }).error !== null
+  )
+}
+
+function extractNestedErrorMessage(error: unknown): string | null {
+  if (!hasNestedError(error)) return null
+  const nested = error.error
+
+  const deepMsg = nested?.error?.message
+  if (typeof deepMsg === 'string' && deepMsg.length > 0) {
+    const sanitized = sanitizeMessageHTML(deepMsg)
+    if (sanitized.length > 0) return sanitized
+  }
+
+  const msg = nested?.message
+  if (typeof msg === 'string' && msg.length > 0) {
+    const sanitized = sanitizeMessageHTML(msg)
+    if (sanitized.length > 0) return sanitized
+  }
+
+  return null
+}
+
+export function formatAPIError(error: unknown): string {
+  if (typeof error === 'string') return error
+
+  const connectionDetails = extractConnectionErrorDetails(error)
+  if (connectionDetails) {
+    const { code, isSSLError } = connectionDetails
+    if (code === 'ETIMEDOUT') {
+      return 'Request timed out. Check your internet connection and proxy settings'
+    }
+    if (isSSLError) {
+      switch (code) {
+        case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':
+        case 'UNABLE_TO_GET_ISSUER_CERT':
+        case 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY':
+          return 'Unable to connect to API: SSL certificate verification failed. Check your proxy or corporate SSL certificates'
+        case 'CERT_HAS_EXPIRED':
+          return 'Unable to connect to API: SSL certificate has expired'
+        case 'CERT_REVOKED':
+          return 'Unable to connect to API: SSL certificate has been revoked'
+        case 'DEPTH_ZERO_SELF_SIGNED_CERT':
+        case 'SELF_SIGNED_CERT_IN_CHAIN':
+          return 'Unable to connect to API: Self-signed certificate detected. Check your proxy or corporate SSL certificates'
+        case 'ERR_TLS_CERT_ALTNAME_INVALID':
+        case 'HOSTNAME_MISMATCH':
+          return 'Unable to connect to API: SSL certificate hostname mismatch'
+        case 'CERT_NOT_YET_VALID':
+          return 'Unable to connect to API: SSL certificate is not yet valid'
+        default:
+          return `Unable to connect to API: SSL error (${code})`
+      }
+    }
+  }
+
+  if (error instanceof Error && error.message === 'Connection error.') {
+    if (connectionDetails?.code) {
+      return `Unable to connect to API (${connectionDetails.code})`
+    }
+    return 'Unable to connect to API. Check your internet connection'
+  }
+
+  const message = error instanceof Error ? error.message : undefined
+  if (!message) {
+    const status =
+      typeof error === 'object' &&
+      error !== null &&
+      typeof (error as { status?: unknown }).status !== 'undefined'
+        ? (error as { status?: unknown }).status
+        : 'unknown'
+    return extractNestedErrorMessage(error) ?? `API error (status ${status})`
+  }
+
+  const sanitizedMessage = sanitizeMessageHTML(message)
+  return sanitizedMessage !== message && sanitizedMessage.length > 0
+    ? sanitizedMessage
+    : message
+}
+
+// ========== Cache-control stub (Anthropic-only concept; DeepSeek no-op) ==========
+
+/**
+ * Provider-neutral stub for services/api/claude.getCacheControl. The Anthropic
+ * cache_control block-level concept does not map to DeepSeek. DeepSeek runtime
+ * returns undefined so callers that conditionally apply cache_control skip it.
+ */
+export function getCacheControl(): undefined {
+  return undefined
+}
