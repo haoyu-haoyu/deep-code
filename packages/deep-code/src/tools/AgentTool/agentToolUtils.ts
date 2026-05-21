@@ -12,7 +12,6 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../services/analytics/index.js'
-import { clearDumpState } from '../../services/api/dumpPrompts.js'
 import type { AppState } from '../../state/AppState.js'
 import type {
   Tool,
@@ -681,6 +680,5 @@ export async function runAsyncAgentLifecycle({
     })
   } finally {
     clearInvokedSkillsForAgent(agentIdForCleanup)
-    clearDumpState(agentIdForCleanup)
   }
 }

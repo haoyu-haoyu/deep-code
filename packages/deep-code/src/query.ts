@@ -86,7 +86,6 @@ import { SLEEP_TOOL_NAME } from './tools/SleepTool/prompt.js'
 import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
 import { executeStopFailureHooks } from './utils/hooks.js'
 import type { QuerySource } from './constants/querySource.js'
-import { createDumpPromptsFetch } from './services/api/dumpPrompts.js'
 import { StreamingToolExecutor } from './services/tools/StreamingToolExecutor.js'
 import { queryCheckpoint } from './utils/queryProfiler.js'
 import { runTools } from './services/tools/toolOrchestration.js'
@@ -573,16 +572,6 @@ async function* queryLoop(
 
     queryCheckpoint('query_setup_end')
 
-    // Create fetch wrapper once per query session to avoid memory retention.
-    // Each call to createDumpPromptsFetch creates a closure that captures the request body.
-    // Creating it once means only the latest request body is retained (~700KB),
-    // instead of all request bodies from the session (~500MB for long sessions).
-    // Note: agentId is effectively constant during a query() call - it only changes
-    // between queries (e.g., /clear command or session resume).
-    const dumpPromptsFetch = config.gates.isAnt
-      ? createDumpPromptsFetch(toolUseContext.agentId ?? config.sessionId)
-      : undefined
-
     // Block if we've hit the hard blocking limit (only applies when auto-compact is OFF)
     // This reserves space so users can still run /compact manually
     // Skip this check if compaction just happened - the compaction result is already
@@ -669,7 +658,6 @@ async function* queryLoop(
               toolUseContext.options.agentDefinitions.allowedAgentTypes,
             hasAppendSystemPrompt: !!toolUseContext.options.appendSystemPrompt,
             maxOutputTokensOverride,
-            fetchOverride: dumpPromptsFetch,
             mcpTools: appState.mcp.tools,
             hasPendingMcpServers: appState.mcp.clients.some(
               c => c.type === 'pending',
