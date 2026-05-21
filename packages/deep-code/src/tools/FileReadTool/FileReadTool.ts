@@ -16,10 +16,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   getFileExtensionForAnalytics,
 } from '../../services/analytics/metadata.js'
-import {
-  countTokensWithAPI,
-  roughTokenCountEstimationForFileType,
-} from '../../services/tokenEstimation.js'
+import { roughTokenCountEstimationForFileType } from '../../utils/charEstimation.js'
 import {
   activateConditionalSkillsForPaths,
   addSkillDirectories,
@@ -752,6 +749,7 @@ function memoryFileFreshnessPrefix(data: object): string {
   return memoryFreshnessNote(mtimeMs)
 }
 
+// biome-ignore lint/correctness/useAwait: signature retained for caller compatibility
 async function validateContentTokens(
   content: string,
   ext: string,
@@ -763,11 +761,8 @@ async function validateContentTokens(
   const tokenEstimate = roughTokenCountEstimationForFileType(content, ext)
   if (!tokenEstimate || tokenEstimate <= effectiveMaxTokens / 4) return
 
-  const tokenCount = await countTokensWithAPI(content)
-  const effectiveCount = tokenCount ?? tokenEstimate
-
-  if (effectiveCount > effectiveMaxTokens) {
-    throw new MaxFileReadTokenExceededError(effectiveCount, effectiveMaxTokens)
+  if (tokenEstimate > effectiveMaxTokens) {
+    throw new MaxFileReadTokenExceededError(tokenEstimate, effectiveMaxTokens)
   }
 }
 

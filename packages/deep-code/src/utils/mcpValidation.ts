@@ -4,12 +4,10 @@ import type {
   TextBlockParam,
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
-import {
-  countMessagesTokensWithAPI,
-  roughTokenCountEstimation,
-} from '../services/tokenEstimation.js'
+import { roughTokenCountEstimation } from './charEstimation.js'
 import { compressImageBlock } from './imageResizer.js'
 import { logError } from './log.js'
+import { jsonStringify } from './slowOperations.js'
 
 export const MCP_TOKEN_COUNT_THRESHOLD_FACTOR = 0.5
 export const IMAGE_TOKEN_ESTIMATE = 1600
@@ -148,6 +146,7 @@ async function truncateContentBlocks(
   return result
 }
 
+// biome-ignore lint/correctness/useAwait: signature retained for caller compatibility
 export async function mcpContentNeedsTruncation(
   content: MCPToolResult,
 ): Promise<boolean> {
@@ -163,13 +162,10 @@ export async function mcpContentNeedsTruncation(
   }
 
   try {
-    const messages =
-      typeof content === 'string'
-        ? [{ role: 'user' as const, content }]
-        : [{ role: 'user' as const, content }]
-
-    const tokenCount = await countMessagesTokensWithAPI(messages, [])
-    return !!(tokenCount && tokenCount > getMaxMcpOutputTokens())
+    const contentStr =
+      typeof content === 'string' ? content : jsonStringify(content)
+    const tokenCount = roughTokenCountEstimation(contentStr)
+    return tokenCount > getMaxMcpOutputTokens()
   } catch (error) {
     logError(error)
     // Assume no truncation needed on error
