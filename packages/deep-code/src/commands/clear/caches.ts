@@ -17,7 +17,7 @@ import {
 } from '../../context.js'
 import { clearFileSuggestionCaches } from '../../hooks/fileSuggestions.js'
 import { clearAllPendingCallbacks } from '../../hooks/useSwarmPermissionPoller.js'
-import { clearAllSessions } from '../../services/api/sessionIngress.js'
+import { clearAllSessions } from '../../services/sessionLog.js'
 import { runPostCompactCleanup } from '../../services/compact/postCompactCleanup.js'
 import { resetAllLSPDiagnosticState } from '../../services/lsp/LSPDiagnosticRegistry.js'
 import { clearTrackedMagicDocs } from '../../services/MagicDocs/magicDocs.js'
