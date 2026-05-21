@@ -19,7 +19,7 @@ import {
   logEvent,
 } from '../analytics/index.js'
 import { notifyCacheDeletion } from '../api/promptCacheBreakDetection.js'
-import { roughTokenCountEstimation } from '../tokenEstimation.js'
+import { roughTokenCountEstimation } from '../../utils/charEstimation.js'
 import {
   clearCompactWarningSuppression,
   suppressCompactWarning,

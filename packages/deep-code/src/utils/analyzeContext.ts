@@ -15,11 +15,7 @@ import {
   isAutoCompactEnabled,
   MANUAL_COMPACT_BUFFER_TOKENS,
 } from '../services/compact/autoCompact.js'
-import {
-  countMessagesTokensWithAPI,
-  countTokensViaHaikuFallback,
-  roughTokenCountEstimation,
-} from '../services/tokenEstimation.js'
+import { roughTokenCountEstimation } from './charEstimation.js'
 import { estimateSkillFrontmatterTokens } from '../skills/loadSkillsDir.js'
 import {
   findToolByName,
@@ -52,7 +48,7 @@ import { getContextWindowForModel } from './context.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
-import { errorMessage, toError } from './errors.js'
+import { toError } from './errors.js'
 import { logError } from './log.js'
 import { normalizeMessagesForAPI } from './messages.js'
 import { getRuntimeMainLoopModel } from './model/model.js'
@@ -74,38 +70,17 @@ const MANUAL_COMPACT_BUFFER_NAME = 'Compact buffer'
  */
 export const TOOL_TOKEN_COUNT_OVERHEAD = 500
 
+// biome-ignore lint/correctness/useAwait: signature retained for caller compatibility
 async function countTokensWithFallback(
   messages: Anthropic.Beta.Messages.BetaMessageParam[],
   tools: Anthropic.Beta.Messages.BetaToolUnion[],
 ): Promise<number | null> {
-  try {
-    const result = await countMessagesTokensWithAPI(messages, tools)
-    if (result !== null) {
-      return result
-    }
-    logForDebugging(
-      `countTokensWithFallback: API returned null, trying haiku fallback (${tools.length} tools)`,
-    )
-  } catch (err) {
-    logForDebugging(`countTokensWithFallback: API failed: ${errorMessage(err)}`)
-    logError(err)
-  }
-
-  try {
-    const fallbackResult = await countTokensViaHaikuFallback(messages, tools)
-    if (fallbackResult === null) {
-      logForDebugging(
-        `countTokensWithFallback: haiku fallback also returned null (${tools.length} tools)`,
-      )
-    }
-    return fallbackResult
-  } catch (err) {
-    logForDebugging(
-      `countTokensWithFallback: haiku fallback failed: ${errorMessage(err)}`,
-    )
-    logError(err)
-    return null
-  }
+  // Anthropic API token counting and Haiku fallback removed in P1.3.F.a5.2
+  // per Q2 default. DeepSeek runtime uses char-length char-estimation
+  // exclusively. Signature retained to preserve caller call sites.
+  return roughTokenCountEstimation(
+    jsonStringify(messages) + jsonStringify(tools),
+  )
 }
 
 interface ContextCategory {

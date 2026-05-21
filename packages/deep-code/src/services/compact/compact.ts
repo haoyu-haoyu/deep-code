@@ -109,7 +109,7 @@ import { logPermissionContextForAnts } from '../internalLogging.js'
 import {
   roughTokenCountEstimation,
   roughTokenCountEstimationForMessages,
-} from '../tokenEstimation.js'
+} from '../../utils/charEstimation.js'
 import { groupMessagesByApiRound } from './grouping.js'
 import {
   getCompactPrompt,
