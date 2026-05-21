@@ -14,13 +14,11 @@ import { Message as MessageComponent } from '../../components/Message.js';
 import { MessageResponse } from '../../components/MessageResponse.js';
 import { ToolUseLoader } from '../../components/ToolUseLoader.js';
 import { Box, Text } from '../../ink.js';
-import { getDumpPromptsPath } from '../../services/api/dumpPrompts.js';
 import { findToolByName, type Tools } from '../../Tool.js';
 import type { Message, ProgressMessage } from '../../types/message.js';
 import type { AgentToolProgress } from '../../types/tools.js';
 import { count } from '../../utils/array.js';
 import { getSearchOrReadFromContent, getSearchReadSummaryText } from '../../utils/collapseReadSearch.js';
-import { getDisplayPath } from '../../utils/file.js';
 import { formatDuration, formatNumber } from '../../utils/format.js';
 import { buildSubagentLookups, createAssistantMessage, EMPTY_LOOKUPS } from '../../utils/messages.js';
 import type { ModelAlias } from '../../utils/model/aliases.js';
@@ -370,11 +368,6 @@ export function renderToolResultMessage(data: Output, progressMessagesForMessage
     }
   });
   return <Box flexDirection="column">
-      {"external" === 'ant' && <MessageResponse>
-          <Text color="warning">
-            [ANT-ONLY] API calls: {getDisplayPath(getDumpPromptsPath(agentId))}
-          </Text>
-        </MessageResponse>}
       {isTranscriptMode && prompt && <MessageResponse>
           <AgentPromptDisplay prompt={prompt} theme={theme} />
         </MessageResponse>}
@@ -576,11 +569,6 @@ export function renderToolUseRejectedMessage(_input: {
   const firstData = progressMessagesForMessage[0]?.data;
   const agentId = firstData && hasProgressMessage(firstData) ? firstData.agentId : undefined;
   return <>
-      {"external" === 'ant' && agentId && <MessageResponse>
-          <Text color="warning">
-            [ANT-ONLY] API calls: {getDisplayPath(getDumpPromptsPath(agentId))}
-          </Text>
-        </MessageResponse>}
       {renderToolUseProgressMessage(progressMessagesForMessage, {
       tools,
       verbose,

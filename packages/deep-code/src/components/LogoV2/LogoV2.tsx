@@ -17,7 +17,6 @@ import { shouldShowProjectOnboarding, incrementProjectOnboardingSeenCount } from
 import { CondensedLogo } from './CondensedLogo.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
 import { checkForReleaseNotesSync } from '../../utils/releaseNotes.js';
-import { getDumpPromptsPath } from 'src/services/api/dumpPrompts.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { getStartupPerfLogPath, isDetailedProfilingEnabled } from 'src/utils/startupProfiler.js';
 import { EmergencyTip } from './EmergencyTip.js';
@@ -175,7 +174,7 @@ export function LogoV2() {
     let t22;
     if ($[25] === Symbol.for("react.memo_cache_sentinel")) {
       t19 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text dimColor={true}>Use /issue to report model behavior issues</Text></Box>;
-      t20 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text color="warning">[ANT-ONLY] Logs:</Text><Text dimColor={true}>API calls: {getDisplayPath(getDumpPromptsPath())}</Text><Text dimColor={true}>Debug logs: {getDisplayPath(getDebugLogPath())}</Text>{isDetailedProfilingEnabled() && <Text dimColor={true}>Startup Perf: {getDisplayPath(getStartupPerfLogPath())}</Text>}</Box>;
+      t20 = null;
       t21 = false && <GateOverridesWarning />;
       t22 = false && <ExperimentEnrollmentNotice />;
       $[25] = t19;
@@ -452,7 +451,7 @@ export function LogoV2() {
   let t40;
   if ($[86] === Symbol.for("react.memo_cache_sentinel")) {
     t37 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text dimColor={true}>Use /issue to report model behavior issues</Text></Box>;
-    t38 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text color="warning">[ANT-ONLY] Logs:</Text><Text dimColor={true}>API calls: {getDisplayPath(getDumpPromptsPath())}</Text><Text dimColor={true}>Debug logs: {getDisplayPath(getDebugLogPath())}</Text>{isDetailedProfilingEnabled() && <Text dimColor={true}>Startup Perf: {getDisplayPath(getStartupPerfLogPath())}</Text>}</Box>;
+    t38 = null;
     t39 = false && <GateOverridesWarning />;
     t40 = false && <ExperimentEnrollmentNotice />;
     $[86] = t37;

@@ -12,7 +12,6 @@ import { getLastDeepCodeHarnessRuntimeDecision, recordDeepCodeHarnessAgentLifecy
 import { startAgentSummarization } from '../../services/AgentSummary/agentSummary.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
-import { clearDumpState } from '../../services/api/dumpPrompts.js';
 import { completeAgentTask as completeAsyncAgent, createActivityDescriptionResolver, createProgressTracker, enqueueAgentNotification, failAgentTask as failAsyncAgent, getProgressUpdate, getTokenCountFromTracker, isLocalAgentTask, killAsyncAgent, registerAgentForeground, registerAsyncAgent, unregisterAgentForeground, updateAgentProgress as updateAsyncAgentProgress, updateProgressFromMessage } from '../../tasks/LocalAgentTask/LocalAgentTask.js';
 import { assembleToolPool } from '../../tools.js';
 import { asAgentId } from '../../types/ids.js';
@@ -982,7 +981,6 @@ export const AgentTool = buildTool({
                   } finally {
                     stopBackgroundedSummarization?.();
                     clearInvokedSkillsForAgent(syncAgentId);
-                    clearDumpState(syncAgentId);
                     // Note: worktree cleanup is done before enqueueAgentNotification
                     // in both try and catch paths so we can include worktree info
                   }
@@ -1137,12 +1135,6 @@ export const AgentTool = buildTool({
 
           // Clean up scoped skills so they don't accumulate in the global map
           clearInvokedSkillsForAgent(syncAgentId);
-
-          // Clean up dumpState entry for this agent to prevent unbounded growth
-          // Skip if backgrounded — the backgrounded agent's finally handles cleanup
-          if (!wasBackgrounded) {
-            clearDumpState(syncAgentId);
-          }
 
           // Cancel auto-background timer if agent completed before it fired
           cancelAutoBackground?.();
