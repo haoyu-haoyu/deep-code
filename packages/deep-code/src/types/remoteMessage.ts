@@ -1,11 +1,11 @@
 /**
- * Remote message content envelope. Originally lived in
- * src/utils/teleport/api.ts; moved to a neutral location so non-teleport
- * remote modes (useDirectConnect, useSSHSession) can continue using
- * the type after teleport directory deletion in a later P1.2 sub-PR.
+ * Neutral remote message content type.
+ * Original source module: utils/teleport/api.ts.
+ * Added during P1.3.G.a so direct-connect / REPL paths can keep
+ * their imports after utils/teleport/* is mass deleted in P1.3.G.b.
  *
- * The type is intentionally a simple discriminated union with no
- * runtime dependencies — it's a wire-protocol envelope only.
+ * Type byte-identical to the original utils/teleport/api.ts
+ * RemoteMessageContent.
  */
 export type RemoteMessageContent =
   | string
