@@ -372,10 +372,6 @@ const installCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/install.tsx'),
   'utf8',
 )
-const remoteSetupCommandSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/commands/remote-setup/index.ts'),
-  'utf8',
-)
 const mcpXaaIdpCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/mcp/xaaIdpCommand.ts'),
   'utf8',
@@ -1620,7 +1616,6 @@ test('secondary public command flows keep Deep Code branding while preserving CL
     insightsCommandSource,
     thinkbackBodySource,
     installCommandSource,
-    remoteSetupCommandSource,
     mcpXaaIdpCommandSource,
   ].map(stripInlineSourceMap).join('\n')
 
