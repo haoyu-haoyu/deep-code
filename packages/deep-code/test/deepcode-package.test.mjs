@@ -261,10 +261,6 @@ const deepSeekLogoSource = readFileSync(
   resolve(root, 'packages/deep-code/src/components/LogoV2/DeepSeekLogo.tsx'),
   'utf8',
 )
-const channelsNoticeSource = readFileSync(
-  resolve(root, 'packages/deep-code/src/components/LogoV2/ChannelsNotice.tsx'),
-  'utf8',
-)
 const themeSource = readFileSync(
   resolve(root, 'packages/deep-code/src/utils/theme.ts'),
   'utf8',
@@ -1350,7 +1346,6 @@ test('README and welcome surfaces use Deep Code and DeepSeek branding', () => {
     condensedLogoSource,
     logoV2Source,
     deepSeekLogoSource,
-    channelsNoticeSource,
   ].map(stripInlineSourceMap).join('\n')
 
   assert.match(readmeSource, /^# Deep Code/m)
