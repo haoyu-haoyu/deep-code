@@ -336,8 +336,12 @@ export const FileWriteTool = buildTool({
       limit: undefined,
     })
 
-    // Log when writing to CLAUDE.md
-    if (fullFilePath.endsWith(`${sep}CLAUDE.md`)) {
+    // Log when writing to DeepCode instruction files.
+    const legacyClaudeMdPathSuffix = `${sep}CLAUDE.md`
+    if (
+      fullFilePath.endsWith(`${sep}DEEPCODE.md`) ||
+      fullFilePath.endsWith(legacyClaudeMdPathSuffix)
+    ) {
       logEvent('tengu_write_claudemd', {})
     }
 
