@@ -11,12 +11,13 @@ import {
 import { isVoiceModeEnabled } from '../../voice/voiceModeEnabled.js'
 
 const LANG_HINT_MAX_SHOWS = 2
+const isVoiceSttUnavailableInThisBuild = () => true
 
 export const call: LocalCommandCall = async () => {
   if (!isVoiceModeEnabled()) {
     return {
       type: 'text' as const,
-      value: 'Voice mode is not available.',
+      value: 'Voice mode is unavailable in this build.',
     }
   }
 
@@ -44,9 +45,6 @@ export const call: LocalCommandCall = async () => {
   }
 
   // Toggle ON — run pre-flight checks first
-  const { isVoiceStreamAvailable } = await import(
-    '../../services/voiceStreamSTT.js'
-  )
   const { checkRecordingAvailability } = await import('../../services/voice.js')
 
   // Check recording availability (microphone access)
@@ -59,11 +57,10 @@ export const call: LocalCommandCall = async () => {
     }
   }
 
-  // Check for API key
-  if (!isVoiceStreamAvailable()) {
+  if (isVoiceSttUnavailableInThisBuild()) {
     return {
       type: 'text' as const,
-      value: 'Voice mode is not available.',
+      value: 'Voice mode is unavailable in this build.',
     }
   }
 
