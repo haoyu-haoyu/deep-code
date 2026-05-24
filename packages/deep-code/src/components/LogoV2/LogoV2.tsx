@@ -20,7 +20,6 @@ import { checkForReleaseNotesSync } from '../../utils/releaseNotes.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { getStartupPerfLogPath, isDetailedProfilingEnabled } from 'src/utils/startupProfiler.js';
 import { EmergencyTip } from './EmergencyTip.js';
-import { VoiceModeNotice } from './VoiceModeNotice.js';
 import { Opus1mMergeNotice } from './Opus1mMergeNotice.js';
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { plural } from '../../utils/stringUtils.js';
@@ -127,7 +126,7 @@ export function LogoV2() {
     let t17;
     if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
       t11 = <CondensedLogo />;
-      t12 = <VoiceModeNotice />;
+      t12 = null;
       t13 = <Opus1mMergeNotice />;
       t14 = null;
       t15 = isDebugMode() && <Box paddingLeft={2} flexDirection="column"><Text color="warning">Debug mode enabled</Text><Text dimColor={true}>Logging to: {isDebugToStdErr() ? "stderr" : getDebugLogPath()}</Text></Box>;
@@ -237,7 +236,7 @@ export function LogoV2() {
     let t15;
     let t16;
     if ($[37] === Symbol.for("react.memo_cache_sentinel")) {
-      t14 = <VoiceModeNotice />;
+      t14 = null;
       t15 = <Opus1mMergeNotice />;
       t16 = null;
       $[37] = t14;
@@ -398,7 +397,7 @@ export function LogoV2() {
   let t33;
   let t34;
   if ($[75] === Symbol.for("react.memo_cache_sentinel")) {
-    t29 = <VoiceModeNotice />;
+    t29 = null;
     t30 = <Opus1mMergeNotice />;
     t31 = null;
     t32 = isDebugMode() && <Box paddingLeft={2} flexDirection="column"><Text color="warning">Debug mode enabled</Text><Text dimColor={true}>Logging to: {isDebugToStdErr() ? "stderr" : getDebugLogPath()}</Text></Box>;
