@@ -1,7 +1,23 @@
 # Voice STT replacement plan
 
-Status: Decided
+Status: Deferred
 Decision date: 2026-05-10
+Deferral date: 2026-05-25 (P1.7.a-c)
+
+## P1.7 status update (deferred)
+
+P1.7.a (#148, 9e8629f) deleted Anthropic `voice_stream` + Deepgram cloud
+STT leaf services. P1.7.b (#149, 5f9fa7f) stubbed the `useVoice` hook to
+a no-op facade. P1.7.c marks the local Whisper.cpp implementation as
+deferred: the cloud STT path is gone, but bundling Whisper.cpp binaries
+plus the ~140 MB model and managing macOS signing/notarization is a
+standalone feature project, not a Phase 1 cleanup deliverable.
+
+Until the deferred phase reactivates voice, `/voice` returns
+"voice mode is unavailable in this build", `hasVoiceAuth()` and
+`isVoiceModeEnabled()` and `isVoiceGrowthBookEnabled()` all return false,
+and `services/voice.ts` audio capture is retained as future Whisper.cpp
+scaffolding (per design Q3).
 
 ## Summary
 
@@ -70,4 +86,7 @@ on third-party uptime.
 
 ## Phase 1 unblock
 
-This decision unblocks **P1.7** (replace voice STT).
+P1.7.a-c (2026-05-24/25) executed cloud STT delete + hook stub + docs
+deferral. Local Whisper.cpp implementation is deferred to a separate
+feature phase. Phase 1 advances to P1.7.d (voice UI/keybinding cleanup)
+then P1.8.
