@@ -91,7 +91,7 @@ import type { Message as MessageType } from './types/message.js';
 import { assertMinVersion } from './utils/autoUpdater.js';
 import { getContextWindowForModel } from './utils/context.js';
 import { loadConversationForResume } from './utils/conversationRecovery.js';
-import { hasNodeOption, isBareMode, isEnvTruthy, isInProtectedNamespace } from './utils/envUtils.js';
+import { getDeepCodeEnv, hasNodeOption, isBareMode, isEnvTruthy, isInProtectedNamespace, setDeepCodeEnv } from './utils/envUtils.js';
 import { refreshExampleCommands } from './utils/exampleCommands.js';
 import type { FpsMetrics } from './utils/fpsTracker.js';
 import { getWorktreePaths } from './utils/getWorktreePaths.js';
@@ -482,7 +482,9 @@ function eagerLoadSettings(): void {
 }
 function initializeEntrypoint(isNonInteractive: boolean): void {
   // Skip if already set (e.g., by SDK or other entrypoints)
-  if (process.env.CLAUDE_CODE_ENTRYPOINT) {
+  const existingEntrypoint = getDeepCodeEnv('ENTRYPOINT');
+  if (existingEntrypoint) {
+    setDeepCodeEnv('ENTRYPOINT', existingEntrypoint);
     return;
   }
   const cliArgs = process.argv.slice(2);
@@ -490,19 +492,16 @@ function initializeEntrypoint(isNonInteractive: boolean): void {
   // Check for MCP serve command (handle flags before mcp serve, e.g., --debug mcp serve)
   const mcpIndex = cliArgs.indexOf('mcp');
   if (mcpIndex !== -1 && cliArgs[mcpIndex + 1] === 'serve') {
-    process.env.CLAUDE_CODE_ENTRYPOINT = 'mcp';
-    return;
-  }
-  if (isEnvTruthy(process.env.CLAUDE_CODE_ACTION)) {
-    process.env.CLAUDE_CODE_ENTRYPOINT = 'claude-code-github-action';
+    setDeepCodeEnv('ENTRYPOINT', 'mcp');
     return;
   }
 
   // Note: 'local-agent' entrypoint is set by the local agent mode launcher
-  // via CLAUDE_CODE_ENTRYPOINT env var (handled by early return above)
+  // via DEEPCODE_ENTRYPOINT or legacy CLAUDE_CODE_ENTRYPOINT env var
+  // (handled by early return above).
 
   // Set based on interactive status
-  process.env.CLAUDE_CODE_ENTRYPOINT = isNonInteractive ? 'sdk-cli' : 'cli';
+  setDeepCodeEnv('ENTRYPOINT', isNonInteractive ? 'sdk-cli' : 'cli');
 }
 
 // Set by early argv processing when `claude open <url>` is detected (interactive mode only)
@@ -715,16 +714,17 @@ export async function main() {
   // Determine client type
   const clientType = (() => {
     if (isEnvTruthy(process.env.GITHUB_ACTIONS)) return 'github-action';
-    if (process.env.CLAUDE_CODE_ENTRYPOINT === 'sdk-ts') return 'sdk-typescript';
-    if (process.env.CLAUDE_CODE_ENTRYPOINT === 'sdk-py') return 'sdk-python';
-    if (process.env.CLAUDE_CODE_ENTRYPOINT === 'sdk-cli') return 'sdk-cli';
-    if (process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-vscode') return 'claude-vscode';
-    if (process.env.CLAUDE_CODE_ENTRYPOINT === 'local-agent') return 'local-agent';
-    if (process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop') return 'claude-desktop';
+    const entrypoint = getDeepCodeEnv('ENTRYPOINT');
+    if (entrypoint === 'sdk-ts') return 'sdk-typescript';
+    if (entrypoint === 'sdk-py') return 'sdk-python';
+    if (entrypoint === 'sdk-cli') return 'sdk-cli';
+    if (entrypoint === 'claude-vscode') return 'claude-vscode';
+    if (entrypoint === 'local-agent') return 'local-agent';
+    if (entrypoint === 'claude-desktop') return 'claude-desktop';
 
     // Check if session-ingress token is provided (indicates remote session)
     const hasSessionIngressToken = process.env.CLAUDE_CODE_SESSION_ACCESS_TOKEN || process.env.CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR;
-    if (process.env.CLAUDE_CODE_ENTRYPOINT === 'remote' || hasSessionIngressToken) {
+    if (entrypoint === 'remote' || hasSessionIngressToken) {
       return 'remote';
     }
     return 'cli';
@@ -1551,7 +1551,7 @@ async function run(): Promise<CommanderCommand> {
     // pure in-memory array pushes (<1ms, zero I/O) that getBundledSkills()
     // reads synchronously. Previously ran inside setup() after ~20ms of
     // await points, so the parallel getCommands() memoized an empty list.
-    if (process.env.CLAUDE_CODE_ENTRYPOINT !== 'local-agent') {
+    if (getDeepCodeEnv('ENTRYPOINT') !== 'local-agent') {
       initBuiltinPlugins();
       initBundledSkills();
     }

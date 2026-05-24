@@ -1,8 +1,6 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import {
-  getApiKeyFromFd,
   getOauthTokenFromFd,
-  setApiKeyFromFd,
   setOauthTokenFromFd,
 } from '../bootstrap/state.js'
 import { logForDebugging } from './debug.js'
@@ -19,7 +17,6 @@ import { getFsImplementation } from './fsOperations.js'
  */
 const CCR_TOKEN_DIR = '/home/claude/.claude/remote'
 export const CCR_OAUTH_TOKEN_PATH = `${CCR_TOKEN_DIR}/.oauth_token`
-export const CCR_API_KEY_PATH = `${CCR_TOKEN_DIR}/.api_key`
 export const CCR_SESSION_INGRESS_TOKEN_PATH = `${CCR_TOKEN_DIR}/.session_ingress_token`
 
 /**
@@ -177,20 +174,5 @@ export function getOAuthTokenFromFileDescriptor(): string | null {
     label: 'OAuth token',
     getCached: getOauthTokenFromFd,
     setCached: setOauthTokenFromFd,
-  })
-}
-
-/**
- * Get the CCR-injected API key. See getCredentialFromFd for FD-vs-disk
- * rationale. Env var: CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR.
- * Well-known file: /home/claude/.claude/remote/.api_key.
- */
-export function getApiKeyFromFileDescriptor(): string | null {
-  return getCredentialFromFd({
-    envVar: 'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR',
-    wellKnownPath: CCR_API_KEY_PATH,
-    label: 'API key',
-    getCached: getApiKeyFromFd,
-    setCached: setApiKeyFromFd,
   })
 }

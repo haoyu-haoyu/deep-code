@@ -28,7 +28,7 @@ import { getCurrentProjectConfig, getGlobalConfig } from './utils/config.js'
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js'
 import { env } from './utils/env.js'
 import { envDynamic } from './utils/envDynamic.js'
-import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
+import { getDeepCodeEnv, isBareMode, isEnvTruthy } from './utils/envUtils.js'
 import { errorMessage } from './utils/errors.js'
 import { findCanonicalGitRoot, findGitRoot, getIsGit } from './utils/git.js'
 import { initializeFileChangedWatcher } from './utils/hooks/fileChangedWatcher.js'
@@ -401,8 +401,7 @@ export async function setup(
       process.platform !== 'win32' &&
       typeof process.getuid === 'function' &&
       process.getuid() === 0 &&
-      process.env.IS_SANDBOX !== '1' &&
-      !isEnvTruthy(process.env.CLAUDE_CODE_BUBBLEWRAP)
+      process.env.IS_SANDBOX !== '1'
     ) {
       // biome-ignore lint/suspicious/noConsole:: intentional console output
       console.error(
@@ -416,10 +415,10 @@ export async function setup(
       // Skip for Desktop's local agent mode — same trust model as CCR/BYOC
       // (trusted Anthropic-managed launcher intentionally pre-approving everything).
       // Precedent: permissionSetup.ts:861, applySettingsChange.ts:55 (PR #19116)
-      process.env.CLAUDE_CODE_ENTRYPOINT !== 'local-agent' &&
+      getDeepCodeEnv('ENTRYPOINT') !== 'local-agent' &&
       // Same for CCD (Claude Code in Desktop) — apps#29127 passes the flag
       // unconditionally to unlock mid-session bypass switching
-      process.env.CLAUDE_CODE_ENTRYPOINT !== 'claude-desktop'
+      getDeepCodeEnv('ENTRYPOINT') !== 'claude-desktop'
     ) {
       // Only await if permission mode is set to bypass
       const [isDocker, hasInternet] = await Promise.all([

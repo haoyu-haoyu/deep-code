@@ -5,6 +5,7 @@
 import axios from 'axios'
 import { getClaudeCodeUserAgent } from './userAgent.js'
 import { getWorkload } from './workloadContext.js'
+import { getDeepCodeEnv } from './envUtils.js'
 
 // WARNING: We rely on `claude-cli` in the user agent for log filtering.
 // Please do NOT change this without making sure that logging also gets updated!
@@ -24,13 +25,14 @@ export function getUserAgent(): string {
   // so the read picks up the same setWorkload() value as getAttributionHeader.
   const workload = getWorkload()
   const workloadSuffix = workload ? `, workload/${workload}` : ''
-  return `claude-cli/${MACRO.VERSION} (${process.env.USER_TYPE}, ${process.env.CLAUDE_CODE_ENTRYPOINT ?? 'cli'}${agentSdkVersion}${clientApp}${workloadSuffix})`
+  return `claude-cli/${MACRO.VERSION} (${process.env.USER_TYPE}, ${getDeepCodeEnv('ENTRYPOINT') ?? 'cli'}${agentSdkVersion}${clientApp}${workloadSuffix})`
 }
 
 export function getMCPUserAgent(): string {
   const parts: string[] = []
-  if (process.env.CLAUDE_CODE_ENTRYPOINT) {
-    parts.push(process.env.CLAUDE_CODE_ENTRYPOINT)
+  const entrypoint = getDeepCodeEnv('ENTRYPOINT')
+  if (entrypoint) {
+    parts.push(entrypoint)
   }
   if (process.env.CLAUDE_AGENT_SDK_VERSION) {
     parts.push(`agent-sdk/${process.env.CLAUDE_AGENT_SDK_VERSION}`)

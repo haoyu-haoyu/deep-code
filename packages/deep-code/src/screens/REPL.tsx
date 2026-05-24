@@ -33,7 +33,7 @@ import { updateLastInteractionTime, getLastInteractionTime, getOriginalCwd, getP
 import { asSessionId, asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
+import { isDeepCodeEnvTruthy, isEnvTruthy } from '../utils/envUtils.js';
 import {
   streamingTextGranularity,
   truncateToBoundary,
@@ -1401,13 +1401,14 @@ export function REPL({
   // `showStreamingText` → `visibleStreamingText`.
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const reducedMotion = useAppState(s => s.settings.prefersReducedMotion) ?? false;
-  // CLAUDE_CODE_ACCESSIBILITY=1 indicates a screen reader is attached.
+  // DEEPCODE_ACCESSIBILITY=1 (or legacy CLAUDE_CODE_ACCESSIBILITY=1)
+  // indicates a screen reader is attached.
   // Char-by-char streaming would fire an accessibility event for every
   // delta, which screen readers would announce as a stream of single
   // characters — terrible UX for assistive-tech users. Suppress the
   // preview entirely so they hear the final message once it lands.
   const accessibilityEnabled = useMemo(
-    () => isEnvTruthy(process.env.CLAUDE_CODE_ACCESSIBILITY),
+    () => isDeepCodeEnvTruthy('ACCESSIBILITY'),
     [],
   );
   const showStreamingText =

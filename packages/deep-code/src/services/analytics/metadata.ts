@@ -19,7 +19,7 @@ import {
   getClientType,
   getParentSessionId as getParentSessionIdFromState,
 } from '../../bootstrap/state.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { getDeepCodeEnv, isEnvTruthy } from '../../utils/envUtils.js'
 import { isOfficialMcpUrl } from '../mcp/officialRegistry.js'
 import { getRepoRemoteHash } from '../../utils/git.js'
 import {
@@ -102,7 +102,7 @@ export function isAnalyticsToolDetailsLoggingEnabled(
   mcpServerType: string | undefined,
   mcpServerBaseUrl: string | undefined,
 ): boolean {
-  if (process.env.CLAUDE_CODE_ENTRYPOINT === 'local-agent') {
+  if (getDeepCodeEnv('ENTRYPOINT') === 'local-agent') {
     return true
   }
   if (mcpServerType === 'claudeai-proxy') {
@@ -593,7 +593,7 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
     isCi: isEnvTruthy(process.env.CI),
     isClaubbit: isEnvTruthy(process.env.CLAUBBIT),
     isClaudeCodeRemote: isEnvTruthy(process.env.CLAUDE_CODE_REMOTE),
-    isLocalAgentMode: process.env.CLAUDE_CODE_ENTRYPOINT === 'local-agent',
+    isLocalAgentMode: getDeepCodeEnv('ENTRYPOINT') === 'local-agent',
     isConductor: env.isConductor(),
     ...(process.env.CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE && {
       remoteEnvironmentType: process.env.CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE,
@@ -614,7 +614,7 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
       tags: process.env.CLAUDE_CODE_TAGS,
     }),
     isGithubAction: isEnvTruthy(process.env.GITHUB_ACTIONS),
-    isClaudeCodeAction: isEnvTruthy(process.env.CLAUDE_CODE_ACTION),
+    isClaudeCodeAction: isEnvTruthy(process.env.GITHUB_ACTIONS),
     isClaudeAiAuth: false,
     version: MACRO.VERSION,
     versionBase: getVersionBase(),
@@ -709,8 +709,8 @@ export async function getEventMetadata(
     userType: process.env.USER_TYPE || '',
     ...(betas.length > 0 ? { betas: betas } : {}),
     envContext,
-    ...(process.env.CLAUDE_CODE_ENTRYPOINT && {
-      entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT,
+    ...(getDeepCodeEnv('ENTRYPOINT') && {
+      entrypoint: getDeepCodeEnv('ENTRYPOINT'),
     }),
     ...(process.env.CLAUDE_AGENT_SDK_VERSION && {
       agentSdkVersion: process.env.CLAUDE_AGENT_SDK_VERSION,

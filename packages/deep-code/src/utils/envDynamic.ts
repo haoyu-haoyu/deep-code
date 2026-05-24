@@ -2,7 +2,6 @@ import { feature } from 'bun:bundle'
 import { stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { env, JETBRAINS_IDES } from './env.js'
-import { isEnvTruthy } from './envUtils.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { getAncestorCommandsAsync } from './genericProcessUtils.js'
 
@@ -16,10 +15,7 @@ const getIsDocker = memoize(async (): Promise<boolean> => {
 })
 
 function getIsBubblewrapSandbox(): boolean {
-  return (
-    process.platform === 'linux' &&
-    isEnvTruthy(process.env.CLAUDE_CODE_BUBBLEWRAP)
-  )
+  return false
 }
 
 // Cache for the runtime musl detection fallback (node/unbundled only).
