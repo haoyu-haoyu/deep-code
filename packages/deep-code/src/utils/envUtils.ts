@@ -66,6 +66,22 @@ export function isEnvDefinedFalsy(
   return ['0', 'false', 'no', 'off'].includes(normalizedValue)
 }
 
+export function getDeepCodeEnv(name: string): string | undefined {
+  const primary = process.env[`DEEPCODE_${name}`]
+  return primary === undefined || primary === ''
+    ? process.env[`CLAUDE_CODE_${name}`]
+    : primary
+}
+
+export function setDeepCodeEnv(name: string, value: string): void {
+  process.env[`DEEPCODE_${name}`] = value
+  process.env[`CLAUDE_CODE_${name}`] = value
+}
+
+export function isDeepCodeEnvTruthy(name: string): boolean {
+  return isEnvTruthy(getDeepCodeEnv(name))
+}
+
 /**
  * --bare / CLAUDE_CODE_SIMPLE — skip hooks, LSP, plugin sync, skill dir-walk,
  * attribution, background prefetches, and ALL keychain/credential reads.

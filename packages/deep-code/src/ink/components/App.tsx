@@ -2,7 +2,7 @@ import React, { PureComponent, type ReactNode } from 'react';
 import { updateLastInteractionTime } from '../../bootstrap/state.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { stopCapturingEarlyInput } from '../../utils/earlyInput.js';
-import { isEnvTruthy } from '../../utils/envUtils.js';
+import { isDeepCodeEnvTruthy } from '../../utils/envUtils.js';
 import { isMouseClicksDisabled } from '../../utils/fullscreen.js';
 import { logError } from '../../utils/log.js';
 import { EventEmitter } from '../events/emitter.js';
@@ -199,7 +199,7 @@ export default class App extends PureComponent<Props, State> {
   }
   override componentDidMount() {
     // In accessibility mode, keep the native cursor visible for screen magnifiers and other tools
-    if (this.props.stdout.isTTY && !isEnvTruthy(process.env.CLAUDE_CODE_ACCESSIBILITY)) {
+    if (this.props.stdout.isTTY && !isDeepCodeEnvTruthy('ACCESSIBILITY')) {
       this.props.stdout.write(HIDE_CURSOR);
     }
   }
@@ -517,7 +517,7 @@ export default class App extends PureComponent<Props, State> {
 
       // Hide cursor (unless in accessibility mode) and re-enable focus reporting after resuming
       if (this.props.stdout.isTTY) {
-        if (!isEnvTruthy(process.env.CLAUDE_CODE_ACCESSIBILITY)) {
+        if (!isDeepCodeEnvTruthy('ACCESSIBILITY')) {
           this.props.stdout.write(HIDE_CURSOR);
         }
         // Re-enable focus reporting to restore terminal state
