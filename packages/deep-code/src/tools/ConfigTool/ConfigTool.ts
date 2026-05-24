@@ -245,9 +245,6 @@ export const ConfigTool = buildTool({
           },
         }
       }
-      const { isVoiceStreamAvailable } = await import(
-        '../../services/voiceStreamSTT.js'
-      )
       const {
         checkRecordingAvailability,
         checkVoiceDependencies,
@@ -262,14 +259,6 @@ export const ConfigTool = buildTool({
             error:
               recording.reason ??
               'Voice mode is not available in this environment.',
-          },
-        }
-      }
-      if (!isVoiceStreamAvailable()) {
-        return {
-          data: {
-            success: false,
-            error: 'Voice mode is not available.',
           },
         }
       }
