@@ -1,4 +1,4 @@
-import type { Anthropic } from '@anthropic-ai/sdk'
+import type { Anthropic } from '../types/sdk-shim.js'
 import type { Attachment } from './attachments.js'
 import { normalizeAttachmentForAPI } from './messages.js'
 import { jsonStringify } from './slowOperations.js'

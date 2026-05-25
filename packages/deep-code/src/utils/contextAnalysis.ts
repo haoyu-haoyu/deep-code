@@ -1,8 +1,8 @@
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { BetaContentBlock } from '../types/sdk-shim.js'
 import type {
   ContentBlock,
   ContentBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '../types/sdk-shim.js'
 import { roughTokenCountEstimation as countTokens } from './charEstimation.js'
 import type {
   AssistantMessage,
