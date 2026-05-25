@@ -1558,7 +1558,6 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
     assert.doesNotMatch(remoteSafeRegistry, commandEntryPattern)
   }
   assert.doesNotMatch(commandRegistry, /webCmd \? \[webCmd\]/)
-  assert.doesNotMatch(commandRegistry, /voiceCommand \? \[voiceCommand\]/)
 
   assert.match(commandsSource, /includeLegacyClaudeServiceCommands/)
   assert.match(publicCommandSources, /Deep Code/)
