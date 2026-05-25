@@ -43,6 +43,7 @@ jobs:
             test/deepcode-native.test.mjs \
             test/deepcode-package.test.mjs \
             test/perf-baseline.test.mjs \
+            test/sdk-shim.test.mjs \
             test/s3-render-perf.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
