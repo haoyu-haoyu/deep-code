@@ -1,4 +1,4 @@
-import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolUseBlock } from '../../types/sdk-shim.js'
 import {
   createUserMessage,
   REJECT_MESSAGE,
