@@ -2,7 +2,7 @@ import type {
   ContentBlockParam,
   ImageBlockParam,
   TextBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '../types/sdk-shim.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { roughTokenCountEstimation } from './charEstimation.js'
 import { compressImageBlock } from './imageResizer.js'
