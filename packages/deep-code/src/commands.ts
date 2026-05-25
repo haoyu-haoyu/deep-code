@@ -63,9 +63,6 @@ const briefCommand =
 const assistantCommand = feature('KAIROS')
   ? require('./commands/assistant/index.js').default
   : null
-const voiceCommand = feature('VOICE_MODE')
-  ? require('./commands/voice/index.js').default
-  : null
 const forceSnip = feature('HISTORY_SNIP')
   ? require('./commands/force-snip.js').default
   : null
@@ -223,7 +220,6 @@ function includeLegacyClaudeServiceCommands(): boolean {
 
 const LEGACY_CLAUDE_SERVICE_COMMANDS: Command[] = [
   mobile,
-  ...(voiceCommand ? [voiceCommand] : []),
 ]
 
 // Declared as a function so that we don't run this until getCommands is called,
