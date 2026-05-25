@@ -1,4 +1,4 @@
-import type { ContentBlock } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ContentBlock } from '../../types/sdk-shim.js'
 import { getUserContext } from 'src/context.js'
 import { queryRuntimeModelWithoutStreaming } from 'src/services/runtime/messageSend.js'
 import { getEmptyToolPermissionContext } from 'src/Tool.js'
