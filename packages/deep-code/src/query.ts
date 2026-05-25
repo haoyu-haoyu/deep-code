@@ -2,7 +2,7 @@
 import type {
   ToolResultBlockParam,
   ToolUseBlock,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from './types/sdk-shim.js'
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import {
   calculateTokenWarningState,
