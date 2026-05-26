@@ -9,6 +9,9 @@ import { spawnSync } from 'node:child_process'
 const test = typeof globalThis.test === 'function' ? globalThis.test : nodeTest
 const packageRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const routerSource = join(packageRoot, 'src/services/autoMode/router.ts')
+const agentModelSource = join(packageRoot, 'src/utils/model/agent.ts')
+const spawnMultiAgentSource = join(packageRoot, 'src/tools/shared/spawnMultiAgent.ts')
+const footerLeftSource = join(packageRoot, 'src/components/PromptInput/PromptInputFooterLeftSide.tsx')
 const mainSource = join(packageRoot, 'src/main.tsx')
 const modelOptionsSource = join(packageRoot, 'src/utils/model/modelOptions.ts')
 const modelCommandSource = join(packageRoot, 'src/commands/model/model.tsx')
@@ -16,13 +19,17 @@ const deepSeekProviderSource = join(packageRoot, 'src/services/providers/deepsee
 const messageSendSource = join(packageRoot, 'src/services/runtime/messageSend.ts')
 
 async function loadRouterModule() {
+  return await loadBuiltModule(routerSource, 'router.mjs')
+}
+
+async function loadBuiltModule(source, outfileName) {
   const outdir = await mkdtemp(join(tmpdir(), 'deepcode-auto-router-'))
-  const outfile = join(outdir, 'router.mjs')
+  const outfile = join(outdir, outfileName)
   const result = spawnSync(
     'bun',
     [
       'build',
-      routerSource,
+      source,
       '--target=node',
       '--format=esm',
       '--outfile',
@@ -36,7 +43,7 @@ async function loadRouterModule() {
   assert.equal(
     result.status,
     0,
-    `failed to bundle router.ts\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    `failed to bundle ${source}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   )
   return await import(pathToFileURL(outfile).href)
 }
@@ -270,6 +277,134 @@ test('routeTurn falls back without fetch when signal is already aborted', async 
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('routeTurn keeps concurrent decisions isolated', async () => {
+  const { routeTurn } = await loadRouterModule()
+  const originalFetch = globalThis.fetch
+  try {
+    let calls = 0
+    globalThis.fetch = async () => {
+      calls += 1
+      const call = calls
+      if (call === 1) {
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+      return createJsonResponse(
+        call === 1
+          ? { model: 'flash', thinking: 'off' }
+          : { model: 'pro', thinking: 'max' },
+      )
+    }
+
+    const [first, second] = await Promise.all([
+      routeTurn(
+        [{ role: 'user', content: 'What is JSON?' }],
+        new AbortController().signal,
+      ),
+      routeTurn(
+        [{ role: 'user', content: 'Refactor the runtime and tests.' }],
+        new AbortController().signal,
+      ),
+    ])
+
+    assert.equal(calls, 2)
+    assert.deepEqual(first, {
+      model: 'flash',
+      thinking: 'off',
+      source: 'router',
+    })
+    assert.deepEqual(second, {
+      model: 'pro',
+      thinking: 'max',
+      source: 'router',
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('routeTurn falls back when aborted during routing', async () => {
+  const { routeTurn } = await loadRouterModule()
+  const originalFetch = globalThis.fetch
+  try {
+    let fetchCalled = false
+    const controller = new AbortController()
+    globalThis.fetch = async () => {
+      fetchCalled = true
+      controller.abort()
+      throw new Error('aborted during routing')
+    }
+
+    const decision = await routeTurn(
+      [{ role: 'user', content: 'What is JSON?' }],
+      controller.signal,
+    )
+
+    assert.equal(fetchCalled, true)
+    assert.deepEqual(decision, {
+      model: 'flash',
+      thinking: 'off',
+      source: 'heuristic',
+      reason: 'short_factual',
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('sub-agent model resolution inherits auto when no model is assigned', async () => {
+  const source = await readFile(agentModelSource, 'utf8')
+
+  assert.match(source, /isAutoModelSetting/)
+  assert.match(
+    source,
+    /if \(agentModel === undefined && isAutoModelSetting\(parentModel\)\) \{\s*return parentModel\s*\}/s,
+  )
+  assert.match(source, /if \(agentModelWithExp === 'inherit'\)[\s\S]*mainLoopModel: parentModel/)
+})
+
+test('sub-agent explicit model override wins over parent auto', async () => {
+  const source = await readFile(agentModelSource, 'utf8')
+  const toolSpecifiedIndex = source.indexOf('if (toolSpecifiedModel)')
+  const autoInheritIndex = source.indexOf(
+    'if (agentModel === undefined && isAutoModelSetting(parentModel))',
+  )
+  const fallbackIndex = source.indexOf('const agentModelWithExp =')
+
+  assert.ok(toolSpecifiedIndex >= 0, 'tool-specified model branch exists')
+  assert.ok(autoInheritIndex >= 0, 'auto inheritance branch exists')
+  assert.ok(fallbackIndex >= 0, 'fallback model branch exists')
+  assert.ok(
+    toolSpecifiedIndex < autoInheritIndex,
+    'explicit tool model is evaluated before auto inheritance',
+  )
+  assert.ok(
+    autoInheritIndex < fallbackIndex,
+    'auto inheritance is evaluated before default fallback',
+  )
+  assert.match(
+    source,
+    /const model = parseUserSpecifiedModel\(toolSpecifiedModel\)\s*return applyParentRegionPrefix\(model, toolSpecifiedModel\)/,
+  )
+  assert.match(
+    source,
+    /const model = parseUserSpecifiedModel\(agentModelWithExp\)\s*return applyParentRegionPrefix\(model, agentModelWithExp\)/,
+  )
+})
+
+test('multi-agent teammates inherit auto before default fallback', async () => {
+  const source = await readFile(spawnMultiAgentSource, 'utf8')
+
+  assert.match(source, /leaderModel === 'auto'/)
+  assert.match(source, /return inputModel \?\? getDefaultTeammateModel\(leaderModel\)/)
+})
+
+test('TUI footer displays auto route metadata only for auto sessions', async () => {
+  const source = await readFile(footerLeftSource, 'utf8')
+
+  assert.match(source, /activeModelSetting === 'auto'/)
+  assert.match(source, /auto \{'->'\} \{autoRouteDecision\.model\}\/\{autoRouteDecision\.thinking\}/)
 })
 
 test('CLI help advertises --model auto', async () => {

@@ -11,6 +11,7 @@ import figures from 'figures';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { VimMode, PromptInputMode } from '../../types/textInputTypes.js';
 import type { ToolPermissionContext } from '../../Tool.js';
+import type { AutoRouteDecision } from '../../services/autoMode/router.js';
 import { isVimModeEnabled } from './utils.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { isDefaultMode, permissionModeSymbol, permissionModeTitle, getModeColor } from '../../utils/permissions/PermissionMode.js';
@@ -65,6 +66,7 @@ type Props = {
   historyQuery: string;
   setHistoryQuery: (query: string) => void;
   historyFailedMatch: boolean;
+  autoRouteDecision?: AutoRouteDecision;
   onOpenTasksDialog?: (taskId?: string) => void;
 };
 function ProactiveCountdown() {
@@ -121,7 +123,7 @@ function ProactiveCountdown() {
   return t4;
 }
 export function PromptInputFooterLeftSide(t0) {
-  const $ = _c(27);
+  const $ = _c(28);
   const {
     exitMessage,
     vimMode,
@@ -138,6 +140,7 @@ export function PromptInputFooterLeftSide(t0) {
     historyQuery,
     setHistoryQuery,
     historyFailedMatch,
+    autoRouteDecision,
     onOpenTasksDialog
   } = t0;
   if (exitMessage.show) {
@@ -192,30 +195,31 @@ export function PromptInputFooterLeftSide(t0) {
   }
   const t4 = !suppressHint && !showVim;
   let t5;
-  if ($[13] !== isLoading || $[14] !== mode || $[15] !== onOpenTasksDialog || $[16] !== t4 || $[17] !== tasksSelected || $[18] !== teammateFooterIndex || $[19] !== teamsSelected || $[20] !== tmuxSelected || $[21] !== toolPermissionContext) {
-    t5 = <ModeIndicator mode={mode} toolPermissionContext={toolPermissionContext} showHint={t4} isLoading={isLoading} tasksSelected={tasksSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} onOpenTasksDialog={onOpenTasksDialog} />;
-    $[13] = isLoading;
-    $[14] = mode;
-    $[15] = onOpenTasksDialog;
-    $[16] = t4;
-    $[17] = tasksSelected;
-    $[18] = teammateFooterIndex;
-    $[19] = teamsSelected;
-    $[20] = tmuxSelected;
-    $[21] = toolPermissionContext;
-    $[22] = t5;
+  if ($[13] !== autoRouteDecision || $[14] !== isLoading || $[15] !== mode || $[16] !== onOpenTasksDialog || $[17] !== t4 || $[18] !== tasksSelected || $[19] !== teammateFooterIndex || $[20] !== teamsSelected || $[21] !== tmuxSelected || $[22] !== toolPermissionContext) {
+    t5 = <ModeIndicator mode={mode} toolPermissionContext={toolPermissionContext} showHint={t4} isLoading={isLoading} tasksSelected={tasksSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} autoRouteDecision={autoRouteDecision} onOpenTasksDialog={onOpenTasksDialog} />;
+    $[13] = autoRouteDecision;
+    $[14] = isLoading;
+    $[15] = mode;
+    $[16] = onOpenTasksDialog;
+    $[17] = t4;
+    $[18] = tasksSelected;
+    $[19] = teammateFooterIndex;
+    $[20] = teamsSelected;
+    $[21] = tmuxSelected;
+    $[22] = toolPermissionContext;
+    $[23] = t5;
   } else {
-    t5 = $[22];
+    t5 = $[23];
   }
   let t6;
-  if ($[23] !== t2 || $[24] !== t3 || $[25] !== t5) {
+  if ($[24] !== t2 || $[25] !== t3 || $[26] !== t5) {
     t6 = <Box justifyContent="flex-start" gap={1}>{t2}{t3}{t5}</Box>;
-    $[23] = t2;
-    $[24] = t3;
-    $[25] = t5;
-    $[26] = t6;
+    $[24] = t2;
+    $[25] = t3;
+    $[26] = t5;
+    $[27] = t6;
   } else {
-    t6 = $[26];
+    t6 = $[27];
   }
   return t6;
 }
@@ -228,6 +232,7 @@ type ModeIndicatorProps = {
   teamsSelected: boolean;
   tmuxSelected: boolean;
   teammateFooterIndex?: number;
+  autoRouteDecision?: AutoRouteDecision;
   onOpenTasksDialog?: (taskId?: string) => void;
 };
 function ModeIndicator({
@@ -239,6 +244,7 @@ function ModeIndicator({
   teamsSelected,
   tmuxSelected,
   teammateFooterIndex,
+  autoRouteDecision,
   onOpenTasksDialog
 }: ModeIndicatorProps): React.ReactNode {
   const {
@@ -254,9 +260,11 @@ function ModeIndicator({
   const viewSelectionMode = useAppState(s_1 => s_1.viewSelectionMode);
   const viewingAgentTaskId = useAppState(s_2 => s_2.viewingAgentTaskId);
   const expandedView = useAppState(s_3 => s_3.expandedView);
+  const mainLoopModel = useAppState(s_4 => s_4.mainLoopModel);
+  const mainLoopModelForSession = useAppState(s_5 => s_5.mainLoopModelForSession);
   const showSpinnerTree = expandedView === 'teammates';
   const prStatus = usePrStatus(isLoading, isPrStatusEnabled());
-  const hasTmuxSession = useAppState(s_4 => "external" === 'ant' && s_4.tungstenActiveSession !== undefined);
+  const hasTmuxSession = useAppState(s_6 => "external" === 'ant' && s_6.tungstenActiveSession !== undefined);
   const nextTickAt = useSyncExternalStore(proactiveModule?.subscribeToProactiveChanges ?? NO_OP_SUBSCRIBE, proactiveModule?.getNextTickAt ?? NULL, NULL);
   const hasSelection = useHasSelection();
   const selGetState = useSelection().getState;
@@ -283,9 +291,11 @@ function ModeIndicator({
   const isViewingTeammate = viewSelectionMode === 'viewing-agent' && viewedTask?.type === 'in_process_teammate';
   const isViewingCompletedTeammate = isViewingTeammate && viewedTask != null && viewedTask.status !== 'running';
   const hasBackgroundTasks = runningTaskCount > 0 || isViewingTeammate;
+  const activeModelSetting = mainLoopModelForSession ?? mainLoopModel;
+  const showAutoRoute = activeModelSetting === 'auto' && autoRouteDecision !== undefined;
 
   // Count primary items (permission mode or coordinator mode, background tasks, and teams)
-  const primaryItemCount = (isCoordinator || hasActiveMode ? 1 : 0) + (hasBackgroundTasks ? 1 : 0) + (hasTeams ? 1 : 0);
+  const primaryItemCount = (isCoordinator || hasActiveMode ? 1 : 0) + (hasBackgroundTasks ? 1 : 0) + (hasTeams ? 1 : 0) + (showAutoRoute ? 1 : 0);
 
   // PR indicator is short (~10 chars) — unlike the old diff indicator the
   // >=100 threshold was tuned for. Now that auto mode is effectively the
@@ -325,7 +335,7 @@ function ModeIndicator({
   // its click-target Box isn't nested inside the <Text wrap="truncate">
   // wrapper (reconciler throws on Box-in-Text).
   // Tmux pill (ant-only) — appears right after tasks in nav order
-  ...("external" === 'ant' && hasTmuxSession ? [<TungstenPill key="tmux" selected={tmuxSelected} />] : []), ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
+  ...("external" === 'ant' && hasTmuxSession ? [<TungstenPill key="tmux" selected={tmuxSelected} />] : []), ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), ...(showAutoRoute ? [<Text dimColor key="auto-route">auto {'->'} {autoRouteDecision.model}/{autoRouteDecision.thinking}</Text>] : []), ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
 
   // Check if any in-process teammates exist (for hint text cycling)
   const hasAnyInProcessTeammates = Object.values(tasks).some(t_2 => t_2.type === 'in_process_teammate' && t_2.status === 'running');

@@ -5,6 +5,7 @@ import { applyBedrockRegionPrefix, getBedrockRegionPrefix } from './bedrock.js'
 import {
   getCanonicalName,
   getRuntimeMainLoopModel,
+  isAutoModelSetting,
   parseUserSpecifiedModel,
 } from './model.js'
 import { getAPIProvider } from './providers.js'
@@ -71,6 +72,10 @@ export function getAgentModel(
     }
     const model = parseUserSpecifiedModel(toolSpecifiedModel)
     return applyParentRegionPrefix(model, toolSpecifiedModel)
+  }
+
+  if (agentModel === undefined && isAutoModelSetting(parentModel)) {
+    return parentModel
   }
 
   const agentModelWithExp = agentModel ?? getDefaultSubagentModel()
