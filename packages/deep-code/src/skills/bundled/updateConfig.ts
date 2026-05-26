@@ -57,7 +57,7 @@ Settings load in order: user → project → local (later overrides earlier).
 ### Model & Agent
 \`\`\`json
 {
-  "model": "sonnet",  // or "opus", "haiku", full model ID
+  "model": "deepseek-chat",  // or "deepseek-coder", "deepseek-reasoner", full model ID
   "agent": "agent-name",
   "alwaysThinkingEnabled": true
 }

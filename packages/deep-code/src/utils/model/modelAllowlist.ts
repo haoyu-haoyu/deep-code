@@ -58,8 +58,8 @@ function modelMatchesVersionPrefix(model: string, entry: string): boolean {
 
 /**
  * Check if a family alias is narrowed by more specific entries in the allowlist.
- * When the allowlist contains both "opus" and "opus-4-5", the specific entry
- * takes precedence — "opus" alone would be a wildcard, but "opus-4-5" narrows
+ * When the allowlist contains both a DeepSeek family and a specific entry, the specific entry
+ * takes precedence — "deepseek-reasoner" alone would be a wildcard, but "opus-4-5" narrows
  * it to only that version.
  */
 function familyHasSpecificEntries(
@@ -71,9 +71,9 @@ function familyHasSpecificEntries(
       continue
     }
     // Check if entry is a version-qualified variant of this family
-    // e.g., "opus-4-5" or "claude-opus-4-5-20251101" for the "opus" family
+    // e.g., a versioned model ID for the selected family
     // Must match at a segment boundary (followed by '-' or end) to avoid
-    // false positives like "opusplan" matching "opus"
+    // false positives from partial string matches.
     const idx = entry.indexOf(family)
     if (idx === -1) {
       continue
@@ -91,7 +91,7 @@ function familyHasSpecificEntries(
  * If availableModels is not set, all models are allowed.
  *
  * Matching tiers:
- * 1. Family aliases ("opus", "sonnet", "haiku") — wildcard for the entire family,
+ * 1. Family aliases ("deepseek-chat", "deepseek-coder", "deepseek-reasoner") — wildcard for the entire family,
  *    UNLESS more specific entries for that family also exist (e.g., "opus-4-5").
  *    In that case, the family wildcard is ignored and only the specific entries apply.
  * 2. Version prefixes ("opus-4-5", "claude-opus-4-5") — any build of that version
@@ -113,7 +113,7 @@ export function isModelAllowed(model: string): boolean {
 
   // Direct match (alias-to-alias or full-name-to-full-name)
   // Skip family aliases that have been narrowed by specific entries —
-  // e.g., "opus" in ["opus", "opus-4-5"] should NOT directly match,
+  // e.g., "deepseek-reasoner" in ["deepseek-reasoner", "deepseek-reasoner-v1"] should NOT directly match,
   // because the admin intends to restrict to opus 4.5 only.
   if (normalizedAllowlist.includes(normalizedModel)) {
     if (
@@ -126,7 +126,7 @@ export function isModelAllowed(model: string): boolean {
 
   // Family-level aliases in the allowlist match any model in that family,
   // but only if no more specific entries exist for that family.
-  // e.g., ["opus"] allows all opus, but ["opus", "opus-4-5"] only allows opus 4.5.
+  // e.g., ["deepseek-reasoner"] allows the family, but a specific entry narrows it.
   for (const entry of normalizedAllowlist) {
     if (
       isModelFamilyAlias(entry) &&

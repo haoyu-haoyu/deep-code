@@ -78,7 +78,7 @@ export function checkMockRateLimitError(
   const isOpusLimit = rateLimitType === 'seven_day_opus'
 
   // Check if current model is an Opus model (handles all variants including aliases)
-  const isUsingOpus = currentModel.includes('opus')
+  const isUsingOpus = currentModel.includes('deepseek-reasoner')
 
   // For Opus limits, only throw 429 if actually using Opus
   // This simulates the real API behavior where fallback to Sonnet succeeds

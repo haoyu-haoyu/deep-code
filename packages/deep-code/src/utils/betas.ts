@@ -223,7 +223,10 @@ export function shouldUseGlobalCacheScope(): boolean {
 
 export const getAllModelBetas = memoize((model: string): string[] => {
   const betaHeaders = []
-  const isHaiku = getCanonicalName(model).includes('haiku')
+  const canonical = getCanonicalName(model)
+  const isHaiku =
+    canonical.includes('claude-haiku') ||
+    canonical.includes('claude-3-5-haiku')
   const provider = getAPIProvider()
   const includeFirstPartyOnlyBetas = shouldIncludeFirstPartyOnlyBetas()
 

@@ -40,7 +40,11 @@ export function modelSupportsEffort(model: string): boolean {
     return true
   }
   // Exclude any other known legacy models (haiku, older opus/sonnet variants)
-  if (m.includes('haiku') || m.includes('sonnet') || m.includes('opus')) {
+  if (
+    m.includes('claude-haiku') ||
+    m.includes('claude-sonnet') ||
+    m.includes('claude-opus')
+  ) {
     return false
   }
 

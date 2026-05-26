@@ -224,8 +224,7 @@ export function is1mContextDisabled() {
   return false
 }
 export function modelSupports1M(model) {
-  return String(model ?? '').toLowerCase().includes('sonnet') ||
-    String(model ?? '').toLowerCase().includes('opus')
+  return false
 }
 `)
 registerSourceStub('utils/config', `
@@ -425,7 +424,7 @@ export function isModelAllowed() {
 `)
 registerSourceStub('utils/model/aliases', `
 export function isModelAlias(model) {
-  return ['opusplan', 'sonnet', 'haiku', 'opus', 'best'].includes(String(model).toLowerCase())
+  return ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner', 'best'].includes(String(model).toLowerCase())
 }
 `)
 registerSourceStub('utils/stringUtils', `

@@ -268,7 +268,7 @@ function createPluginCommand(
     const version = frontmatter.version as string | undefined
     const displayName = frontmatter.name as string | undefined
 
-    // Handle model configuration, resolving aliases like 'haiku', 'sonnet', 'opus'
+    // Handle model configuration, resolving aliases like 'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'
     const model =
       frontmatter.model === 'inherit'
         ? undefined
