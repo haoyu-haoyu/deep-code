@@ -3,7 +3,7 @@ import type {
   ImageBlockParam,
   TextBlockParam,
 } from '../types/sdk-shim.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
 import { roughTokenCountEstimation } from './charEstimation.js'
 import { compressImageBlock } from './imageResizer.js'
 import { logError } from './log.js'

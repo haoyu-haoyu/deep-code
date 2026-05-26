@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { getOauthConfig } from 'src/constants/oauth.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
 import {
   getIsNonInteractiveSession,
   getKairosActive,

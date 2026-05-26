@@ -55,7 +55,7 @@ import {
 } from '../deepcode/instruction-paths.mjs'
 import { truncateEntrypointContent } from '../memdir/memdir.js'
 import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
 import {
   getCurrentProjectConfig,
   getManagedClaudeRulesDir,
