@@ -23,6 +23,16 @@ read-only references for Phase 1 implementation.
    `anthropic-product-refs.md`.
 3. Phase 1 task ordering follows the critical path in `phase-0-signoff.md`.
 
+## Phase status
+
+- **Phase 0 (Audit)**: complete; 6 artifacts above are read-only references.
+- **Phase 1 (Anthropic Excision)**: complete at v0.2.0-pure (2026-05-26).
+  See TODO.md for full milestone list and EXECUTION_LOG.md for per-PR
+  citations. All audit artifacts referenced as evidence during Phase 1 remain
+  intact for historical record.
+- **Phase 2 (DeepSeek-TUI feature adoption)**: not started; see
+  PURE_DEEPSEEK_PLAN.md L810+.
+
 ## What lives here vs `docs/`
 
 - `audit/` — **read-only audit artifacts**. Not modified after the owning
