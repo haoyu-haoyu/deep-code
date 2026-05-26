@@ -184,6 +184,31 @@ export async function buildDeepSeekRequest({
   }
 }
 
+export async function buildDeepSeekRouterRequest({
+  systemPrompt = [],
+  userPrompt = '',
+  messages,
+  env = process.env,
+  cwd = process.cwd(),
+} = {}) {
+  const routerMessages = Array.isArray(messages)
+    ? messages
+    : [{ role: 'user', content: userPrompt }]
+
+  return await buildDeepSeekRequest({
+    systemPrompt,
+    messages: routerMessages,
+    env,
+    cwd,
+    model: DEFAULT_DEEPSEEK_SMALL_MODEL,
+    stream: false,
+    thinking: 'disabled',
+    temperature: 0,
+    maxTokens: 80,
+    responseFormat: { type: 'json_object' },
+  })
+}
+
 export async function runDeepSeekAgent({
   prompt,
   messages = [],

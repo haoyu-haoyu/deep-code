@@ -26,6 +26,7 @@ export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
+export const AUTO_MODEL_SETTING = 'auto'
 const DEEPCODE_DEFAULT_MAIN_MODEL = 'deepseek-v4-pro'
 const DEEPCODE_DEFAULT_SMALL_MODEL = 'deepseek-v4-flash'
 
@@ -52,6 +53,13 @@ function getDeepCodeSmallModelEnv(): ModelName | undefined {
 
 function isDeepSeekModel(model: unknown): model is ModelName {
   return typeof model === 'string' && model.toLowerCase().startsWith('deepseek')
+}
+
+export function isAutoModelSetting(model: unknown): model is typeof AUTO_MODEL_SETTING {
+  return (
+    typeof model === 'string' &&
+    model.trim().toLowerCase() === AUTO_MODEL_SETTING
+  )
 }
 
 export function getSmallFastModel(): ModelName {
@@ -93,7 +101,9 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     if (isDeepCodeNativeProvider()) {
       specifiedModel =
         getDeepCodeMainModelEnv() ??
-        (isDeepSeekModel(settings.model) ? settings.model : undefined)
+        (isDeepSeekModel(settings.model) || isAutoModelSetting(settings.model)
+          ? settings.model
+          : undefined)
     } else {
       specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
     }
@@ -346,6 +356,8 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
   switch (model) {
+    case AUTO_MODEL_SETTING:
+      return 'Auto'
     case 'deepseek-chat':
       return 'DeepSeek Chat'
     case 'deepseek-coder':
@@ -451,6 +463,10 @@ export function parseUserSpecifiedModel(
 ): ModelName {
   const modelInputTrimmed = modelInput.trim()
   const normalizedModel = modelInputTrimmed.toLowerCase()
+
+  if (isAutoModelSetting(normalizedModel)) {
+    return AUTO_MODEL_SETTING
+  }
 
   const has1mTag = has1mContext(normalizedModel)
   const modelString = has1mTag

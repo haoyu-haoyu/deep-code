@@ -12,6 +12,7 @@ import { checkOpus1mAccess, checkSonnet1mAccess } from './check1mAccess.js'
 import { getAPIProvider } from './providers.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import {
+  AUTO_MODEL_SETTING,
   getCanonicalName,
   getDefaultSonnetModel,
   getDefaultOpusModel,
@@ -92,6 +93,7 @@ function getCustomSonnetOption(): ModelOption | undefined {
 
 function getDeepSeekModelLabel(model: string): string {
   const normalized = model.toLowerCase()
+  if (normalized === AUTO_MODEL_SETTING) return 'Auto'
   if (normalized === 'deepseek-chat') return 'DeepSeek Chat'
   if (normalized === 'deepseek-coder') return 'DeepSeek Coder'
   if (normalized === 'deepseek-reasoner') return 'DeepSeek Reasoner'
@@ -102,6 +104,9 @@ function getDeepSeekModelLabel(model: string): string {
 
 function getDeepSeekModelDescription(model: string): string {
   const normalized = model.toLowerCase()
+  if (normalized === AUTO_MODEL_SETTING) {
+    return 'Route each turn to DeepSeek Flash or Pro automatically'
+  }
   if (normalized === 'deepseek-chat') {
     return 'Balanced DeepSeek model for everyday chat and coding tasks'
   }
@@ -120,8 +125,17 @@ function getDeepSeekModelDescription(model: string): string {
   return 'Custom DeepSeek-compatible model'
 }
 
+function getAutoModelOption(): ModelOption {
+  return {
+    value: AUTO_MODEL_SETTING,
+    label: 'Auto',
+    description: 'Route each turn to DeepSeek Flash or Pro automatically',
+    descriptionForModel: 'Auto route each turn to DeepSeek Flash or Pro',
+  }
+}
+
 function getDeepSeekNativeModelOptions(): ModelOption[] {
-  const options: ModelOption[] = [getDefaultOptionForUser()]
+  const options: ModelOption[] = [getDefaultOptionForUser(), getAutoModelOption()]
   const candidates = [getDefaultMainLoopModelSetting(), getSmallFastModel()]
 
   for (const model of candidates) {

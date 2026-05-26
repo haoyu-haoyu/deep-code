@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto'
 import {
   createDeepSeekProvider,
   DEFAULT_DEEPSEEK_SMALL_MODEL,
+  resolveDeepSeekConfig,
 } from '../providers/deepseek.mjs'
+import { routeTurn, type AutoRouteDecision } from '../autoMode/router.js'
 // @ts-expect-error DeepSeek call-model adapter is JS; runtime native primitives use it
 // internally for non-streaming collection. Exposed externally via the
 // local re-export at the bottom of this file.
@@ -61,6 +63,7 @@ export type RuntimeStreamEvent =
         id: string
         role: 'assistant'
         model: string
+        autoRouteDecision?: AutoRouteDecision
         usage: NonNullableUsage
       }
     }
@@ -114,6 +117,9 @@ export type RuntimeMessageOptions = {
   prependCLISysprompt?: boolean
 }
 
+const AUTO_MODEL_SETTING = 'auto'
+const DEFAULT_AUTO_PRO_MODEL = 'deepseek-v4-pro'
+
 type DeepSeekProviderEvent =
   | { type: 'reasoning_delta'; text?: unknown }
   | { type: 'content_delta'; text?: unknown }
@@ -147,12 +153,20 @@ type RuntimeToolCallState = {
   partialJson: string
 }
 
+type ResolvedRuntimeRoute = {
+  model: string
+  thinking: 'enabled' | 'disabled'
+  reasoningEffort?: 'high' | 'max'
+  autoRouteDecision?: AutoRouteDecision
+}
+
 export async function* queryRuntimeWithStreaming(
   opts: RuntimeMessageOptions,
 ): AsyncGenerator<RuntimeStreamEvent, void, void> {
   assertNotAborted(opts.signal)
 
-  const model = opts.model
+  const route = await resolveRuntimeRoute(opts)
+  const model = route.model
   const state = createResponseState()
   yield {
     type: 'message_start',
@@ -160,12 +174,15 @@ export async function* queryRuntimeWithStreaming(
       id: `msg_runtime_${randomUUID()}`,
       role: 'assistant',
       model,
+      ...(route.autoRouteDecision
+        ? { autoRouteDecision: route.autoRouteDecision }
+        : {}),
       usage: EMPTY_USAGE,
     },
   }
 
   try {
-    for await (const event of streamProviderEvents(opts)) {
+    for await (const event of streamProviderEvents(opts, route)) {
       assertNotAborted(opts.signal)
       yield* applyProviderEventToStream(state, event)
     }
@@ -186,10 +203,11 @@ export async function queryRuntimeWithoutStreaming(
   opts: RuntimeMessageOptions,
 ): Promise<RuntimeAssistantMessage> {
   assertNotAborted(opts.signal)
+  const route = await resolveRuntimeRoute(opts)
   const state = createResponseState()
 
   try {
-    for await (const event of streamProviderEvents(opts)) {
+    for await (const event of streamProviderEvents(opts, route)) {
       assertNotAborted(opts.signal)
       applyProviderEventToState(state, event)
     }
@@ -231,16 +249,78 @@ export function queryRuntimeWithModel(
   })
 }
 
+async function resolveRuntimeRoute(
+  opts: RuntimeMessageOptions,
+): Promise<ResolvedRuntimeRoute> {
+  return await resolveAutoRoute({
+    model: opts.model,
+    messages: opts.messages,
+    signal: opts.signal,
+    maxThinkingTokens: opts.maxThinkingTokens,
+  })
+}
+
+async function resolveAutoRoute({
+  model,
+  messages,
+  signal,
+  maxThinkingTokens,
+}: {
+  model: string
+  messages: ReadonlyArray<unknown>
+  signal?: AbortSignal
+  maxThinkingTokens: number
+}): Promise<ResolvedRuntimeRoute> {
+  if (!isAutoModelSetting(model)) {
+    return {
+      model,
+      thinking: maxThinkingTokens > 0 ? 'enabled' : 'disabled',
+    }
+  }
+
+  const decision = await routeTurn(
+    normalizeMessagesForAutoRouter(messages),
+    signal ?? new AbortController().signal,
+  )
+  return routeDecisionToRuntime(decision)
+}
+
+function routeDecisionToRuntime(
+  decision: AutoRouteDecision,
+): ResolvedRuntimeRoute {
+  const thinking =
+    decision.thinking === 'off' ? 'disabled' : ('enabled' as const)
+  const config = resolveDeepSeekConfig()
+  const mainModel =
+    typeof config.model === 'string' && !isAutoModelSetting(config.model)
+      ? config.model
+      : DEFAULT_AUTO_PRO_MODEL
+  const smallModel =
+    typeof config.smallModel === 'string' &&
+    !isAutoModelSetting(config.smallModel)
+      ? config.smallModel
+      : DEFAULT_DEEPSEEK_SMALL_MODEL
+  return {
+    model: decision.model === 'flash' ? smallModel : mainModel,
+    thinking,
+    reasoningEffort:
+      decision.thinking === 'off' ? undefined : decision.thinking,
+    autoRouteDecision: decision,
+  }
+}
+
 async function* streamProviderEvents(
   opts: RuntimeMessageOptions,
+  route: ResolvedRuntimeRoute,
 ): AsyncGenerator<DeepSeekProviderEvent, void, void> {
   const provider = createDeepSeekProvider()
   yield* provider.streamQuery({
     systemPrompt: opts.systemPrompt,
     messages: opts.messages,
     tools: opts.tools,
-    model: opts.model,
-    thinking: opts.maxThinkingTokens > 0 ? 'enabled' : 'disabled',
+    model: route.model,
+    thinking: route.thinking,
+    reasoningEffort: route.reasoningEffort,
     toolChoice: mapToolChoice(opts.toolChoice),
     signal: opts.signal,
   })
@@ -476,6 +556,51 @@ function mapToolChoice(
   return { type: 'function', function: { name: toolChoice.name } }
 }
 
+function normalizeMessagesForAutoRouter(
+  messages: ReadonlyArray<unknown>,
+): RuntimeMessage[] {
+  return messages
+    .map(message => {
+      const role = readMessageRole(message)
+      if (role !== 'user' && role !== 'assistant' && role !== 'system') {
+        return undefined
+      }
+      const content = readMessageContent(message)
+      return { role, content: contentToRouterContent(content) }
+    })
+    .filter((message): message is RuntimeMessage => message !== undefined)
+}
+
+function readMessageRole(message: unknown): unknown {
+  if (!isRecord(message)) return undefined
+  const nested = isRecord(message.message) ? message.message : undefined
+  return message.role ?? nested?.role ?? message.type
+}
+
+function readMessageContent(message: unknown): unknown {
+  if (!isRecord(message)) return ''
+  const nested = isRecord(message.message) ? message.message : undefined
+  return message.content ?? nested?.content ?? ''
+}
+
+function contentToRouterContent(content: unknown): string | RuntimeContentBlock[] {
+  if (typeof content === 'string' || Array.isArray(content)) {
+    return content as string | RuntimeContentBlock[]
+  }
+  return ''
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object'
+}
+
+function isAutoModelSetting(model: unknown): model is typeof AUTO_MODEL_SETTING {
+  return (
+    typeof model === 'string' &&
+    model.trim().toLowerCase() === AUTO_MODEL_SETTING
+  )
+}
+
 function assertNotAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw new RuntimeAbortError()
@@ -649,7 +774,7 @@ export function queryRuntimeModelWithStreaming(args: {
   signal: AbortSignal
   options: Record<string, unknown>
 }): ReturnType<ReturnType<typeof createDeepSeekCallModel>> {
-  const callModel = createDeepSeekCallModel()
+  const callModel = createRuntimeCallModel()
   return callModel(args) as ReturnType<ReturnType<typeof createDeepSeekCallModel>>
 }
 
@@ -661,9 +786,101 @@ function safeJsonStringify(value: unknown): string {
   }
 }
 
-// Re-export DeepSeek-native callModel adapter as the runtime entry point
-// for query.ts main hot path consumers via query/deps.ts. The DeepSeek
-// adapter already encapsulates stable-prefix hashing, cache telemetry, and
-// streaming-event normalization; runtime layer just shims it.
-// The same factory is used internally by non-streaming helpers above.
-export { createDeepSeekCallModel as createRuntimeCallModel }
+type RuntimeCallModelFactoryOptions = {
+  provider?: {
+    streamQuery(context?: Record<string, unknown>): AsyncIterable<unknown>
+  }
+  now?: () => Date
+  uuid?: () => string
+}
+
+type RuntimeCallModelArgs = {
+  messages?: ReadonlyArray<unknown>
+  systemPrompt?: unknown
+  tools?: ReadonlyArray<unknown>
+  signal?: AbortSignal
+  options?: Record<string, unknown>
+}
+
+export function createRuntimeCallModel(
+  options: RuntimeCallModelFactoryOptions = {},
+): ReturnType<typeof createDeepSeekCallModel> {
+  const defaultCallModel = createDeepSeekCallModel(options)
+
+  return (async function* queryDeepSeekModelWithStreaming(
+    callArgs: RuntimeCallModelArgs = {},
+  ): AsyncGenerator<unknown, void, void> {
+    const callOptions = isRecord(callArgs.options) ? callArgs.options : {}
+    if (!isAutoModelSetting(callOptions.model)) {
+      yield* defaultCallModel(callArgs)
+      return
+    }
+
+    const route = await resolveAutoRoute({
+      model: AUTO_MODEL_SETTING,
+      messages: callArgs.messages ?? [],
+      signal: callArgs.signal,
+      maxThinkingTokens: 0,
+    })
+    const callModel = createDeepSeekCallModel({
+      ...options,
+      provider: createAutoRouteProvider(options.provider, route),
+    })
+    const routedArgs = {
+      ...callArgs,
+      options: {
+        ...callOptions,
+        model: route.model,
+        effortValue: route.reasoningEffort,
+      },
+    }
+
+    for await (const message of callModel(routedArgs)) {
+      yield attachAutoRouteDecision(message, route.autoRouteDecision)
+    }
+  }) as ReturnType<typeof createDeepSeekCallModel>
+}
+
+function createAutoRouteProvider(
+  provider: RuntimeCallModelFactoryOptions['provider'],
+  route: ResolvedRuntimeRoute,
+): RuntimeCallModelFactoryOptions['provider'] {
+  const baseProvider = provider ?? createDeepSeekProvider()
+  return {
+    ...baseProvider,
+    streamQuery(context: Record<string, unknown> = {}) {
+      return baseProvider.streamQuery({
+        ...context,
+        thinking: route.thinking,
+        reasoningEffort: route.reasoningEffort,
+      })
+    },
+  }
+}
+
+function attachAutoRouteDecision(
+  message: unknown,
+  decision: AutoRouteDecision | undefined,
+): unknown {
+  if (!decision || !isRecord(message) || message.type !== 'stream_event') {
+    return message
+  }
+  const event = message.event
+  if (!isRecord(event) || event.type !== 'message_start') {
+    return message
+  }
+  const eventMessage = event.message
+  if (!isRecord(eventMessage)) {
+    return message
+  }
+  return {
+    ...message,
+    event: {
+      ...event,
+      message: {
+        ...eventMessage,
+        autoRouteDecision: decision,
+      },
+    },
+  }
+}

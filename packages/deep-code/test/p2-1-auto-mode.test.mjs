@@ -1,6 +1,6 @@
 import nodeTest from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -9,6 +9,11 @@ import { spawnSync } from 'node:child_process'
 const test = typeof globalThis.test === 'function' ? globalThis.test : nodeTest
 const packageRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const routerSource = join(packageRoot, 'src/services/autoMode/router.ts')
+const mainSource = join(packageRoot, 'src/main.tsx')
+const modelOptionsSource = join(packageRoot, 'src/utils/model/modelOptions.ts')
+const modelCommandSource = join(packageRoot, 'src/commands/model/model.tsx')
+const deepSeekProviderSource = join(packageRoot, 'src/services/providers/deepseek.mjs')
+const messageSendSource = join(packageRoot, 'src/services/runtime/messageSend.ts')
 
 async function loadRouterModule() {
   const outdir = await mkdtemp(join(tmpdir(), 'deepcode-auto-router-'))
@@ -265,4 +270,42 @@ test('routeTurn falls back without fetch when signal is already aborted', async 
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('CLI help advertises --model auto', async () => {
+  const source = await readFile(mainSource, 'utf8')
+
+  assert.match(source, /--model <model>/)
+  assert.match(source, /--model auto/)
+})
+
+test('/model options include auto routing', async () => {
+  const source = await readFile(modelOptionsSource, 'utf8')
+
+  assert.match(source, /value:\s*AUTO_MODEL_SETTING/)
+  assert.match(source, /label:\s*'Auto'/)
+  assert.match(source, /Route each turn/)
+})
+
+test('/model auto is accepted without remote validation', async () => {
+  const source = await readFile(modelCommandSource, 'utf8')
+
+  assert.match(source, /isAutoModelSetting\(model\)/)
+  assert.match(source, /Auto routing enabled/)
+})
+
+test('DeepSeek provider exposes a lightweight router request helper', async () => {
+  const source = await readFile(deepSeekProviderSource, 'utf8')
+
+  assert.match(source, /export async function buildDeepSeekRouterRequest/)
+  assert.match(source, /DEFAULT_DEEPSEEK_SMALL_MODEL/)
+  assert.match(source, /responseFormat:\s*\{\s*type:\s*'json_object'\s*\}/s)
+})
+
+test('runtime hook stores auto route metadata for TUI consumers', async () => {
+  const source = await readFile(messageSendSource, 'utf8')
+
+  assert.match(source, /routeTurn/)
+  assert.match(source, /autoRouteDecision/)
+  assert.match(source, /AUTO_MODEL_SETTING/)
 })
