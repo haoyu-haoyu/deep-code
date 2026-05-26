@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { isFeedbackSurveyDisabled } from 'src/services/analytics/config.js';
-import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../utils/featureFlags.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
 import { isAutoMemoryEnabled } from '../../memdir/paths.js';
 import { isPolicyAllowed } from '../../services/policyLimits/index.js';

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Text } from '../../ink.js';
-import { refreshGrowthBookAfterAuthChange } from '../../services/analytics/growthbook.js';
+import { refreshGrowthBookAfterAuthChange } from '../../utils/featureFlags.js';
 import { clearPolicyLimitsCache } from '../../services/policyLimits/index.js';
 // flushTelemetry is loaded lazily to avoid pulling in ~1.1MB of OpenTelemetry at startup
 import { clearRemoteManagedSettingsCache } from '../../services/remoteManagedSettings/index.js';
