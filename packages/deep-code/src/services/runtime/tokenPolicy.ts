@@ -23,7 +23,7 @@ function isMaxTokensCapEnabled(): boolean {
  * Requests hitting the cap get one clean retry at 64k (query.ts
  * max_output_tokens_escalate). Math.min keeps models with lower native
  * defaults (e.g. claude-3-opus at 4k) at their native value. Applied
- * before the env-var override so CLAUDE_CODE_MAX_OUTPUT_TOKENS still wins.
+ * before the env-var override so DEEPCODE_MAX_OUTPUT_TOKENS still wins.
  */
 export function getMaxOutputTokensForModel(model: string): number {
   const maxOutputTokens = getModelMaxOutputTokens(model)
@@ -33,8 +33,9 @@ export function getMaxOutputTokensForModel(model: string): number {
     : maxOutputTokens.default
 
   const result = validateBoundedIntEnvVar(
-    'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
-    process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,
+    'DEEPCODE_MAX_OUTPUT_TOKENS',
+    process.env.DEEPCODE_MAX_OUTPUT_TOKENS ||
+      process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,
     defaultTokens,
     maxOutputTokens.upperLimit,
   )
