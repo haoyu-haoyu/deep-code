@@ -179,7 +179,10 @@ export function getOwnerChain(fiber: unknown): string[] {
 let debugRepaints: boolean | undefined
 export function isDebugRepaintsEnabled(): boolean {
   if (debugRepaints === undefined) {
-    debugRepaints = isEnvTruthy(process.env.CLAUDE_CODE_DEBUG_REPAINTS)
+    debugRepaints = isEnvTruthy(
+      process.env.DEEPCODE_DEBUG_REPAINTS ||
+        process.env.CLAUDE_CODE_DEBUG_REPAINTS,
+    )
   }
   return debugRepaints
 }

@@ -567,9 +567,11 @@ test('getMaxOutputTokensForModel returns the resolved cap for a deepseek model',
   expect(Number.isFinite(value)).toBe(true)
 })
 
-test('getMaxOutputTokensForModel honors CLAUDE_CODE_MAX_OUTPUT_TOKENS env override when set', async () => {
-  const originalValue = process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
-  process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = '12345'
+test('getMaxOutputTokensForModel honors DEEPCODE_MAX_OUTPUT_TOKENS env override when set', async () => {
+  const originalValue = process.env.DEEPCODE_MAX_OUTPUT_TOKENS
+  const originalLegacyValue = process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
+  process.env.DEEPCODE_MAX_OUTPUT_TOKENS = '12345'
+  delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
   try {
     const tokenPolicy = await import('../tokenPolicy.ts')
     const value = tokenPolicy.getMaxOutputTokensForModel('deepseek-v4-pro')
@@ -578,9 +580,14 @@ test('getMaxOutputTokensForModel honors CLAUDE_CODE_MAX_OUTPUT_TOKENS env overri
     expect(value).toBeGreaterThan(0)
   } finally {
     if (originalValue === undefined) {
+      delete process.env.DEEPCODE_MAX_OUTPUT_TOKENS
+    } else {
+      process.env.DEEPCODE_MAX_OUTPUT_TOKENS = originalValue
+    }
+    if (originalLegacyValue === undefined) {
       delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
     } else {
-      process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = originalValue
+      process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = originalLegacyValue
     }
   }
 })
@@ -646,17 +653,24 @@ test('getPromptTooLongTokenGap returns undefined when not PTL or errorDetails un
 
 test('getDefaultMaxRetries returns the default retry count and honors env override', async () => {
   const { getDefaultMaxRetries } = await import('../errors.ts')
-  const originalValue = process.env.CLAUDE_CODE_MAX_RETRIES
+  const originalValue = process.env.DEEPCODE_MAX_RETRIES
+  const originalLegacyValue = process.env.CLAUDE_CODE_MAX_RETRIES
   try {
+    delete process.env.DEEPCODE_MAX_RETRIES
     delete process.env.CLAUDE_CODE_MAX_RETRIES
     expect(getDefaultMaxRetries()).toBe(10)
-    process.env.CLAUDE_CODE_MAX_RETRIES = '4'
+    process.env.DEEPCODE_MAX_RETRIES = '4'
     expect(getDefaultMaxRetries()).toBe(4)
   } finally {
     if (originalValue === undefined) {
+      delete process.env.DEEPCODE_MAX_RETRIES
+    } else {
+      process.env.DEEPCODE_MAX_RETRIES = originalValue
+    }
+    if (originalLegacyValue === undefined) {
       delete process.env.CLAUDE_CODE_MAX_RETRIES
     } else {
-      process.env.CLAUDE_CODE_MAX_RETRIES = originalValue
+      process.env.CLAUDE_CODE_MAX_RETRIES = originalLegacyValue
     }
   }
 })

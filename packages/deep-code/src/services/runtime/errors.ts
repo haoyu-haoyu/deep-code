@@ -200,8 +200,10 @@ const DEFAULT_MAX_RETRIES = 10
 const BASE_DELAY_MS = 500
 
 export function getDefaultMaxRetries(): number {
-  if (process.env.CLAUDE_CODE_MAX_RETRIES) {
-    return parseInt(process.env.CLAUDE_CODE_MAX_RETRIES, 10)
+  const maxRetries =
+    process.env.DEEPCODE_MAX_RETRIES || process.env.CLAUDE_CODE_MAX_RETRIES
+  if (maxRetries) {
+    return parseInt(maxRetries, 10)
   }
   return DEFAULT_MAX_RETRIES
 }
