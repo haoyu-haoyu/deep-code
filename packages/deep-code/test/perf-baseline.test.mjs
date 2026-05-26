@@ -84,14 +84,14 @@ test(
     // hide. Network-restricted CI may report `error` for cold-start
     // metrics; the jsonl parse metric must be `measured` everywhere.
     const expectedLabels = [
-      'cold_start_version_ms',
-      'cold_start_status_ms',
-      'jsonl_tail_100_msgs_ms',
-      'jsonl_parse_1k_msgs_ms',
-      'keystroke_to_paint_p50_ms',
-      'keystroke_to_paint_p99_ms',
-      'scroll_1k_fps',
-      'bash_first_chunk_ms',
+      'deepcode_cold_start_version_ms',
+      'deepcode_cold_start_status_ms',
+      'deepcode_jsonl_tail_100_msgs_ms',
+      'deepcode_jsonl_parse_1k_msgs_ms',
+      'deepcode_keystroke_to_paint_p50_ms',
+      'deepcode_keystroke_to_paint_p99_ms',
+      'deepcode_scroll_1k_fps',
+      'deepcode_bash_first_chunk_ms',
     ]
     const labels = report.metrics.map(m => m.label)
     for (const expected of expectedLabels) {
@@ -102,7 +102,7 @@ test(
     }
 
     const jsonlMetric = report.metrics.find(
-      m => m.label === 'jsonl_parse_1k_msgs_ms',
+      m => m.label === 'deepcode_jsonl_parse_1k_msgs_ms',
     )
     assert.equal(
       jsonlMetric.kind,

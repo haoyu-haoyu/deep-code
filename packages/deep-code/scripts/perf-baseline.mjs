@@ -6,8 +6,8 @@
  *           (or: bun scripts/perf-baseline.mjs)
  *
  * Measures the metrics we can collect without an interactive terminal:
- *   - cold_start_version_ms : `node deepcode.js version` end-to-end
- *   - resume_load_1k_msgs_ms : direct loadTranscriptFile() against fixture
+ *   - deepcode_cold_start_version_ms : `node deepcode.js version` end-to-end
+ *   - deepcode_jsonl_parse_1k_msgs_ms : direct JSONL parse against fixture
  *
  * Each metric is run N=3 times. We report min / median / max so a noisy
  * single sample doesn't fool the comparison. Variance > 10% warns.
@@ -56,29 +56,33 @@ if (!existsSync(fixturePath)) {
 
 const results = []
 
-results.push(await safeMeasure('cold_start_version_ms', repeats, async () => {
-  const t0 = performance.now()
-  await runNode(['deepcode.js', 'version'], { stdoutTo: 'ignore' })
-  return performance.now() - t0
-}))
-
-results.push(await safeMeasure('cold_start_status_ms', repeats, async () => {
-  const t0 = performance.now()
-  await runNode(['deepcode.js', 'status'], {
-    stdoutTo: 'ignore',
-    extraEnv: {
-      DEEPSEEK_API_KEY: 'sk-perf-noop',
-      // status hits a few network probes (cache-stats / GrowthBook); on
-      // offline machines we want the metric to FAIL CLEANLY (recorded as
-      // an error placeholder) rather than abort the whole baseline.
-      DEEPCODE_OFFLINE: '1',
-    },
-  })
-  return performance.now() - t0
-}))
+results.push(
+  await safeMeasure('deepcode_cold_start_version_ms', repeats, async () => {
+    const t0 = performance.now()
+    await runNode(['deepcode.js', 'version'], { stdoutTo: 'ignore' })
+    return performance.now() - t0
+  }),
+)
 
 results.push(
-  await safeMeasure('jsonl_tail_100_msgs_ms', repeats, async () => {
+  await safeMeasure('deepcode_cold_start_status_ms', repeats, async () => {
+    const t0 = performance.now()
+    await runNode(['deepcode.js', 'status'], {
+      stdoutTo: 'ignore',
+      extraEnv: {
+        DEEPSEEK_API_KEY: 'sk-perf-noop',
+        // status hits a few network probes (cache-stats / GrowthBook); on
+        // offline machines we want the metric to FAIL CLEANLY (recorded as
+        // an error placeholder) rather than abort the whole baseline.
+        DEEPCODE_OFFLINE: '1',
+      },
+    })
+    return performance.now() - t0
+  }),
+)
+
+results.push(
+  await safeMeasure('deepcode_jsonl_tail_100_msgs_ms', repeats, async () => {
     // S4 streaming-resume metric: time to extract just the last 100
     // records from a 1k-msg JSONL file by reading from the end. This
     // is what session resume needs to render a first paint quickly.
@@ -99,7 +103,7 @@ results.push(
 )
 
 results.push(
-  await safeMeasure('jsonl_parse_1k_msgs_ms', repeats, async () => {
+  await safeMeasure('deepcode_jsonl_parse_1k_msgs_ms', repeats, async () => {
     // Mirror the production parseJSONL fallback in src/utils/json.ts. Bun
     // 1.2.x doesn't ship Bun.JSONL.parseChunk in the public API yet, so
     // the production code path falls back to indexOf-based scanning over
@@ -122,10 +126,19 @@ results.push(
   }),
 )
 
-results.push(placeholder('keystroke_to_paint_p50_ms', 'pending — needs pty'))
-results.push(placeholder('keystroke_to_paint_p99_ms', 'pending — needs pty'))
-results.push(placeholder('scroll_1k_fps', 'pending — needs pty'))
-results.push(placeholder('bash_first_chunk_ms', 'pending — needs Tier S1 instrumentation'))
+results.push(
+  placeholder('deepcode_keystroke_to_paint_p50_ms', 'pending — needs pty'),
+)
+results.push(
+  placeholder('deepcode_keystroke_to_paint_p99_ms', 'pending — needs pty'),
+)
+results.push(placeholder('deepcode_scroll_1k_fps', 'pending — needs pty'))
+results.push(
+  placeholder(
+    'deepcode_bash_first_chunk_ms',
+    'pending — needs Tier S1 instrumentation',
+  ),
+)
 
 printReport(results)
 

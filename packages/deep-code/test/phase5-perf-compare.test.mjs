@@ -67,27 +67,39 @@ test('perf-compare exits 0 when metrics are unchanged', async () => {
 
 test('perf-compare exits 1 on a regression beyond threshold', async () => {
   // 100ms → 130ms = +30%, exceeds default 20% threshold.
-  const base = await writeReport([measured('cold_start_status_ms', 100)])
-  const head = await writeReport([measured('cold_start_status_ms', 130)])
+  const base = await writeReport([
+    measured('deepcode_cold_start_status_ms', 100),
+  ])
+  const head = await writeReport([
+    measured('deepcode_cold_start_status_ms', 130),
+  ])
   const result = await runCompare([`--base=${base}`, `--head=${head}`])
   assert.equal(result.code, 1, `expected exit 1, got ${result.code}`)
   assert.match(result.stderr, /1 metric\(s\) regressed/)
-  assert.match(result.stdout, /cold_start_status_ms[\s\S]*regressed/)
+  assert.match(result.stdout, /deepcode_cold_start_status_ms[\s\S]*regressed/)
 })
 
 test('perf-compare exits 0 on a regression UNDER the noise floor', async () => {
   // 1.0ms → 2.5ms = +150% but the absolute delta (1.5ms) is below
-  // the 2ms noise floor for sub-5ms metrics — no false alarm on
+  // the 4ms noise floor for sub-10ms metrics — no false alarm on
   // microsecond-scale jitter.
-  const base = await writeReport([measured('jsonl_tail_100_msgs_ms', 1.0)])
-  const head = await writeReport([measured('jsonl_tail_100_msgs_ms', 2.5)])
+  const base = await writeReport([
+    measured('deepcode_jsonl_tail_100_msgs_ms', 1.0),
+  ])
+  const head = await writeReport([
+    measured('deepcode_jsonl_tail_100_msgs_ms', 2.5),
+  ])
   const result = await runCompare([`--base=${base}`, `--head=${head}`])
   assert.equal(result.code, 0, `noise-floor metric must not fail CI`)
 })
 
 test('perf-compare reports improvements without failing', async () => {
-  const base = await writeReport([measured('cold_start_status_ms', 100)])
-  const head = await writeReport([measured('cold_start_status_ms', 70)])
+  const base = await writeReport([
+    measured('deepcode_cold_start_status_ms', 100),
+  ])
+  const head = await writeReport([
+    measured('deepcode_cold_start_status_ms', 70),
+  ])
   const result = await runCompare([`--base=${base}`, `--head=${head}`])
   assert.equal(result.code, 0)
   assert.match(result.stdout, /improved/)
@@ -95,8 +107,12 @@ test('perf-compare reports improvements without failing', async () => {
 
 test('perf-compare honours --threshold override', async () => {
   // 100 → 105 = +5%. Default threshold (20%) → ok. Override to 4% → regression.
-  const base = await writeReport([measured('cold_start_status_ms', 100)])
-  const head = await writeReport([measured('cold_start_status_ms', 105)])
+  const base = await writeReport([
+    measured('deepcode_cold_start_status_ms', 100),
+  ])
+  const head = await writeReport([
+    measured('deepcode_cold_start_status_ms', 105),
+  ])
   const lenient = await runCompare([
     `--base=${base}`,
     `--head=${head}`,
@@ -112,8 +128,12 @@ test('perf-compare honours --threshold override', async () => {
 })
 
 test('perf-compare ignores placeholder vs measured transitions', async () => {
-  const base = await writeReport([placeholder('keystroke_to_paint_p99_ms')])
-  const head = await writeReport([measured('keystroke_to_paint_p99_ms', 25)])
+  const base = await writeReport([
+    placeholder('deepcode_keystroke_to_paint_p99_ms'),
+  ])
+  const head = await writeReport([
+    measured('deepcode_keystroke_to_paint_p99_ms', 25),
+  ])
   const result = await runCompare([`--base=${base}`, `--head=${head}`])
   assert.equal(result.code, 0, 'placeholder→measured is not a regression')
   assert.match(result.stdout, /placeholder/)
@@ -168,9 +188,9 @@ test('perf-compare exit 1 when measured metric becomes error in head', async () 
   // Codex flagged: a previously measured metric becoming an error
   // (probe broke) silently passed. Now treated as a regression so a
   // broken probe blocks the merge.
-  const base = await writeReport([measured('cold_start_status_ms', 100)])
+  const base = await writeReport([measured('deepcode_cold_start_status_ms', 100)])
   const head = await writeReport([
-    errored('cold_start_status_ms', 'spawn ENOENT'),
+    errored('deepcode_cold_start_status_ms', 'spawn ENOENT'),
   ])
   const result = await runCompare([`--base=${base}`, `--head=${head}`])
   assert.equal(result.code, 1, 'measured→error must fail CI')
@@ -180,9 +200,9 @@ test('perf-compare exit 1 when measured metric becomes error in head', async () 
 
 test('perf-compare exit 0 when error metric becomes measured (probe fixed)', async () => {
   const base = await writeReport([
-    errored('cold_start_status_ms', 'previous probe broken'),
+    errored('deepcode_cold_start_status_ms', 'previous probe broken'),
   ])
-  const head = await writeReport([measured('cold_start_status_ms', 100)])
+  const head = await writeReport([measured('deepcode_cold_start_status_ms', 100)])
   const result = await runCompare([`--base=${base}`, `--head=${head}`])
   assert.equal(result.code, 0, 'probe getting fixed must not fail CI')
   assert.match(result.stdout, /probe-fixed/)

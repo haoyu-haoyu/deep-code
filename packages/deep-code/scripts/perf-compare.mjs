@@ -31,6 +31,23 @@ const noiseFloorMs = Number(args['noise-floor'] ?? '4')
 const writeJson = args.json
 const verbose = args.verbose === '1' || args.verbose === 'true'
 
+// P1.10.A: temporary mapping for legacy base.json keys without deepcode_ prefix.
+// Remove in P1.10.A.cleanup once one full perf cycle has run with new keys.
+const LEGACY_KEY_MAP = {
+  cold_start_version_ms: 'deepcode_cold_start_version_ms',
+  cold_start_status_ms: 'deepcode_cold_start_status_ms',
+  jsonl_tail_100_msgs_ms: 'deepcode_jsonl_tail_100_msgs_ms',
+  jsonl_parse_1k_msgs_ms: 'deepcode_jsonl_parse_1k_msgs_ms',
+  keystroke_to_paint_p50_ms: 'deepcode_keystroke_to_paint_p50_ms',
+  keystroke_to_paint_p99_ms: 'deepcode_keystroke_to_paint_p99_ms',
+  scroll_1k_fps: 'deepcode_scroll_1k_fps',
+  bash_first_chunk_ms: 'deepcode_bash_first_chunk_ms',
+}
+
+function normalizeLabel(label) {
+  return LEGACY_KEY_MAP[label] ?? label
+}
+
 if (!basePath || !headPath) {
   console.error(
     'Usage: perf-compare.mjs --base=<path> --head=<path> [--threshold=0.20] [--json=<path>]',
@@ -53,6 +70,15 @@ if (!Array.isArray(base.metrics) || !Array.isArray(head.metrics)) {
   console.error(`Both reports must contain a "metrics" array`)
   process.exit(2)
 }
+
+base.metrics = base.metrics.map(metric => ({
+  ...metric,
+  label: normalizeLabel(metric.label),
+}))
+head.metrics = head.metrics.map(metric => ({
+  ...metric,
+  label: normalizeLabel(metric.label),
+}))
 
 const baseByLabel = new Map(base.metrics.map(m => [m.label, m]))
 const headByLabel = new Map(head.metrics.map(m => [m.label, m]))
