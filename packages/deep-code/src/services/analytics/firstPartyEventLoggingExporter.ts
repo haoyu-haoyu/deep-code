@@ -14,7 +14,6 @@ import {
   getSessionId,
 } from '../../bootstrap/state.js'
 import { ClaudeCodeInternalEvent } from '../../types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
-import { GrowthbookExperimentEvent } from '../../types/generated/events_mono/growthbook/v1/growthbook_experiment_event.js'
 import { checkHasTrustDialogAccepted } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
@@ -41,7 +40,7 @@ function getStorageDir(): string {
 
 // API envelope - event_data is the JSON output from proto toJSON()
 type FirstPartyEventLoggingEvent = {
-  event_type: 'ClaudeCodeInternalEvent' | 'GrowthbookExperimentEvent'
+  event_type: 'ClaudeCodeInternalEvent'
   event_data: unknown
 }
 
@@ -442,7 +441,7 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
       return
     }
 
-    // Quadratic backoff (matching Statsig SDK): base * attempts²
+    // Quadratic backoff: base * attempts²
     const delay = Math.min(
       this.baseBackoffDelayMs * this.attempts * this.attempts,
       this.maxBackoffDelayMs,
@@ -524,7 +523,7 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
     if (this.isKilled()) {
       // Throw so the caller short-circuits remaining batches and queues
       // everything to disk. Zero network traffic while killed; the backoff
-      // timer keeps ticking and will resume POSTs as soon as the GrowthBook
+      // timer keeps ticking and will resume POSTs as soon as the feature flag
       // cache picks up the cleared flag.
       throw new Error('firstParty sink killswitch active')
     }
@@ -618,34 +617,6 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
 
     for (const log of logs) {
       const attributes = log.attributes || {}
-
-      // Check if this is a GrowthBook experiment event
-      if (attributes.event_type === 'GrowthbookExperimentEvent') {
-        const timestamp = this.hrTimeToDate(log.hrTime)
-        const account_uuid = attributes.account_uuid as string | undefined
-        const organization_uuid = attributes.organization_uuid as
-          | string
-          | undefined
-        events.push({
-          event_type: 'GrowthbookExperimentEvent',
-          event_data: GrowthbookExperimentEvent.toJSON({
-            event_id: attributes.event_id as string,
-            timestamp,
-            experiment_id: attributes.experiment_id as string,
-            variation_id: attributes.variation_id as number,
-            environment: attributes.environment as string,
-            user_attributes: attributes.user_attributes as string,
-            experiment_metadata: attributes.experiment_metadata as string,
-            device_id: attributes.device_id as string,
-            session_id: attributes.session_id as string,
-            auth:
-              account_uuid || organization_uuid
-                ? { account_uuid, organization_uuid }
-                : undefined,
-          }),
-        })
-        continue
-      }
 
       // Extract event name
       const eventName =
