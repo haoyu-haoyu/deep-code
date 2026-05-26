@@ -1,4 +1,4 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 
 export function getPlanModeV2AgentCount(): number {

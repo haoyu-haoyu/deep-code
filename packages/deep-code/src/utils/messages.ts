@@ -28,7 +28,7 @@ import { isAutoMemoryEnabled } from '../memdir/paths.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
   getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../services/analytics/growthbook.js'
+} from './featureFlags.js'
 import {
   getImageTooLargeErrorMessage,
   getPdfInvalidErrorMessage,
