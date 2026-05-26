@@ -49,6 +49,7 @@ jobs:
             test/a4-paste-cleanup.test.mjs \
             test/s1-tool-streaming.test.mjs \
             test/s4-streaming-resume.test.mjs \
+            test/p2-1-auto-mode.test.mjs \
             test/phase5-perf-compare.test.mjs \
             test/phase5-ci-workflow.test.mjs \
             test/a1-mcp-nonblocking.test.mjs \
