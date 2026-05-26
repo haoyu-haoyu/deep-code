@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../utils/featureFlags.js'
 import { getDeepCodeEnv, isEnvTruthy } from '../../utils/envUtils.js'
 import { isDeepCodeNativeProvider } from '../../utils/model/model.js'
 import { CLAUDE_CODE_GUIDE_AGENT } from './built-in/claudeCodeGuideAgent.js'
