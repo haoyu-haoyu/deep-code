@@ -434,9 +434,12 @@ test('model picker options are DeepSeek-native under the Deep Code provider', as
 
     expect(options.map(option => option.value)).toEqual([
       null,
+      'auto',
       'deepseek-v4-pro',
       'deepseek-v4-flash',
     ])
+    expect(visibleText).toContain('Auto')
+    expect(visibleText).toContain('Route each turn')
     expect(visibleText).toContain('DeepSeek V4 Pro')
     expect(visibleText).toContain('DeepSeek V4 Flash')
     expect(visibleText).not.toMatch(/Claude|Opus|Sonnet|Haiku/)
