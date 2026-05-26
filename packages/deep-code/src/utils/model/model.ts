@@ -189,23 +189,9 @@ export function getRuntimeMainLoopModel(params: {
   mainLoopModel: string
   exceeds200kTokens?: boolean
 }): ModelName {
-  const { permissionMode, mainLoopModel, exceeds200kTokens = false } = params
-
-  // opusplan uses Opus in plan mode without [1m] suffix.
-  if (
-    getUserSpecifiedModelSetting() === 'opusplan' &&
-    permissionMode === 'plan' &&
-    !exceeds200kTokens
-  ) {
-    return getDefaultOpusModel()
-  }
-
-  // sonnetplan by default
-  if (getUserSpecifiedModelSetting() === 'haiku' && permissionMode === 'plan') {
-    return getDefaultSonnetModel()
-  }
-
-  return mainLoopModel
+  void params.permissionMode
+  void params.exceeds200kTokens
+  return params.mainLoopModel
 }
 
 /**
@@ -329,9 +315,6 @@ export function getClaudeAiUserDefaultModelDescription(
 export function renderDefaultModelSetting(
   setting: ModelName | ModelAlias,
 ): string {
-  if (setting === 'opusplan') {
-    return 'Opus 4.6 in plan mode, else Sonnet 4.6'
-  }
   return renderModelName(parseUserSpecifiedModel(setting))
 }
 
@@ -350,9 +333,6 @@ export function isOpus1mMergeEnabled(): boolean {
 }
 
 export function renderModelSetting(setting: ModelName | ModelAlias): string {
-  if (setting === 'opusplan') {
-    return 'Opus Plan'
-  }
   if (isModelAlias(setting)) {
     return capitalize(setting)
   }
@@ -366,6 +346,12 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
   switch (model) {
+    case 'deepseek-chat':
+      return 'DeepSeek Chat'
+    case 'deepseek-coder':
+      return 'DeepSeek Coder'
+    case 'deepseek-reasoner':
+      return 'DeepSeek Reasoner'
     case getModelStrings().opus46:
       return 'Opus 4.6'
     case getModelStrings().opus46 + '[1m]':
@@ -455,8 +441,8 @@ export function getPublicModelName(model: ModelName): string {
  * This function intentionally does not support version numbers to align with
  * the model switcher.
  *
- * Supports [1m] suffix on any model alias (e.g., haiku[1m], sonnet[1m]) to enable
- * 1M context window without requiring each variant to be in MODEL_ALIASES.
+ * Preserves [1m] suffixes on custom model names while DeepSeek aliases resolve
+ * to their base native names.
  *
  * @param modelInput The model alias or name provided by the user.
  */
@@ -473,14 +459,10 @@ export function parseUserSpecifiedModel(
 
   if (isModelAlias(modelString)) {
     switch (modelString) {
-      case 'opusplan':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '') // Sonnet is default, Opus in plan mode
-      case 'sonnet':
-        return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '')
-      case 'haiku':
-        return getDefaultHaikuModel() + (has1mTag ? '[1m]' : '')
-      case 'opus':
-        return getDefaultOpusModel() + (has1mTag ? '[1m]' : '')
+      case 'deepseek-chat':
+      case 'deepseek-coder':
+      case 'deepseek-reasoner':
+        return modelString
       case 'best':
         return getBestModel()
       default:
@@ -488,7 +470,7 @@ export function parseUserSpecifiedModel(
   }
 
   // Opus 4/4.1 are no longer available on the first-party API (same as
-  // Claude.ai) — silently remap to the current Opus default. The 'opus'
+  // Claude.ai) — silently remap to the current Opus default. The 'deepseek-reasoner'
   // alias already resolves to 4.6, so the only users on these explicit
   // strings pinned them in settings/env/--model/SDK before 4.5 launched.
   // 3P providers may not yet have 4.6 capacity, so pass through unchanged.
@@ -527,16 +509,15 @@ export function parseUserSpecifiedModel(
  * Resolves a skill's `model:` frontmatter against the current model, carrying
  * the `[1m]` suffix over when the target family supports it.
  *
- * A skill author writing `model: opus` means "use opus-class reasoning" — not
- * "downgrade to 200K". If the user is on opus[1m] at 230K tokens and invokes a
- * skill with `model: opus`, passing the bare alias through drops the effective
+ * A skill author writing `model: deepseek-reasoner` means "use the reasoning
+ * model" — not "downgrade to 200K". If the user is on a 1M model at 230K
+ * tokens and invokes a skill with a matching model, passing the bare alias
+ * through drops the effective
  * context window from 1M to 200K, which trips autocompact at 23% apparent usage
  * and surfaces "Context limit reached" even though nothing overflowed.
  *
- * We only carry [1m] when the target actually supports it (sonnet/opus). A skill
- * with `model: haiku` on a 1M session still downgrades — haiku has no 1M variant,
- * so the autocompact that follows is correct. Skills that already specify [1m]
- * are left untouched.
+ * We only carry [1m] when the target actually supports it. Skills that already
+ * specify [1m] are left untouched.
  */
 export function resolveSkillModelOverride(
   skillModel: string,
@@ -546,7 +527,7 @@ export function resolveSkillModelOverride(
     return skillModel
   }
   // modelSupports1M matches on canonical IDs ('claude-opus-4-6', 'claude-sonnet-4');
-  // a bare 'opus' alias falls through getCanonicalName unmatched. Resolve first.
+  // a bare 'deepseek-reasoner' alias falls through getCanonicalName unmatched. Resolve first.
   if (modelSupports1M(parseUserSpecifiedModel(skillModel))) {
     return skillModel + '[1m]'
   }

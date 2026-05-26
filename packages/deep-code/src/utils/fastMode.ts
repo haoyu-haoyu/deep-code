@@ -16,7 +16,6 @@ import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import {
   getDefaultMainLoopModelSetting,
-  isOpus1mMergeEnabled,
   type ModelSetting,
   parseUserSpecifiedModel,
 } from './model/model.js'
@@ -136,7 +135,7 @@ export function getFastModeUnavailableReason(): string | null {
 export const FAST_MODE_MODEL_DISPLAY = 'Opus 4.6'
 
 export function getFastModeModel(): string {
-  return 'opus' + (isOpus1mMergeEnabled() ? '[1m]' : '')
+  return 'deepseek-reasoner'
 }
 
 export function getInitialFastModeSetting(model: ModelSetting): boolean {
@@ -165,7 +164,11 @@ export function isFastModeSupportedByModel(
   }
   const model = modelSetting ?? getDefaultMainLoopModelSetting()
   const parsedModel = parseUserSpecifiedModel(model)
-  return parsedModel.toLowerCase().includes('opus-4-6')
+  const normalized = parsedModel.toLowerCase()
+  return (
+    normalized.includes('deepseek-reasoner') ||
+    normalized.includes('opus-4-6')
+  )
 }
 
 // --- Fast mode runtime state ---

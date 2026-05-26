@@ -28,7 +28,7 @@ export function getDefaultSubagentModel(): string {
  * Get the effective model string for an agent.
  *
  * For Bedrock, if the parent model uses a cross-region inference prefix (e.g., "eu.", "us."),
- * that prefix is inherited by subagents using alias models (e.g., "sonnet", "haiku", "opus").
+ * that prefix is inherited by subagents using alias models (e.g., "deepseek-chat", "deepseek-coder", "deepseek-reasoner").
  * This ensures subagents use the same region as the parent, which is necessary when
  * IAM permissions are scoped to specific cross-region inference profiles.
  */
@@ -77,7 +77,7 @@ export function getAgentModel(
 
   if (agentModelWithExp === 'inherit') {
     // Apply runtime model resolution for inherit to get the effective model
-    // This ensures agents using 'inherit' get opusplan→Opus resolution in plan mode
+    // This ensures agents using 'inherit' follow the main conversation model.
     return getRuntimeMainLoopModel({
       permissionMode: permissionMode ?? 'default',
       mainLoopModel: parentModel,
@@ -93,7 +93,7 @@ export function getAgentModel(
 }
 
 /**
- * Check if a bare family alias (opus/sonnet/haiku) matches the parent model's
+ * Check if a bare family alias matches the parent model's
  * tier. When it does, the subagent inherits the parent's exact model string
  * instead of resolving the alias to a provider default.
  *
@@ -102,18 +102,18 @@ export function getAgentModel(
  * getDefaultOpusModel() returns for 3P.
  * See https://github.com/anthropics/claude-code/issues/30815.
  *
- * Only bare family aliases match. `opus[1m]`, `best`, `opusplan` fall through
+ * Only bare family aliases match. `best` falls through
  * since they carry semantics beyond "same tier as parent".
  */
 function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
   const canonical = getCanonicalName(parentModel)
   switch (alias.toLowerCase()) {
-    case 'opus':
-      return canonical.includes('opus')
-    case 'sonnet':
-      return canonical.includes('sonnet')
-    case 'haiku':
-      return canonical.includes('haiku')
+    case 'deepseek-chat':
+      return canonical.includes('deepseek-chat')
+    case 'deepseek-coder':
+      return canonical.includes('deepseek-coder')
+    case 'deepseek-reasoner':
+      return canonical.includes('deepseek-reasoner')
     default:
       return false
   }
@@ -131,19 +131,19 @@ export function getAgentModelDisplay(model: string | undefined): string {
 export function getAgentModelOptions(): AgentModelOption[] {
   return [
     {
-      value: 'sonnet',
-      label: 'Sonnet',
+      value: 'deepseek-chat',
+      label: 'DeepSeek Chat',
       description: 'Balanced performance - best for most agents',
     },
     {
-      value: 'opus',
-      label: 'Opus',
-      description: 'Most capable for complex reasoning tasks',
+      value: 'deepseek-coder',
+      label: 'DeepSeek Coder',
+      description: 'Code-focused model for implementation tasks',
     },
     {
-      value: 'haiku',
-      label: 'Haiku',
-      description: 'Fast and efficient for simple tasks',
+      value: 'deepseek-reasoner',
+      label: 'DeepSeek Reasoner',
+      description: 'Reasoning-focused model for complex tasks',
     },
     {
       value: 'inherit',

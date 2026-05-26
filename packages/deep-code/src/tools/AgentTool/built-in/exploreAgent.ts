@@ -73,9 +73,9 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   ],
   source: 'built-in',
   baseDir: 'built-in',
-  // Ants get inherit to use the main agent's model; external users get haiku for speed
+  // Ants get inherit to use the main agent's model; external users get DeepSeek Chat for speed
   // Note: For ants, getAgentModel() checks the tengu_explore_agent feature flag at runtime
-  model: process.env.USER_TYPE === 'ant' ? 'inherit' : 'haiku',
+  model: process.env.USER_TYPE === 'ant' ? 'inherit' : 'deepseek-chat',
   // Explore is a fast read-only search agent — it doesn't need commit/PR/lint
   // rules from DEEPCODE.md/legacy CLAUDE.md. The main agent has full context and interprets results.
   omitClaudeMd: true,

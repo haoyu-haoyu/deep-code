@@ -22,7 +22,6 @@ import {
   isVSCodeInstalled,
   isWindsurfInstalled,
 } from '../../utils/ide.js'
-import { getUserSpecifiedModelSetting } from '../../utils/model/model.js'
 import { getPlatform } from '../../utils/platform.js'
 import { isPluginInstalled } from '../../utils/plugins/installedPluginsManager.js'
 import { loadKnownMarketplacesConfigSafe } from '../../utils/plugins/marketplaceManager.js'
@@ -413,23 +412,6 @@ const externalTips: Tip[] = [
       '/mobile to use Deep Code from the Deep Code app on your phone',
     cooldownSessions: 15,
     isRelevant: async () => true,
-  },
-  {
-    id: 'opusplan-mode-reminder',
-    content: async () =>
-      `Your default model setting is Plan Mode. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to activate Plan Mode with DeepSeek reasoning.`,
-    cooldownSessions: 2,
-    async isRelevant() {
-      if (process.env.USER_TYPE === 'ant') return false
-      const config = getGlobalConfig()
-      const modelSetting = getUserSpecifiedModelSetting()
-      const hasOpusPlanMode = modelSetting === 'opusplan'
-      // Show reminder if they have Opus Plan Mode and haven't used plan mode recently (3+ days)
-      const daysSinceLastUse = config.lastPlanModeUse
-        ? (Date.now() - config.lastPlanModeUse) / (1000 * 60 * 60 * 24)
-        : Infinity
-      return hasOpusPlanMode && daysSinceLastUse > 3
-    },
   },
   {
     id: 'frontend-design-plugin',

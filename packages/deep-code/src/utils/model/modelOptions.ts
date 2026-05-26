@@ -79,7 +79,7 @@ function getCustomSonnetOption(): ModelOption | undefined {
   if (is3P && customSonnetModel) {
     const is1m = has1mContext(customSonnetModel)
     return {
-      value: 'sonnet',
+      value: customSonnetModel,
       label:
         process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME ?? customSonnetModel,
       description:
@@ -92,6 +92,9 @@ function getCustomSonnetOption(): ModelOption | undefined {
 
 function getDeepSeekModelLabel(model: string): string {
   const normalized = model.toLowerCase()
+  if (normalized === 'deepseek-chat') return 'DeepSeek Chat'
+  if (normalized === 'deepseek-coder') return 'DeepSeek Coder'
+  if (normalized === 'deepseek-reasoner') return 'DeepSeek Reasoner'
   if (normalized === 'deepseek-v4-pro') return 'DeepSeek V4 Pro'
   if (normalized === 'deepseek-v4-flash') return 'DeepSeek V4 Flash'
   return model
@@ -99,6 +102,15 @@ function getDeepSeekModelLabel(model: string): string {
 
 function getDeepSeekModelDescription(model: string): string {
   const normalized = model.toLowerCase()
+  if (normalized === 'deepseek-chat') {
+    return 'Balanced DeepSeek model for everyday chat and coding tasks'
+  }
+  if (normalized === 'deepseek-coder') {
+    return 'Code-focused DeepSeek model for implementation work'
+  }
+  if (normalized === 'deepseek-reasoner') {
+    return 'Reasoning-focused DeepSeek model for complex tasks'
+  }
   if (normalized === 'deepseek-v4-pro') {
     return '1M context · strongest Deep Code model for complex engineering work'
   }
@@ -131,7 +143,7 @@ function getDeepSeekNativeModelOptions(): ModelOption[] {
 function getSonnet46Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().sonnet46 : 'sonnet',
+    value: is3P ? getModelStrings().sonnet46 : 'deepseek-chat',
     label: 'Sonnet',
     description: `Sonnet 4.6 · Best for everyday tasks${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
     descriptionForModel:
@@ -146,7 +158,7 @@ function getCustomOpusOption(): ModelOption | undefined {
   if (is3P && customOpusModel) {
     const is1m = has1mContext(customOpusModel)
     return {
-      value: 'opus',
+      value: customOpusModel,
       label: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME ?? customOpusModel,
       description:
         process.env.ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION ??
@@ -158,7 +170,7 @@ function getCustomOpusOption(): ModelOption | undefined {
 
 function getOpus41Option(): ModelOption {
   return {
-    value: 'opus',
+    value: 'deepseek-reasoner',
     label: 'Opus 4.1',
     description: `Opus 4.1 · Legacy`,
     descriptionForModel: 'Opus 4.1 - legacy version',
@@ -168,7 +180,7 @@ function getOpus41Option(): ModelOption {
 function getOpus46Option(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().opus46 : 'opus',
+    value: is3P ? getModelStrings().opus46 : 'deepseek-reasoner',
     label: 'Opus',
     description: `Opus 4.6 · Most capable for complex work${getOpus46PricingSuffix(fastMode)}`,
     descriptionForModel: 'Opus 4.6 - most capable for complex work',
@@ -178,7 +190,7 @@ function getOpus46Option(fastMode = false): ModelOption {
 export function getSonnet46_1MOption(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().sonnet46 + '[1m]' : 'sonnet[1m]',
+    value: is3P ? getModelStrings().sonnet46 + '[1m]' : 'deepseek-chat',
     label: 'Sonnet (1M context)',
     description: `Sonnet 4.6 for long sessions${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
     descriptionForModel:
@@ -189,7 +201,7 @@ export function getSonnet46_1MOption(): ModelOption {
 export function getOpus46_1MOption(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().opus46 + '[1m]' : 'opus[1m]',
+    value: is3P ? getModelStrings().opus46 + '[1m]' : 'deepseek-reasoner',
     label: 'Opus (1M context)',
     description: `Opus 4.6 for long sessions${getOpus46PricingSuffix(fastMode)}`,
     descriptionForModel:
@@ -203,7 +215,7 @@ function getCustomHaikuOption(): ModelOption | undefined {
   // When a 3P user has a custom haiku model string, show it directly
   if (is3P && customHaikuModel) {
     return {
-      value: 'haiku',
+      value: customHaikuModel,
       label: process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME ?? customHaikuModel,
       description:
         process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION ??
@@ -216,7 +228,7 @@ function getCustomHaikuOption(): ModelOption | undefined {
 function getHaiku45Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: 'haiku',
+    value: 'deepseek-chat',
     label: 'Haiku',
     description: `Haiku 4.5 · Fastest for quick answers${is3P ? '' : ` · ${formatModelPricing(COST_HAIKU_45)}`}`,
     descriptionForModel:
@@ -227,7 +239,7 @@ function getHaiku45Option(): ModelOption {
 function getHaiku35Option(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: 'haiku',
+    value: 'deepseek-chat',
     label: 'Haiku',
     description: `Haiku 3.5 for simple tasks${is3P ? '' : ` · ${formatModelPricing(COST_HAIKU_35)}`}`,
     descriptionForModel:
@@ -243,19 +255,11 @@ function getHaikuOption(): ModelOption {
     : getHaiku35Option()
 }
 
-function getMaxOpusOption(fastMode = false): ModelOption {
-  return {
-    value: 'opus',
-    label: 'Opus',
-    description: `Opus 4.6 · Most capable for complex work${fastMode ? getOpus46PricingSuffix(true) : ''}`,
-  }
-}
-
 export function getMaxSonnet46_1MOption(): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   const billingInfo = ''
   return {
-    value: 'sonnet[1m]',
+    value: 'deepseek-chat',
     label: 'Sonnet (1M context)',
     description: `Sonnet 4.6 with 1M context${billingInfo}${is3P ? '' : ` · ${formatModelPricing(COST_TIER_3_15)}`}`,
   }
@@ -264,7 +268,7 @@ export function getMaxSonnet46_1MOption(): ModelOption {
 export function getMaxOpus46_1MOption(fastMode = false): ModelOption {
   const billingInfo = ''
   return {
-    value: 'opus[1m]',
+    value: 'deepseek-reasoner',
     label: 'Opus (1M context)',
     description: `Opus 4.6 with 1M context${billingInfo}${getOpus46PricingSuffix(fastMode)}`,
   }
@@ -273,19 +277,11 @@ export function getMaxOpus46_1MOption(fastMode = false): ModelOption {
 function getMergedOpus1MOption(fastMode = false): ModelOption {
   const is3P = getAPIProvider() !== 'firstParty'
   return {
-    value: is3P ? getModelStrings().opus46 + '[1m]' : 'opus[1m]',
+    value: is3P ? getModelStrings().opus46 + '[1m]' : 'deepseek-reasoner',
     label: 'Opus (1M context)',
     description: `Opus 4.6 with 1M context · Most capable for complex work${!is3P && fastMode ? getOpus46PricingSuffix(fastMode) : ''}`,
     descriptionForModel:
       'Opus 4.6 with 1M context - most capable for complex work',
-  }
-}
-
-function getOpusPlanOption(): ModelOption {
-  return {
-    value: 'opusplan',
-    label: 'Opus Plan Mode',
-    description: 'Use Opus 4.6 in plan mode, Sonnet 4.6 otherwise',
   }
 }
 
@@ -505,18 +501,6 @@ export function getModelOptions(fastMode = false): ModelOption[] {
   }
   if (customModel === null || options.some(opt => opt.value === customModel)) {
     return filterModelOptionsByAllowlist(options)
-  } else if (customModel === 'opusplan') {
-    return filterModelOptionsByAllowlist([...options, getOpusPlanOption()])
-  } else if (customModel === 'opus' && getAPIProvider() === 'firstParty') {
-    return filterModelOptionsByAllowlist([
-      ...options,
-      getMaxOpusOption(fastMode),
-    ])
-  } else if (customModel === 'opus[1m]' && getAPIProvider() === 'firstParty') {
-    return filterModelOptionsByAllowlist([
-      ...options,
-      getMergedOpus1MOption(fastMode),
-    ])
   } else {
     // Try to show a human-readable label for known Anthropic models, with an
     // upgrade hint if the alias now resolves to a newer version.

@@ -122,9 +122,9 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
   }
   // Exclude any other known legacy models (allowlist above catches 4-6 variants first)
   if (
-    canonical.includes('opus') ||
-    canonical.includes('sonnet') ||
-    canonical.includes('haiku')
+    canonical.includes('claude-opus') ||
+    canonical.includes('claude-sonnet') ||
+    canonical.includes('claude-haiku')
   ) {
     return false
   }
