@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-26 (Phase 1 complete at v0.2.0-pure)
+Last updated: 2026-05-27 (P2.1 auto mode router done)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | done | P1.12 Phase 1 sign-off done (v0.2.0-pure tagged) | — (Phase 2 next) | no |
+| A: Pure-DeepSeek | P2.1 | P2.1 auto mode router done (#186 + #187 + #188) | P2.2.scan multi-provider support | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -146,7 +146,15 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P1.11 residual cleanup plus model alias swap | done | #179 + #180 + #181 + #182 | scan `679d784` + A+D `832f17b` + B+C `0d9c1d` + Z `eb22349` | Path C executed per P1_11_DESIGN.md; 4 PRs on 2026-05-26: scan #179 (P1_11_DESIGN.md inventory + Path C recommendation), A+D #180 (sdk-tools.d.ts model union hard cutover from sonnet/opus/haiku to deepseek-chat/deepseek-coder/deepseek-reasoner, src alias references migrated, 4 legacy model migration files deleted, main.tsx migration imports/calls dropped, SDK type check rejects `"sonnet"` and accepts `"deepseek-reasoner"`), B+C #181 (DEEPCODE_* env keys primary with CLAUDE_CODE_* developer-facing fallback chain retained; .deepcode/ + DEEPCODE.md primary runtime paths with named legacy .claude/ + CLAUDE.md fallback reads retained; .claude security checks preserved), Z #182 (dist refresh, 415365 bundle lines, idempotency SHA-256 `6bca73d3d871b48dcaea32ad9aa8ae02f0841d8b4d254a4a2a5bbc86b886769a`). P1.11.E allowlist acknowledged inline for P1.12: audit/anthropic-product-refs.md kept as historical fixture; audit/anthropic-imports.json kept as historical inventory; generated proto residue kept; legacy fallback .claude/ + CLAUDE.md reads kept under named legacy paths; CLAUDE_CODE_* dual-name fallback chain kept for developer-facing keys; remaining broad Claude/Anthropic comment polish tracked as P1.11.F optional and not blocking P1.12 sign-off. P1.12 readiness checklist: src/ alias hard cutover verified; src/ 0 SDK imports from P1.8; src/ 0 growthbook imports from P1.10; voice mode runtime fully gone from P1.7; allowlist documented for legacy fallback + audit fixtures. Full suite 69/69 pass throughout. |
 | P1.12 Phase 1 sign-off PR | done | #184 | — | Per PURE_DEEPSEEK_PLAN.md L792-806: TODO.md created with Phase 1 — Anthropic Excision section listing all P1.x phases + milestones; audit/README.md updated with Phase 1 done status; tag v0.2.0-pure applied post-merge. Phase 1 total ~70 PRs spanning P1.1-P1.11; final src/ 0 SDK imports, 0 growthbook imports, 0 voice runtime, 0 model alias literals, 0 teleport infrastructure; dist 415365 lines; bun test 69/69 throughout. |
 
-### Phases 2-5
+### Phase 2: DeepSeek-TUI feature adoption
+
+| Task | Status | PR | Commit | Notes |
+|---|---|---|---|---|
+| P2.scan roadmap | done | #185 | `d7d348e` | P2_ROADMAP.md created from PURE_DEEPSEEK_PLAN.md Phase 2 inventory; recommended P2.1 Auto mode router as the first source feature. |
+| P2.1 Auto mode router | done | #186 + #187 + #188 | a `11dd906` + b `ddec491` + c (this PR) | P2.1.a created services/autoMode/router.ts with deterministic heuristic fallback, ROUTER_SYSTEM prompt, JSON schema validation, timeout/abort fallback, node:test fixture, and CI registration; P2.1.b added --model auto, /model auto, model option plumbing, DeepSeek router-call helper, and per-turn autoRouteDecision metadata in the runtime stream; P2.1.c displays footer route state as `auto -> flash/off` or `auto -> pro/max`, hardens abort/concurrent route tests, and makes sub-agents inherit auto unless explicitly assigned. Full suite 69/69 plus P2.1 node:test coverage pass locally. |
+| P2.2 Multi-provider support scan | ready | — | — | Next: design `--provider {deepseek,ollama,vllm,openai-compatible}` and provider abstraction entry path per P2_ROADMAP.md. |
+
+### Phases 3-5
 
 Not decomposed yet; refer to `PURE_DEEPSEEK_PLAN.md` and expand here on
 phase entry.
