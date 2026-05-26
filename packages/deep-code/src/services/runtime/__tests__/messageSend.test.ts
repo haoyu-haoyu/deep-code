@@ -56,7 +56,7 @@ const mockGrowthBookFeatureRead = () => ({
   },
 })
 
-mock.module('../../analytics/growthbook.js', mockGrowthBookFeatureRead)
+mock.module('../../../utils/featureFlags.js', mockGrowthBookFeatureRead)
 
 const mockContextPolicy = () => ({
   CAPPED_DEFAULT_MAX_TOKENS: 8_000,

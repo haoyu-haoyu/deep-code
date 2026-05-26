@@ -21,7 +21,7 @@ import { extractDiscoveredToolNames } from '../../utils/toolSearch.js'
 import {
   getDynamicConfig_BLOCKS_ON_INIT,
   getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../analytics/growthbook.js'
+} from '../../utils/featureFlags.js'
 import { logEvent } from '../analytics/index.js'
 import {
   isSessionMemoryEmpty,

@@ -233,7 +233,7 @@ export function getGlobalConfig() {
   return globalThis.__deepcodeTuiHarness?.globalConfig ?? {}
 }
 `)
-registerSourceStub('services/analytics/growthbook', `
+registerSourceStub('utils/featureFlags', `
 export function getFeatureValue_CACHED_MAY_BE_STALE(_key, fallback) {
   return fallback
 }
