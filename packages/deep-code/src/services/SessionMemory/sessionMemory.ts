@@ -71,7 +71,7 @@ import { errorMessage, getErrnoCode } from '../../utils/errors.js'
 import {
   getDynamicConfig_CACHED_MAY_BE_STALE,
   getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../analytics/growthbook.js'
+} from '../../utils/featureFlags.js'
 
 /**
  * Check if session memory feature is enabled.
