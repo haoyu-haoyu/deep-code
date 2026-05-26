@@ -26,14 +26,14 @@ import { jsonStringify } from './slowOperations.js'
 // eslint-disable-next-line custom-rules/no-process-env-top-level
 const DETAILED_PROFILING = isEnvTruthy(process.env.CLAUDE_CODE_PROFILE_STARTUP)
 
-// Sampling for Statsig logging: 100% ant, 5% external
+// Sampling for 1P telemetry logging: 100% ant, 5% external
 // Decision made once at module load - non-sampled users pay no profiling cost
 const STATSIG_SAMPLE_RATE = 0.05
 // eslint-disable-next-line custom-rules/no-process-env-top-level
 const STATSIG_LOGGING_SAMPLED =
   process.env.USER_TYPE === 'ant' || Math.random() < STATSIG_SAMPLE_RATE
 
-// Enable profiling if either detailed mode OR sampled for Statsig
+// Enable profiling if either detailed mode OR sampled for 1P telemetry
 const SHOULD_PROFILE = DETAILED_PROFILING || STATSIG_LOGGING_SAMPLED
 
 // Use a unique prefix to avoid conflicts with other profiler marks
@@ -97,7 +97,7 @@ export function headlessProfilerCheckpoint(name: string): void {
 }
 
 /**
- * Log headless latency metrics for the current turn to Statsig.
+ * Log headless latency metrics for the current turn to 1P telemetry.
  * Call this at the end of each turn (before processing next user message).
  */
 export function logHeadlessProfilerTurn(): void {
@@ -161,7 +161,7 @@ export function logHeadlessProfilerTurn(): void {
     metadata.entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT
   }
 
-  // Log to Statsig if sampled
+  // Log to 1P telemetry if sampled
   if (STATSIG_LOGGING_SAMPLED) {
     logEvent(
       'tengu_headless_latency',

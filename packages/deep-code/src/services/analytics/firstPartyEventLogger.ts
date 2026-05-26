@@ -19,7 +19,6 @@ import { profileCheckpoint } from '../../utils/startupProfiler.js'
 import { getCoreUserData } from '../../utils/user.js'
 import { isAnalyticsDisabled } from './config.js'
 import { FirstPartyEventLoggingExporter } from './firstPartyEventLoggingExporter.js'
-import type { GrowthBookUserAttributes } from '../../utils/featureFlags.js'
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../utils/featureFlags.js'
 import { getEventMetadata } from './metadata.js'
 import { isSinkKilled } from './sinkKillswitch.js'
@@ -37,7 +36,7 @@ export type EventSamplingConfig = {
 
 const EVENT_SAMPLING_CONFIG_NAME = 'tengu_event_sampling_config'
 /**
- * Get the event sampling configuration from GrowthBook.
+ * Get the event sampling configuration from the feature flag config.
  * Uses cached value if available, updates cache in background.
  */
 export function getEventSamplingConfig(): EventSamplingConfig {
@@ -136,7 +135,7 @@ export async function shutdown1PEventLogging(): Promise<void> {
  * - Non-essential traffic disabled
  *
  * Note: Unlike BigQuery metrics, event logging does NOT check organization-level
- * metrics opt-out via API. It follows the same pattern as Statsig event logging.
+ * metrics opt-out via API. It follows the same pattern as internal event logging.
  */
 export function is1PEventLoggingEnabled(): boolean {
   // Respect standard analytics opt-outs
@@ -148,7 +147,7 @@ export function is1PEventLoggingEnabled(): boolean {
  * Events are batched and exported to /api/event_logging/batch
  *
  * This enriches the event with core metadata (model, session, env context, etc.)
- * at log time, similar to logEventToStatsig.
+ * at log time, similar to the previous analytics path.
  *
  * @param eventName - Name of the event (e.g., 'tengu_api_query')
  * @param metadata - Additional metadata for the event (intentionally no strings, to avoid accidentally logging code/filepaths)
@@ -159,7 +158,7 @@ async function logEventTo1PAsync(
   metadata: Record<string, number | boolean | undefined> = {},
 ): Promise<void> {
   try {
-    // Enrich with core metadata at log time (similar to Statsig pattern)
+    // Enrich with core metadata at log time.
     const coreMetadata = await getEventMetadata({
       model: metadata.model,
       betas: metadata.betas,
@@ -229,74 +228,6 @@ export function logEventTo1P(
   void logEventTo1PAsync(firstPartyEventLogger, eventName, metadata)
 }
 
-/**
- * GrowthBook experiment event data for logging
- */
-export type GrowthBookExperimentData = {
-  experimentId: string
-  variationId: number
-  userAttributes?: GrowthBookUserAttributes
-  experimentMetadata?: Record<string, unknown>
-}
-
-// api.anthropic.com only serves the "production" GrowthBook environment
-// (see starling/starling/cli/cli.py DEFAULT_ENVIRONMENTS). Staging and
-// development environments are not exported to the prod API.
-function getEnvironmentForGrowthBook(): string {
-  return 'production'
-}
-
-/**
- * Log a GrowthBook experiment assignment event to 1P.
- * Events are batched and exported to /api/event_logging/batch
- *
- * @param data - GrowthBook experiment assignment data
- */
-export function logGrowthBookExperimentTo1P(
-  data: GrowthBookExperimentData,
-): void {
-  if (!is1PEventLoggingEnabled()) {
-    return
-  }
-
-  if (!firstPartyEventLogger || isSinkKilled('firstParty')) {
-    return
-  }
-
-  const userId = getOrCreateUserID()
-  const { accountUuid, organizationUuid } = getCoreUserData(true)
-
-  // Build attributes for GrowthbookExperimentEvent
-  const attributes = {
-    event_type: 'GrowthbookExperimentEvent',
-    event_id: randomUUID(),
-    experiment_id: data.experimentId,
-    variation_id: data.variationId,
-    ...(userId && { device_id: userId }),
-    ...(accountUuid && { account_uuid: accountUuid }),
-    ...(organizationUuid && { organization_uuid: organizationUuid }),
-    ...(data.userAttributes && {
-      session_id: data.userAttributes.sessionId,
-      user_attributes: jsonStringify(data.userAttributes),
-    }),
-    ...(data.experimentMetadata && {
-      experiment_metadata: jsonStringify(data.experimentMetadata),
-    }),
-    environment: getEnvironmentForGrowthBook(),
-  }
-
-  if (process.env.USER_TYPE === 'ant') {
-    logForDebugging(
-      `[ANT-ONLY] 1P GrowthBook experiment: ${data.experimentId} variation=${data.variationId}`,
-    )
-  }
-
-  firstPartyEventLogger.emit({
-    body: 'growthbook_experiment',
-    attributes,
-  })
-}
-
 const DEFAULT_LOGS_EXPORT_INTERVAL_MS = 10000
 const DEFAULT_MAX_EXPORT_BATCH_SIZE = 200
 const DEFAULT_MAX_QUEUE_SIZE = 8192
@@ -320,11 +251,11 @@ export function initialize1PEventLogging(): void {
     return
   }
 
-  // Fetch batch processor configuration from GrowthBook dynamic config
+  // Fetch batch processor configuration from the feature flag config
   // Uses cached value if available, refreshes in background
   const batchConfig = getBatchConfig()
   lastBatchConfig = batchConfig
-  profileCheckpoint('1p_event_after_growthbook_config')
+  profileCheckpoint('1p_event_after_feature_flag_config')
 
   const scheduledDelayMillis =
     batchConfig.scheduledDelayMillis ||
@@ -388,10 +319,10 @@ export function initialize1PEventLogging(): void {
   )
 }
 
-/**
- * Rebuild the 1P event logging pipeline if the batch config changed.
+ /**
+  * Rebuild the 1P event logging pipeline if the batch config changed.
  * Register this with onGrowthBookRefresh so long-running sessions pick up
- * changes to batch size, delay, endpoint, etc.
+  * changes to batch size, delay, endpoint, etc.
  *
  * Event-loss safety:
  * 1. Null the logger first — concurrent logEventTo1P() calls hit the
@@ -435,7 +366,7 @@ export async function reinitialize1PEventLoggingIfConfigChanged(): Promise<void>
   try {
     initialize1PEventLogging()
   } catch (e) {
-    // Restore so the next GrowthBook refresh can retry. oldProvider was
+    // Restore so the next feature flag refresh can retry. oldProvider was
     // only forceFlush()'d, not shut down — it's still functional. Without
     // this, both stay null and the !firstPartyEventLoggerProvider gate at
     // the top makes recovery impossible.
