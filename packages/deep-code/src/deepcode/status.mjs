@@ -22,6 +22,12 @@ import {
   getLastDeepCodeHarnessRuntimeDecision,
 } from './harness-runtime.mjs'
 import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
+import { resolveProviderConfig } from '../services/providers/provider-config.mjs'
+import { resolveModelProvider } from '../services/providers/registry.mjs'
+import {
+  createProviderCapabilitySnapshot,
+  providerSupports,
+} from './provider-capabilities.mjs'
 
 export async function buildDeepCodeStatusReport({
   env = process.env,
@@ -32,6 +38,15 @@ export async function buildDeepCodeStatusReport({
   cacheStatsPath,
 } = {}) {
   const config = resolveDeepSeekConfig({ env, cwd })
+  const providerConfig = resolveProviderConfig({ env })
+  const modelProvider = resolveModelProvider({
+    env,
+    name: providerConfig.provider,
+    baseUrl: providerConfig.baseUrl,
+    apiKey: providerConfig.apiKey,
+    defaultModel: providerConfig.defaultModel,
+    defaults: { env, cwd },
+  })
   const harnessConfig = resolveDeepCodeHarnessConfig(env)
   const contextPolicy = resolveDeepCodeContextPolicy({
     env,
@@ -45,7 +60,8 @@ export async function buildDeepCodeStatusReport({
     cacheStats ?? await loadDeepSeekCacheStats(resolvedCacheStatsPath)
 
   return {
-    provider: 'DeepSeek native',
+    provider: modelProvider.name === 'deepseek' ? 'DeepSeek native' : modelProvider.name,
+    providerCapabilities: createProviderCapabilitySnapshot(modelProvider),
     config,
     contextPolicy,
     harnessConfig,
@@ -65,25 +81,35 @@ export function formatDeepCodeStatus(report) {
     `Model: ${report.config.model}`,
     `Small model: ${report.config.smallModel}`,
     formatDeepCodeContextPolicy(report.contextPolicy),
-    `Thinking: ${report.config.thinking}`,
-    `Reasoning effort: ${report.config.reasoningEffort}`,
+    supportsReportCapability(report, 'extended_thinking')
+      ? `Thinking: ${report.config.thinking}`
+      : '',
+    supportsReportCapability(report, 'reasoning_effort')
+      ? `Reasoning effort: ${report.config.reasoningEffort}`
+      : '',
     formatDeepCodeHarnessStatus(report.harnessConfig),
     report.harnessRuntimeDecision
       ? formatDeepCodeHarnessRuntimeDecision(report.harnessRuntimeDecision)
       : 'Harness runtime: unavailable',
     formatDeepCodeHarnessAgentLifecycle(report.harnessAgentLifecycle),
-    `Cache user_id: ${report.config.cacheUserId}`,
-    formatDeepCodePrefixStatus(report.stablePrefix),
+    supportsReportCapability(report, 'user_id')
+      ? `Cache user_id: ${report.config.cacheUserId}`
+      : '',
+    supportsReportCapability(report, 'stable_prefix_cache')
+      ? formatDeepCodePrefixStatus(report.stablePrefix)
+      : '',
     `API key: ${report.apiKeyConfigured ? 'configured' : 'missing'}`,
-    formatDeepSeekCacheStatus(report.cacheStats, {
-      stablePrefix: report.stablePrefix,
-    }),
-  ].join('\n')
+    supportsReportCapability(report, 'cache_breakpoint')
+      ? formatDeepSeekCacheStatus(report.cacheStats, {
+          stablePrefix: report.stablePrefix,
+        })
+      : '',
+  ].filter(Boolean).join('\n')
 }
 
 export function deepCodeStatusReportToProperties(report) {
   const stats = report.cacheStats
-  return [
+  const rows = [
     { label: 'Provider', value: report.provider },
     { label: 'Base URL', value: report.config.baseUrl },
     { label: 'Model', value: report.config.model },
@@ -104,8 +130,12 @@ export function deepCodeStatusReportToProperties(report) {
       label: 'Auto compact threshold',
       value: String(report.contextPolicy.autoCompactThresholdTokens),
     },
-    { label: 'Thinking', value: report.config.thinking },
-    { label: 'Reasoning effort', value: report.config.reasoningEffort },
+    supportsReportCapability(report, 'extended_thinking')
+      ? { label: 'Thinking', value: report.config.thinking }
+      : null,
+    supportsReportCapability(report, 'reasoning_effort')
+      ? { label: 'Reasoning effort', value: report.config.reasoningEffort }
+      : null,
     { label: 'Harness mode', value: report.harnessConfig.mode },
     {
       label: 'Harness max agents',
@@ -149,44 +179,61 @@ export function deepCodeStatusReportToProperties(report) {
       label: 'Harness agent permission mode',
       value: report.harnessAgentLifecycle?.permissionMode ?? 'unavailable',
     },
-    { label: 'Cache user_id', value: report.config.cacheUserId },
-    {
-      label: 'Stable prefix hash',
-      value: report.stablePrefix?.prefixHash ?? 'unknown',
-    },
-    {
-      label: 'Cache prefix',
-      value: formatCachePrefix(report),
-    },
-    {
-      label: 'Cache last hit/miss',
-      value: stats
-        ? `${stats.lastPromptCacheHitTokens ?? 0}/${stats.lastPromptCacheMissTokens ?? 0}`
-        : 'unavailable',
-    },
-    {
-      label: 'Cache hit rate',
-      value: stats ? formatRate(stats.lastPromptCacheHitRate) : 'unavailable',
-    },
-    {
-      label: 'Cache total hit/miss',
-      value: stats
-        ? `${stats.totalPromptCacheHitTokens ?? 0}/${stats.totalPromptCacheMissTokens ?? 0}`
-        : 'unavailable',
-    },
-    {
-      label: 'Cache total hit rate',
-      value: stats ? formatRate(stats.totalPromptCacheHitRate) : 'unavailable',
-    },
-    {
-      label: 'Cache telemetry updated',
-      value: stats?.updatedAt ?? 'unavailable',
-    },
+    supportsReportCapability(report, 'user_id')
+      ? { label: 'Cache user_id', value: report.config.cacheUserId }
+      : null,
+    supportsReportCapability(report, 'stable_prefix_cache')
+      ? {
+          label: 'Stable prefix hash',
+          value: report.stablePrefix?.prefixHash ?? 'unknown',
+        }
+      : null,
+    supportsReportCapability(report, 'cache_breakpoint')
+      ? {
+          label: 'Cache prefix',
+          value: formatCachePrefix(report),
+        }
+      : null,
+    supportsReportCapability(report, 'cache_breakpoint')
+      ? {
+          label: 'Cache last hit/miss',
+          value: stats
+            ? `${stats.lastPromptCacheHitTokens ?? 0}/${stats.lastPromptCacheMissTokens ?? 0}`
+            : 'unavailable',
+        }
+      : null,
+    supportsReportCapability(report, 'cache_breakpoint')
+      ? {
+          label: 'Cache hit rate',
+          value: stats ? formatRate(stats.lastPromptCacheHitRate) : 'unavailable',
+        }
+      : null,
+    supportsReportCapability(report, 'cache_breakpoint')
+      ? {
+          label: 'Cache total hit/miss',
+          value: stats
+            ? `${stats.totalPromptCacheHitTokens ?? 0}/${stats.totalPromptCacheMissTokens ?? 0}`
+            : 'unavailable',
+        }
+      : null,
+    supportsReportCapability(report, 'cache_breakpoint')
+      ? {
+          label: 'Cache total hit rate',
+          value: stats ? formatRate(stats.totalPromptCacheHitRate) : 'unavailable',
+        }
+      : null,
+    supportsReportCapability(report, 'cache_breakpoint')
+      ? {
+          label: 'Cache telemetry updated',
+          value: stats?.updatedAt ?? 'unavailable',
+        }
+      : null,
     {
       label: 'API key',
       value: report.apiKeyConfigured ? 'configured' : 'missing',
     },
   ]
+  return rows.filter(Boolean)
 }
 
 function formatCachePrefix(report) {
@@ -200,4 +247,11 @@ function formatCachePrefix(report) {
 
 function formatRate(rate) {
   return `${(Number(rate ?? 0) * 100).toFixed(1)}%`
+}
+
+function supportsReportCapability(report, capability) {
+  if (report.providerCapabilities?.[capability] !== undefined) {
+    return Boolean(report.providerCapabilities[capability])
+  }
+  return providerSupports(undefined, capability)
 }

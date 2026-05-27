@@ -20,6 +20,11 @@ import {
   MODEL_PROVIDER_CAPABILITIES,
   resolveModelProvider,
 } from '../services/providers/index.mjs'
+import { resolveProviderConfig } from '../services/providers/provider-config.mjs'
+import {
+  createProviderCapabilitySnapshot,
+  providerSupports,
+} from './provider-capabilities.mjs'
 import {
   DEEPCODE_INSTRUCTION_FILE,
   DEEPCODE_LOCAL_INSTRUCTION_FILE,
@@ -54,29 +59,43 @@ export async function createDeepSeekDoctorReport({
     checks.push({ id, label, status, detail, metadata })
   }
 
+  const providerConfig = resolveProviderConfig({ env })
   const modelProvider = resolveModelProvider({
     env,
+    name: providerConfig.provider,
+    baseUrl: providerConfig.baseUrl,
+    apiKey: providerConfig.apiKey,
+    defaultModel: providerConfig.defaultModel,
     defaults: { env, cwd },
   })
+  const providerCapabilities = createProviderCapabilitySnapshot(modelProvider)
+  const supportsCacheDiagnostics = providerSupports(modelProvider, 'cache_breakpoint')
+  const supportsReasoningContent = providerSupports(modelProvider, 'reasoning_content')
+  const supportsUserId = providerSupports(modelProvider, 'user_id')
+  const supportsStrictTools = providerSupports(modelProvider, 'strict_tool_schema')
   add(
-    'provider.deepseek',
+    'provider.registry',
     'Provider registry',
-    modelProvider.name === 'deepseek' ? 'pass' : 'fail',
+    modelProvider.supports(MODEL_PROVIDER_CAPABILITIES.STREAMING)
+      ? 'pass'
+      : 'fail',
     `resolved=${modelProvider.name}`,
   )
 
   const missingCapabilities = [
     MODEL_PROVIDER_CAPABILITIES.STREAMING,
     MODEL_PROVIDER_CAPABILITIES.TOOL_CALLS,
-    MODEL_PROVIDER_CAPABILITIES.REASONING_CONTENT,
-    MODEL_PROVIDER_CAPABILITIES.CACHE_DIAGNOSTICS,
   ].filter(capability => !modelProvider.supports(capability))
   add(
     'provider.capabilities',
-    'DeepSeek provider capabilities',
+    'Provider capabilities',
     missingCapabilities.length === 0 ? 'pass' : 'fail',
     missingCapabilities.length === 0
-      ? 'streaming/tool_calls/reasoning/cache diagnostics enabled'
+      ? [
+          'streaming/tool_calls enabled',
+          `reasoning=${supportsReasoningContent ? 'enabled' : 'disabled'}`,
+          `cache=${supportsCacheDiagnostics ? 'enabled' : 'disabled'}`,
+        ].join('; ')
       : `missing=${missingCapabilities.join(',')}`,
   )
   const fullCliBundlePath = resolveFullCliBundlePath()
@@ -102,12 +121,14 @@ export async function createDeepSeekDoctorReport({
     /^https?:\/\//.test(config.baseUrl) ? 'pass' : 'fail',
     config.baseUrl,
   )
-  add(
-    'config.cacheUserId',
-    'Cache user_id',
-    config.cacheUserId ? 'pass' : 'fail',
-    config.cacheUserId || 'missing',
-  )
+  if (supportsUserId) {
+    add(
+      'config.cacheUserId',
+      'Cache user_id',
+      config.cacheUserId ? 'pass' : 'fail',
+      config.cacheUserId || 'missing',
+    )
+  }
   add(
     'harness.promptPack',
     'DeepSeek Harness prompt pack',
@@ -133,70 +154,83 @@ export async function createDeepSeekDoctorReport({
     migrationDiagnostics,
   )
 
-  const request = await buildDeepSeekRequest({
-    systemPrompt: ['Deep Code doctor request shape check.'],
-    messages: [{ role: 'user', content: 'ping' }],
-    tools: [DOCTOR_TOOL],
-    env,
-    cwd,
-    maxTokens: 16,
-    thinking: 'disabled',
-  })
-  const requestText = JSON.stringify(request.body)
-  add(
-    'request.noAnthropicFields',
-    'Request excludes legacy provider fields',
-    /cache_control|redacted_thinking|signature_delta|anthropic/i.test(requestText)
-      ? 'fail'
-      : 'pass',
-    'checked cache_control/redacted_thinking/signature_delta/legacy markers',
-  )
-  add(
-    'request.streamUsage',
-    'Streaming usage telemetry',
-    request.body.stream === true &&
-      request.body.stream_options?.include_usage === true
-      ? 'pass'
-      : 'fail',
-    JSON.stringify(request.body.stream_options ?? null),
-  )
-  add(
-    'request.toolSchema',
-    'Function tool schema',
-    request.body.tools?.[0]?.type === 'function' &&
-      request.body.tools?.[0]?.function?.parameters?.type === 'object'
-      ? 'pass'
-      : 'fail',
-    request.body.tools?.[0]?.function?.name ?? 'missing',
-  )
+  if (supportsReasoningContent || supportsCacheDiagnostics || supportsStrictTools) {
+    const request = await buildDeepSeekRequest({
+      systemPrompt: ['Deep Code doctor request shape check.'],
+      messages: [{ role: 'user', content: 'ping' }],
+      tools: [DOCTOR_TOOL],
+      env,
+      cwd,
+      maxTokens: 16,
+      thinking: 'disabled',
+    })
+    const requestText = JSON.stringify(request.body)
+    add(
+      'request.noAnthropicFields',
+      'Request excludes legacy provider fields',
+      /cache_control|redacted_thinking|signature_delta|anthropic/i.test(requestText)
+        ? 'fail'
+        : 'pass',
+      'checked cache_control/redacted_thinking/signature_delta/legacy markers',
+    )
+    add(
+      'request.streamUsage',
+      'Streaming usage telemetry',
+      request.body.stream === true &&
+        request.body.stream_options?.include_usage === true
+        ? 'pass'
+        : 'fail',
+      JSON.stringify(request.body.stream_options ?? null),
+    )
+    add(
+      'request.toolSchema',
+      'Function tool schema',
+      request.body.tools?.[0]?.type === 'function' &&
+        request.body.tools?.[0]?.function?.parameters?.type === 'object'
+        ? 'pass'
+        : 'fail',
+      request.body.tools?.[0]?.function?.name ?? 'missing',
+    )
+  } else {
+    add(
+      'request.providerNeutral',
+      'Provider-neutral request shape',
+      'skip',
+      'DeepSeek request-shape diagnostics not supported by selected provider',
+    )
+  }
 
-  const parserEvents = parseDeepSeekSSELines([
-    ': keep-alive',
-    'data: {"choices":[{"delta":{"reasoning_content":"think"},"finish_reason":null}]}',
-    'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_cache_hit_tokens":3,"prompt_cache_miss_tokens":1}}',
-    'data: [DONE]',
-  ])
-  add(
-    'stream.parser',
-    'SSE parser',
-    parserEvents.some(event => event.type === 'content_delta') &&
-      parserEvents.some(event => event.type === 'usage')
-      ? 'pass'
-      : 'fail',
-    'keep-alive/content/reasoning/usage parsed',
-  )
+  if (supportsReasoningContent || supportsCacheDiagnostics) {
+    const parserEvents = parseDeepSeekSSELines([
+      ': keep-alive',
+      'data: {"choices":[{"delta":{"reasoning_content":"think"},"finish_reason":null}]}',
+      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_cache_hit_tokens":3,"prompt_cache_miss_tokens":1}}',
+      'data: [DONE]',
+    ])
+    add(
+      'stream.parser',
+      'SSE parser',
+      parserEvents.some(event => event.type === 'content_delta') &&
+        parserEvents.some(event => event.type === 'usage')
+        ? 'pass'
+        : 'fail',
+      'keep-alive/content/reasoning/usage parsed',
+    )
+  }
 
-  const cacheDiagnostics = createDeepSeekCacheDiagnostics({
-    prompt_cache_hit_tokens: 3,
-    prompt_cache_miss_tokens: 1,
-  })
-  add(
-    'cache.diagnostics',
-    'Cache diagnostics',
-    cacheDiagnostics.promptCacheHitRate === 0.75 ? 'pass' : 'fail',
-    `hit_rate=${(cacheDiagnostics.promptCacheHitRate * 100).toFixed(1)}%`,
-    cacheDiagnostics,
-  )
+  if (supportsCacheDiagnostics) {
+    const cacheDiagnostics = createDeepSeekCacheDiagnostics({
+      prompt_cache_hit_tokens: 3,
+      prompt_cache_miss_tokens: 1,
+    })
+    add(
+      'cache.diagnostics',
+      'Cache diagnostics',
+      cacheDiagnostics.promptCacheHitRate === 0.75 ? 'pass' : 'fail',
+      `hit_rate=${(cacheDiagnostics.promptCacheHitRate * 100).toFixed(1)}%`,
+      cacheDiagnostics,
+    )
+  }
 
   let liveUsage = null
   if (shouldRunLive) {
@@ -228,19 +262,21 @@ export async function createDeepSeekDoctorReport({
           response.content.trim() ? 'pass' : 'warn',
           `finish=${response.finishReason ?? 'unknown'} content=${JSON.stringify(response.content.trim())}`,
         )
-        add(
-          'live.cacheTelemetry',
-          'Live cache telemetry',
-          response.usage &&
-            (response.usage.prompt_cache_hit_tokens !== undefined ||
-              response.usage.prompt_cache_miss_tokens !== undefined)
-            ? 'pass'
-            : 'warn',
-          response.usage
-            ? `hit=${response.usage.prompt_cache_hit_tokens ?? 0} miss=${response.usage.prompt_cache_miss_tokens ?? 0}`
-            : 'usage chunk missing',
-          response.usage ? createDeepSeekCacheDiagnostics(response.usage) : null,
-        )
+        if (supportsCacheDiagnostics) {
+          add(
+            'live.cacheTelemetry',
+            'Live cache telemetry',
+            response.usage &&
+              (response.usage.prompt_cache_hit_tokens !== undefined ||
+                response.usage.prompt_cache_miss_tokens !== undefined)
+              ? 'pass'
+              : 'warn',
+            response.usage
+              ? `hit=${response.usage.prompt_cache_hit_tokens ?? 0} miss=${response.usage.prompt_cache_miss_tokens ?? 0}`
+              : 'usage chunk missing',
+            response.usage ? createDeepSeekCacheDiagnostics(response.usage) : null,
+          )
+        }
       } catch (error) {
         add(
           'live.api',
@@ -274,6 +310,7 @@ export async function createDeepSeekDoctorReport({
       strictTools: harnessConfig.strictTools,
       apiKeyConfigured: Boolean(config.apiKey),
     },
+    capabilities: providerCapabilities,
     checks,
     liveUsage,
     summary: summarizeChecks(checks),
@@ -426,16 +463,22 @@ export function formatDeepSeekDoctorReport(report) {
     `Base URL: ${report.config.baseUrl}`,
     `Model: ${report.config.model}`,
     `Small model: ${report.config.smallModel}`,
-    `Thinking: ${report.config.thinking}`,
-    `Reasoning effort: ${report.config.reasoningEffort}`,
+    doctorReportSupports(report, 'extended_thinking')
+      ? `Thinking: ${report.config.thinking}`
+      : '',
+    doctorReportSupports(report, 'reasoning_effort')
+      ? `Reasoning effort: ${report.config.reasoningEffort}`
+      : '',
     `Harness mode: ${report.config.harnessMode}`,
     `Harness max agents: ${report.config.harnessMaxAgents}`,
     `Prompt pack: ${report.config.promptPack}`,
     `Strict tools: ${report.config.strictTools}`,
-    `Cache user_id: ${report.config.cacheUserId}`,
+    doctorReportSupports(report, 'user_id')
+      ? `Cache user_id: ${report.config.cacheUserId}`
+      : '',
     `API key: ${report.config.apiKeyConfigured ? 'configured' : 'missing'}`,
     '',
-  ]
+  ].filter(line => line !== '')
 
   for (const check of report.checks) {
     lines.push(
@@ -473,4 +516,11 @@ function formatStatus(status) {
   if (status === 'warn') return 'WARN'
   if (status === 'fail') return 'FAIL'
   return 'SKIP'
+}
+
+function doctorReportSupports(report, capability) {
+  if (report.capabilities?.[capability] !== undefined) {
+    return Boolean(report.capabilities[capability])
+  }
+  return providerSupports(undefined, capability)
 }

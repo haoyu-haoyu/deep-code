@@ -7,6 +7,7 @@ import {
   recordDeepSeekCacheUsage,
   resolveDeepSeekCacheStatsPath,
 } from '../deepcode/cache-telemetry.mjs'
+import { providerSupports } from '../deepcode/provider-capabilities.mjs'
 import { createDeepCodeStablePrefix } from '../deepcode/stable-prefix.mjs'
 import { resolveDeepCodeRequestMaxTokens } from '../deepcode/context-policy.mjs'
 import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
@@ -56,7 +57,8 @@ export function createDeepSeekCallModel({
       },
     })
 
-    const stream = provider.streamQuery({
+    const stream = provider.streamQuery(createProviderStreamContext({
+      provider,
       systemPrompt: stablePrefix.systemPrompt,
       messages,
       tools,
@@ -75,7 +77,7 @@ export function createDeepSeekCallModel({
       toolChoice: options.toolChoice,
       signal,
       fetch: options.fetchOverride,
-    })
+    }))
 
     const state = createStreamingState()
 
@@ -83,6 +85,7 @@ export function createDeepSeekCallModel({
       if (signal?.aborted) break
 
       if (event.type === 'reasoning_delta') {
+        if (!providerSupports(provider, 'reasoning_content')) continue
         state.reasoning += event.text
         if (!state.thinkingOpen) {
           yield streamEvent({
@@ -201,15 +204,55 @@ export function createDeepSeekCallModel({
       finishReason: state.finishReason,
     }
 
-    await recordQueryCacheUsage(response.usage, stablePrefix)
+    if (providerSupports(provider, 'cache_breakpoint')) {
+      await recordQueryCacheUsage(response.usage, stablePrefix, provider)
+    }
 
     yield deepSeekResponseToAssistantMessage(response, {
       messageId,
       model: runtimeModel ?? 'deepseek-v4-pro',
+      provider,
       now,
       uuid,
     })
   }
+}
+
+export function createProviderStreamContext({
+  provider,
+  systemPrompt,
+  messages,
+  tools,
+  toolSchemaOptions,
+  stablePrefix,
+  env,
+  cwd,
+  model,
+  reasoningEffort,
+  maxTokens,
+  toolChoice,
+  signal,
+  fetch,
+}) {
+  return omitUndefined({
+    systemPrompt,
+    messages,
+    tools,
+    toolSchemaOptions,
+    stablePrefix: providerSupports(provider, 'stable_prefix_cache')
+      ? stablePrefix
+      : undefined,
+    env,
+    cwd,
+    model,
+    reasoningEffort: providerSupports(provider, 'reasoning_effort')
+      ? reasoningEffort
+      : undefined,
+    maxTokens,
+    toolChoice,
+    signal,
+    fetch,
+  })
 }
 
 function createStreamingState() {
@@ -264,7 +307,7 @@ function streamEvent(event) {
   return { type: 'stream_event', event }
 }
 
-async function recordQueryCacheUsage(usage, stablePrefix) {
+async function recordQueryCacheUsage(usage, stablePrefix, provider) {
   if (!usage) return
   const config = resolveDeepSeekConfig({
     env: process.env,
@@ -273,10 +316,12 @@ async function recordQueryCacheUsage(usage, stablePrefix) {
   const path = resolveDeepSeekCacheStatsPath({
     env: process.env,
     config,
+    provider,
   })
   await recordDeepSeekCacheUsage({
     path,
     usage,
+    provider,
     stablePrefix,
   })
 }
@@ -303,6 +348,7 @@ export function deepSeekResponseToAssistantMessage(
   {
     messageId,
     model = 'deepseek-v4-pro',
+    provider,
     now = () => new Date(),
     uuid = randomUUID,
   } = {},
@@ -347,7 +393,7 @@ export function deepSeekResponseToAssistantMessage(
       content,
       stop_reason: mapStopReasonForClaudeCode(finish.finishReason),
       stop_sequence: null,
-      usage: mapUsageForClaudeCode(response.usage),
+      usage: mapUsageForClaudeCode(response.usage, { provider }),
     },
   }
 }
@@ -359,10 +405,11 @@ function mapStopReasonForClaudeCode(finishReason) {
   return finishReason
 }
 
-function mapUsageForClaudeCode(usage = {}) {
+function mapUsageForClaudeCode(usage = {}, { provider } = {}) {
   usage ??= {}
-  const cacheHit = usage.prompt_cache_hit_tokens ?? 0
-  const cacheMiss = usage.prompt_cache_miss_tokens ?? 0
+  const supportsCache = providerSupports(provider, 'cache_breakpoint')
+  const cacheHit = supportsCache ? usage.prompt_cache_hit_tokens ?? 0 : 0
+  const cacheMiss = supportsCache ? usage.prompt_cache_miss_tokens ?? 0 : 0
   return {
     input_tokens: usage.prompt_tokens ?? cacheHit + cacheMiss,
     output_tokens: usage.completion_tokens ?? 0,
@@ -379,4 +426,10 @@ function parseToolArguments(rawArguments) {
   } catch {
     return { _raw: rawArguments }
   }
+}
+
+function omitUndefined(object) {
+  return Object.fromEntries(
+    Object.entries(object).filter(([, value]) => value !== undefined),
+  )
 }
