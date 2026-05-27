@@ -40,6 +40,13 @@ import {
   getRestoreSnapshotItems,
   performRestore,
 } from '../src/commands/restore/restore-command.mjs'
+import {
+  buildRevertTurnPermissionResult,
+  formatRevertTurnResult,
+  performRevertTurn,
+  resolveRevertTurnSnapshot,
+  validateRevertTurnInput,
+} from '../src/tools/RevertTurnTool/revert-turn.mjs'
 
 test('computeWorkspaceHash is deterministic for the same path', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-hash-'))
@@ -461,6 +468,90 @@ test("restoreSnapshot leaves user's git metadata unchanged", async () => {
     assert.equal(statSync(headPath).mtimeMs, headMtimeBefore)
     assert.equal(existsSync(userIndexPath), hadUserIndex)
   })
+})
+
+test('revert_turn validates positive integer turn_id only', () => {
+  assert.deepEqual(validateRevertTurnInput({ turn_id: 7 }), { turnId: 7 })
+  assert.throws(
+    () => validateRevertTurnInput({ turn_id: -1 }),
+    /positive integer/,
+  )
+  assert.throws(
+    () => validateRevertTurnInput({ turn_id: 1, snapshot_id: 'a'.repeat(40) }),
+    /only accepts/,
+  )
+})
+
+test('revert_turn resolves turn_id to the latest pre snapshot by default', async () => {
+  const entry = await resolveRevertTurnSnapshot({
+    workspaceRoot: '/tmp/deepcode-revert-turn',
+    turnId: 3,
+    listSnapshotsFn: async () => [
+      { turnId: 3, phase: 'post', commitSha: 'post-sha' },
+      { turnId: 'turn-3', phase: 'pre', commitSha: 'old-pre-sha' },
+      { turnId: 3, phase: 'pre', commitSha: 'new-pre-sha' },
+    ],
+  })
+
+  assert.equal(entry.commitSha, 'new-pre-sha')
+})
+
+test('revert_turn performs restore through snapshot service and formats result', async () => {
+  const calls = []
+  const result = await performRevertTurn({
+    workspaceRoot: '/tmp/deepcode-revert-turn',
+    input: { turn_id: 4 },
+    listSnapshotsFn: async () => [
+      {
+        turnId: 4,
+        phase: 'pre',
+        commitSha: 'snapshot-sha',
+      },
+    ],
+    restoreSnapshotFn: async args => {
+      calls.push(args)
+      return {
+        snapshotId: args.snapshotId,
+        affectedFileCount: 2,
+        affectedFiles: ['a.txt', 'b.txt'],
+      }
+    },
+  })
+
+  assert.deepEqual(calls, [
+    {
+      workspaceRoot: '/tmp/deepcode-revert-turn',
+      snapshotId: 'snapshot-sha',
+    },
+  ])
+  assert.equal(result.turnId, 4)
+  assert.equal(result.phase, 'pre')
+  assert.equal(result.affectedFileCount, 2)
+  assert.match(formatRevertTurnResult(result), /Reverted turn 4/)
+  assert.match(formatRevertTurnResult(result), /2 affected files/)
+})
+
+test('revert_turn permission result requires explicit confirmation', () => {
+  const result = buildRevertTurnPermissionResult({ turn_id: 5 })
+
+  assert.equal(result.behavior, 'ask')
+  assert.equal(result.decisionReason.type, 'safetyCheck')
+  assert.equal(result.decisionReason.classifierApprovable, false)
+})
+
+test('revert_turn tool is registered and marked destructive', () => {
+  const toolSource = readFileSync(
+    new URL('../src/tools/RevertTurnTool/RevertTurnTool.ts', import.meta.url),
+    'utf8',
+  )
+  const registrySource = readFileSync(
+    new URL('../src/tools.ts', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(toolSource, /name:\s*'revert_turn'/)
+  assert.match(toolSource, /isDestructive\([^)]*\)\s*\{\s*return true/)
+  assert.match(registrySource, /RevertTurnTool/)
 })
 
 async function withDeepCodeHome(callback) {
