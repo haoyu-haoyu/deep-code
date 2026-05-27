@@ -19,6 +19,7 @@ import { ensureKeychainPrefetchCompleted, startKeychainPrefetch } from './utils/
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 startKeychainPrefetch();
 import { feature } from './deepcode/bundle-feature.mjs';
+import { resolveProviderConfig } from './services/providers/provider-config.mjs';
 import { DEFAULT_MODEL_PROVIDER, MODEL_PROVIDER_NAMES, normalizeModelProviderName } from './services/providers/registry.mjs';
 import { Command as CommanderCommand, InvalidArgumentError, Option } from '@commander-js/extra-typings';
 import chalk from 'chalk';
@@ -883,7 +884,7 @@ async function run(): Promise<CommanderCommand> {
     return tokens;
   }).hideHelp()).option('--replay-user-messages', 'Re-emit user messages from stdin back on stdout for acknowledgment (only works with --input-format=stream-json and --output-format=stream-json)', () => true).addOption(new Option('--enable-auth-status', 'Enable auth status messages in SDK mode').default(false).hideHelp()).option('--allowedTools, --allowed-tools <tools...>', 'Comma or space-separated list of tool names to allow (e.g. "Bash(git:*) Edit")').option('--tools <tools...>', 'Specify the list of available tools from the built-in set. Use "" to disable all tools, "default" to use all tools, or specify tool names (e.g. "Bash,Edit,Read").').option('--disallowedTools, --disallowed-tools <tools...>', 'Comma or space-separated list of tool names to deny (e.g. "Bash(git:*) Edit")').option('--mcp-config <configs...>', 'Load MCP servers from JSON files or strings (space-separated)').addOption(new Option('--permission-prompt-tool <tool>', 'MCP tool to use for permission prompts (only works with --print)').argParser(String).hideHelp()).addOption(new Option('--system-prompt <prompt>', 'System prompt to use for the session').argParser(String)).addOption(new Option('--system-prompt-file <file>', 'Read system prompt from a file').argParser(String).hideHelp()).addOption(new Option('--append-system-prompt <prompt>', 'Append a system prompt to the default system prompt').argParser(String)).addOption(new Option('--append-system-prompt-file <file>', 'Read system prompt from a file and append to the default system prompt').argParser(String).hideHelp()).addOption(new Option('--permission-mode <mode>', 'Permission mode to use for the session').argParser(String).choices(PERMISSION_MODES)).option('-c, --continue', 'Continue the most recent conversation in the current directory', () => true).option('-r, --resume [value]', 'Resume a conversation by session ID, or open interactive picker with optional search term', value => value || true).option('--fork-session', 'When resuming, create a new session ID instead of reusing the original (use with --resume or --continue)', () => true).addOption(new Option('--prefill <text>', 'Pre-fill the prompt input with text without submitting it').hideHelp()).option('--from-pr [value]', 'Resume a session linked to a PR by PR number/URL, or open interactive picker with optional search term', value => value || true).option('--no-session-persistence', 'Disable session persistence - sessions will not be saved to disk and cannot be resumed (only works with --print)').addOption(new Option('--resume-session-at <message id>', 'When resuming, only messages up to and including the assistant message with <message.id> (use with --resume in print mode)').argParser(String).hideHelp()).addOption(new Option('--rewind-files <user-message-id>', 'Restore files to state at the specified user message and exit (requires --resume)').hideHelp())
   // @[MODEL LAUNCH]: Update the example model ID in the --model help text.
-  .option('--model <model>', `Model for the current session. Provide a DeepSeek model name (e.g. 'deepseek-v4-pro' or 'deepseek-v4-flash') or use --model auto for per-turn routing.`).addOption(new Option('--provider <provider>', `Model provider for the current session (${MODEL_PROVIDER_NAMES.join(', ')}). Defaults to ${DEFAULT_MODEL_PROVIDER}.`).argParser(parseModelProviderOption)).addOption(new Option('--effort <level>', `Effort level for the current session (low, medium, high, max)`).argParser((rawValue: string) => {
+  .option('--model <model>', `Model for the current session. Provide a DeepSeek model name (e.g. 'deepseek-v4-pro' or 'deepseek-v4-flash') or use --model auto for per-turn routing.`).addOption(new Option('--provider <provider>', `Model provider for the current session (${MODEL_PROVIDER_NAMES.join(', ')}). Defaults to ${DEFAULT_MODEL_PROVIDER}.`).argParser(parseModelProviderOption)).addOption(new Option('--provider-base-url <url>', 'Base URL override for the selected provider.')).addOption(new Option('--provider-api-key <key>', 'API key override for the selected provider.').hideHelp()).addOption(new Option('--effort <level>', `Effort level for the current session (low, medium, high, max)`).argParser((rawValue: string) => {
     const value = rawValue.toLowerCase();
     const allowed = ['low', 'medium', 'high', 'max'];
     if (!allowed.includes(value)) {
@@ -907,7 +908,14 @@ async function run(): Promise<CommanderCommand> {
     }).bare) {
       process.env.CLAUDE_CODE_SIMPLE = '1';
     }
-    process.env.DEEPCODE_PROVIDER = options.provider ?? process.env.DEEPCODE_PROVIDER ?? process.env.DEEP_CODE_PROVIDER ?? DEFAULT_MODEL_PROVIDER;
+    const providerConfig = resolveProviderConfig({
+      provider: options.provider,
+      cliBaseUrl: options.providerBaseUrl,
+      cliApiKey: options.providerApiKey,
+    });
+    process.env.DEEPCODE_PROVIDER = providerConfig.provider;
+    if (providerConfig.baseUrl) process.env.DEEPCODE_BASE_URL = providerConfig.baseUrl;
+    if (providerConfig.apiKey) process.env.DEEPCODE_API_KEY = providerConfig.apiKey;
 
     // Ignore "code" as a prompt - treat it the same as no prompt
     if (prompt === 'code') {

@@ -6,6 +6,7 @@ import {
   isModelProviderName,
   normalizeModelProviderName,
 } from '../../services/providers/registry.mjs'
+import { mergeProviderConfigPartial } from '../../services/providers/deepseek-config-store.mjs'
 
 const COMMON_HELP_ARGS = new Set(['help', '-h', '--help'])
 const PROVIDER_USAGE_LABEL = 'deepseek/ollama/vllm/openai-compatible'
@@ -34,7 +35,8 @@ export function executeProviderCommand(
     }
   }
 
-  const provider = normalizeModelProviderName(raw)
+  const [providerArg, baseUrl] = raw.split(/\s+/, 2)
+  const provider = normalizeModelProviderName(providerArg)
   if (provider === 'anthropic' || provider === 'claude') {
     return {
       type: 'text',
@@ -50,9 +52,16 @@ export function executeProviderCommand(
   }
 
   env.DEEPCODE_PROVIDER = provider
+  mergeProviderConfigPartial(
+    provider,
+    baseUrl ? { baseUrl } : {},
+    { env },
+  )
   return {
     type: 'text',
-    value: `Provider set to ${provider}`,
+    value: baseUrl
+      ? `Provider set to ${provider} (base URL saved)`
+      : `Provider set to ${provider}`,
   }
 }
 

@@ -1,9 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import {
+  loadProviderConfigFile,
+  saveProviderConfigFile,
+} from '../src/services/providers/deepseek-config-store.mjs'
+import { resolveProviderConfig } from '../src/services/providers/provider-config.mjs'
 import { createOpenAICompatibleProvider } from '../src/services/providers/openai-compatible.mjs'
 import {
   DEFAULT_MODEL_PROVIDER,
@@ -21,6 +28,39 @@ const providerCommandIndexSource = join(
   'src/commands/provider/index.ts',
 )
 const providerCommandSource = join(packageRoot, 'src/commands/provider/provider.tsx')
+
+async function createProviderConfigEnv() {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-provider-config-'))
+  return {
+    DEEPCODE_CONFIG_FILE: join(dir, 'deepseek-config.json'),
+  }
+}
+
+async function loadBuiltModule(source, outfileName) {
+  const outdir = await mkdtemp(join(tmpdir(), 'deepcode-provider-command-'))
+  const outfile = join(outdir, outfileName)
+  const result = spawnSync(
+    'bun',
+    [
+      'build',
+      source,
+      '--target=node',
+      '--format=esm',
+      '--outfile',
+      outfile,
+    ],
+    {
+      cwd: packageRoot,
+      encoding: 'utf8',
+    },
+  )
+  assert.equal(
+    result.status,
+    0,
+    `failed to bundle ${source}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+  )
+  return await import(pathToFileURL(outfile).href)
+}
 
 test('ollama provider uses localhost OpenAI-compatible default without an API key', () => {
   const provider = createOpenAICompatibleProvider({ providerName: 'ollama' })
@@ -252,4 +292,129 @@ test('provider slash command is registered and exposes valid provider choices', 
   assert.match(provider, /executeProviderCommand/)
   assert.match(provider, /deepseek\/ollama\/vllm\/openai-compatible/)
   assert.match(provider, /legacy-only, not supported/)
+})
+
+test('provider config resolves CLI overrides before provider env, generic env, config, and defaults', async () => {
+  const env = {
+    ...(await createProviderConfigEnv()),
+    OLLAMA_BASE_URL: 'http://env-ollama:11434/v1',
+    OLLAMA_MODEL: 'env-llama',
+    DEEPCODE_BASE_URL: 'http://generic:9999/v1',
+    DEEPCODE_MODEL: 'generic-model',
+  }
+  saveProviderConfigFile(
+    {
+      activeProvider: 'ollama',
+      providers: {
+        ollama: {
+          baseUrl: 'http://file-ollama:11434/v1',
+          model: 'file-llama',
+        },
+      },
+    },
+    { env },
+  )
+
+  assert.deepEqual(
+    resolveProviderConfig({
+      provider: 'ollama',
+      cliBaseUrl: 'http://cli-ollama:11434/v1',
+      cliModel: 'cli-llama',
+      env,
+    }),
+    {
+      provider: 'ollama',
+      baseUrl: 'http://cli-ollama:11434/v1',
+      apiKey: undefined,
+      defaultModel: 'cli-llama',
+      requiresApiKey: false,
+    },
+  )
+
+  assert.equal(
+    resolveProviderConfig({ provider: 'ollama', env }).baseUrl,
+    'http://env-ollama:11434/v1',
+  )
+})
+
+test('provider config reads per-provider env and ignores unrelated env vars', async () => {
+  const env = {
+    ...(await createProviderConfigEnv()),
+    VLLM_BASE_URL: 'http://vllm:8000/v1',
+    VLLM_API_KEY: 'vllm-key',
+    VLLM_MODEL: 'served-model',
+    OPENAI_COMPATIBLE_BASE_URL: 'https://openai-compatible.example/v1',
+    OPENAI_COMPATIBLE_API_KEY: 'generic-key',
+    OPENAI_COMPATIBLE_MODEL: 'generic-model',
+    OLLAMA_API_KEY: 'ignored-for-vllm',
+  }
+
+  assert.deepEqual(resolveProviderConfig({ provider: 'vllm', env }), {
+    provider: 'vllm',
+    baseUrl: 'http://vllm:8000/v1',
+    apiKey: 'vllm-key',
+    defaultModel: 'served-model',
+    requiresApiKey: false,
+  })
+  assert.deepEqual(
+    resolveProviderConfig({ provider: 'openai-compatible', env }),
+    {
+      provider: 'openai-compatible',
+      baseUrl: 'https://openai-compatible.example/v1',
+      apiKey: 'generic-key',
+      defaultModel: 'generic-model',
+      requiresApiKey: true,
+    },
+  )
+})
+
+test('provider config keeps existing DeepSeek config readable as legacy fallback', async () => {
+  const env = await createProviderConfigEnv()
+  await writeFile(
+    env.DEEPCODE_CONFIG_FILE,
+    JSON.stringify({
+      apiKey: 'sk-legacy',
+      baseUrl: 'https://legacy.deepseek.example',
+      model: 'deepseek-legacy',
+      smallModel: 'deepseek-small',
+    }),
+  )
+
+  assert.deepEqual(resolveProviderConfig({ provider: 'deepseek', env }), {
+    provider: 'deepseek',
+    baseUrl: 'https://legacy.deepseek.example',
+    apiKey: 'sk-legacy',
+    defaultModel: 'deepseek-legacy',
+    requiresApiKey: true,
+  })
+  assert.equal(loadProviderConfigFile({ env }).providers.deepseek.apiKey, 'sk-legacy')
+})
+
+test('provider command persists selected provider and optional base URL', async () => {
+  const env = await createProviderConfigEnv()
+  const { executeProviderCommand } = await loadBuiltModule(
+    providerCommandSource,
+    'provider-command.mjs',
+  )
+
+  assert.deepEqual(
+    executeProviderCommand('ollama http://local-ollama:11434/v1', env),
+    {
+      type: 'text',
+      value: 'Provider set to ollama (base URL saved)',
+    },
+  )
+
+  const config = loadProviderConfigFile({ env })
+  assert.equal(config.activeProvider, 'ollama')
+  assert.equal(config.providers.ollama.baseUrl, 'http://local-ollama:11434/v1')
+})
+
+test('main CLI includes provider config override flags without logging API keys', async () => {
+  const source = await readFile(mainSource, 'utf8')
+
+  assert.match(source, /--provider-base-url <url>/)
+  assert.match(source, /--provider-api-key <key>/)
+  assert.match(source, /resolveProviderConfig/)
+  assert.doesNotMatch(source, /console\.(log|warn|error)\([^)]*providerApiKey/)
 })
