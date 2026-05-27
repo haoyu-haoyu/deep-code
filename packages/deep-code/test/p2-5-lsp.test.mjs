@@ -13,6 +13,10 @@ import {
   createLSPServerInstanceCore,
   createLSPServerManagerCore,
 } from '../src/services/lsp/core.mjs'
+import {
+  mergeBuiltInLspServers,
+  resolveLspServer,
+} from '../src/services/lsp/registry.mjs'
 
 test('LSP client performs initialize + initialized handshake', async () => {
   const server = await createFakeLspServer()
@@ -174,6 +178,81 @@ test('LSP client shutdown sends shutdown and exit then clears state', async () =
   assert.equal(methods.includes('request:shutdown'), true)
   assert.equal(methods.includes('notification:exit'), true)
   assert.equal(client.isInitialized, false)
+})
+
+test('LSP registry resolves .ts to built-in TypeScript server when available', () => {
+  const config = resolveLspServer('.ts', {}, { isCommandAvailable: () => true })
+
+  assert.equal(config.command, 'typescript-language-server')
+  assert.deepEqual(config.args, ['--stdio'])
+  assert.equal(config.extensionToLanguage['.ts'], 'typescript')
+})
+
+test('LSP registry resolves .tsx to built-in TypeScript server when available', () => {
+  const config = resolveLspServer('.tsx', {}, { isCommandAvailable: () => true })
+
+  assert.equal(config.command, 'typescript-language-server')
+  assert.deepEqual(config.args, ['--stdio'])
+  assert.equal(config.extensionToLanguage['.tsx'], 'typescriptreact')
+})
+
+test('LSP registry leaves non-P2.5.b languages unresolved', () => {
+  const options = { isCommandAvailable: () => true }
+
+  assert.equal(resolveLspServer('.py', {}, options), undefined)
+  assert.equal(resolveLspServer('.rs', {}, options), undefined)
+})
+
+test('LSP registry lets plugin servers override built-in TypeScript config', () => {
+  const pluginServers = {
+    'plugin:test:ts': {
+      command: 'custom-ts-lsp',
+      args: ['--stdio'],
+      extensionToLanguage: {
+        '.ts': 'typescript',
+      },
+      scope: 'dynamic',
+      source: 'test-plugin',
+    },
+  }
+
+  const config = resolveLspServer('.ts', pluginServers, {
+    isCommandAvailable: () => true,
+  })
+
+  assert.equal(config.command, 'custom-ts-lsp')
+  assert.equal(config.source, 'test-plugin')
+})
+
+test('LSP registry silently skips built-in TypeScript server when binary is missing', () => {
+  assert.equal(
+    resolveLspServer('.ts', {}, { isCommandAvailable: () => false }),
+    undefined,
+  )
+})
+
+test('LSP registry merges built-ins without overriding plugin-owned extensions', () => {
+  const pluginServers = {
+    'plugin:test:ts': {
+      command: 'custom-ts-lsp',
+      args: ['--stdio'],
+      extensionToLanguage: {
+        '.ts': 'typescript',
+      },
+      scope: 'dynamic',
+      source: 'test-plugin',
+    },
+  }
+
+  const merged = mergeBuiltInLspServers(pluginServers, {
+    isCommandAvailable: () => true,
+  })
+
+  assert.equal(merged['plugin:test:ts'].command, 'custom-ts-lsp')
+  assert.equal(merged['builtin:typescript'].command, 'typescript-language-server')
+  assert.deepEqual(merged['builtin:typescript'].extensionToLanguage, {
+    '.tsx': 'typescriptreact',
+  })
 })
 
 function serverConfig(server, workspaceRoot) {

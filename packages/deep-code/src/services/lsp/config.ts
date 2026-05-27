@@ -4,11 +4,12 @@ import { errorMessage, toError } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { getPluginLspServers } from '../../utils/plugins/lspPluginIntegration.js'
 import { loadAllPluginsCacheOnly } from '../../utils/plugins/pluginLoader.js'
+import { mergeBuiltInLspServers } from './registry.mjs'
 import type { ScopedLspServerConfig } from './types.js'
 
 /**
- * Get all configured LSP servers from plugins.
- * LSP servers are only supported via plugins, not user/project settings.
+ * Get all configured LSP servers from plugins plus built-in fallbacks.
+ * Plugin-provided servers take precedence over built-ins for the same extension.
  *
  * @returns Object containing servers configuration keyed by scoped server name
  */
@@ -61,9 +62,18 @@ export async function getAllLspServers(): Promise<{
       }
     }
 
+    const mergedServers = mergeBuiltInLspServers(allServers) as Record<
+      string,
+      ScopedLspServerConfig
+    >
+
     logForDebugging(
-      `Total LSP servers loaded: ${Object.keys(allServers).length}`,
+      `Total LSP servers loaded: ${Object.keys(mergedServers).length}`,
     )
+
+    return {
+      servers: mergedServers,
+    }
   } catch (error) {
     // Log error for monitoring production issues.
     // LSP is optional, so we don't throw - but we need visibility
@@ -74,6 +84,9 @@ export async function getAllLspServers(): Promise<{
   }
 
   return {
-    servers: allServers,
+    servers: mergeBuiltInLspServers(allServers) as Record<
+      string,
+      ScopedLspServerConfig
+    >,
   }
 }
