@@ -3191,6 +3191,23 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./cli/serve/index.mjs');
     await startServeMode(options);
   });
+  program.command('fork <session-id>').description('Branch a session at a chosen turn').option('--at-turn <n>', 'Fork at turn N (default: last)').action(async (sessionId: string, options: {
+    atTurn?: string;
+  }) => {
+    try {
+      const atTurn = options.atTurn === undefined ? undefined : Number(options.atTurn);
+      const {
+        forkHandler
+      } = await import('./cli/handlers/session.mjs');
+      await forkHandler({
+        sessionId,
+        atTurn
+      });
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    }
+  });
 
   // claude server
   if (feature('DIRECT_CONNECT')) {
