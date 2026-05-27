@@ -3180,6 +3180,18 @@ async function run(): Promise<CommanderCommand> {
     await mcpResetChoicesHandler();
   });
 
+  program.command('serve').description('Start Deep Code serve mode').option('--http', 'Start HTTP server (Bearer-token auth required)').option('--host <host>', 'Bind address', '127.0.0.1').option('--port <port>', 'Bind port', '8765').option('--acp', 'Start ACP server (not implemented yet)').action(async (options: {
+    http?: boolean;
+    host?: string;
+    port?: string;
+    acp?: boolean;
+  }) => {
+    const {
+      startServeMode
+    } = await import('./cli/serve/index.mjs');
+    await startServeMode(options);
+  });
+
   // claude server
   if (feature('DIRECT_CONNECT')) {
     program.command('server').description('Start a Deep Code session server').option('--port <number>', 'HTTP port', '0').option('--host <string>', 'Bind address', '0.0.0.0').option('--auth-token <token>', 'Bearer token for auth').option('--unix <path>', 'Listen on a unix domain socket').option('--workspace <dir>', 'Default working directory for sessions that do not specify cwd').option('--idle-timeout <ms>', 'Idle timeout for detached sessions in ms (0 = never expire)', '600000').option('--max-sessions <n>', 'Maximum concurrent sessions (0 = unlimited)', '32').action(async (opts: {
