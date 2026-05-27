@@ -200,11 +200,11 @@ test('LSP registry resolves .tsx to built-in TypeScript server when available', 
   assert.equal(config.extensionToLanguage['.tsx'], 'typescriptreact')
 })
 
-test('LSP registry leaves non-P2.5.b languages unresolved', () => {
+test('LSP registry leaves unsupported languages unresolved', () => {
   const options = { isCommandAvailable: () => true }
 
-  assert.equal(resolveLspServer('.py', {}, options), undefined)
-  assert.equal(resolveLspServer('.rs', {}, options), undefined)
+  assert.equal(resolveLspServer('.rb', {}, options), undefined)
+  assert.equal(resolveLspServer('.java', {}, options), undefined)
 })
 
 test('LSP registry lets plugin servers override built-in TypeScript config', () => {
@@ -256,6 +256,100 @@ test('LSP registry merges built-ins without overriding plugin-owned extensions',
   assert.equal(merged['builtin:typescript'].command, 'typescript-language-server')
   assert.deepEqual(merged['builtin:typescript'].extensionToLanguage, {
     '.tsx': 'typescriptreact',
+  })
+})
+
+test('LSP registry resolves Rust, Go, Python, C, C++, and headers when binaries are available', () => {
+  const cases = [
+    ['.rs', 'rust-analyzer', [], 'rust'],
+    ['.go', 'gopls', ['serve'], 'go'],
+    ['.py', 'pyright-langserver', ['--stdio'], 'python'],
+    ['.c', 'clangd', [], 'c'],
+    ['.cpp', 'clangd', [], 'cpp'],
+    ['.cc', 'clangd', [], 'cpp'],
+    ['.cxx', 'clangd', [], 'cpp'],
+    ['.hpp', 'clangd', [], 'cpp'],
+    ['.h', 'clangd', [], 'c'],
+  ]
+
+  for (const [extension, command, args, languageId] of cases) {
+    const config = resolveLspServer(extension, {}, {
+      isCommandAvailable: () => true,
+    })
+
+    assert.equal(config.command, command)
+    assert.deepEqual(config.args, args)
+    assert.equal(config.extensionToLanguage[extension], languageId)
+  }
+})
+
+test('LSP registry silently skips all new built-ins when binaries are missing', () => {
+  for (const extension of [
+    '.rs',
+    '.go',
+    '.py',
+    '.c',
+    '.cpp',
+    '.cc',
+    '.cxx',
+    '.hpp',
+    '.h',
+  ]) {
+    assert.equal(
+      resolveLspServer(extension, {}, { isCommandAvailable: () => false }),
+      undefined,
+    )
+  }
+})
+
+test('LSP registry lets plugin servers override new built-in languages', () => {
+  const pluginServers = {
+    'plugin:test:rust': {
+      command: 'custom-rust-lsp',
+      args: ['--stdio'],
+      extensionToLanguage: {
+        '.rs': 'rust',
+      },
+      scope: 'dynamic',
+      source: 'test-plugin',
+    },
+  }
+
+  const config = resolveLspServer('.rs', pluginServers, {
+    isCommandAvailable: () => true,
+  })
+
+  assert.equal(config.command, 'custom-rust-lsp')
+  assert.equal(config.source, 'test-plugin')
+})
+
+test('LSP registry groups built-in extensions by server command', () => {
+  const merged = mergeBuiltInLspServers({}, {
+    isCommandAvailable: () => true,
+  })
+
+  assert.equal(
+    merged['builtin:typescript'].command,
+    'typescript-language-server',
+  )
+  assert.deepEqual(merged['builtin:typescript'].extensionToLanguage, {
+    '.ts': 'typescript',
+    '.tsx': 'typescriptreact',
+  })
+  assert.equal(merged['builtin:rust-analyzer'].command, 'rust-analyzer')
+  assert.deepEqual(merged['builtin:rust-analyzer'].extensionToLanguage, {
+    '.rs': 'rust',
+  })
+  assert.equal(merged['builtin:gopls'].command, 'gopls')
+  assert.deepEqual(merged['builtin:gopls'].args, ['serve'])
+  assert.equal(merged['builtin:pyright'].command, 'pyright-langserver')
+  assert.deepEqual(merged['builtin:clangd'].extensionToLanguage, {
+    '.c': 'c',
+    '.cpp': 'cpp',
+    '.cc': 'cpp',
+    '.cxx': 'cpp',
+    '.hpp': 'cpp',
+    '.h': 'c',
   })
 })
 

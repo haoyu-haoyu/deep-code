@@ -3,18 +3,72 @@ import * as path from 'node:path'
 
 export const BUILT_IN_LSP_SERVERS = Object.freeze({
   '.ts': Object.freeze({
+    serverName: 'builtin:typescript',
     command: 'typescript-language-server',
     args: Object.freeze(['--stdio']),
     languageId: 'typescript',
   }),
   '.tsx': Object.freeze({
+    serverName: 'builtin:typescript',
     command: 'typescript-language-server',
     args: Object.freeze(['--stdio']),
     languageId: 'typescriptreact',
   }),
+  '.rs': Object.freeze({
+    serverName: 'builtin:rust-analyzer',
+    command: 'rust-analyzer',
+    args: Object.freeze([]),
+    languageId: 'rust',
+  }),
+  '.go': Object.freeze({
+    serverName: 'builtin:gopls',
+    command: 'gopls',
+    args: Object.freeze(['serve']),
+    languageId: 'go',
+  }),
+  '.py': Object.freeze({
+    serverName: 'builtin:pyright',
+    command: 'pyright-langserver',
+    args: Object.freeze(['--stdio']),
+    languageId: 'python',
+  }),
+  '.c': Object.freeze({
+    serverName: 'builtin:clangd',
+    command: 'clangd',
+    args: Object.freeze([]),
+    languageId: 'c',
+  }),
+  '.cpp': Object.freeze({
+    serverName: 'builtin:clangd',
+    command: 'clangd',
+    args: Object.freeze([]),
+    languageId: 'cpp',
+  }),
+  '.cc': Object.freeze({
+    serverName: 'builtin:clangd',
+    command: 'clangd',
+    args: Object.freeze([]),
+    languageId: 'cpp',
+  }),
+  '.cxx': Object.freeze({
+    serverName: 'builtin:clangd',
+    command: 'clangd',
+    args: Object.freeze([]),
+    languageId: 'cpp',
+  }),
+  '.hpp': Object.freeze({
+    serverName: 'builtin:clangd',
+    command: 'clangd',
+    args: Object.freeze([]),
+    languageId: 'cpp',
+  }),
+  '.h': Object.freeze({
+    serverName: 'builtin:clangd',
+    command: 'clangd',
+    args: Object.freeze([]),
+    languageId: 'c',
+  }),
 })
-
-const BUILT_IN_TYPESCRIPT_SERVER_NAME = 'builtin:typescript'
 
 export function resolveLspServer(
   extension,
@@ -48,9 +102,7 @@ export function mergeBuiltInLspServers(
   options = {},
 ) {
   const merged = { ...pluginRegistry }
-  const extensionToLanguage = {}
-  let command
-  let args
+  const groupedBuiltIns = new Map()
 
   for (const extension of Object.keys(BUILT_IN_LSP_SERVERS)) {
     if (findServerForExtension(pluginRegistry, extension)) {
@@ -62,19 +114,25 @@ export function mergeBuiltInLspServers(
       continue
     }
 
-    command = config.command
-    args = config.args
-    Object.assign(extensionToLanguage, config.extensionToLanguage)
+    const serverName = BUILT_IN_LSP_SERVERS[extension].serverName
+    if (!groupedBuiltIns.has(serverName)) {
+      groupedBuiltIns.set(serverName, {
+        command: config.command,
+        args: config.args,
+        extensionToLanguage: {},
+        scope: 'builtin',
+        source: 'deepcode',
+      })
+    }
+
+    Object.assign(
+      groupedBuiltIns.get(serverName).extensionToLanguage,
+      config.extensionToLanguage,
+    )
   }
 
-  if (Object.keys(extensionToLanguage).length > 0 && command) {
-    merged[BUILT_IN_TYPESCRIPT_SERVER_NAME] = {
-      command,
-      args,
-      extensionToLanguage,
-      scope: 'builtin',
-      source: 'deepcode',
-    }
+  for (const [serverName, config] of groupedBuiltIns.entries()) {
+    merged[serverName] = config
   }
 
   return merged
