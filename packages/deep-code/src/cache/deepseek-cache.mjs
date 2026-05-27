@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto'
 
+const liveTurns = []
+let totalHit = 0
+let totalMiss = 0
+
 export function createDeepSeekCacheUserId(workspacePath) {
   const hash = createHash('sha256')
     .update(String(workspacePath || process.cwd()))
@@ -24,6 +28,54 @@ export function createDeepSeekCacheDiagnostics(usage = {}) {
     promptCacheTotalTokens: hit + miss,
     promptCacheHitRate: calculateDeepSeekCacheHitRate(usage),
   }
+}
+
+export function recordTurn({
+  turnId,
+  hit = 0,
+  miss = 0,
+  prefixHash = '',
+  componentHashes = {},
+  timestamp = Date.now(),
+} = {}) {
+  const hitTokens = normalizeTokenCount(hit)
+  const missTokens = normalizeTokenCount(miss)
+  const record = {
+    turnId: String(turnId || `turn-${liveTurns.length + 1}`),
+    hitTokens,
+    missTokens,
+    hitRate: calculateHitRate(hitTokens, missTokens),
+    prefixHash: String(prefixHash || ''),
+    componentHashes: cloneComponentHashes(componentHashes),
+    timestamp,
+  }
+
+  liveTurns.push(record)
+  totalHit += hitTokens
+  totalMiss += missTokens
+
+  return cloneTurn(record)
+}
+
+export function getSessionTotals() {
+  return {
+    totalHit,
+    totalMiss,
+    hitRate: calculateHitRate(totalHit, totalMiss),
+    turnCount: liveTurns.length,
+  }
+}
+
+export function getRecentTurns(n = 10) {
+  const count = Math.max(0, Math.trunc(Number(n) || 0))
+  if (count === 0) return []
+  return liveTurns.slice(-count).map(cloneTurn)
+}
+
+export function clear() {
+  liveTurns.length = 0
+  totalHit = 0
+  totalMiss = 0
 }
 
 export function createStableHash(value) {
@@ -60,4 +112,32 @@ export function sortJsonValue(value) {
     out[key] = sortJsonValue(value[key])
   }
   return out
+}
+
+function calculateHitRate(hit, miss) {
+  const total = hit + miss
+  return total === 0 ? 0 : hit / total
+}
+
+function normalizeTokenCount(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number <= 0) return 0
+  return Math.trunc(number)
+}
+
+function cloneTurn(record) {
+  return {
+    ...record,
+    componentHashes: cloneComponentHashes(record.componentHashes),
+  }
+}
+
+function cloneComponentHashes(componentHashes) {
+  if (!componentHashes || typeof componentHashes !== 'object') return {}
+  return Object.fromEntries(
+    Object.entries(componentHashes).map(([key, value]) => [
+      key,
+      String(value),
+    ]),
+  )
 }

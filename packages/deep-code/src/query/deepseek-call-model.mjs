@@ -7,6 +7,7 @@ import {
   recordDeepSeekCacheUsage,
   resolveDeepSeekCacheStatsPath,
 } from '../deepcode/cache-telemetry.mjs'
+import { recordTurn as recordDeepSeekCacheTurn } from '../cache/deepseek-cache.mjs'
 import { providerSupports } from '../deepcode/provider-capabilities.mjs'
 import { createDeepCodeStablePrefix } from '../deepcode/stable-prefix.mjs'
 import { resolveDeepCodeRequestMaxTokens } from '../deepcode/context-policy.mjs'
@@ -205,7 +206,7 @@ export function createDeepSeekCallModel({
     }
 
     if (providerSupports(provider, 'cache_breakpoint')) {
-      await recordQueryCacheUsage(response.usage, stablePrefix, provider)
+      await recordQueryCacheUsage(response.usage, stablePrefix, provider, messageId)
     }
 
     yield deepSeekResponseToAssistantMessage(response, {
@@ -307,8 +308,16 @@ function streamEvent(event) {
   return { type: 'stream_event', event }
 }
 
-async function recordQueryCacheUsage(usage, stablePrefix, provider) {
+async function recordQueryCacheUsage(usage, stablePrefix, provider, turnId) {
   if (!usage) return
+  if (!providerSupports(provider, 'cache_breakpoint')) return
+  recordDeepSeekCacheTurn({
+    turnId,
+    hit: usage.prompt_cache_hit_tokens ?? 0,
+    miss: usage.prompt_cache_miss_tokens ?? 0,
+    prefixHash: stablePrefix?.prefixHash,
+    componentHashes: stablePrefix?.componentHashes,
+  })
   const config = resolveDeepSeekConfig({
     env: process.env,
     cwd: process.cwd(),
