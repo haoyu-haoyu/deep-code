@@ -39,6 +39,7 @@ import { useHasSelection, useSelection } from '../../ink/hooks/use-selection.js'
 import { getGlobalConfig } from '../../utils/config.js';
 import { getPlatform } from '../../utils/platform.js';
 import { PrBadge } from '../PrBadge.js';
+import { CacheStatusChip } from '../CacheStatusChip.js';
 
 // Dead code elimination: conditional import for proactive mode
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -66,6 +67,7 @@ type Props = {
   historyQuery: string;
   setHistoryQuery: (query: string) => void;
   historyFailedMatch: boolean;
+  cacheStatusVersion?: number;
   autoRouteDecision?: AutoRouteDecision;
   onOpenTasksDialog?: (taskId?: string) => void;
 };
@@ -123,7 +125,7 @@ function ProactiveCountdown() {
   return t4;
 }
 export function PromptInputFooterLeftSide(t0) {
-  const $ = _c(28);
+  const $ = _c(29);
   const {
     exitMessage,
     vimMode,
@@ -140,6 +142,7 @@ export function PromptInputFooterLeftSide(t0) {
     historyQuery,
     setHistoryQuery,
     historyFailedMatch,
+    cacheStatusVersion,
     autoRouteDecision,
     onOpenTasksDialog
   } = t0;
@@ -195,31 +198,32 @@ export function PromptInputFooterLeftSide(t0) {
   }
   const t4 = !suppressHint && !showVim;
   let t5;
-  if ($[13] !== autoRouteDecision || $[14] !== isLoading || $[15] !== mode || $[16] !== onOpenTasksDialog || $[17] !== t4 || $[18] !== tasksSelected || $[19] !== teammateFooterIndex || $[20] !== teamsSelected || $[21] !== tmuxSelected || $[22] !== toolPermissionContext) {
-    t5 = <ModeIndicator mode={mode} toolPermissionContext={toolPermissionContext} showHint={t4} isLoading={isLoading} tasksSelected={tasksSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} autoRouteDecision={autoRouteDecision} onOpenTasksDialog={onOpenTasksDialog} />;
+  if ($[13] !== autoRouteDecision || $[14] !== cacheStatusVersion || $[15] !== isLoading || $[16] !== mode || $[17] !== onOpenTasksDialog || $[18] !== t4 || $[19] !== tasksSelected || $[20] !== teammateFooterIndex || $[21] !== teamsSelected || $[22] !== tmuxSelected || $[23] !== toolPermissionContext) {
+    t5 = <ModeIndicator mode={mode} toolPermissionContext={toolPermissionContext} showHint={t4} isLoading={isLoading} tasksSelected={tasksSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} cacheStatusVersion={cacheStatusVersion} autoRouteDecision={autoRouteDecision} onOpenTasksDialog={onOpenTasksDialog} />;
     $[13] = autoRouteDecision;
-    $[14] = isLoading;
-    $[15] = mode;
-    $[16] = onOpenTasksDialog;
-    $[17] = t4;
-    $[18] = tasksSelected;
-    $[19] = teammateFooterIndex;
-    $[20] = teamsSelected;
-    $[21] = tmuxSelected;
-    $[22] = toolPermissionContext;
-    $[23] = t5;
+    $[14] = cacheStatusVersion;
+    $[15] = isLoading;
+    $[16] = mode;
+    $[17] = onOpenTasksDialog;
+    $[18] = t4;
+    $[19] = tasksSelected;
+    $[20] = teammateFooterIndex;
+    $[21] = teamsSelected;
+    $[22] = tmuxSelected;
+    $[23] = toolPermissionContext;
+    $[24] = t5;
   } else {
-    t5 = $[23];
+    t5 = $[24];
   }
   let t6;
-  if ($[24] !== t2 || $[25] !== t3 || $[26] !== t5) {
+  if ($[25] !== t2 || $[26] !== t3 || $[27] !== t5) {
     t6 = <Box justifyContent="flex-start" gap={1}>{t2}{t3}{t5}</Box>;
-    $[24] = t2;
-    $[25] = t3;
-    $[26] = t5;
-    $[27] = t6;
+    $[25] = t2;
+    $[26] = t3;
+    $[27] = t5;
+    $[28] = t6;
   } else {
-    t6 = $[27];
+    t6 = $[28];
   }
   return t6;
 }
@@ -232,6 +236,7 @@ type ModeIndicatorProps = {
   teamsSelected: boolean;
   tmuxSelected: boolean;
   teammateFooterIndex?: number;
+  cacheStatusVersion?: number;
   autoRouteDecision?: AutoRouteDecision;
   onOpenTasksDialog?: (taskId?: string) => void;
 };
@@ -244,6 +249,7 @@ function ModeIndicator({
   teamsSelected,
   tmuxSelected,
   teammateFooterIndex,
+  cacheStatusVersion,
   autoRouteDecision,
   onOpenTasksDialog
 }: ModeIndicatorProps): React.ReactNode {
@@ -335,7 +341,7 @@ function ModeIndicator({
   // its click-target Box isn't nested inside the <Text wrap="truncate">
   // wrapper (reconciler throws on Box-in-Text).
   // Tmux pill (ant-only) — appears right after tasks in nav order
-  ...("external" === 'ant' && hasTmuxSession ? [<TungstenPill key="tmux" selected={tmuxSelected} />] : []), ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), ...(showAutoRoute ? [<Text dimColor key="auto-route">auto {'->'} {autoRouteDecision.model}/{autoRouteDecision.thinking}</Text>] : []), ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
+  ...("external" === 'ant' && hasTmuxSession ? [<TungstenPill key="tmux" selected={tmuxSelected} />] : []), ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), ...(showAutoRoute ? [<Text dimColor key="auto-route">auto {'->'} {autoRouteDecision.model}/{autoRouteDecision.thinking}</Text>] : []), <CacheStatusChip key={`cache-status-${cacheStatusVersion ?? 0}`} />, ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
 
   // Check if any in-process teammates exist (for hint text cycling)
   const hasAnyInProcessTeammates = Object.values(tasks).some(t_2 => t_2.type === 'in_process_teammate' && t_2.status === 'running');
