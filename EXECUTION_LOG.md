@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-27 (P2.1 auto mode router done)
+Last updated: 2026-05-27 (P2.2 multi-provider support done)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | P2.1 | P2.1 auto mode router done (#186 + #187 + #188) | P2.2.scan multi-provider support | no |
+| A: Pure-DeepSeek | P2.2 | P2.1 (#186/#187/#188) + P2.2 (#189-#194) done | P2.3 cache visualization | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -152,7 +152,8 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 |---|---|---|---|---|
 | P2.scan roadmap | done | #185 | `d7d348e` | P2_ROADMAP.md created from PURE_DEEPSEEK_PLAN.md Phase 2 inventory; recommended P2.1 Auto mode router as the first source feature. |
 | P2.1 Auto mode router | done | #186 + #187 + #188 | a `11dd906` + b `ddec491` + c (this PR) | P2.1.a created services/autoMode/router.ts with deterministic heuristic fallback, ROUTER_SYSTEM prompt, JSON schema validation, timeout/abort fallback, node:test fixture, and CI registration; P2.1.b added --model auto, /model auto, model option plumbing, DeepSeek router-call helper, and per-turn autoRouteDecision metadata in the runtime stream; P2.1.c displays footer route state as `auto -> flash/off` or `auto -> pro/max`, hardens abort/concurrent route tests, and makes sub-agents inherit auto unless explicitly assigned. Full suite 69/69 plus P2.1 node:test coverage pass locally. |
-| P2.2 Multi-provider support scan | ready | — | — | Next: design `--provider {deepseek,ollama,vllm,openai-compatible}` and provider abstraction entry path per P2_ROADMAP.md. |
+| P2.2 multi-provider support (Path C) | done | #189 + #190 + #191 + #192 + #193 + #194 | scan `5331851` + a `e573398` + b `c0e48c3` + c `49ee4b7` + d `2c8669b` + Z `9e918fe` | Path C executed per P2_2_DESIGN.md: openai-compatible.mjs adapter (160 LOC) covers ollama/vllm/generic openai-compatible providers; registry.mjs 4-branch resolve; --provider CLI flag + /provider command; provider-aware config-store with 6-step precedence (CLI > provider-env > generic-env > config-file > legacy-deepseek > defaults); capability gating in 8 DeepSeek-specific consumers (query/deepseek-call-model, services/runtime/{messageSend,usage}, deepcode/{status,cache-telemetry,doctor,compact,stable-prefix}); 26 node:test cases in p2-2-providers.test.mjs covering adapter / registry / config precedence / capability matrix / provider switching; DeepSeek backward compat preserved; provider ids: deepseek (default), ollama, vllm, openai-compatible, anthropic/claude unsupported error; 5 ModelProvider methods: streamQuery / buildRequest / parseStreamChunk / mapUsage / supports; full suite passing throughout. |
+| P2.3 cache visualization | ready | — | — | Next: DeepSeek cache hit/miss/savings UI per P2_ROADMAP.md priority order. |
 
 ### Phases 3-5
 
