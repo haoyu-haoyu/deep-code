@@ -14,6 +14,9 @@ import {
   createLSPServerManagerCore,
 } from '../src/services/lsp/core.mjs'
 import {
+  notifyAndCollectDiagnosticsCore,
+} from '../src/services/lsp/postEditDiagnostics-core.mjs'
+import {
   mergeBuiltInLspServers,
   resolveLspServer,
 } from '../src/services/lsp/registry.mjs'
@@ -255,6 +258,116 @@ test('LSP registry merges built-ins without overriding plugin-owned extensions',
   })
 })
 
+test('post-edit diagnostics notifies change and save then collects diagnostics', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-lsp-post-edit-'))
+  const filePath = join(workspaceRoot, 'demo.ts')
+  const server = await createFakeLspServer({ behavior: 'diagnostics-on-save' })
+  const manager = createTestManager({
+    'fake-ts': serverConfig(server, workspaceRoot),
+  })
+
+  try {
+    await manager.initialize()
+    const result = await notifyAndCollectDiagnosticsCore({
+      filePath,
+      content: 'const value: string = 1\n',
+      operation: 'edit',
+      pollDelay: 50,
+      maxDiagnostics: 10,
+      lspManager: manager,
+      clearDeliveredDiagnosticsForFile() {},
+      formatDiagnosticsForAttachment: formatFakeDiagnostics,
+      delay,
+      logForDebugging() {},
+      logError() {},
+    })
+
+    await server.waitForMethod('notification:textDocument/didChange')
+    await server.waitForMethod('notification:textDocument/didSave')
+    assert.equal(result.diagnostics.length, 1)
+    assert.equal(result.diagnostics[0].message, 'fake diagnostic')
+    assert.equal(result.truncated, false)
+    assert.ok(result.elapsed >= 0)
+  } finally {
+    await manager.shutdown().catch(() => {})
+  }
+})
+
+test('post-edit diagnostics failures return empty results without throwing', async () => {
+  const result = await notifyAndCollectDiagnosticsCore({
+    filePath: '/tmp/demo.ts',
+    content: 'broken',
+    operation: 'write',
+    pollDelay: 1,
+    maxDiagnostics: 10,
+    lspManager: {
+      async ensureServerStarted() {
+        throw new Error('LSP crashed')
+      },
+    },
+    clearDeliveredDiagnosticsForFile() {},
+    formatDiagnosticsForAttachment: formatFakeDiagnostics,
+    delay,
+    logForDebugging() {},
+    logError() {},
+  })
+
+  assert.deepEqual(result.diagnostics, [])
+  assert.equal(result.truncated, false)
+})
+
+test('post-edit diagnostics deduplicates and truncates collected diagnostics', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-lsp-post-dedupe-'))
+  const filePath = join(workspaceRoot, 'demo.ts')
+  const server = await createFakeLspServer({
+    behavior: 'duplicate-diagnostics-on-save',
+  })
+  const manager = createTestManager({
+    'fake-ts': serverConfig(server, workspaceRoot),
+  })
+
+  try {
+    await manager.initialize()
+    const result = await notifyAndCollectDiagnosticsCore({
+      filePath,
+      content: 'const value: string = 1\n',
+      operation: 'edit',
+      pollDelay: 50,
+      maxDiagnostics: 1,
+      lspManager: manager,
+      clearDeliveredDiagnosticsForFile() {},
+      formatDiagnosticsForAttachment: formatFakeDiagnostics,
+      delay,
+      logForDebugging() {},
+      logError() {},
+    })
+
+    assert.equal(result.diagnostics.length, 1)
+    assert.equal(result.diagnostics[0].message, 'fake diagnostic')
+    assert.equal(result.truncated, false)
+  } finally {
+    await manager.shutdown().catch(() => {})
+  }
+})
+
+test('FileEditTool and FileWriteTool use post-edit diagnostics facade', () => {
+  const editSource = readFileSync(
+    new URL('../src/tools/FileEditTool/FileEditTool.ts', import.meta.url),
+    'utf8',
+  )
+  const writeSource = readFileSync(
+    new URL('../src/tools/FileWriteTool/FileWriteTool.ts', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(editSource, /notifyAndCollectDiagnostics/)
+  assert.match(editSource, /operation:\s*'edit'/)
+  assert.doesNotMatch(editSource, /getLspServerManager\(\)/)
+  assert.match(writeSource, /notifyAndCollectDiagnostics/)
+  assert.match(writeSource, /operation:\s*'write'/)
+  assert.doesNotMatch(writeSource, /getLspServerManager\(\)/)
+})
+
 function serverConfig(server, workspaceRoot) {
   return {
     command: process.execPath,
@@ -267,6 +380,21 @@ function serverConfig(server, workspaceRoot) {
     startupTimeout: 5_000,
     maxRestarts: 1,
   }
+}
+
+function formatFakeDiagnostics(params) {
+  return [
+    {
+      uri: params.uri.replace(/^file:\/\//, ''),
+      diagnostics: params.diagnostics.map(diag => ({
+        message: diag.message,
+        severity: 'Error',
+        range: diag.range,
+        source: diag.source,
+        code: diag.code ? String(diag.code) : undefined,
+      })),
+    },
+  ]
 }
 
 function createTestClient(serverName, onCrash) {
@@ -345,6 +473,7 @@ import { appendFileSync } from 'node:fs'
 const logPath = process.env.DEEPCODE_FAKE_LSP_LOG
 const behavior = process.env.DEEPCODE_FAKE_LSP_BEHAVIOR || 'normal'
 let buffer = Buffer.alloc(0)
+let lastDocumentUri = 'file:///fake.ts'
 
 function log(event) {
   appendFileSync(logPath, JSON.stringify(event) + '\n')
@@ -357,22 +486,26 @@ function writeMessage(message) {
 }
 
 function sendDiagnostics() {
+  const diagnostics = [
+    {
+      message: 'fake diagnostic',
+      severity: 1,
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 4 },
+      },
+      source: 'fake-lsp',
+    },
+  ]
+  if (behavior === 'duplicate-diagnostics-on-save') {
+    diagnostics.push({ ...diagnostics[0] })
+  }
   writeMessage({
     jsonrpc: '2.0',
     method: 'textDocument/publishDiagnostics',
     params: {
-      uri: 'file:///fake.ts',
-      diagnostics: [
-        {
-          message: 'fake diagnostic',
-          severity: 1,
-          range: {
-            start: { line: 0, character: 0 },
-            end: { line: 0, character: 4 },
-          },
-          source: 'fake-lsp',
-        },
-      ],
+      uri: lastDocumentUri,
+      diagnostics,
     },
   })
 }
@@ -412,7 +545,13 @@ function handleMessage(message) {
 
   if (message.method) {
     log({ kind: 'notification', method: message.method })
-    if (message.method === 'textDocument/didSave' && behavior === 'diagnostics-on-save') {
+    if (message.params && message.params.textDocument && message.params.textDocument.uri) {
+      lastDocumentUri = message.params.textDocument.uri
+    }
+    if (
+      message.method === 'textDocument/didSave' &&
+      (behavior === 'diagnostics-on-save' || behavior === 'duplicate-diagnostics-on-save')
+    ) {
       setTimeout(sendDiagnostics, 25)
     }
     if (message.method === 'exit') {
