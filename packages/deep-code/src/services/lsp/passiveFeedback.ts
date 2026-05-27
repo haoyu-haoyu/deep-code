@@ -1,5 +1,4 @@
 import { fileURLToPath } from 'url'
-import type { PublishDiagnosticsParams } from 'vscode-languageserver-protocol'
 import { logForDebugging } from '../../utils/debug.js'
 import { toError } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
@@ -7,6 +6,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 import type { DiagnosticFile } from '../diagnosticTracking.js'
 import { registerPendingLSPDiagnostic } from './LSPDiagnosticRegistry.js'
 import type { LSPServerManager } from './LSPServerManager.js'
+import type { PublishDiagnosticsParams } from './types.js'
 
 /**
  * Map LSP severity to Claude diagnostic severity
