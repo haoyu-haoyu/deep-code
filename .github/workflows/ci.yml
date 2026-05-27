@@ -51,6 +51,7 @@ jobs:
             test/s4-streaming-resume.test.mjs \
             test/p2-1-auto-mode.test.mjs \
             test/p2-2-providers.test.mjs \
+            test/p2-3-cache.test.mjs \
             test/phase5-perf-compare.test.mjs \
             test/phase5-ci-workflow.test.mjs \
             test/a1-mcp-nonblocking.test.mjs \
