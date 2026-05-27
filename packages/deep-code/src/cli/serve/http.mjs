@@ -6,6 +6,7 @@ import {
   writeUnauthorized,
 } from './auth.mjs'
 import { createSessionRegistry } from './sessions.mjs'
+import { handleTurnStream } from './turns.mjs'
 
 export const DEFAULT_HTTP_HOST = '127.0.0.1'
 export const DEFAULT_HTTP_PORT = 8765
@@ -17,11 +18,12 @@ export async function startHttpServer({
   port = DEFAULT_HTTP_PORT,
   processLike = process,
   sessions = createSessionRegistry(),
+  turnRunner,
 } = {}) {
   const normalizedHost = normalizeHost(host)
   const normalizedPort = normalizePort(port)
   const server = createServer((req, res) => {
-    void handleRequest(req, res, { env, sessions }).catch(() => {
+    void handleRequest(req, res, { env, sessions, turnRunner }).catch(() => {
       if (!res.headersSent) {
         writeJson(res, 500, { error: 'internal_server_error' })
       } else {
@@ -90,7 +92,7 @@ export async function startHttpServer({
   }
 }
 
-async function handleRequest(req, res, { env, sessions }) {
+async function handleRequest(req, res, { env, sessions, turnRunner }) {
   if (!validateBearerToken(req, { env })) {
     writeUnauthorized(res)
     return
@@ -119,6 +121,59 @@ async function handleRequest(req, res, { env, sessions }) {
       cwd: typeof body.cwd === 'string' ? body.cwd : undefined,
     })
     writeJson(res, 200, { session_id: session.id })
+    return
+  }
+
+  if (
+    pathParts.length === 3 &&
+    pathParts[0] === 'sessions' &&
+    pathParts[2] === 'turns'
+  ) {
+    const sessionId = pathParts[1]
+
+    if (req.method !== 'POST') {
+      writeJson(res, 405, { error: 'method_not_allowed' })
+      return
+    }
+
+    let body
+    try {
+      body = await readJsonBody(req)
+    } catch (error) {
+      if (error instanceof BadRequestError) {
+        writeJson(res, 400, { error: error.message })
+        return
+      }
+      throw error
+    }
+
+    await handleTurnStream({
+      body,
+      req,
+      res,
+      sessionId,
+      sessions,
+      turnRunner,
+    })
+    return
+  }
+
+  if (
+    pathParts.length === 4 &&
+    pathParts[0] === 'sessions' &&
+    pathParts[2] === 'turns'
+  ) {
+    if (req.method !== 'GET') {
+      writeJson(res, 405, { error: 'method_not_allowed' })
+      return
+    }
+
+    const turn = sessions.getTurn(pathParts[1], pathParts[3])
+    if (!turn) {
+      writeJson(res, 404, { error: 'not_found' })
+      return
+    }
+    writeJson(res, 200, turn)
     return
   }
 
