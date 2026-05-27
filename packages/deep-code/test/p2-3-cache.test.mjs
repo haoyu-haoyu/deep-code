@@ -10,6 +10,7 @@ import {
   formatCacheStatusText,
   formatCompactTokenCount,
 } from '../src/components/cacheStatusChipData.mjs'
+import { executeCacheCommand } from '../src/commands/cache/cache-command.mjs'
 import { createDeepSeekCallModel } from '../src/query/deepseek-call-model.mjs'
 
 test('recordTurn updates session totals and hit rate', () => {
@@ -242,6 +243,86 @@ test('CacheStatusChip hides when provider lacks cache capability', () => {
 test('formatCompactTokenCount uses k and M suffixes', () => {
   assert.equal(formatCompactTokenCount(1_234), '1.2k')
   assert.equal(formatCompactTokenCount(1_234_567), '1.2M')
+})
+
+test('/cache inspect reports recent turns and session totals', async () => {
+  clear()
+  recordTurn({
+    turnId: 'turn-inspect',
+    hit: 8,
+    miss: 2,
+    prefixHash: 'prefix-inspect',
+    componentHashes: { systemPrompt: 'system-hash' },
+    timestamp: 400,
+  })
+
+  const result = await executeCacheCommand('inspect', {
+    provider: createCapabilityProvider(true),
+  })
+
+  assert.equal(result.kind, 'inspect')
+  assert.match(result.report, /DeepSeek cache/)
+  assert.match(result.report, /Session: hit=8 miss=2 hit_rate=80\.0% turns=1/)
+  assert.match(result.report, /turn-inspect: hit=8 miss=2 hit_rate=80\.0% prefix=prefix-inspect/)
+  assert.match(result.report, /Estimated savings:/)
+  assert.match(result.report, /pricing snapshot 2026-05-27/)
+})
+
+test('/cache warmup calls warmDeepSeekCache and formats the result', async () => {
+  let warmupArgs
+  const provider = createCapabilityProvider(true)
+
+  const result = await executeCacheCommand('warmup', {
+    cwd: '/tmp/deepcode-cache-test',
+    env: { DEEPCODE_PROVIDER: 'deepseek' },
+    provider,
+    context: {
+      options: {
+        tools: [{ name: 'Read' }],
+      },
+    },
+    warmup: async args => {
+      warmupArgs = args
+      return { prefixHash: 'warm-prefix' }
+    },
+    formatWarmup: result => `formatted warmup ${result.prefixHash}`,
+  })
+
+  assert.equal(result.kind, 'text')
+  assert.equal(result.value, 'formatted warmup warm-prefix')
+  assert.equal(warmupArgs.cwd, '/tmp/deepcode-cache-test')
+  assert.equal(warmupArgs.provider, provider)
+  assert.deepEqual(warmupArgs.tools, [{ name: 'Read' }])
+})
+
+test('/cache clear resets local store and does not claim remote cache clearing', async () => {
+  clear()
+  recordTurn({ turnId: 'turn-clear', hit: 9, miss: 1 })
+
+  const result = await executeCacheCommand('clear', {
+    provider: createCapabilityProvider(true),
+  })
+
+  assert.equal(result.kind, 'text')
+  assert.match(result.value, /Local DeepSeek cache visualization state cleared/)
+  assert.match(result.value, /does not clear DeepSeek remote cache/)
+  assert.deepEqual(getSessionTotals(), {
+    totalHit: 0,
+    totalMiss: 0,
+    hitRate: 0,
+    turnCount: 0,
+  })
+})
+
+test('/cache is unavailable when provider lacks cache capability', async () => {
+  const result = await executeCacheCommand('inspect', {
+    provider: createCapabilityProvider(false),
+  })
+
+  assert.deepEqual(result, {
+    kind: 'text',
+    value: 'Cache visualization unavailable for current provider',
+  })
 })
 
 function createMockProvider({ supports }) {

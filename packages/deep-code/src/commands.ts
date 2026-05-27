@@ -5,6 +5,7 @@ import backfillSessions from './commands/backfill-sessions/index.js'
 import goodClaude from './commands/good-claude/index.js'
 import issue from './commands/issue/index.js'
 import clear from './commands/clear/index.js'
+import cache from './commands/cache/index.js'
 import color from './commands/color/index.js'
 import commit from './commands/commit.js'
 import copy from './commands/copy/index.js'
@@ -230,6 +231,7 @@ const COMMANDS = memoize((): Command[] => [
   advisor,
   agents,
   branch,
+  cache,
   clear,
   color,
   compact,
