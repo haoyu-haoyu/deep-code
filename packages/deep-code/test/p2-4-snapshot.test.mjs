@@ -7,11 +7,17 @@ import {
   readdirSync,
   statSync,
 } from 'node:fs'
-import { mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { hostname, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
 
+import {
+  checkAndPrune,
+  getSnapshotStoreSize,
+} from '../src/services/snapshot/diskCap.mjs'
+import { acquireLock } from '../src/services/snapshot/lock.mjs'
 import {
   appendManifest,
   readManifest,
@@ -148,6 +154,119 @@ test('manifest writes are atomic and ignore leftover tmp files', async () => {
       .length,
     1,
   )
+})
+
+test('checkAndPrune removes oldest snapshots when side-git exceeds cap', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-cap-'))
+    for (let index = 1; index <= 3; index += 1) {
+      await writeFile(
+        join(workspaceRoot, 'large.txt'),
+        `${index}:${'x'.repeat(200_000)}\n`,
+      )
+      await createSnapshot({
+        workspaceRoot,
+        turnId: `turn-${index}`,
+        phase: 'post',
+      })
+    }
+
+    const store = resolveSnapshotStore({ workspaceRoot })
+    const beforeBytes = await getSnapshotStoreSize(store.storePath)
+    const result = await checkAndPrune({
+      workspaceRoot,
+      capBytes: beforeBytes - 1,
+    })
+    const remainingTurns = (await listSnapshots({ workspaceRoot, limit: 10 })).map(
+      entry => entry.turnId,
+    )
+
+    assert.ok(result.prunedCount >= 1)
+    assert.ok(result.finalBytes <= beforeBytes - 1)
+    assert.equal(remainingTurns.includes('turn-1'), false)
+    assert.equal(remainingTurns.includes('turn-3'), true)
+  })
+})
+
+test('checkAndPrune is a no-op when snapshot store is under cap', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-cap-ok-'))
+    await writeFile(join(workspaceRoot, 'small.txt'), 'small\n')
+    await createSnapshot({ workspaceRoot, turnId: 'turn-1', phase: 'pre' })
+
+    const store = resolveSnapshotStore({ workspaceRoot })
+    const beforeBytes = await getSnapshotStoreSize(store.storePath)
+    const result = await checkAndPrune({
+      workspaceRoot,
+      capBytes: beforeBytes + 1024,
+    })
+
+    assert.deepEqual(result, { prunedCount: 0, finalBytes: beforeBytes })
+    assert.equal((await listSnapshots({ workspaceRoot })).length, 1)
+  })
+})
+
+test('acquireLock queues same-process contenders', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-lock-'))
+    const first = await acquireLock({ workspaceRoot })
+    let secondAcquired = false
+    const secondPromise = acquireLock({ workspaceRoot, timeoutMs: 1000 }).then(
+      lock => {
+        secondAcquired = true
+        return lock
+      },
+    )
+
+    await delay(50)
+    assert.equal(secondAcquired, false)
+
+    await first.release()
+    const second = await secondPromise
+    assert.equal(secondAcquired, true)
+    await second.release()
+  })
+})
+
+test('acquireLock recovers stale lock files', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-stale-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    await mkdir(store.storePath, { recursive: true })
+    await writeFile(
+      join(store.storePath, 'snapshot.lock'),
+      JSON.stringify({
+        ownerId: 'stale-owner',
+        pid: 99999999,
+        ts: 0,
+        hostname: 'stale-host',
+      }),
+    )
+
+    const lock = await acquireLock({ workspaceRoot, timeoutMs: 1000, staleMs: 0 })
+
+    assert.notEqual(lock.ownerId, 'stale-owner')
+    await lock.release()
+  })
+})
+
+test('acquireLock refuses release after lock ownership changes', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-owner-'))
+    const lock = await acquireLock({ workspaceRoot })
+    const store = resolveSnapshotStore({ workspaceRoot })
+    await writeFile(
+      join(store.storePath, 'snapshot.lock'),
+      JSON.stringify({
+        ownerId: 'other-owner',
+        pid: process.pid,
+        ts: Date.now(),
+        hostname: hostname(),
+      }),
+    )
+
+    await assert.rejects(lock.release(), /Lock ownership changed/)
+  })
 })
 
 async function withDeepCodeHome(callback) {
