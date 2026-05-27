@@ -3180,7 +3180,7 @@ async function run(): Promise<CommanderCommand> {
     await mcpResetChoicesHandler();
   });
 
-  program.command('serve').description('Start Deep Code serve mode').option('--http', 'Start HTTP server (Bearer-token auth required)').option('--host <host>', 'Bind address', '127.0.0.1').option('--port <port>', 'Bind port', '8765').option('--acp', 'Start ACP server (not implemented yet)').action(async (options: {
+  program.command('serve').description('Start Deep Code serve mode').option('--http', 'Start HTTP server (Bearer-token auth required)').option('--host <host>', 'Bind address', '127.0.0.1').option('--port <port>', 'Bind port', '8765').addOption(new Option('--acp', 'Start ACP server (reserved for a future protocol phase)').conflicts('http')).action(async (options: {
     http?: boolean;
     host?: string;
     port?: string;

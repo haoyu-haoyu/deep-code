@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { createServer } from 'node:net'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 
@@ -322,6 +324,31 @@ test('client disconnect aborts a streamed turn without crashing', async () => {
   )
 })
 
+test('serve --acp exits with EX_CONFIG and prints not implemented status', () => {
+  const result = runServeModeInChild('{ acp: true }')
+
+  assert.equal(result.status, 78, result.stderr)
+  assert.match(result.stderr, /not yet implemented/i)
+  assert.equal(result.stdout, '')
+  assert.equal(result.stderr.includes(TOKEN), false)
+})
+
+test('serve --acp with --http does not start an HTTP server', async () => {
+  const port = await getUnusedPort()
+  const result = runServeModeInChild(
+    `{ acp: true, http: true, host: '127.0.0.1', port: ${port} }`,
+  )
+
+  assert.equal(result.status, 78, result.stderr)
+  assert.match(result.stderr, /not yet implemented/i)
+
+  await assert.rejects(
+    fetch(`http://127.0.0.1:${port}/`, {
+      signal: AbortSignal.timeout(100),
+    }),
+  )
+})
+
 async function withServer(options, fn) {
   const server = await startHttpServer({
     installSignalHandlers: false,
@@ -393,6 +420,35 @@ async function waitFor(predicate, { attempts = 50, interval = 10 } = {}) {
     await delay(interval)
   }
   assert.fail('condition not met before timeout')
+}
+
+function runServeModeInChild(optionsSource) {
+  const script = `
+    import { startServeMode } from './src/cli/serve/index.mjs'
+    await startServeMode(${optionsSource})
+  `
+  return spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+    cwd: new URL('..', import.meta.url),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_HTTP_TOKEN: TOKEN,
+    },
+    timeout: 1000,
+  })
+}
+
+async function getUnusedPort() {
+  const server = createServer()
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const { port } = server.address()
+  await new Promise((resolve, reject) => {
+    server.close(error => error ? reject(error) : resolve())
+  })
+  return port
 }
 
 const UUID_PATTERN =

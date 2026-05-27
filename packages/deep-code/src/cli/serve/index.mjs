@@ -8,16 +8,15 @@ export async function startServeMode({
   stderr = process.stderr,
   stdout = process.stdout,
 } = {}) {
+  if (acp) {
+    stderr.write('ACP protocol mode is not yet implemented. Reserved for future phase.\n')
+    process.exit(78)
+  }
+
   if (http) {
     const server = await startHttpServer({ host, port })
     stdout.write(`Deep Code HTTP server listening on ${server.url}\n`)
     return server
-  }
-
-  if (acp) {
-    stderr.write('deepcode serve --acp is not implemented yet\n')
-    process.exitCode = 1
-    return { mode: 'acp_unimplemented' }
   }
 
   stderr.write('Specify --http to start the HTTP server.\n')
