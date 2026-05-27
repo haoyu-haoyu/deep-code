@@ -1,9 +1,26 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { createOpenAICompatibleProvider } from '../src/services/providers/openai-compatible.mjs'
+import {
+  DEFAULT_MODEL_PROVIDER,
+  MODEL_PROVIDER_NAMES,
+  normalizeModelProviderName,
+  resolveModelProvider,
+} from '../src/services/providers/registry.mjs'
 
 const messages = [{ role: 'user', content: 'hello' }]
+const packageRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
+const mainSource = join(packageRoot, 'src/main.tsx')
+const commandsSource = join(packageRoot, 'src/commands.ts')
+const providerCommandIndexSource = join(
+  packageRoot,
+  'src/commands/provider/index.ts',
+)
+const providerCommandSource = join(packageRoot, 'src/commands/provider/provider.tsx')
 
 test('ollama provider uses localhost OpenAI-compatible default without an API key', () => {
   const provider = createOpenAICompatibleProvider({ providerName: 'ollama' })
@@ -158,4 +175,81 @@ test('adapter satisfies the five-method ModelProvider contract', () => {
   assert.equal(typeof provider.parseStreamChunk, 'function')
   assert.equal(typeof provider.mapUsage, 'function')
   assert.equal(typeof provider.supports, 'function')
+})
+
+test('registry resolves all supported provider names while preserving deepseek default', () => {
+  assert.equal(DEFAULT_MODEL_PROVIDER, 'deepseek')
+  assert.deepEqual(MODEL_PROVIDER_NAMES, [
+    'deepseek',
+    'ollama',
+    'vllm',
+    'openai-compatible',
+  ])
+
+  assert.equal(resolveModelProvider({ env: {} }).name, 'deepseek')
+  assert.equal(resolveModelProvider({ name: 'deepseek' }).name, 'deepseek')
+  assert.equal(resolveModelProvider({ name: 'ollama' }).name, 'ollama')
+  assert.equal(
+    resolveModelProvider({
+      name: 'vllm',
+      baseUrl: 'http://localhost:8000/v1',
+      defaultModel: 'served-model',
+    }).name,
+    'vllm',
+  )
+  assert.equal(
+    resolveModelProvider({
+      name: 'openai-compatible',
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'sk-test',
+      defaultModel: 'custom-model',
+    }).name,
+    'openai-compatible',
+  )
+})
+
+test('registry keeps anthropic and claude as clear legacy-only unsupported providers', async () => {
+  const anthropic = resolveModelProvider({ name: 'anthropic' })
+  const claude = resolveModelProvider({ name: 'claude' })
+
+  assert.equal(anthropic.name, 'anthropic')
+  assert.equal(claude.name, 'anthropic')
+  assert.equal(anthropic.supports('streaming'), false)
+  await assert.rejects(
+    () => anthropic.buildRequest(),
+    /Anthropic provider is legacy-only in Deep Code native mode/,
+  )
+})
+
+test('registry rejects unknown provider names with valid provider hint', () => {
+  assert.throws(
+    () => resolveModelProvider({ name: 'unknown' }),
+    /Unknown model provider: unknown\. Valid providers: deepseek, ollama, vllm, openai-compatible/,
+  )
+  assert.equal(normalizeModelProviderName(' OLLAMA '), 'ollama')
+})
+
+test('main CLI declares and validates --provider without changing the default provider', async () => {
+  const source = await readFile(mainSource, 'utf8')
+
+  assert.match(source, /--provider <provider>/)
+  assert.match(source, /parseModelProviderOption/)
+  assert.match(source, /process\.env\.DEEPCODE_PROVIDER/)
+  assert.match(source, /DEFAULT_MODEL_PROVIDER/)
+})
+
+test('provider slash command is registered and exposes valid provider choices', async () => {
+  const [commands, index, provider] = await Promise.all([
+    readFile(commandsSource, 'utf8'),
+    readFile(providerCommandIndexSource, 'utf8'),
+    readFile(providerCommandSource, 'utf8'),
+  ])
+
+  assert.match(commands, /commands\/provider\/index\.js/)
+  assert.match(commands, /\bprovider\b/)
+  assert.match(index, /name:\s*'provider'/)
+  assert.match(index, /Switch model provider/)
+  assert.match(provider, /executeProviderCommand/)
+  assert.match(provider, /deepseek\/ollama\/vllm\/openai-compatible/)
+  assert.match(provider, /legacy-only, not supported/)
 })

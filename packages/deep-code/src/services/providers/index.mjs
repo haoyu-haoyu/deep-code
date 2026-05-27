@@ -11,7 +11,16 @@ export {
 } from './deepseek.mjs'
 
 export {
+  createOpenAICompatibleProvider,
+  OPENAI_COMPATIBLE_PROVIDER_DEFAULTS,
+} from './openai-compatible.mjs'
+
+export {
   DEFAULT_MODEL_PROVIDER,
+  MODEL_PROVIDER_NAMES,
+  formatModelProviderNames,
+  isModelProviderName,
+  normalizeModelProviderName,
   resolveModelProvider,
 } from './registry.mjs'
 
