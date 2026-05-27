@@ -33,7 +33,7 @@ export function loadDeepSeekConfigFile({ env = process.env } = {}) {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return null
     }
-    return parsed
+    return extractDeepSeekConfig(parsed)
   } catch {
     return null
   }
@@ -113,4 +113,142 @@ export function deleteDeepSeekConfigFile({ env = process.env } = {}) {
   if (!existsSync(path)) return false
   unlinkSync(path)
   return true
+}
+
+export function loadProviderConfigFile({ env = process.env } = {}) {
+  const path = resolveDeepSeekConfigPath({ env })
+  if (!existsSync(path)) return createEmptyProviderConfig()
+  try {
+    const raw = readFileSync(path, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return createEmptyProviderConfig()
+    }
+    return normalizeProviderConfig(parsed)
+  } catch {
+    return createEmptyProviderConfig()
+  }
+}
+
+export function saveProviderConfigFile(config, { env = process.env } = {}) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new TypeError('Provider config must be a plain object')
+  }
+  const path = resolveDeepSeekConfigPath({ env })
+  const dir = dirname(path)
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+  }
+  const persisted = normalizeProviderConfig(config)
+  persisted.completedAt = new Date().toISOString()
+  writeConfigAtomically(path, persisted)
+  return path
+}
+
+export function mergeProviderConfigPartial(
+  provider,
+  partial,
+  { env = process.env } = {},
+) {
+  if (!provider || typeof provider !== 'string') {
+    throw new TypeError('Provider name must be a string')
+  }
+  if (!partial || typeof partial !== 'object' || Array.isArray(partial)) {
+    throw new TypeError('Provider config partial must be a plain object')
+  }
+  const existing = loadProviderConfigFile({ env })
+  const next = {
+    ...existing,
+    activeProvider: provider,
+    providers: {
+      ...existing.providers,
+      [provider]: {
+        ...(existing.providers?.[provider] ?? {}),
+        ...sanitizeProviderConfigSection(partial),
+      },
+    },
+  }
+  saveProviderConfigFile(next, { env })
+  return next
+}
+
+function writeConfigAtomically(path, value) {
+  const tmpPath = `${path}.${randomUUID()}.tmp`
+  try {
+    writeFileSync(tmpPath, JSON.stringify(value, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600,
+    })
+    try {
+      chmodSync(tmpPath, 0o600)
+    } catch {}
+    renameSync(tmpPath, path)
+  } catch (error) {
+    try {
+      unlinkSync(tmpPath)
+    } catch {}
+    throw error
+  }
+}
+
+function createEmptyProviderConfig() {
+  return {
+    activeProvider: undefined,
+    providers: {},
+  }
+}
+
+function normalizeProviderConfig(config) {
+  if (config.providers && typeof config.providers === 'object') {
+    const providers = {}
+    for (const [provider, value] of Object.entries(config.providers)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      providers[provider] = sanitizeProviderConfigSection(value)
+    }
+    return {
+      activeProvider:
+        typeof config.activeProvider === 'string'
+          ? config.activeProvider
+          : undefined,
+      providers,
+    }
+  }
+
+  return {
+    activeProvider: 'deepseek',
+    providers: {
+      deepseek: sanitizeProviderConfigSection(config),
+    },
+  }
+}
+
+function extractDeepSeekConfig(config) {
+  if (config.providers && typeof config.providers === 'object') {
+    const deepseek = config.providers.deepseek
+    if (!deepseek || typeof deepseek !== 'object' || Array.isArray(deepseek)) {
+      return null
+    }
+    return sanitizeProviderConfigSection(deepseek)
+  }
+  return config
+}
+
+function sanitizeProviderConfigSection(config) {
+  const sanitized = {
+    apiKey: typeof config.apiKey === 'string' ? config.apiKey : undefined,
+    baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl : undefined,
+    model: typeof config.model === 'string' ? config.model : undefined,
+    smallModel:
+      typeof config.smallModel === 'string' ? config.smallModel : undefined,
+    reasoningEffort:
+      typeof config.reasoningEffort === 'string'
+        ? config.reasoningEffort
+        : undefined,
+    thinking:
+      typeof config.thinking === 'string' ? config.thinking : undefined,
+  }
+  for (const key of Object.keys(sanitized)) {
+    if (sanitized[key] === undefined) delete sanitized[key]
+  }
+  return sanitized
 }
