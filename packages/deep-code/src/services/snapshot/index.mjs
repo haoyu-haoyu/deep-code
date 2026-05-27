@@ -78,6 +78,43 @@ export async function listSnapshots({ workspaceRoot, limit = 10 }) {
   return entries.slice(-normalizedLimit)
 }
 
+export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) {
+  const normalizedWorkspaceRoot = normalizeWorkspaceRoot(workspaceRoot)
+  const store = resolveSnapshotStore({ workspaceRoot: normalizedWorkspaceRoot })
+  const lock = await acquireLock({
+    workspaceRoot: normalizedWorkspaceRoot,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  })
+  try {
+    const entries = await readManifest(store.manifestPath)
+    const entry = entries.find(candidate => candidate.commitSha === snapshotId)
+    if (!entry) {
+      throw new Error(`Snapshot not found: ${snapshotId}`)
+    }
+
+    const affectedFiles = await listWorkingTreeDiffFiles(
+      store.gitDir,
+      normalizedWorkspaceRoot,
+      snapshotId,
+    )
+    await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+      'checkout',
+      snapshotId,
+      '--',
+      '.',
+    ])
+
+    return {
+      snapshotId,
+      affectedFileCount: affectedFiles.length,
+      affectedFiles,
+      entry,
+    }
+  } finally {
+    await lock.release()
+  }
+}
+
 function validateSnapshotPhase(phase) {
   if (!['pre', 'post', 'aborted'].includes(phase)) {
     throw new Error(`Invalid snapshot phase: ${phase}`)
@@ -110,6 +147,17 @@ function normalizeFileList(raw) {
     .split('\n')
     .map(file => file.trim())
     .filter(Boolean)
+}
+
+async function listWorkingTreeDiffFiles(gitDir, workTree, commitSha) {
+  const raw = await runSideGit(gitDir, workTree, [
+    'diff',
+    '--name-only',
+    commitSha,
+    '--',
+    '.',
+  ])
+  return normalizeFileList(raw)
 }
 
 function snapshotRefForCommit(commitSha) {
