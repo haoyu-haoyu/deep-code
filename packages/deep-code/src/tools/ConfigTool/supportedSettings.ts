@@ -66,6 +66,11 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     type: 'boolean',
     description: 'Enable background memory consolidation',
   },
+  'lsp.enabled': {
+    source: 'settings',
+    type: 'boolean',
+    description: 'Enable post-edit LSP diagnostics',
+  },
   fileCheckpointingEnabled: {
     source: 'global',
     type: 'boolean',
