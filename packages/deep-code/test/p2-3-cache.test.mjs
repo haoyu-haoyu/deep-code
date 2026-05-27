@@ -6,6 +6,10 @@ import {
   getSessionTotals,
   recordTurn,
 } from '../src/cache/deepseek-cache.mjs'
+import {
+  formatCacheStatusText,
+  formatCompactTokenCount,
+} from '../src/components/cacheStatusChipData.mjs'
 import { createDeepSeekCallModel } from '../src/query/deepseek-call-model.mjs'
 
 test('recordTurn updates session totals and hit rate', () => {
@@ -190,6 +194,56 @@ test('non-DeepSeek provider capability makes cache ingestion a no-op', async () 
   }
 })
 
+test('CacheStatusChip formats cache hit text with compact tokens', () => {
+  assert.equal(
+    formatCacheStatusText({
+      provider: createCapabilityProvider(true),
+      totals: {
+        totalHit: 12_300,
+        totalMiss: 1_800,
+        hitRate: 12_300 / 14_100,
+        turnCount: 3,
+      },
+    }),
+    'cache: 87% hit (12.3k / 14.1k)',
+  )
+})
+
+test('CacheStatusChip hides when cache totals are empty', () => {
+  assert.equal(
+    formatCacheStatusText({
+      provider: createCapabilityProvider(true),
+      totals: {
+        totalHit: 0,
+        totalMiss: 0,
+        hitRate: 0,
+        turnCount: 0,
+      },
+    }),
+    null,
+  )
+})
+
+test('CacheStatusChip hides when provider lacks cache capability', () => {
+  assert.equal(
+    formatCacheStatusText({
+      provider: createCapabilityProvider(false),
+      totals: {
+        totalHit: 12_300,
+        totalMiss: 1_800,
+        hitRate: 12_300 / 14_100,
+        turnCount: 3,
+      },
+    }),
+    null,
+  )
+})
+
+test('formatCompactTokenCount uses k and M suffixes', () => {
+  assert.equal(formatCompactTokenCount(1_234), '1.2k')
+  assert.equal(formatCompactTokenCount(1_234_567), '1.2M')
+})
+
 function createMockProvider({ supports }) {
   return {
     supports,
@@ -209,6 +263,12 @@ function createMockProvider({ supports }) {
         }
       })()
     },
+  }
+}
+
+function createCapabilityProvider(supportsCache) {
+  return {
+    supports: capability => supportsCache && capability === 'cache_breakpoint',
   }
 }
 
