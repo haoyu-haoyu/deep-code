@@ -5,6 +5,7 @@ import {
   writeJson,
   writeUnauthorized,
 } from './auth.mjs'
+import { createSessionRegistry } from './sessions.mjs'
 
 export const DEFAULT_HTTP_HOST = '127.0.0.1'
 export const DEFAULT_HTTP_PORT = 8765
@@ -15,11 +16,18 @@ export async function startHttpServer({
   installSignalHandlers = true,
   port = DEFAULT_HTTP_PORT,
   processLike = process,
+  sessions = createSessionRegistry(),
 } = {}) {
   const normalizedHost = normalizeHost(host)
   const normalizedPort = normalizePort(port)
   const server = createServer((req, res) => {
-    handleRequest(req, res, { env })
+    void handleRequest(req, res, { env, sessions }).catch(() => {
+      if (!res.headersSent) {
+        writeJson(res, 500, { error: 'internal_server_error' })
+      } else {
+        res.destroy()
+      }
+    })
   })
 
   let resolveClosed
@@ -82,14 +90,93 @@ export async function startHttpServer({
   }
 }
 
-function handleRequest(req, res, { env }) {
+async function handleRequest(req, res, { env, sessions }) {
   if (!validateBearerToken(req, { env })) {
     writeUnauthorized(res)
     return
   }
 
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  const pathParts = url.pathname.split('/').filter(Boolean)
+
+  if (url.pathname === '/sessions') {
+    if (req.method !== 'POST') {
+      writeJson(res, 405, { error: 'method_not_allowed' })
+      return
+    }
+
+    let body
+    try {
+      body = await readJsonBody(req)
+    } catch (error) {
+      if (error instanceof BadRequestError) {
+        writeJson(res, 400, { error: error.message })
+        return
+      }
+      throw error
+    }
+    const session = sessions.createSession({
+      cwd: typeof body.cwd === 'string' ? body.cwd : undefined,
+    })
+    writeJson(res, 200, { session_id: session.id })
+    return
+  }
+
+  if (pathParts.length === 2 && pathParts[0] === 'sessions') {
+    const sessionId = pathParts[1]
+
+    if (req.method === 'GET') {
+      const session = sessions.getSession(sessionId)
+      if (!session) {
+        writeJson(res, 404, { error: 'not_found' })
+        return
+      }
+      writeJson(res, 200, session)
+      return
+    }
+
+    if (req.method === 'DELETE') {
+      if (!sessions.deleteSession(sessionId)) {
+        writeJson(res, 404, { error: 'not_found' })
+        return
+      }
+      res.writeHead(204)
+      res.end()
+      return
+    }
+
+    writeJson(res, 405, { error: 'method_not_allowed' })
+    return
+  }
+
   writeJson(res, 404, { error: 'not_found' })
 }
+
+async function readJsonBody(req, { limitBytes = 1024 * 1024 } = {}) {
+  let body = ''
+
+  for await (const chunk of req) {
+    body += chunk
+    if (Buffer.byteLength(body) > limitBytes) {
+      throw new BadRequestError('request_body_too_large')
+    }
+  }
+
+  if (!body.trim()) return {}
+
+  try {
+    const parsed = JSON.parse(body)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new BadRequestError('request_body_must_be_object')
+    }
+    return parsed
+  } catch (error) {
+    if (error instanceof BadRequestError) throw error
+    throw new BadRequestError('invalid_json')
+  }
+}
+
+class BadRequestError extends Error {}
 
 function listen(server, port, host) {
   return new Promise((resolve, reject) => {
