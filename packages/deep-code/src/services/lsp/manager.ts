@@ -6,6 +6,7 @@ import {
   createLSPServerManager,
   type LSPServerManager,
 } from './LSPServerManager.js'
+import { getLspConfig } from './defaults.js'
 import { registerLSPNotificationHandlers } from './passiveFeedback.js'
 
 /**
@@ -146,6 +147,10 @@ export function initializeLspServerManager(): void {
   // --bare / SIMPLE: no LSP. LSP is for editor integration (diagnostics,
   // hover, go-to-def in the REPL). Scripted -p calls have no use for it.
   if (isBareMode()) {
+    return
+  }
+  if (!getLspConfig().enabled) {
+    logForDebugging('[LSP MANAGER] LSP disabled by settings, skipping')
     return
   }
   logForDebugging('[LSP MANAGER] initializeLspServerManager() called')

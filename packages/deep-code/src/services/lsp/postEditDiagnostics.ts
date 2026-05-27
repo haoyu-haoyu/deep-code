@@ -6,6 +6,11 @@ import { clearDeliveredDiagnosticsForFile } from './LSPDiagnosticRegistry.js'
 import { getLspServerManager } from './manager.js'
 import { notifyAndCollectDiagnosticsCore } from './postEditDiagnostics-core.mjs'
 import { formatDiagnosticsForAttachment } from './passiveFeedback.js'
+import {
+  applyLspDiagnosticConfig,
+  emptyPostEditResult,
+  getLspConfig,
+} from './defaults.js'
 
 export type LspDiagnostic = Diagnostic
 
@@ -19,8 +24,8 @@ export async function notifyAndCollectDiagnostics({
   filePath,
   content,
   operation,
-  pollDelay = 500,
-  maxDiagnostics = 10,
+  pollDelay,
+  maxDiagnostics,
 }: {
   filePath: string
   content: string
@@ -28,17 +33,31 @@ export async function notifyAndCollectDiagnostics({
   pollDelay?: number
   maxDiagnostics?: number
 }): Promise<PostEditResult> {
-  return notifyAndCollectDiagnosticsCore({
+  const lspConfig = getLspConfig()
+  if (!lspConfig.enabled) {
+    return emptyPostEditResult()
+  }
+
+  const effectiveConfig = {
+    ...lspConfig,
+    poll_after_edit_ms: pollDelay ?? lspConfig.poll_after_edit_ms,
+    max_diagnostics_per_file:
+      maxDiagnostics ?? lspConfig.max_diagnostics_per_file,
+  }
+
+  const result = (await notifyAndCollectDiagnosticsCore({
     filePath,
     content,
     operation,
-    pollDelay,
-    maxDiagnostics,
+    pollDelay: effectiveConfig.poll_after_edit_ms,
+    maxDiagnostics: Number.MAX_SAFE_INTEGER,
     lspManager: getLspServerManager(),
     clearDeliveredDiagnosticsForFile,
     formatDiagnosticsForAttachment,
     delay: sleep,
     logForDebugging,
     logError,
-  }) as Promise<PostEditResult>
+  })) as PostEditResult
+
+  return applyLspDiagnosticConfig(result, effectiveConfig) as PostEditResult
 }

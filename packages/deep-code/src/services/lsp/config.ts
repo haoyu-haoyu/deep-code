@@ -4,6 +4,7 @@ import { errorMessage, toError } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { getPluginLspServers } from '../../utils/plugins/lspPluginIntegration.js'
 import { loadAllPluginsCacheOnly } from '../../utils/plugins/pluginLoader.js'
+import { getLspConfig } from './defaults.js'
 import { mergeBuiltInLspServers } from './registry.mjs'
 import type { ScopedLspServerConfig } from './types.js'
 
@@ -17,6 +18,13 @@ export async function getAllLspServers(): Promise<{
   servers: Record<string, ScopedLspServerConfig>
 }> {
   const allServers: Record<string, ScopedLspServerConfig> = {}
+
+  if (!getLspConfig().enabled) {
+    logForDebugging('LSP disabled by settings; skipping server configuration')
+    return {
+      servers: allServers,
+    }
+  }
 
   try {
     // Get all enabled plugins

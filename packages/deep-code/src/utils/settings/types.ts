@@ -455,6 +455,33 @@ export const SettingsSchema = lazySchema(() =>
         })
         .optional()
         .describe('Git worktree configuration for --worktree flag.'),
+      lsp: z
+        .object({
+          enabled: z
+            .boolean()
+            .optional()
+            .describe('Enable post-edit LSP diagnostics'),
+          poll_after_edit_ms: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe(
+              'Milliseconds to wait after edit/write before collecting diagnostics',
+            ),
+          max_diagnostics_per_file: z
+            .number()
+            .int()
+            .positive()
+            .optional()
+            .describe('Maximum LSP diagnostics to attach per edited file'),
+          include_warnings: z
+            .boolean()
+            .optional()
+            .describe('Include warning/info/hint diagnostics in post-edit feedback'),
+        })
+        .optional()
+        .describe('LSP diagnostics configuration'),
       // Whether to disable all hooks and statusLine
       disableAllHooks: z
         .boolean()

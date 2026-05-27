@@ -30,6 +30,7 @@ test('LSP client performs initialize + initialized handshake', async () => {
       env: server.env(),
     })
     const result = await client.initialize({ processId: process.pid })
+    await server.waitForMethod('notification:initialized')
 
     assert.equal(result.capabilities.definitionProvider, true)
     assert.equal(client.isInitialized, true)
@@ -366,6 +367,141 @@ test('FileEditTool and FileWriteTool use post-edit diagnostics facade', () => {
   assert.match(writeSource, /notifyAndCollectDiagnostics/)
   assert.match(writeSource, /operation:\s*'write'/)
   assert.doesNotMatch(writeSource, /getLspServerManager\(\)/)
+})
+
+test('settings schema validates optional lsp section and strips nested unknown fields', () => {
+  const source = readFileSync(
+    new URL('../src/utils/settings/types.ts', import.meta.url),
+    'utf8',
+  )
+  const lspStart = source.search(/lsp:\s*z\s*\.object\(\{/)
+  assert.notEqual(lspStart, -1)
+  const lspEnd = source.indexOf(
+    ".describe('LSP diagnostics configuration')",
+    lspStart,
+  )
+  assert.notEqual(lspEnd, -1)
+  const lspSchema = source.slice(lspStart, lspEnd)
+
+  assert.match(lspSchema, /enabled:\s*z\s*\.boolean\(\)\s*\.optional\(\)/)
+  assert.match(
+    lspSchema,
+    /poll_after_edit_ms:\s*z\s*\.number\(\)\s*\.int\(\)\s*\.positive\(\)\s*\.optional\(\)/,
+  )
+  assert.match(
+    lspSchema,
+    /max_diagnostics_per_file:\s*z\s*\.number\(\)\s*\.int\(\)\s*\.positive\(\)\s*\.optional\(\)/,
+  )
+  assert.match(
+    lspSchema,
+    /include_warnings:\s*z\s*\.boolean\(\)\s*\.optional\(\)/,
+  )
+  assert.doesNotMatch(lspSchema, /\.passthrough\(\)/)
+  assert.doesNotMatch(lspSchema, /languages:/)
+})
+
+test('LSP settings defaults merge overrides without leaking unknown fields', async () => {
+  const { LSP_DEFAULTS, mergeLspConfig } = await import(
+    '../src/services/lsp/defaults-core.mjs'
+  )
+
+  assert.deepEqual(mergeLspConfig({}), LSP_DEFAULTS)
+  assert.deepEqual(
+    mergeLspConfig({
+      lsp: {
+        enabled: false,
+        poll_after_edit_ms: 750,
+        max_diagnostics_per_file: 3,
+        include_warnings: false,
+        ignored_future_field: 'safe to ignore',
+      },
+    }),
+    {
+      enabled: false,
+      poll_after_edit_ms: 750,
+      max_diagnostics_per_file: 3,
+      include_warnings: false,
+    },
+  )
+})
+
+test('post-edit diagnostics config gates, truncates, and filters warnings', async () => {
+  const {
+    LSP_DEFAULTS,
+    applyLspDiagnosticConfig,
+    emptyPostEditResult,
+    resolvePostEditDiagnosticsConfig,
+  } = await import('../src/services/lsp/defaults-core.mjs')
+
+  const disabled = resolvePostEditDiagnosticsConfig({
+    settings: { lsp: { enabled: false } },
+  })
+  assert.equal(disabled.enabled, false)
+  assert.deepEqual(emptyPostEditResult().diagnostics, [])
+
+  const diagnostics = [
+    { message: 'type mismatch', severity: 'Error' },
+    { message: 'unused import', severity: 'Warning' },
+    { message: 'style hint', severity: 'Info' },
+  ]
+
+  const filtered = applyLspDiagnosticConfig(
+    { diagnostics, elapsed: 5, truncated: false },
+    { ...LSP_DEFAULTS, include_warnings: false },
+  )
+  assert.deepEqual(
+    filtered.diagnostics.map(diagnostic => diagnostic.message),
+    ['type mismatch'],
+  )
+
+  const truncated = applyLspDiagnosticConfig(
+    { diagnostics, elapsed: 5, truncated: false },
+    { ...LSP_DEFAULTS, max_diagnostics_per_file: 2 },
+  )
+  assert.equal(truncated.diagnostics.length, 2)
+  assert.equal(truncated.truncated, true)
+})
+
+test('post-edit diagnostics facade reads centralized lsp settings before manager access', () => {
+  const source = readFileSync(
+    new URL('../src/services/lsp/postEditDiagnostics.ts', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(source, /getLspConfig\(\)/)
+  assert.match(source, /if\s*\(!lspConfig\.enabled\)/)
+  assert.match(source, /applyLspDiagnosticConfig/)
+  assert.ok(
+    source.indexOf('getLspConfig()') < source.indexOf('getLspServerManager()'),
+  )
+})
+
+test('LSP activation honors lsp.enabled and ConfigTool exposes lsp.enabled only', () => {
+  const managerSource = readFileSync(
+    new URL('../src/services/lsp/manager.ts', import.meta.url),
+    'utf8',
+  )
+  const configSource = readFileSync(
+    new URL('../src/services/lsp/config.ts', import.meta.url),
+    'utf8',
+  )
+  const supportedSettingsSource = readFileSync(
+    new URL(
+      '../src/tools/ConfigTool/supportedSettings.ts',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+
+  assert.match(managerSource, /getLspConfig\(\)\.enabled/)
+  assert.match(configSource, /getLspConfig\(\)\.enabled/)
+  assert.match(supportedSettingsSource, /['"]lsp\.enabled['"]:\s*\{/)
+  assert.match(
+    supportedSettingsSource,
+    /['"]lsp\.enabled['"]:[\s\S]*type:\s*'boolean'/,
+  )
+  assert.doesNotMatch(supportedSettingsSource, /lsp\.poll_after_edit_ms/)
+  assert.doesNotMatch(supportedSettingsSource, /lsp\.max_diagnostics_per_file/)
 })
 
 function serverConfig(server, workspaceRoot) {
