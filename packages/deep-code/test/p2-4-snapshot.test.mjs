@@ -26,6 +26,7 @@ import {
   computeWorkspaceHash,
   createSnapshot,
   listSnapshots,
+  restoreSnapshot,
   resolveSnapshotStore,
 } from '../src/services/snapshot/index.mjs'
 import {
@@ -34,6 +35,11 @@ import {
   formatSnapshotLifecycleError,
   getTurnEndSnapshotPhase,
 } from '../src/services/snapshot/turnLifecycle.mjs'
+import {
+  formatRestoreSnapshotLine,
+  getRestoreSnapshotItems,
+  performRestore,
+} from '../src/commands/restore/restore-command.mjs'
 
 test('computeWorkspaceHash is deterministic for the same path', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-hash-'))
@@ -339,6 +345,122 @@ test('buildSnapshotTurnId uses first message uuid with generation fallback', () 
     'message-uuid',
   )
   assert.equal(buildSnapshotTurnId({ generation: 8, messages: [] }), 'turn-8')
+})
+
+test('restore command lists the latest ten snapshots newest first', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-list-'))
+    for (let index = 1; index <= 12; index += 1) {
+      await writeFile(join(workspaceRoot, 'file.txt'), `v${index}\n`)
+      await createSnapshot({
+        workspaceRoot,
+        turnId: `turn-${index}`,
+        phase: index % 2 === 0 ? 'post' : 'pre',
+      })
+    }
+
+    const items = await getRestoreSnapshotItems({ workspaceRoot })
+
+    assert.equal(items.length, 10)
+    assert.equal(items[0].turnId, 'turn-12')
+    assert.equal(items[9].turnId, 'turn-3')
+    assert.match(formatRestoreSnapshotLine(items[0]), /turn-12/)
+    assert.match(formatRestoreSnapshotLine(items[0]), /1 file/)
+  })
+})
+
+test('restore command reports empty snapshot stores', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-empty-'))
+
+    const items = await getRestoreSnapshotItems({ workspaceRoot })
+
+    assert.deepEqual(items, [])
+  })
+})
+
+test('restoreSnapshot restores tracked workspace content from a side-git snapshot', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-roundtrip-'))
+    const filePath = join(workspaceRoot, 'tracked.txt')
+    await writeFile(filePath, 'before\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-restore',
+      phase: 'pre',
+    })
+    await writeFile(filePath, 'after\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    assert.equal(readFileSync(filePath, 'utf8'), 'before\n')
+    assert.equal(result.snapshotId, snapshot.commitSha)
+    assert.equal(result.affectedFileCount, 1)
+  })
+})
+
+test('performRestore requires confirmation before checkout', async () => {
+  let called = false
+
+  const result = await performRestore({
+    workspaceRoot: '/tmp/deepcode-restore-confirm',
+    snapshotId: 'a'.repeat(40),
+    confirmed: false,
+    restoreSnapshotFn: async () => {
+      called = true
+    },
+  })
+
+  assert.equal(called, false)
+  assert.equal(result.kind, 'confirmation_required')
+})
+
+test('performRestore reports lock contention as snapshot store busy', async () => {
+  const result = await performRestore({
+    workspaceRoot: '/tmp/deepcode-restore-lock',
+    snapshotId: 'a'.repeat(40),
+    confirmed: true,
+    restoreSnapshotFn: async () => {
+      throw new Error('Timed out acquiring snapshot lock: /tmp/snapshot.lock')
+    },
+  })
+
+  assert.equal(result.kind, 'busy')
+  assert.equal(result.message, 'Snapshot store busy, try again')
+})
+
+test("restoreSnapshot leaves user's git metadata unchanged", async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-git-'))
+    runGit(['init'], workspaceRoot)
+    const filePath = join(workspaceRoot, 'tracked.txt')
+    await writeFile(filePath, 'before\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-git',
+      phase: 'pre',
+    })
+    await writeFile(filePath, 'after\n')
+
+    const headPath = join(workspaceRoot, '.git', 'HEAD')
+    const headBefore = readFileSync(headPath, 'utf8')
+    const headMtimeBefore = statSync(headPath).mtimeMs
+    const userIndexPath = join(workspaceRoot, '.git', 'index')
+    const hadUserIndex = existsSync(userIndexPath)
+
+    await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    assert.equal(readFileSync(filePath, 'utf8'), 'before\n')
+    assert.equal(readFileSync(headPath, 'utf8'), headBefore)
+    assert.equal(statSync(headPath).mtimeMs, headMtimeBefore)
+    assert.equal(existsSync(userIndexPath), hadUserIndex)
+  })
 })
 
 async function withDeepCodeHome(callback) {
