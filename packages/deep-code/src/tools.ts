@@ -75,6 +75,7 @@ import { ToolSearchTool } from './tools/ToolSearchTool/ToolSearchTool.js'
 import { EnterPlanModeTool } from './tools/EnterPlanModeTool/EnterPlanModeTool.js'
 import { EnterWorktreeTool } from './tools/EnterWorktreeTool/EnterWorktreeTool.js'
 import { ExitWorktreeTool } from './tools/ExitWorktreeTool/ExitWorktreeTool.js'
+import { RevertTurnTool } from './tools/RevertTurnTool/RevertTurnTool.js'
 import { ConfigTool } from './tools/ConfigTool/ConfigTool.js'
 import { TaskCreateTool } from './tools/TaskCreateTool/TaskCreateTool.js'
 import { TaskGetTool } from './tools/TaskGetTool/TaskGetTool.js'
@@ -220,6 +221,7 @@ export function getAllBaseTools(): Tools {
     ...(TerminalCaptureTool ? [TerminalCaptureTool] : []),
     ...(isEnvTruthy(process.env.ENABLE_LSP_TOOL) ? [LSPTool] : []),
     ...(isWorktreeModeEnabled() ? [EnterWorktreeTool, ExitWorktreeTool] : []),
+    RevertTurnTool,
     getSendMessageTool(),
     ...(ListPeersTool ? [ListPeersTool] : []),
     ...(isAgentSwarmsEnabled()
