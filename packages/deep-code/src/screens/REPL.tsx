@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue, us
 import { useNotifications } from '../context/notifications.js';
 import { sendNotification } from '../services/notifier.js';
 import { startPreventSleep, stopPreventSleep } from '../services/preventSleep.js';
+import { buildSnapshotTurnId, captureTurnSnapshot, formatSnapshotLifecycleError, getTurnEndSnapshotPhase } from '../services/snapshot/turnLifecycle.mjs';
 import { useTerminalNotification } from '../ink/useTerminalNotification.js';
 import { hasCursorUpViewportYankBug } from '../ink/terminal.js';
 import { createFileStateCacheWithSizeLimit, mergeFileStateCaches, READ_FILE_STATE_CACHE_SIZE } from '../utils/fileStateCache.js';
@@ -2799,6 +2800,20 @@ export function REPL({
     // Signal that a query turn has completed successfully
     await onTurnComplete?.(messagesRef.current);
   }, [initialMcpClients, resetLoadingState, getToolUseContext, toolPermissionContext, setAppState, customSystemPrompt, onTurnComplete, appendSystemPrompt, canUseTool, mainThreadAgentDefinition, onQueryEvent, sessionTitle, titleDisabled]);
+  const captureQuerySnapshot = useCallback(async (turnId: string | number, phase: 'pre' | 'post' | 'aborted') => {
+    await captureTurnSnapshot({
+      workspaceRoot: getOriginalCwd(),
+      turnId,
+      phase,
+      onError: snapshotError => {
+        addNotification({
+          key: 'workspace-snapshot-error',
+          text: formatSnapshotLifecycleError(snapshotError),
+          priority: 'low'
+        });
+      }
+    });
+  }, [addNotification]);
   const onQuery = useCallback(async (newMessages: MessageType[], abortController: AbortController, shouldQuery: boolean, additionalAllowedTools: string[], mainLoopModelParam: string, onBeforeQueryCallback?: (input: string, newMessages: MessageType[]) => Promise<boolean>, input?: string, effort?: EffortValue): Promise<void> => {
     // If this is a teammate, mark them as active when starting a turn
     if (isAgentSwarmsEnabled()) {
@@ -2831,7 +2846,12 @@ export function REPL({
       });
       return;
     }
+    const snapshotTurnId = buildSnapshotTurnId({
+      generation: thisGeneration,
+      messages: newMessages
+    });
     try {
+      await captureQuerySnapshot(snapshotTurnId, 'pre');
       // isLoading is derived from queryGuard — tryStart() above already
       // transitioned dispatching→running, so no setter call needed here.
       resetTimingRefs();
@@ -2867,7 +2887,14 @@ export function REPL({
       // queryGuard.end() atomically checks generation and transitions
       // running→idle. Returns false if a newer query owns the guard
       // (cancel+resubmit race where the stale finally fires as a microtask).
-      if (queryGuard.end(thisGeneration)) {
+      const endedCurrentGeneration = queryGuard.end(thisGeneration);
+      const shouldCaptureEndSnapshot = endedCurrentGeneration || (abortController.signal.aborted && !queryGuard.isActive);
+      if (shouldCaptureEndSnapshot) {
+        await captureQuerySnapshot(snapshotTurnId, getTurnEndSnapshotPhase({
+          aborted: abortController.signal.aborted
+        }));
+      }
+      if (endedCurrentGeneration) {
         setLastQueryCompletionTime(Date.now());
         skipIdleCheckRef.current = false;
         // Always reset loading state in finally - this ensures cleanup even
@@ -2964,7 +2991,7 @@ export function REPL({
         }
       }
     }
-  }, [onQueryImpl, setAppState, resetLoadingState, queryGuard, mrOnBeforeQuery, mrOnTurnComplete]);
+  }, [onQueryImpl, setAppState, resetLoadingState, queryGuard, mrOnBeforeQuery, mrOnTurnComplete, captureQuerySnapshot]);
 
   // Handle initial message (from CLI args or plan mode exit with context clear)
   // This effect runs when isLoading becomes false and there's a pending message
