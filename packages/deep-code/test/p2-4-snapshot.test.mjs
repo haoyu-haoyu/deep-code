@@ -28,6 +28,12 @@ import {
   listSnapshots,
   resolveSnapshotStore,
 } from '../src/services/snapshot/index.mjs'
+import {
+  buildSnapshotTurnId,
+  captureTurnSnapshot,
+  formatSnapshotLifecycleError,
+  getTurnEndSnapshotPhase,
+} from '../src/services/snapshot/turnLifecycle.mjs'
 
 test('computeWorkspaceHash is deterministic for the same path', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-hash-'))
@@ -267,6 +273,72 @@ test('acquireLock refuses release after lock ownership changes', async () => {
 
     await assert.rejects(lock.release(), /Lock ownership changed/)
   })
+})
+
+test('turn lifecycle helper captures one pre and one post snapshot per turn', async () => {
+  const calls = []
+  const createSnapshotFn = async input => {
+    calls.push(input)
+    return { ...input, commitSha: 'a'.repeat(40) }
+  }
+  const workspaceRoot = '/tmp/deepcode-turn-lifecycle'
+  const turnId = 'turn-life'
+
+  assert.equal(
+    (await captureTurnSnapshot({
+      workspaceRoot,
+      turnId,
+      phase: 'pre',
+      createSnapshotFn,
+    })).ok,
+    true,
+  )
+  assert.equal(
+    (await captureTurnSnapshot({
+      workspaceRoot,
+      turnId,
+      phase: 'post',
+      createSnapshotFn,
+    })).ok,
+    true,
+  )
+  assert.deepEqual(calls, [
+    { workspaceRoot, turnId, phase: 'pre' },
+    { workspaceRoot, turnId, phase: 'post' },
+  ])
+})
+
+test('turn lifecycle helper maps canceled turns to aborted snapshots', () => {
+  assert.equal(getTurnEndSnapshotPhase({ aborted: false }), 'post')
+  assert.equal(getTurnEndSnapshotPhase({ aborted: true }), 'aborted')
+})
+
+test('turn lifecycle helper reports snapshot errors without throwing', async () => {
+  const errors = []
+  const result = await captureTurnSnapshot({
+    workspaceRoot: '/tmp/deepcode-turn-error',
+    turnId: 'turn-error',
+    phase: 'pre',
+    createSnapshotFn: async () => {
+      throw new Error('disk unavailable')
+    },
+    onError: error => errors.push(error),
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(errors.length, 1)
+  assert.match(formatSnapshotLifecycleError(errors[0]), /disk unavailable/)
+})
+
+test('buildSnapshotTurnId uses first message uuid with generation fallback', () => {
+  assert.equal(
+    buildSnapshotTurnId({
+      generation: 7,
+      messages: [{ uuid: 'message-uuid' }],
+    }),
+    'message-uuid',
+  )
+  assert.equal(buildSnapshotTurnId({ generation: 8, messages: [] }), 'turn-8')
 })
 
 async function withDeepCodeHome(callback) {
