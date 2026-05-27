@@ -1,3 +1,5 @@
+import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
+
 export type NonNullableUsage = {
   input_tokens: number
   output_tokens: number
@@ -36,6 +38,7 @@ export const EMPTY_USAGE: Readonly<NonNullableUsage> = {
 export function updateUsage(
   usage: Readonly<NonNullableUsage>,
   raw: unknown | undefined,
+  { provider }: { provider?: { supports?: (capability: string) => boolean } } = {},
 ): NonNullableUsage {
   const source = isRecord(raw) ? raw : {}
   const cacheCreation = isRecord(source.cache_creation)
@@ -44,17 +47,22 @@ export function updateUsage(
   const serverToolUse = isRecord(source.server_tool_use)
     ? source.server_tool_use
     : {}
+  const supportsCache = providerSupports(provider, 'cache_breakpoint')
 
-  const cacheRead = firstNumber(
-    source.cache_read_input_tokens,
-    source.prompt_cache_hit_tokens,
-  )
-  const cacheCreationTokens = firstNumber(
-    source.cache_creation_input_tokens,
-    source.prompt_cache_miss_tokens,
-    cacheCreation.ephemeral_1h_input_tokens,
-    cacheCreation.ephemeral_5m_input_tokens,
-  )
+  const cacheRead = supportsCache
+    ? firstNumber(
+        source.cache_read_input_tokens,
+        source.prompt_cache_hit_tokens,
+      )
+    : undefined
+  const cacheCreationTokens = supportsCache
+    ? firstNumber(
+        source.cache_creation_input_tokens,
+        source.prompt_cache_miss_tokens,
+        cacheCreation.ephemeral_1h_input_tokens,
+        cacheCreation.ephemeral_5m_input_tokens,
+      )
+    : undefined
   const inferredInput =
     cacheRead !== undefined || cacheCreationTokens !== undefined
       ? (cacheRead ?? 0) + (cacheCreationTokens ?? 0)
@@ -84,10 +92,14 @@ export function updateUsage(
         : usage.service_tier,
     cache_creation: {
       ephemeral_1h_input_tokens:
-        firstNumber(cacheCreation.ephemeral_1h_input_tokens) ??
+        (supportsCache
+          ? firstNumber(cacheCreation.ephemeral_1h_input_tokens)
+          : undefined) ??
         usage.cache_creation.ephemeral_1h_input_tokens,
       ephemeral_5m_input_tokens:
-        firstNumber(cacheCreation.ephemeral_5m_input_tokens) ??
+        (supportsCache
+          ? firstNumber(cacheCreation.ephemeral_5m_input_tokens)
+          : undefined) ??
         usage.cache_creation.ephemeral_5m_input_tokens,
     },
     inference_geo:

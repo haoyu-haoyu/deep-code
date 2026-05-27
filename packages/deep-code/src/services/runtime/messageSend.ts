@@ -5,7 +5,10 @@ import {
   DEFAULT_DEEPSEEK_SMALL_MODEL,
   resolveDeepSeekConfig,
 } from '../providers/deepseek.mjs'
+import { resolveProviderConfig } from '../providers/provider-config.mjs'
+import { resolveModelProvider } from '../providers/registry.mjs'
 import { routeTurn, type AutoRouteDecision } from '../autoMode/router.js'
+import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
 // @ts-expect-error DeepSeek call-model adapter is JS; runtime native primitives use it
 // internally for non-streaming collection. Exposed externally via the
 // local re-export at the bottom of this file.
@@ -144,6 +147,7 @@ type RuntimeResponseState = {
   textOpen: boolean
   thinkingOpen: boolean
   toolCalls: Map<number, RuntimeToolCallState>
+  provider?: RuntimeModelProvider
 }
 
 type RuntimeToolCallState = {
@@ -160,6 +164,12 @@ type ResolvedRuntimeRoute = {
   autoRouteDecision?: AutoRouteDecision
 }
 
+type RuntimeModelProvider = {
+  name?: string
+  supports?: (capability: string) => boolean
+  streamQuery(context?: Record<string, unknown>): AsyncIterable<DeepSeekProviderEvent>
+}
+
 export async function* queryRuntimeWithStreaming(
   opts: RuntimeMessageOptions,
 ): AsyncGenerator<RuntimeStreamEvent, void, void> {
@@ -167,7 +177,8 @@ export async function* queryRuntimeWithStreaming(
 
   const route = await resolveRuntimeRoute(opts)
   const model = route.model
-  const state = createResponseState()
+  const provider = createRuntimeProvider()
+  const state = createResponseState(provider)
   yield {
     type: 'message_start',
     message: {
@@ -182,7 +193,7 @@ export async function* queryRuntimeWithStreaming(
   }
 
   try {
-    for await (const event of streamProviderEvents(opts, route)) {
+    for await (const event of streamProviderEvents(opts, route, provider)) {
       assertNotAborted(opts.signal)
       yield* applyProviderEventToStream(state, event)
     }
@@ -204,10 +215,11 @@ export async function queryRuntimeWithoutStreaming(
 ): Promise<RuntimeAssistantMessage> {
   assertNotAborted(opts.signal)
   const route = await resolveRuntimeRoute(opts)
-  const state = createResponseState()
+  const provider = createRuntimeProvider()
+  const state = createResponseState(provider)
 
   try {
-    for await (const event of streamProviderEvents(opts, route)) {
+    for await (const event of streamProviderEvents(opts, route, provider)) {
       assertNotAborted(opts.signal)
       applyProviderEventToState(state, event)
     }
@@ -312,15 +324,19 @@ function routeDecisionToRuntime(
 async function* streamProviderEvents(
   opts: RuntimeMessageOptions,
   route: ResolvedRuntimeRoute,
+  provider: RuntimeModelProvider,
 ): AsyncGenerator<DeepSeekProviderEvent, void, void> {
-  const provider = createDeepSeekProvider()
   yield* provider.streamQuery({
     systemPrompt: opts.systemPrompt,
     messages: opts.messages,
     tools: opts.tools,
     model: route.model,
-    thinking: route.thinking,
-    reasoningEffort: route.reasoningEffort,
+    thinking: providerSupports(provider, 'extended_thinking')
+      ? route.thinking
+      : undefined,
+    reasoningEffort: providerSupports(provider, 'reasoning_effort')
+      ? route.reasoningEffort
+      : undefined,
     toolChoice: mapToolChoice(opts.toolChoice),
     signal: opts.signal,
   })
@@ -331,6 +347,7 @@ function* applyProviderEventToStream(
   event: DeepSeekProviderEvent,
 ): Generator<RuntimeStreamEvent, void, void> {
   if (event.type === 'reasoning_delta' && typeof event.text === 'string') {
+    if (!providerSupports(state.provider, 'reasoning_content')) return
     if (!state.thinkingOpen) {
       yield* closeTextIfOpen(state)
       yield {
@@ -412,7 +429,9 @@ function* applyProviderEventToStream(
   }
 
   if (event.type === 'usage') {
-    state.usage = updateUsage(state.usage, event.usage)
+    state.usage = updateUsage(state.usage, event.usage, {
+      provider: state.provider,
+    })
   }
 }
 
@@ -428,11 +447,13 @@ function applyProviderEventToState(
     state.stopReason =
       typeof event.finishReason === 'string' ? event.finishReason : 'stop'
   } else if (event.type === 'usage') {
-    state.usage = updateUsage(state.usage, event.usage)
+    state.usage = updateUsage(state.usage, event.usage, {
+      provider: state.provider,
+    })
   }
 }
 
-function createResponseState(): RuntimeResponseState {
+function createResponseState(provider?: RuntimeModelProvider): RuntimeResponseState {
   return {
     content: [],
     text: '',
@@ -442,6 +463,7 @@ function createResponseState(): RuntimeResponseState {
     textOpen: false,
     thinkingOpen: false,
     toolCalls: new Map(),
+    provider,
   }
 }
 
@@ -788,6 +810,7 @@ function safeJsonStringify(value: unknown): string {
 
 type RuntimeCallModelFactoryOptions = {
   provider?: {
+    supports?: (capability: string) => boolean
     streamQuery(context?: Record<string, unknown>): AsyncIterable<unknown>
   }
   now?: () => Date
@@ -851,11 +874,32 @@ function createAutoRouteProvider(
     streamQuery(context: Record<string, unknown> = {}) {
       return baseProvider.streamQuery({
         ...context,
-        thinking: route.thinking,
-        reasoningEffort: route.reasoningEffort,
+        thinking: providerSupports(baseProvider, 'extended_thinking')
+          ? route.thinking
+          : undefined,
+        reasoningEffort: providerSupports(baseProvider, 'reasoning_effort')
+          ? route.reasoningEffort
+          : undefined,
       })
     },
   }
+}
+
+function createRuntimeProvider(): RuntimeModelProvider {
+  const config = resolveProviderConfig({ env: process.env })
+  return resolveModelProvider({
+    env: process.env,
+    name: config.provider,
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+    defaultModel: config.defaultModel,
+    defaults: {
+      env: process.env,
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      model: config.defaultModel,
+    },
+  }) as RuntimeModelProvider
 }
 
 function attachAutoRouteDecision(

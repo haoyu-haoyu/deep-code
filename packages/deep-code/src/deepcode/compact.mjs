@@ -6,6 +6,7 @@ import {
 } from '../services/providers/deepseek.mjs'
 import { createDeepSeekCacheDiagnostics } from '../cache/deepseek-cache.mjs'
 import { createDeepCodeStablePrefix } from './stable-prefix.mjs'
+import { providerSupports } from './provider-capabilities.mjs'
 
 export async function compactDeepCodeConversation({
   messages = [],
@@ -15,9 +16,11 @@ export async function compactDeepCodeConversation({
   provider,
   maxTokens,
 } = {}) {
-  const prefix = stablePrefix ?? (await createDeepCodeStablePrefix())
+  const modelProvider = provider ?? createDeepSeekProvider()
+  const prefix =
+    stablePrefix ?? (await createDeepCodeStablePrefix({ provider: modelProvider }))
   const config = resolveDeepSeekConfig({ env, cwd })
-  const request = await buildDeepSeekRequest({
+  const requestContext = omitUndefined({
     systemPrompt: prefix.systemPrompt,
     messages: [
       {
@@ -34,9 +37,14 @@ export async function compactDeepCodeConversation({
         env.DEEPSEEK_COMPACT_MAX_TOKENS ??
         1024,
     ),
-    thinking: 'disabled',
+    thinking: providerSupports(modelProvider, 'extended_thinking')
+      ? 'disabled'
+      : undefined,
   })
-  const modelProvider = provider ?? createDeepSeekProvider()
+  const request =
+    typeof modelProvider.buildRequest === 'function'
+      ? await modelProvider.buildRequest(requestContext)
+      : await buildDeepSeekRequest(requestContext)
   const response = await collectDeepSeekStreamEvents(
     modelProvider.streamQuery(request),
   )
@@ -56,7 +64,7 @@ export async function compactDeepCodeConversation({
       : [],
     finishReason: response.finishReason,
     usage: response.usage,
-    cacheDiagnostics: response.usage
+    cacheDiagnostics: providerSupports(modelProvider, 'cache_breakpoint') && response.usage
       ? createDeepSeekCacheDiagnostics(response.usage)
       : null,
     request,
@@ -77,8 +85,8 @@ export function formatDeepCodeCompactResult(result) {
     `Finish reason: ${result.finishReason ?? 'unknown'}`,
     `Summary chars: ${result.summary.length}`,
     `Post-compact messages: ${result.messages.length}`,
-    `Cache: hit=${hit} miss=${miss} hit_rate=${hitRate}`,
-  ].join('\n')
+    diagnostics ? `Cache: hit=${hit} miss=${miss} hit_rate=${hitRate}` : '',
+  ].filter(Boolean).join('\n')
 }
 
 function buildCompactPrompt(messages) {
@@ -97,4 +105,10 @@ function buildCompactPrompt(messages) {
     'Conversation tail:',
     JSON.stringify(messages, null, 2),
   ].join('\n')
+}
+
+function omitUndefined(object) {
+  return Object.fromEntries(
+    Object.entries(object).filter(([, value]) => value !== undefined),
+  )
 }

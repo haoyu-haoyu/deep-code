@@ -4,6 +4,7 @@ import {
   stableJsonStringify,
 } from '../cache/deepseek-cache.mjs'
 import { toolToDeepSeekFunctionSchema } from '../tools/deepseek-schema.mjs'
+import { providerSupports } from './provider-capabilities.mjs'
 
 export const DEEPCODE_STABLE_SYSTEM_PROMPT = [
   'You are Deep Code, a terminal AI coding assistant optimized for DeepSeek native APIs.',
@@ -18,7 +19,22 @@ export async function createDeepCodeStablePrefix({
   skills = [],
   repoSummary = '',
   stableHistory = [],
+  provider,
 } = {}) {
+  if (!providerSupports(provider, 'stable_prefix_cache')) {
+    return {
+      systemPrompt: Array.isArray(systemPrompt) ? systemPrompt : [String(systemPrompt)],
+      tools,
+      prefixHash: '',
+      componentHashes: {},
+      stableTools: [],
+      stableSkills: [],
+      repoSummary,
+      stableHistory,
+      stablePrefixEnabled: false,
+    }
+  }
+
   const stableTools = await createStableToolManifest(tools, toolSchemaOptions)
   const stableSkills = skills
     .map(skill => stableSkillManifest(skill))

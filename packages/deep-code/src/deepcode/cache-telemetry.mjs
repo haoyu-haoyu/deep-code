@@ -2,12 +2,15 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { providerSupports } from './provider-capabilities.mjs'
 
 export function resolveDeepSeekCacheStatsPath({
   env = process.env,
   config = {},
   homeDir = homedir(),
+  provider,
 } = {}) {
+  if (!providerSupports(provider, 'cache_breakpoint')) return null
   if (
     env.DEEPCODE_CACHE_STATS === 'disabled' ||
     env.DEEPSEEK_CACHE_STATS === 'disabled' ||
@@ -23,8 +26,10 @@ export function resolveDeepSeekCacheStatsPath({
 
 export function createDeepSeekCacheStats(previous, usage = {}, {
   now = () => new Date().toISOString(),
+  provider,
   stablePrefix,
 } = {}) {
+  if (!providerSupports(provider, 'cache_breakpoint')) return null
   const prior = previous ?? {}
   const lastHit = usage.prompt_cache_hit_tokens ?? 0
   const lastMiss = usage.prompt_cache_miss_tokens ?? 0
@@ -67,15 +72,19 @@ export async function recordDeepSeekCacheUsage({
   path,
   usage,
   now,
+  provider,
   stablePrefix,
 } = {}) {
+  if (!providerSupports(provider, 'cache_breakpoint')) return null
   if (!path || !usage) return null
   try {
     const previous = await loadDeepSeekCacheStats(path)
     const stats = createDeepSeekCacheStats(previous, usage, {
       now,
+      provider,
       stablePrefix,
     })
+    if (!stats) return null
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, `${JSON.stringify(stats, null, 2)}\n`)
     return stats
@@ -84,7 +93,8 @@ export async function recordDeepSeekCacheUsage({
   }
 }
 
-export function formatDeepSeekCacheStatus(stats, { stablePrefix } = {}) {
+export function formatDeepSeekCacheStatus(stats, { provider, stablePrefix } = {}) {
+  if (!providerSupports(provider, 'cache_breakpoint')) return ''
   if (!stats) {
     return [
       formatPrefixDiagnostics(null, stablePrefix),

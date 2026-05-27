@@ -1,11 +1,26 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdtemp, readFile, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { createDeepSeekCallModel } from '../src/query/deepseek-call-model.mjs'
+import {
+  providerSupports,
+} from '../src/deepcode/provider-capabilities.mjs'
+import {
+  compactDeepCodeConversation,
+  formatDeepCodeCompactResult,
+} from '../src/deepcode/compact.mjs'
+import {
+  deepCodeStatusReportToProperties,
+} from '../src/deepcode/status.mjs'
+import {
+  formatDeepSeekDoctorReport,
+} from '../src/deepcode/doctor.mjs'
 import {
   loadProviderConfigFile,
   saveProviderConfigFile,
@@ -23,6 +38,7 @@ const messages = [{ role: 'user', content: 'hello' }]
 const packageRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
 const mainSource = join(packageRoot, 'src/main.tsx')
 const commandsSource = join(packageRoot, 'src/commands.ts')
+const messageSendSource = join(packageRoot, 'src/services/runtime/messageSend.ts')
 const providerCommandIndexSource = join(
   packageRoot,
   'src/commands/provider/index.ts',
@@ -60,6 +76,94 @@ async function loadBuiltModule(source, outfileName) {
     `failed to bundle ${source}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   )
   return await import(pathToFileURL(outfile).href)
+}
+
+function createMockProvider({ name, capabilities = [], events = [] } = {}) {
+  const calls = []
+  const capabilitySet = new Set(capabilities)
+  return {
+    name,
+    calls,
+    supports(capability) {
+      return capabilitySet.has(capability)
+    },
+    async buildRequest(context = {}) {
+      calls.push({ buildRequest: context })
+      return context
+    },
+    async *streamQuery(context = {}) {
+      calls.push(context)
+      for (const event of events) {
+        yield event
+      }
+    },
+  }
+}
+
+async function drainCallModel(callModel, args) {
+  const messages = []
+  for await (const message of callModel(args)) {
+    messages.push(message)
+  }
+  return messages
+}
+
+async function withCacheStatsPath(callback) {
+  const previous = process.env.DEEPCODE_CACHE_STATS_PATH
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-p2-2-cache-'))
+  const path = join(dir, 'cache.json')
+  process.env.DEEPCODE_CACHE_STATS_PATH = path
+  try {
+    return await callback(path)
+  } finally {
+    if (previous === undefined) {
+      delete process.env.DEEPCODE_CACHE_STATS_PATH
+    } else {
+      process.env.DEEPCODE_CACHE_STATS_PATH = previous
+    }
+    if (existsSync(path)) await unlink(path)
+  }
+}
+
+function createStatusReport({ capabilities }) {
+  return {
+    provider: 'ollama',
+    providerCapabilities: capabilities,
+    config: {
+      baseUrl: 'http://localhost:11434/v1',
+      model: 'llama3.1',
+      smallModel: 'llama3.1',
+      thinking: 'enabled',
+      reasoningEffort: 'max',
+      cacheUserId: 'dc_test',
+    },
+    contextPolicy: {
+      contextWindowTokens: 200_000,
+      effectiveContextWindowTokens: 180_000,
+      reservedOutputTokens: 20_000,
+      autoCompactThresholdTokens: 167_000,
+      autoCompactEnabled: true,
+    },
+    harnessConfig: {
+      mode: 'off',
+      maxAgents: 0,
+      promptPack: 'deepseek-v1',
+      strictTools: 'off',
+    },
+    harnessRuntimeDecision: null,
+    harnessAgentLifecycle: null,
+    cacheStats: {
+      lastPromptCacheHitTokens: 7,
+      lastPromptCacheMissTokens: 3,
+      lastPromptCacheHitRate: 0.7,
+      totalPromptCacheHitTokens: 70,
+      totalPromptCacheMissTokens: 30,
+      totalPromptCacheHitRate: 0.7,
+      updatedAt: '2026-05-27T00:00:00.000Z',
+    },
+    stablePrefix: { prefixHash: 'prefix_hash' },
+    apiKeyConfigured: false,
+  }
 }
 
 test('ollama provider uses localhost OpenAI-compatible default without an API key', () => {
@@ -417,4 +521,210 @@ test('main CLI includes provider config override flags without logging API keys'
   assert.match(source, /--provider-api-key <key>/)
   assert.match(source, /resolveProviderConfig/)
   assert.doesNotMatch(source, /console\.(log|warn|error)\([^)]*providerApiKey/)
+})
+
+test('providerSupports maps P2.2 capability names without provider-name hardcoding', () => {
+  const deepseekLike = createMockProvider({
+    name: 'deepseek',
+    capabilities: ['cache_diagnostics', 'reasoning_content', 'strict_tools'],
+  })
+  const ollama = createOpenAICompatibleProvider({ providerName: 'ollama' })
+
+  assert.equal(providerSupports(deepseekLike, 'extended_thinking'), true)
+  assert.equal(providerSupports(deepseekLike, 'reasoning_effort'), true)
+  assert.equal(providerSupports(deepseekLike, 'reasoning_content'), true)
+  assert.equal(providerSupports(deepseekLike, 'cache_breakpoint'), true)
+  assert.equal(providerSupports(deepseekLike, 'stable_prefix_cache'), true)
+  assert.equal(providerSupports(deepseekLike, 'strict_tool_schema'), true)
+  assert.equal(providerSupports(ollama, 'extended_thinking'), false)
+  assert.equal(providerSupports(ollama, 'cache_breakpoint'), false)
+})
+
+test('createDeepSeekCallModel strips reasoning, effort, and cache telemetry for providers without capabilities', async () => {
+  const provider = createMockProvider({
+    name: 'ollama',
+    capabilities: ['streaming', 'tool_calls'],
+    events: [
+      { type: 'reasoning_delta', text: 'hidden plan' },
+      { type: 'content_delta', text: 'visible answer' },
+      { type: 'finish', finishReason: 'stop' },
+      {
+        type: 'usage',
+        usage: {
+          prompt_tokens: 9,
+          completion_tokens: 4,
+          prompt_cache_hit_tokens: 5,
+          prompt_cache_miss_tokens: 4,
+        },
+      },
+    ],
+  })
+  const callModel = createDeepSeekCallModel({
+    provider,
+    uuid: () => '00000000-0000-0000-0000-000000000000',
+    now: () => new Date('2026-05-27T00:00:00.000Z'),
+  })
+
+  await withCacheStatsPath(async cacheStatsPath => {
+    const messages = await drainCallModel(callModel, {
+      messages: [{ role: 'user', content: 'hello' }],
+      systemPrompt: ['system'],
+      tools: [],
+      signal: new AbortController().signal,
+      options: { model: 'llama3.1', effortValue: 'max' },
+    })
+    const assistant = messages.find(message => message.type === 'assistant')
+
+    assert.equal(provider.calls[0].reasoningEffort, undefined)
+    assert.equal(Object.hasOwn(provider.calls[0], 'stablePrefix'), false)
+    assert.equal(
+      assistant.message.content.some(block => block.type === 'thinking'),
+      false,
+    )
+    assert.equal(assistant.message.usage.cache_creation_input_tokens, 0)
+    assert.equal(assistant.message.usage.cache_read_input_tokens, 0)
+    assert.equal(existsSync(cacheStatsPath), false)
+  })
+})
+
+test('createDeepSeekCallModel preserves DeepSeek reasoning and cache behavior through supports aliases', async () => {
+  const provider = createMockProvider({
+    name: 'deepseek',
+    capabilities: ['cache_diagnostics', 'reasoning_content', 'strict_tools'],
+    events: [
+      { type: 'reasoning_delta', text: 'think' },
+      { type: 'content_delta', text: 'answer' },
+      { type: 'finish', finishReason: 'stop' },
+      {
+        type: 'usage',
+        usage: {
+          prompt_tokens: 9,
+          completion_tokens: 4,
+          prompt_cache_hit_tokens: 5,
+          prompt_cache_miss_tokens: 4,
+        },
+      },
+    ],
+  })
+  const callModel = createDeepSeekCallModel({
+    provider,
+    uuid: () => '00000000-0000-0000-0000-000000000000',
+    now: () => new Date('2026-05-27T00:00:00.000Z'),
+  })
+
+  await withCacheStatsPath(async cacheStatsPath => {
+    const messages = await drainCallModel(callModel, {
+      messages: [{ role: 'user', content: 'hello' }],
+      systemPrompt: ['system'],
+      tools: [],
+      signal: new AbortController().signal,
+      options: { model: 'deepseek-v4-pro', effortValue: 'max' },
+    })
+    const assistant = messages.find(message => message.type === 'assistant')
+
+    assert.equal(provider.calls[0].reasoningEffort, 'max')
+    assert.equal(typeof provider.calls[0].stablePrefix, 'object')
+    assert.equal(
+      assistant.message.content.some(block => block.type === 'thinking'),
+      true,
+    )
+    assert.equal(assistant.message.usage.cache_creation_input_tokens, 4)
+    assert.equal(assistant.message.usage.cache_read_input_tokens, 5)
+    assert.equal(existsSync(cacheStatsPath), true)
+  })
+})
+
+test('status properties hide DeepSeek-only cache and reasoning rows for providers without capabilities', () => {
+  const report = createStatusReport({
+    capabilities: {
+      cache_breakpoint: false,
+      extended_thinking: false,
+      reasoning_effort: false,
+      reasoning_content: false,
+      stable_prefix_cache: false,
+      user_id: false,
+    },
+  })
+  const labels = deepCodeStatusReportToProperties(report).map(item => item.label)
+
+  assert.equal(labels.includes('Thinking'), false)
+  assert.equal(labels.includes('Reasoning effort'), false)
+  assert.equal(labels.includes('Cache user_id'), false)
+  assert.equal(labels.includes('Stable prefix hash'), false)
+  assert.equal(labels.includes('Cache hit rate'), false)
+})
+
+test('doctor formatting hides DeepSeek-only diagnostics when capability flags are false', () => {
+  const report = {
+    config: {
+      provider: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      model: 'llama3.1',
+      smallModel: 'llama3.1',
+      thinking: 'enabled',
+      reasoningEffort: 'max',
+      cacheUserId: 'dc_test',
+      harnessMode: 'off',
+      harnessMaxAgents: 0,
+      promptPack: 'deepseek-v1',
+      strictTools: 'off',
+      apiKeyConfigured: false,
+    },
+    capabilities: {
+      cache_breakpoint: false,
+      extended_thinking: false,
+      reasoning_effort: false,
+      user_id: false,
+    },
+    checks: [],
+    summary: { pass: 0, warn: 0, fail: 0, skip: 0 },
+  }
+  const formatted = formatDeepSeekDoctorReport(report)
+
+  assert.doesNotMatch(formatted, /^Thinking:/m)
+  assert.doesNotMatch(formatted, /^Reasoning effort:/m)
+  assert.doesNotMatch(formatted, /^Cache user_id:/m)
+})
+
+test('compact suppresses cache diagnostics for providers without cache capability', async () => {
+  const provider = createMockProvider({
+    name: 'openai-compatible',
+    capabilities: ['streaming', 'tool_calls'],
+    events: [
+      { type: 'content_delta', text: 'summary' },
+      { type: 'finish', finishReason: 'stop' },
+      {
+        type: 'usage',
+        usage: {
+          prompt_cache_hit_tokens: 12,
+          prompt_cache_miss_tokens: 3,
+        },
+      },
+    ],
+  })
+  const result = await compactDeepCodeConversation({
+    messages: [{ role: 'user', content: 'long tail' }],
+    stablePrefix: {
+      systemPrompt: ['stable'],
+      prefixHash: 'prefix_hash',
+      componentHashes: {},
+    },
+    provider,
+    env: {},
+    cwd: packageRoot,
+  })
+
+  assert.equal(result.cacheDiagnostics, null)
+  assert.equal(Object.hasOwn(provider.calls[0].buildRequest, 'thinking'), false)
+  assert.doesNotMatch(formatDeepCodeCompactResult(result), /^Cache:/m)
+})
+
+test('runtime messageSend gates provider-specific routing fields through provider.supports', async () => {
+  const source = await readFile(messageSendSource, 'utf8')
+
+  assert.match(source, /providerSupports\(provider,\s*'extended_thinking'\)/)
+  assert.match(source, /providerSupports\(provider,\s*'reasoning_effort'\)/)
+  assert.match(source, /providerSupports\(state\.provider,\s*'reasoning_content'\)/)
+  assert.match(source, /updateUsage\(state\.usage,\s*event\.usage,\s*\{\s*provider: state\.provider/)
+  assert.doesNotMatch(source, /provider\s*={2,3}\s*['"]deepseek['"]/)
 })
