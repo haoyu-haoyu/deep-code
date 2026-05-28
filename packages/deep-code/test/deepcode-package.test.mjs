@@ -1235,6 +1235,7 @@ test('Deep Code package packs and installs a runnable production tarball', () =>
   assert.match(listResult.stdout, /package\/deepcode\.js/)
   assert.match(listResult.stdout, /package\/dist\/deepcode-full\.mjs/)
   assert.match(listResult.stdout, /package\/src\/deepcode\/deepseek-native\.mjs/)
+  assert.match(listResult.stdout, /package\/LICENSE\.md/)
   assert.doesNotMatch(listResult.stdout, /package\/test\//)
 
   const initResult = spawnSync('npm', ['init', '-y'], {
