@@ -30,8 +30,12 @@ read-only references for Phase 1 implementation.
   See TODO.md for full milestone list and EXECUTION_LOG.md for per-PR
   citations. All audit artifacts referenced as evidence during Phase 1 remain
   intact for historical record.
-- **Phase 2 (DeepSeek-TUI feature adoption)**: not started; see
-  PURE_DEEPSEEK_PLAN.md L810+.
+- **Phase 2 (DeepSeek-TUI feature adoption)**: complete at
+  v0.3.0-feature-parity (2026-05-28). 9/9 priority features adopted
+  (auto mode + multi-provider + cache viz + workspace rollback + LSP +
+  HTTP serve + session fork + doctor + workspace slash). P2.10 i18n
+  deferred. See TODO.md for milestone list.
+- **Phase 3 (Distribution)**: not started; see PURE_DEEPSEEK_PLAN.md L1202+.
 
 ## What lives here vs `docs/`
 
