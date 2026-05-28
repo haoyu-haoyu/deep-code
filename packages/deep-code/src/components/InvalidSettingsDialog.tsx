@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { Text } from '../ink.js';
 import type { ValidationError } from '../utils/settings/validation.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from './design-system/Dialog.js';
 import { ValidationErrorsList } from './ValidationErrorsList.js';
@@ -17,6 +18,9 @@ type Props = {
  */
 export function InvalidSettingsDialog(t0) {
   const $ = _c(13);
+  const {
+    t
+  } = useTranslation();
   const {
     settingsErrors,
     onContinue,
@@ -48,7 +52,7 @@ export function InvalidSettingsDialog(t0) {
   }
   let t3;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Text dimColor={true}>Files with errors are skipped entirely, not just the invalid settings.</Text>;
+    t3 = <Text dimColor={true}>{t('settings.invalidDialog.body')}</Text>;
     $[5] = t3;
   } else {
     t3 = $[5];
@@ -56,10 +60,10 @@ export function InvalidSettingsDialog(t0) {
   let t4;
   if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
     t4 = [{
-      label: "Exit and fix manually",
+      label: t('settings.invalidDialog.exitAndFix'),
       value: "exit"
     }, {
-      label: "Continue without these settings",
+      label: t('settings.invalidDialog.continueWithout'),
       value: "continue"
     }];
     $[6] = t4;
@@ -76,7 +80,7 @@ export function InvalidSettingsDialog(t0) {
   }
   let t6;
   if ($[9] !== onExit || $[10] !== t2 || $[11] !== t5) {
-    t6 = <Dialog title="Settings Error" onCancel={onExit} color="warning">{t2}{t3}{t5}</Dialog>;
+    t6 = <Dialog title={t('settings.invalidDialog.title')} onCancel={onExit} color="warning">{t2}{t3}{t5}</Dialog>;
     $[9] = onExit;
     $[10] = t2;
     $[11] = t5;

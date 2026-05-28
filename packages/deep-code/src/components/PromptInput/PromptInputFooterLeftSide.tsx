@@ -6,6 +6,7 @@ import { feature } from 'bun:bundle';
 const coordinatorModule = feature('COORDINATOR_MODE') ? require('../../coordinator/coordinatorMode.js') as typeof import('../../coordinator/coordinatorMode.js') : undefined;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { Box, Text, Link } from '../../ink.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import * as React from 'react';
 import figures from 'figures';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -256,6 +257,9 @@ function ModeIndicator({
   const {
     columns
   } = useTerminalSize();
+  const {
+    t
+  } = useTranslation();
   const modeCycleShortcut = useShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab');
   const tasks = useAppState(s => s.tasks);
   const teamContext = useAppState(s_0 => s_0.teamContext);
@@ -289,7 +293,7 @@ function ModeIndicator({
   // In-process mode uses Shift+Down/Up navigation, not footer teams menu
   const hasTeams = isAgentSwarmsEnabled() && !isInProcessEnabled() && teamContext !== undefined && count(Object.values(teamContext.teammates), t_0 => t_0.name !== 'team-lead') > 0;
   if (mode === 'bash') {
-    return <Text color="bashBorder">! for bash mode</Text>;
+    return <Text color="bashBorder">{t('promptInput.helpMenu.bashMode')}</Text>;
   }
   const currentMode = toolPermissionContext?.mode;
   const hasActiveMode = !isDefaultMode(currentMode);

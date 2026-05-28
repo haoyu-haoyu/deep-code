@@ -5,6 +5,7 @@ import { useAppState } from 'src/state/AppState.js'
 import { getGlobalConfig } from 'src/utils/config.js'
 import { getExampleCommandFromCache } from 'src/utils/exampleCommands.js'
 import { isQueuedCommandEditable } from 'src/utils/messageQueueManager.js'
+import { useTranslation } from '../../i18n/useTranslation.js'
 
 // Dead code elimination: conditional import for proactive mode
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -27,6 +28,7 @@ export function usePromptInputPlaceholder({
   submitCount,
   viewingAgentName,
 }: Props): string | undefined {
+  const { t } = useTranslation()
   const queuedCommands = useCommandQueue()
   const promptSuggestionEnabled = useAppState(s => s.promptSuggestionEnabled)
   const placeholder = useMemo(() => {
@@ -40,7 +42,7 @@ export function usePromptInputPlaceholder({
         viewingAgentName.length > MAX_TEAMMATE_NAME_LENGTH
           ? viewingAgentName.slice(0, MAX_TEAMMATE_NAME_LENGTH - 3) + '...'
           : viewingAgentName
-      return `Message @${displayName}…`
+      return t('promptInput.placeholder.messageAgent', { name: displayName })
     }
 
     // Show queue hint if user has not seen it yet.
@@ -51,7 +53,7 @@ export function usePromptInputPlaceholder({
       (getGlobalConfig().queuedCommandUpHintCount || 0) <
         NUM_TIMES_QUEUE_HINT_SHOWN
     ) {
-      return 'Press up to edit queued messages'
+      return t('promptInput.placeholder.editQueuedMessages')
     }
 
     // Show example command if user has not submitted yet and suggestions are enabled.
@@ -70,6 +72,7 @@ export function usePromptInputPlaceholder({
     submitCount,
     promptSuggestionEnabled,
     viewingAgentName,
+    t,
   ])
 
   return placeholder

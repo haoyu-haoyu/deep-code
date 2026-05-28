@@ -6,6 +6,7 @@ import { getPlatform } from 'src/utils/platform.js';
 import { isKeybindingCustomizationEnabled } from '../../keybindings/loadUserBindings.js';
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../utils/featureFlags.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { isFastModeAvailable, isFastModeEnabled } from '../../utils/fastMode.js';
 import { getNewlineInstructions } from './utils.js';
 
@@ -27,6 +28,9 @@ export function PromptInputHelpMenu(props) {
     gap,
     paddingX
   } = props;
+  const {
+    t
+  } = useTranslation();
   const t0 = useShortcutDisplay("app:toggleTranscript", "Global", "ctrl+o");
   let t1;
   if ($[0] !== t0) {
@@ -140,7 +144,7 @@ export function PromptInputHelpMenu(props) {
   const t21 = fixedWidth ? 24 : undefined;
   let t22;
   if ($[23] !== dimColor) {
-    t22 = <Box><Text dimColor={dimColor}>! for bash mode</Text></Box>;
+    t22 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.bashMode')}</Text></Box>;
     $[23] = dimColor;
     $[24] = t22;
   } else {
@@ -148,7 +152,7 @@ export function PromptInputHelpMenu(props) {
   }
   let t23;
   if ($[25] !== dimColor) {
-    t23 = <Box><Text dimColor={dimColor}>/ for commands</Text></Box>;
+    t23 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.commands')}</Text></Box>;
     $[25] = dimColor;
     $[26] = t23;
   } else {
@@ -156,7 +160,7 @@ export function PromptInputHelpMenu(props) {
   }
   let t24;
   if ($[27] !== dimColor) {
-    t24 = <Box><Text dimColor={dimColor}>@ for file paths</Text></Box>;
+    t24 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.filePaths')}</Text></Box>;
     $[27] = dimColor;
     $[28] = t24;
   } else {
@@ -164,7 +168,7 @@ export function PromptInputHelpMenu(props) {
   }
   let t25;
   if ($[29] !== dimColor) {
-    t25 = <Box><Text dimColor={dimColor}>{"& for background"}</Text></Box>;
+    t25 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.background')}</Text></Box>;
     $[29] = dimColor;
     $[30] = t25;
   } else {
@@ -187,7 +191,7 @@ export function PromptInputHelpMenu(props) {
   const t28 = fixedWidth ? 35 : undefined;
   let t29;
   if ($[40] !== dimColor) {
-    t29 = <Box><Text dimColor={dimColor}>double tap esc to clear input</Text></Box>;
+    t29 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.clearInput')}</Text></Box>;
     $[40] = dimColor;
     $[41] = t29;
   } else {
@@ -251,7 +255,9 @@ export function PromptInputHelpMenu(props) {
   }
   let t36;
   if ($[62] !== dimColor || $[63] !== undoShortcut) {
-    t36 = <Box><Text dimColor={dimColor}>{undoShortcut} to undo</Text></Box>;
+    t36 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.undo', {
+          shortcut: undoShortcut
+        })}</Text></Box>;
     $[62] = dimColor;
     $[63] = undoShortcut;
     $[64] = t36;
@@ -268,7 +274,9 @@ export function PromptInputHelpMenu(props) {
   }
   let t38;
   if ($[67] !== dimColor || $[68] !== imagePasteShortcut) {
-    t38 = <Box><Text dimColor={dimColor}>{imagePasteShortcut} to paste images</Text></Box>;
+    t38 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.pasteImages', {
+          shortcut: imagePasteShortcut
+        })}</Text></Box>;
     $[67] = dimColor;
     $[68] = imagePasteShortcut;
     $[69] = t38;
@@ -277,7 +285,9 @@ export function PromptInputHelpMenu(props) {
   }
   let t39;
   if ($[70] !== dimColor || $[71] !== modelPickerShortcut) {
-    t39 = <Box><Text dimColor={dimColor}>{modelPickerShortcut} to switch model</Text></Box>;
+    t39 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.switchModel', {
+          shortcut: modelPickerShortcut
+        })}</Text></Box>;
     $[70] = dimColor;
     $[71] = modelPickerShortcut;
     $[72] = t39;
@@ -295,7 +305,9 @@ export function PromptInputHelpMenu(props) {
   }
   let t41;
   if ($[76] !== dimColor || $[77] !== stashShortcut) {
-    t41 = <Box><Text dimColor={dimColor}>{stashShortcut} to stash prompt</Text></Box>;
+    t41 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.stashPrompt', {
+          shortcut: stashShortcut
+        })}</Text></Box>;
     $[76] = dimColor;
     $[77] = stashShortcut;
     $[78] = t41;

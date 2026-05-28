@@ -6,6 +6,7 @@ import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
 import * as React from 'react';
 import { useState, useCallback } from 'react';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import figures from 'figures';
 import { type GlobalConfig, saveGlobalConfig, getCurrentProjectConfig, type OutputStyle } from '../../utils/config.js';
 import { getGlobalConfig, getAutoUpdaterDisabledReason, formatAutoUpdaterDisabledReason } from '../../utils/config.js';
@@ -91,6 +92,9 @@ export function Config({
     headerFocused,
     focusHeader
   } = useTabHeaderFocus();
+  const {
+    t
+  } = useTranslation();
   const insideModal = useIsInsideModal();
   const [, setTheme] = useTheme();
   const themeSetting = useThemeSetting();
@@ -263,7 +267,7 @@ export function Config({
   // Global settings
   {
     id: 'autoCompactEnabled',
-    label: 'Auto-compact',
+    label: t('settings.config.autoCompact'),
     value: globalConfig.autoCompactEnabled,
     type: 'boolean' as const,
     onChange(autoCompactEnabled: boolean) {
@@ -281,7 +285,7 @@ export function Config({
     }
   }, {
     id: 'spinnerTipsEnabled',
-    label: 'Show tips',
+    label: t('settings.config.showTips'),
     value: settingsData?.spinnerTipsEnabled ?? true,
     type: 'boolean' as const,
     onChange(spinnerTipsEnabled: boolean) {
@@ -299,7 +303,7 @@ export function Config({
     }
   }, {
     id: 'prefersReducedMotion',
-    label: 'Reduce motion',
+    label: t('settings.config.reduceMotion'),
     value: settingsData?.prefersReducedMotion ?? false,
     type: 'boolean' as const,
     onChange(prefersReducedMotion: boolean) {

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Suspense, useState } from 'react';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { useIsInsideModal, useModalOrTerminalSize } from '../../context/modalContext.js';
 import { Pane } from '../design-system/Pane.js';
@@ -27,6 +28,9 @@ export function Settings(t0) {
     defaultTab
   } = t0;
   const [selectedTab, setSelectedTab] = useState(defaultTab);
+  const {
+    t
+  } = useTranslation();
   const [tabsHidden, setTabsHidden] = useState(false);
   const [configOwnsEsc, setConfigOwnsEsc] = useState(false);
   const [gatesOwnsEsc, setGatesOwnsEsc] = useState(false);
@@ -43,7 +47,7 @@ export function Settings(t0) {
       if (tabsHidden) {
         return;
       }
-      onClose("Status dialog dismissed", {
+      onClose(t('settings.status.dismissed'), {
         display: "system"
       });
     };
@@ -80,7 +84,7 @@ export function Settings(t0) {
   });
   let t4;
   if ($[5] !== context || $[6] !== diagnosticsPromise) {
-    t4 = <Tab key="status" title="Status"><Status context={context} diagnosticsPromise={diagnosticsPromise} /></Tab>;
+    t4 = <Tab key="status" title={t('settings.section.status')}><Status context={context} diagnosticsPromise={diagnosticsPromise} /></Tab>;
     $[5] = context;
     $[6] = diagnosticsPromise;
     $[7] = t4;
@@ -89,7 +93,7 @@ export function Settings(t0) {
   }
   let t5;
   if ($[8] !== contentHeight || $[9] !== context || $[10] !== onClose) {
-    t5 = <Tab key="config" title="Config"><Suspense fallback={null}><Config context={context} onClose={onClose} setTabsHidden={setTabsHidden} onIsSearchModeChange={setConfigOwnsEsc} contentHeight={contentHeight} /></Suspense></Tab>;
+    t5 = <Tab key="config" title={t('settings.section.config')}><Suspense fallback={null}><Config context={context} onClose={onClose} setTabsHidden={setTabsHidden} onIsSearchModeChange={setConfigOwnsEsc} contentHeight={contentHeight} /></Suspense></Tab>;
     $[8] = contentHeight;
     $[9] = context;
     $[10] = onClose;
@@ -99,7 +103,7 @@ export function Settings(t0) {
   }
   let t7;
   if ($[13] !== contentHeight) {
-    t7 = false ? [<Tab key="gates" title="Gates"><Gates onOwnsEscChange={setGatesOwnsEsc} contentHeight={contentHeight} /></Tab>] : [];
+    t7 = false ? [<Tab key="gates" title={t('settings.section.gates')}><Gates onOwnsEscChange={setGatesOwnsEsc} contentHeight={contentHeight} /></Tab>] : [];
     $[13] = contentHeight;
     $[14] = t7;
   } else {

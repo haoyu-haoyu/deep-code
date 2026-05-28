@@ -6,6 +6,7 @@ import { useAppState } from 'src/state/AppState.js';
 import { STATUS_TAG, SUMMARY_TAG, TASK_NOTIFICATION_TAG } from '../../constants/xml.js';
 import { QueuedMessageProvider } from '../../context/QueuedMessageContext.js';
 import { useCommandQueue } from '../../hooks/useCommandQueue.js';
+import { getMessage } from '../../i18n/index.js';
 import type { QueuedCommand } from '../../types/textInputTypes.js';
 import { isQueuedCommandVisible } from '../../utils/messageQueueManager.js';
 import { createUserMessage, EMPTY_LOOKUPS, normalizeMessages } from '../../utils/messages.js';
@@ -34,7 +35,9 @@ const MAX_VISIBLE_NOTIFICATIONS = 3;
  */
 function createOverflowNotificationMessage(count: number): string {
   return `<${TASK_NOTIFICATION_TAG}>
-<${SUMMARY_TAG}>+${count} more tasks completed</${SUMMARY_TAG}>
+<${SUMMARY_TAG}>${getMessage('promptInput.queuedCommands.moreTasksCompleted', {
+    count
+  })}</${SUMMARY_TAG}>
 <${STATUS_TAG}>completed</${STATUS_TAG}>
 </${TASK_NOTIFICATION_TAG}>`;
 }

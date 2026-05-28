@@ -7,6 +7,8 @@ import type { LocalJSXCommandContext } from '../../commands.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { buildDeepCodeStatusReport, deepCodeStatusReportToProperties } from '../../deepcode/status.mjs';
 import { Box, Text, useTheme } from '../../ink.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
+import type { Translator } from '../../i18n/types.js';
 import { type AppState, useAppState } from '../../state/AppState.js';
 import { getCwd } from '../../utils/cwd.js';
 import { getCurrentSessionTitle } from '../../utils/sessionStorage.js';
@@ -17,21 +19,22 @@ type Props = {
   context: LocalJSXCommandContext;
   diagnosticsPromise: Promise<Diagnostic[]>;
 };
-function buildPrimarySection(): Property[] {
+type T = Translator['t'];
+function buildPrimarySection(t: T): Property[] {
   const sessionId = getSessionId();
   const customTitle = getCurrentSessionTitle(sessionId);
-  const nameValue = customTitle ?? <Text dimColor>/rename to add a name</Text>;
+  const nameValue = customTitle ?? <Text dimColor>{t('settings.status.unnamedSessionHint')}</Text>;
   return [{
-    label: 'Version',
+    label: t('settings.status.version'),
     value: MACRO.VERSION
   }, {
-    label: 'Session name',
+    label: t('settings.status.sessionName'),
     value: nameValue
   }, {
-    label: 'Session ID',
+    label: t('settings.status.sessionId'),
     value: sessionId
   }, {
-    label: 'cwd',
+    label: t('settings.status.cwd'),
     value: getCwd()
   }, ...buildAccountProperties(), ...buildAPIProviderProperties()];
 }
@@ -39,16 +42,18 @@ function buildSecondarySection({
   mainLoopModel,
   mcp,
   theme,
-  context
+  context,
+  t
 }: {
   mainLoopModel: AppState['mainLoopModel'];
   mcp: AppState['mcp'];
   theme: ThemeName;
   context: LocalJSXCommandContext;
+  t: T;
 }): Property[] {
   const modelLabel = getModelDisplayLabel(mainLoopModel);
   return [{
-    label: 'Model',
+    label: t('settings.status.model'),
     value: modelLabel
   }, ...buildIDEProperties(mcp.clients, context.options.ideInstallationStatus, theme), ...buildMcpProperties(mcp.clients, theme), ...buildSandboxProperties(), ...buildSettingSourcesProperties()];
 }
@@ -115,11 +120,14 @@ export function Status(t0) {
   const mainLoopModel = useAppState(_temp);
   const mcp = useAppState(_temp2);
   const [theme] = useTheme();
+  const {
+    t
+  } = useTranslation();
   const deepCodeStatusPromise = React.useMemo(() => buildDeepCodeStatusProperties(), []);
   const deepCodeStatusElement = <Suspense fallback={null}><DeepCodeStatus promise={deepCodeStatusPromise} /></Suspense>;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = buildPrimarySection();
+    t1 = buildPrimarySection(t);
     $[0] = t1;
   } else {
     t1 = $[0];
@@ -130,7 +138,8 @@ export function Status(t0) {
       mainLoopModel,
       mcp,
       theme,
-      context
+      context,
+      t
     });
     $[1] = context;
     $[2] = mainLoopModel;
@@ -214,22 +223,28 @@ function DeepCodeStatus(t0) {
   const {
     promise
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const properties = use(promise);
   if (properties.length === 0) return null;
-  return <Box flexDirection="column"><Text bold={true}>DeepSeek Status</Text>{properties.map(_temp3)}</Box>;
+  return <Box flexDirection="column"><Text bold={true}>{t('settings.status.deepSeekHeading')}</Text>{properties.map(_temp3)}</Box>;
 }
 function Diagnostics(t0) {
   const $ = _c(5);
   const {
     promise
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const diagnostics = use(promise);
   if (diagnostics.length === 0) {
     return null;
   }
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Text bold={true}>System Diagnostics</Text>;
+    t1 = <Text bold={true}>{t('settings.status.systemDiagnostics')}</Text>;
     $[0] = t1;
   } else {
     t1 = $[0];

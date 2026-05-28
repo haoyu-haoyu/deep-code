@@ -61,6 +61,7 @@ jobs:
             test/p2-10-i18n.test.mjs \
             test/p2-10-render.test.mjs \
             test/p2-10-b1-messages.test.mjs \
+            test/p2-10-b2-prompt-settings.test.mjs \
             test/p3-1-release.test.mjs \
             test/p3-2-docker.test.mjs \
             test/p3-3-binaries.test.mjs \
