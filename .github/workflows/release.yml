@@ -95,62 +95,84 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  build-binaries:
-    runs-on: ${{ matrix.os }}
-    needs: pack-and-validate
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: bun-linux-x64
-            name: deepcode-linux-x64
-          - os: macos-latest
-            target: bun-darwin-x64
-            name: deepcode-darwin-x64
-          - os: macos-14
-            target: bun-darwin-arm64
-            name: deepcode-darwin-arm64
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-
-      - name: Install
-        run: npm ci
-
-      - name: Build full CLI bundle
-        run: cd packages/deep-code && bun run build:full-cli
-
-      - name: Compile binary
-        run: |
-          cd packages/deep-code
-          bun build dist/deepcode-full.mjs --compile --target=${{ matrix.target }} --outfile=${{ matrix.name }}
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: packages/deep-code/${{ matrix.name }}
-
-  create-release:
-    runs-on: ubuntu-latest
-    needs: build-binaries
-    permissions:
-      contents: write
-    steps:
-      - name: Download all binary artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/**/*
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+# =============================================================
+# DEFERRED: Binary distribution path
+# =============================================================
+# P3.3 attempted bun --compile cross-platform binaries but the
+# path is incompatible with the existing build:full-cli bundler:
+# - scripts/build-full-cli.mjs uses optionalBarePackages allowlist
+#   to keep deps like cssfilter, fsevents, @anthropic-ai/bedrock-sdk
+#   external (intentional for npm publish size)
+# - bun --compile expects a self-contained bundle; cannot resolve
+#   external deps at runtime -> "Cannot find package 'cssfilter'"
+# - Fix requires either:
+#   * Dual bundle mode (lean for npm, full inline for binary)
+#   * Switch to Node SEA (still experimental as of 2026-05)
+#   * Different binary strategy (pkg/nexe deprecated)
+#
+# Active distribution channels:
+# - Docker (GHCR) - working via docker-publish job above
+# - npm (P3.1.c) - user gate on @deepcode-ai org + NPM_TOKEN/OIDC
+#
+# Disabled jobs preserved below as reference. Re-enable after
+# build pipeline restructure.
+# =============================================================
+# build-binaries:
+#   runs-on: ${{ matrix.os }}
+#   needs: pack-and-validate
+#   strategy:
+#     matrix:
+#       include:
+#         - os: ubuntu-latest
+#           target: bun-linux-x64
+#           name: deepcode-linux-x64
+#         - os: macos-latest
+#           target: bun-darwin-x64
+#           name: deepcode-darwin-x64
+#         - os: macos-14
+#           target: bun-darwin-arm64
+#           name: deepcode-darwin-arm64
+#   steps:
+#     - name: Checkout
+#       uses: actions/checkout@v4
+#
+#     - name: Setup Bun
+#       uses: oven-sh/setup-bun@v1
+#
+#     - name: Install
+#       run: npm ci
+#
+#     - name: Build full CLI bundle
+#       run: cd packages/deep-code && bun run build:full-cli
+#
+#     - name: Compile binary
+#       run: |
+#         cd packages/deep-code
+#         bun build dist/deepcode-full.mjs --compile --target=${{ matrix.target }} --outfile=${{ matrix.name }}
+#
+#     - name: Upload binary artifact
+#       uses: actions/upload-artifact@v4
+#       with:
+#         name: ${{ matrix.name }}
+#         path: packages/deep-code/${{ matrix.name }}
+#
+# create-release:
+#   runs-on: ubuntu-latest
+#   needs: build-binaries
+#   permissions:
+#     contents: write
+#   steps:
+#     - name: Download all binary artifacts
+#       uses: actions/download-artifact@v4
+#       with:
+#         path: artifacts/
+#
+#     - name: Create GitHub Release
+#       uses: softprops/action-gh-release@v2
+#       with:
+#         files: artifacts/**/*
+#         draft: false
+#         prerelease: ${{ contains(github.ref_name, '-rc') }}
+#         generate_release_notes: true
+#       env:
+#         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
