@@ -3,6 +3,7 @@ import { relative } from 'path';
 import * as React from 'react';
 import { getCwd } from 'src/utils/cwd.js';
 import { Box, Text } from '../ink.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { HighlightedCode } from './HighlightedCode.js';
 import { MessageResponse } from './MessageResponse.js';
 type Props = {
@@ -25,9 +26,14 @@ export function NotebookEditToolUseRejectedMessage(t0) {
   } = t0;
   const edit_mode = t1 === undefined ? "replace" : t1;
   const operation = edit_mode === "delete" ? "delete" : `${edit_mode} cell in`;
+  const {
+    t
+  } = useTranslation();
   let t2;
   if ($[0] !== operation) {
-    t2 = <Text color="subtle">User rejected {operation} </Text>;
+    t2 = <Text color="subtle">{t('tool.useRejected.notebookEdit', {
+      operation
+    })}</Text>;
     $[0] = operation;
     $[1] = t2;
   } else {
@@ -52,7 +58,9 @@ export function NotebookEditToolUseRejectedMessage(t0) {
   }
   let t5;
   if ($[7] !== cell_id) {
-    t5 = <Text color="subtle"> at cell {cell_id}</Text>;
+    t5 = <Text color="subtle">{t('tool.useRejected.notebookCell', {
+      cellId: cell_id ?? ''
+    })}</Text>;
     $[7] = cell_id;
     $[8] = t5;
   } else {

@@ -5,6 +5,7 @@ import { Box, Text } from 'src/ink.js';
 import { formatAPIError } from 'src/services/runtime/errors.js';
 import type { SystemAPIErrorMessage } from 'src/types/message.js';
 import { useInterval } from 'usehooks-ts';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { MessageResponse } from '../MessageResponse.js';
 const MAX_API_ERROR_CHARS = 1000;
@@ -24,6 +25,9 @@ export function SystemAPIErrorMessage(t0) {
     retryInMs,
     maxRetries
   } = t1;
+  const {
+    t
+  } = useTranslation();
   const hidden = true && retryAttempt < 4;
   const [countdownMs, setCountdownMs] = useState(0);
   const done = countdownMs >= retryInMs;
@@ -101,13 +105,18 @@ export function SystemAPIErrorMessage(t0) {
     t8 = $[18];
   }
   const t9 = retryInSecondsLive === 1 ? "second" : "seconds";
+  const retryMessage = t('message.apiRetry', {
+    seconds: retryInSecondsLive,
+    unit: t9,
+    attempt: retryAttempt,
+    maxRetries
+  });
+  const retryTimeoutHint = process.env.API_TIMEOUT_MS ? ` · API_TIMEOUT_MS=${process.env.API_TIMEOUT_MS}ms, try increasing it` : "";
   let t10;
-  if ($[19] !== maxRetries || $[20] !== retryAttempt || $[21] !== retryInSecondsLive || $[22] !== t9) {
-    t10 = <Text dimColor={true}>Retrying in {retryInSecondsLive}{" "}{t9}… (attempt{" "}{retryAttempt}/{maxRetries}){process.env.API_TIMEOUT_MS ? ` · API_TIMEOUT_MS=${process.env.API_TIMEOUT_MS}ms, try increasing it` : ""}</Text>;
-    $[19] = maxRetries;
-    $[20] = retryAttempt;
-    $[21] = retryInSecondsLive;
-    $[22] = t9;
+  if ($[19] !== retryMessage || $[20] !== retryTimeoutHint) {
+    t10 = <Text dimColor={true}>{retryMessage}{retryTimeoutHint}</Text>;
+    $[19] = retryMessage;
+    $[20] = retryTimeoutHint;
     $[23] = t10;
   } else {
     t10 = $[23];

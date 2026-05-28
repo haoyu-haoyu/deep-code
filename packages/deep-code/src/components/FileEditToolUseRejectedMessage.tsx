@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useTerminalSize } from 'src/hooks/useTerminalSize.js';
 import { getCwd } from 'src/utils/cwd.js';
 import { Box, Text } from '../ink.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { HighlightedCode } from './HighlightedCode.js';
 import { MessageResponse } from './MessageResponse.js';
 import { StructuredDiffList } from './StructuredDiffList.js';
@@ -36,9 +37,14 @@ export function FileEditToolUseRejectedMessage(t0) {
   const {
     columns
   } = useTerminalSize();
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== operation) {
-    t1 = <Text color="subtle">User rejected {operation} to </Text>;
+    t1 = <Text color="subtle">{t('tool.useRejected.fileEdit', {
+      operation
+    })}</Text>;
     $[0] = operation;
     $[1] = t1;
   } else {

@@ -3,6 +3,7 @@ import { relative } from 'path';
 import React from 'react';
 import { Box, Text } from '../ink.js';
 import { DiagnosticTrackingService } from '../services/diagnosticTracking.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import type { Attachment } from '../utils/attachments.js';
 import { getCwd } from '../utils/cwd.js';
 import { CtrlOToExpand } from './CtrlOToExpand.js';
@@ -20,6 +21,9 @@ export function DiagnosticsDisplay(t0) {
     attachment,
     verbose
   } = t0;
+  const {
+    t
+  } = useTranslation();
   if (attachment.files.length === 0) {
     return null;
   }
@@ -60,8 +64,8 @@ export function DiagnosticsDisplay(t0) {
     } else {
       t2 = $[7];
     }
-    const t3 = totalIssues === 1 ? "issue" : "issues";
-    const t4 = fileCount === 1 ? "file" : "files";
+    const t3 = totalIssues === 1 ? t('diagnostics.issue.singular') : t('diagnostics.issue.plural');
+    const t4 = fileCount === 1 ? t('diagnostics.file.singular') : t('diagnostics.file.plural');
     let t5;
     if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
       t5 = <CtrlOToExpand />;

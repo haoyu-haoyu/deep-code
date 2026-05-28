@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import type { ThinkingBlock, ThinkingBlockParam } from '../../types/sdk-shim.js';
 import React from 'react';
 import { Box, Text } from '../../ink.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { Markdown } from '../Markdown.js';
 type Props = {
@@ -30,6 +31,9 @@ export function AssistantThinkingMessage(t0) {
   } = t1;
   const addMargin = t2 === undefined ? false : t2;
   const hideInTranscript = t3 === undefined ? false : t3;
+  const {
+    t
+  } = useTranslation();
   if (!thinking) {
     return null;
   }
@@ -41,7 +45,7 @@ export function AssistantThinkingMessage(t0) {
     const t4 = addMargin ? 1 : 0;
     let t5;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-      t5 = <Text dimColor={true} italic={true}>{"\u2234 Thinking"} <CtrlOToExpand /></Text>;
+      t5 = <Text dimColor={true} italic={true}>{t('status.thinking.short')} <CtrlOToExpand /></Text>;
       $[0] = t5;
     } else {
       t5 = $[0];
@@ -59,7 +63,7 @@ export function AssistantThinkingMessage(t0) {
   const t4 = addMargin ? 1 : 0;
   let t5;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text dimColor={true} italic={true}>{"\u2234 Thinking"}…</Text>;
+    t5 = <Text dimColor={true} italic={true}>{t('status.thinking.expanded')}</Text>;
     $[3] = t5;
   } else {
     t5 = $[3];
