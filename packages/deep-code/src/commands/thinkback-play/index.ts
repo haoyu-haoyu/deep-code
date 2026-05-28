@@ -1,4 +1,5 @@
 import type { Command } from '../../commands.js'
+import { translate } from '../../i18n/index.js'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../utils/featureFlags.js'
 
 // Hidden command that just plays the animation
@@ -6,7 +7,7 @@ import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../utils/feature
 const thinkbackPlay = {
   type: 'local',
   name: 'thinkback-play',
-  description: 'Play the thinkback animation',
+  description: translate('en', 'command.thinkbackPlay.description'),
   isEnabled: () =>
     checkStatsigFeatureGate_CACHED_MAY_BE_STALE('tengu_thinkback'),
   isHidden: true,

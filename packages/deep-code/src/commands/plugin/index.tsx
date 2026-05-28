@@ -1,9 +1,10 @@
 import type { Command } from '../../commands.js';
+import { translate } from '../../i18n/index.js';
 const plugin = {
   type: 'local-jsx',
   name: 'plugin',
   aliases: ['plugins', 'marketplace'],
-  description: 'Manage Deep Code plugins',
+  description: translate('en', 'command.plugin.description'),
   immediate: true,
   load: () => import('./plugin.js')
 } satisfies Command;
