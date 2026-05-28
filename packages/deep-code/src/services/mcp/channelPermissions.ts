@@ -1,19 +1,19 @@
 /**
  * Permission prompts over channels (Telegram, iMessage, Discord).
  *
- * Mirrors `BridgePermissionCallbacks` — when CC hits a permission dialog,
+ * Mirrors `BridgePermissionCallbacks` — when DeepCode hits a permission dialog,
  * it ALSO sends the prompt via active channels and races the reply against
  * local UI / bridge / hooks / classifier. First resolver wins via claim().
  *
  * Inbound is a structured event: the server parses the user's "yes tbxkq"
  * reply and emits notifications/claude/channel/permission with
- * {request_id, behavior}. CC never sees the reply as text — approval
+ * {request_id, behavior}. DeepCode never sees the reply as text — approval
  * requires the server to deliberately emit that specific event, not just
  * relay content. Servers opt in by declaring
  * capabilities.experimental['claude/channel/permission'].
  *
- * Kenneth's "would this let Claude self-approve?": the approving party is
- * the human via the channel, not Claude. But the trust boundary isn't the
+ * Kenneth's "would this let the assistant self-approve?": the approving party is
+ * the human via the channel, not the assistant. But the trust boundary isn't the
  * terminal — it's the allowlist (tengu_harbor_ledger). A compromised
  * channel server CAN fabricate "yes <id>" without the human seeing the
  * prompt. Accepted risk: a compromised channel already has unlimited
