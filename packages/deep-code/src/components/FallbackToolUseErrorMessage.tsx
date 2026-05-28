@@ -5,6 +5,7 @@ import { stripUnderlineAnsi } from 'src/components/shell/OutputLine.js';
 import { extractTag } from 'src/utils/messages.js';
 import { removeSandboxViolationTags } from 'src/utils/sandbox/sandbox-ui-utils.js';
 import { Box, Text } from '../ink.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { useShortcutDisplay } from '../keybindings/useShortcutDisplay.js';
 import { countCharInString } from '../utils/stringUtils.js';
 import { MessageResponse } from './MessageResponse.js';
@@ -20,6 +21,9 @@ export function FallbackToolUseErrorMessage(t0) {
     verbose
   } = t0;
   const transcriptShortcut = useShortcutDisplay("app:toggleTranscript", "Global", "ctrl+o");
+  const {
+    t
+  } = useTranslation();
   let T0;
   let T1;
   let T2;
@@ -30,19 +34,21 @@ export function FallbackToolUseErrorMessage(t0) {
   if ($[0] !== result || $[1] !== verbose) {
     let error;
     if (typeof result !== "string") {
-      error = "Tool execution failed";
+      error = t('tool.useError.executionFailed');
     } else {
       const extractedError = extractTag(result, "tool_use_error") ?? result;
       const withoutSandboxViolations = removeSandboxViolationTags(extractedError);
       const withoutErrorTags = withoutSandboxViolations.replace(/<\/?error>/g, "");
       const trimmed = withoutErrorTags.trim();
       if (!verbose && trimmed.includes("InputValidationError: ")) {
-        error = "Invalid tool parameters";
+        error = t('tool.useError.invalidParameters');
       } else {
         if (trimmed.startsWith("Error: ") || trimmed.startsWith("Cancelled: ")) {
           error = trimmed;
         } else {
-          error = `Error: ${trimmed}`;
+          error = t('tool.useError.prefix', {
+            message: trimmed
+          });
         }
       }
     }
@@ -83,7 +89,11 @@ export function FallbackToolUseErrorMessage(t0) {
   }
   let t5;
   if ($[13] !== plusLines || $[14] !== transcriptShortcut || $[15] !== verbose) {
-    t5 = !verbose && plusLines > 0 && <Box><Text dimColor={true}>… +{plusLines} {plusLines === 1 ? "line" : "lines"} (</Text><Text dimColor={true} bold={true}>{transcriptShortcut}</Text><Text> </Text><Text dimColor={true}>to see all)</Text></Box>;
+    const lineLabel = plusLines === 1 ? "line" : "lines";
+    t5 = !verbose && plusLines > 0 && <Box><Text dimColor={true}>{t('tool.useError.truncatedLines', {
+      count: plusLines,
+      lineLabel
+    })}</Text><Text dimColor={true} bold={true}>{transcriptShortcut}</Text><Text> </Text><Text dimColor={true}>{t('tool.useError.toSeeAll')}</Text></Box>;
     $[13] = plusLines;
     $[14] = transcriptShortcut;
     $[15] = verbose;

@@ -6,6 +6,7 @@ import { Box, Text } from '../ink.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../utils/featureFlags.js';
 import { calculateTokenWarningState, getEffectiveContextWindowSize, isAutoCompactEnabled } from '../services/compact/autoCompact.js';
 import { useCompactWarningSuppression } from '../services/compact/compactWarningHook.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { getUpgradeMessage } from '../utils/model/contextWindowUpgradeCheck.js';
 type Props = {
   tokenUsage: number;
@@ -23,6 +24,9 @@ function CollapseLabel(t0) {
   const {
     upgradeMessage
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = require("../services/contextCollapse/index.js");
@@ -57,8 +61,15 @@ function CollapseLabel(t0) {
   const [collapsed, staged, errors, emptySpawns, idleWarn_0] = t3 as [number, number, number, number, number];
   const total = collapsed + staged;
   if (errors > 0 || idleWarn_0) {
-    const problem = errors > 0 ? `collapse errors: ${errors}` : `collapse idle (${emptySpawns} empty runs)`;
-    const t4 = total > 0 ? `${collapsed} / ${total} summarized \u00b7 ${problem}` : problem;
+    const problem = errors > 0 ? t('tokenWarning.collapse.errors', {
+      count: errors
+    }) : t('tokenWarning.collapse.idle', {
+      count: emptySpawns
+    });
+    const t4 = total > 0 ? `${t('tokenWarning.collapse.summarized', {
+      collapsed,
+      total
+    })} \u00b7 ${problem}` : problem;
     let t5;
     if ($[4] !== t4) {
       t5 = <Text color="warning" wrap="truncate">{t4}</Text>;
@@ -72,7 +83,10 @@ function CollapseLabel(t0) {
   if (total === 0) {
     return null;
   }
-  const label = `${collapsed} / ${total} summarized`;
+  const label = t('tokenWarning.collapse.summarized', {
+    collapsed,
+    total
+  });
   const t4 = upgradeMessage ? `${label} \u00b7 ${upgradeMessage}` : label;
   let t5;
   if ($[6] !== t4) {
@@ -90,6 +104,9 @@ export function TokenWarning(t0) {
     tokenUsage,
     model
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== model || $[1] !== tokenUsage) {
     t1 = calculateTokenWarningState(tokenUsage, model);
@@ -163,10 +180,19 @@ export function TokenWarning(t0) {
     }
     return t4;
   }
-  const autocompactLabel = reactiveOnlyMode ? `${100 - displayPercentLeft}% context used` : `${displayPercentLeft}% until auto-compact`;
+  const autocompactLabel = reactiveOnlyMode ? t('tokenWarning.autoCompact.used', {
+    percentage: 100 - displayPercentLeft
+  }) : t('tokenWarning.autoCompact.until', {
+    percentage: displayPercentLeft
+  });
+  const compactAction = t('tokenWarning.compactAction');
+  const contextLowLabel = t('tokenWarning.approaching', {
+    percentage: percentLeft,
+    action: upgradeMessage ?? compactAction
+  });
   let t4;
   if ($[9] !== autocompactLabel || $[10] !== isAboveErrorThreshold || $[11] !== percentLeft) {
-    t4 = <Box flexDirection="row">{showAutoCompactWarning ? <Text dimColor={true} wrap="truncate">{upgradeMessage ? `${autocompactLabel} \u00b7 ${upgradeMessage}` : autocompactLabel}</Text> : <Text color={isAboveErrorThreshold ? "error" : "warning"} wrap="truncate">{upgradeMessage ? `Context low (${percentLeft}% remaining) \u00b7 ${upgradeMessage}` : `Context low (${percentLeft}% remaining) \u00b7 Run /compact to compact & continue`}</Text>}</Box>;
+    t4 = <Box flexDirection="row">{showAutoCompactWarning ? <Text dimColor={true} wrap="truncate">{upgradeMessage ? `${autocompactLabel} \u00b7 ${upgradeMessage}` : autocompactLabel}</Text> : <Text color={isAboveErrorThreshold ? "error" : "warning"} wrap="truncate">{contextLowLabel}</Text>}</Box>;
     $[9] = autocompactLabel;
     $[10] = isAboveErrorThreshold;
     $[11] = percentLeft;

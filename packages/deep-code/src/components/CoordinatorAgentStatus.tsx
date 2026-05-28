@@ -13,6 +13,7 @@ import { BLACK_CIRCLE, PAUSE_ICON, PLAY_ICON } from '../constants/figures.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { stringWidth } from '../ink/stringWidth.js';
 import { Box, Text, wrapText } from '../ink.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { type AppState, useAppState, useSetAppState } from '../state/AppState.js';
 import { enterTeammateView, exitTeammateView } from '../state/teammateViewHelpers.js';
 import { isPanelAgentTask, type LocalAgentTaskState } from '../tasks/LocalAgentTask/LocalAgentTask.js';
@@ -97,6 +98,9 @@ function MainLine(t0) {
     onClick
   } = t0;
   const [hover, setHover] = React.useState(false);
+  const {
+    t
+  } = useTranslation();
   const prefix = isSelected || hover ? figures.pointer + " " : "  ";
   const bullet = isViewed ? BLACK_CIRCLE : figures.circle;
   let t1;
@@ -113,7 +117,7 @@ function MainLine(t0) {
   const t3 = !isSelected && !isViewed && !hover;
   let t4;
   if ($[2] !== bullet || $[3] !== isViewed || $[4] !== prefix || $[5] !== t3) {
-    t4 = <Text dimColor={t3} bold={isViewed}>{prefix}{bullet} main</Text>;
+    t4 = <Text dimColor={t3} bold={isViewed}>{prefix}{bullet} {t('coordinator.main')}</Text>;
     $[2] = bullet;
     $[3] = isViewed;
     $[4] = prefix;
@@ -152,6 +156,9 @@ function AgentLine(t0) {
   const {
     columns
   } = useTerminalSize();
+  const {
+    t
+  } = useTranslation();
   const [hover, setHover] = React.useState(false);
   const isRunning = !isTerminalStatus(task.status);
   const pausedMs = task.totalPausedMs ?? 0;
@@ -170,7 +177,10 @@ function AgentLine(t0) {
   const arrow = lastActivity ? figures.arrowDown : figures.arrowUp;
   let t2;
   if ($[2] !== arrow || $[3] !== tokenCount) {
-    t2 = tokenCount !== undefined && tokenCount > 0 ? ` · ${arrow} ${formatNumber(tokenCount)} tokens` : "";
+    t2 = tokenCount !== undefined && tokenCount > 0 ? t('coordinator.tokens', {
+      arrow,
+      count: formatNumber(tokenCount)
+    }) : "";
     $[2] = arrow;
     $[3] = tokenCount;
     $[4] = t2;
@@ -179,7 +189,9 @@ function AgentLine(t0) {
   }
   const tokenText = t2;
   const queuedCount = task.pendingMessages.length;
-  const queuedText = queuedCount > 0 ? ` · ${queuedCount} queued` : "";
+  const queuedText = queuedCount > 0 ? t('coordinator.queued', {
+    count: queuedCount
+  }) : "";
   const displayDescription = task.progress?.summary || task.description;
   const highlighted = isSelected || hover;
   const prefix = highlighted ? figures.pointer + " " : "  ";
