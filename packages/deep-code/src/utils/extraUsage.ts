@@ -3,6 +3,6 @@ export function isBilledAsExtraUsage(
   _isFastMode: boolean,
   _isOpus1mMerged: boolean,
 ): boolean {
-  // DeepCode is not a Claude.ai subscriber; no extra-usage billing applies.
+  // DeepCode does not use legacy web-subscriber billing.
   return false
 }

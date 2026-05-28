@@ -26,7 +26,7 @@ export function getDeepCodeBillingType(): string {
   if (isDeepCodeDeepSeekProvider()) {
     return 'DeepSeek native'
   }
-  // Non-DeepSeek provider fallback: DeepCode is not a Claude.ai subscriber.
+  // Non-DeepSeek provider fallback: use generic API usage billing.
   return 'API Usage Billing'
 }
 
