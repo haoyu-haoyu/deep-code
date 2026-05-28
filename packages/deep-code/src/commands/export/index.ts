@@ -1,9 +1,10 @@
 import type { Command } from '../../commands.js'
+import { translate } from '../../i18n/index.js'
 
 const exportCommand = {
   type: 'local-jsx',
   name: 'export',
-  description: 'Export the current conversation to a file or clipboard',
+  description: translate('en', 'command.export.description'),
   argumentHint: '[filename]',
   load: () => import('./export.js'),
 } satisfies Command

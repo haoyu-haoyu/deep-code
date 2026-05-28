@@ -80,8 +80,8 @@ test('getMessage reads the active locale with English fallback', () => {
 test('English catalog has a bounded non-empty string message set', () => {
   const entries = runI18nExpression('Object.entries(EN_MESSAGES)')
 
-  assert.ok(entries.length >= 105, `expected at least 105 keys, got ${entries.length}`)
-  assert.ok(entries.length <= 115, `expected at most 115 keys, got ${entries.length}`)
+  assert.ok(entries.length >= 130, `expected at least 130 keys, got ${entries.length}`)
+  assert.ok(entries.length <= 140, `expected at most 140 keys, got ${entries.length}`)
   for (const [key, value] of entries) {
     assert.equal(typeof key, 'string')
     assert.equal(typeof value, 'string')

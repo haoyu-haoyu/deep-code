@@ -200,8 +200,10 @@ test('English catalog contains the scoped P2.10.b.2 key set', () => {
   const entries = runI18nExpression('Object.entries(EN_MESSAGES)')
   const keys = new Set(entries.map(([key]) => key))
 
+  // Lower bound only: this phase test verifies the b.2 key set is PRESENT; the
+  // global catalog upper bound is owned solely by p2-10-i18n.test.mjs so it does
+  // not have to be re-bumped in every per-phase test as later batches add keys.
   assert.ok(entries.length >= 105, `expected at least 105 keys, got ${entries.length}`)
-  assert.ok(entries.length <= 115, `expected at most 115 keys, got ${entries.length}`)
 
   for (const key of expectedB2Keys) {
     assert.ok(keys.has(key), `missing P2.10.b.2 key: ${key}`)
