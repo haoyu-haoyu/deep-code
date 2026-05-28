@@ -36,9 +36,11 @@ deepcode --help
 Windows binaries are deferred until the Bun compile target is stable enough for
 this release path.
 
-## Docker
+## Docker (multi-arch: linux/amd64 + linux/arm64)
 
 ```bash
+# Auto-selects matching platform
+docker pull ghcr.io/haoyu-haoyu/deepcode:latest
 docker run -v "$(pwd)":/workspace ghcr.io/haoyu-haoyu/deepcode:latest --help
 ```
 
@@ -46,6 +48,9 @@ Use the current directory mount when running DeepCode against a workspace:
 
 ```bash
 docker run -it -v "$(pwd)":/workspace ghcr.io/haoyu-haoyu/deepcode:latest
+
+# Explicit platform (optional)
+docker pull --platform linux/arm64 ghcr.io/haoyu-haoyu/deepcode:latest
 ```
 
 ## npm
