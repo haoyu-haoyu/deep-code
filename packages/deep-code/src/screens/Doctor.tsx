@@ -9,6 +9,7 @@ import { getClaudeConfigHomeDir } from 'src/utils/envUtils.js';
 import type { SettingSource } from 'src/utils/settings/constants.js';
 import { getOriginalCwd } from '../bootstrap/state.js';
 import type { CommandResultDisplay } from '../commands.js';
+import { runDoctorChecks } from '../cli/handlers/doctorChecks.mjs';
 import { Pane } from '../components/design-system/Pane.js';
 import { PressEnterToContinue } from '../components/PressEnterToContinue.js';
 import { SandboxDoctorSection } from '../components/sandbox/SandboxDoctorSection.js';
@@ -98,7 +99,7 @@ function DistTagsDisplay(t0) {
   return t3;
 }
 export function Doctor(t0) {
-  const $ = _c(84);
+  const $ = _c(85);
   const {
     onDone
   } = t0;
@@ -117,6 +118,7 @@ export function Doctor(t0) {
   }
   const tools = t1;
   const [diagnostic, setDiagnostic] = useState(null);
+  const [deepCodeChecks, setDeepCodeChecks] = useState(null);
   const [agentInfo, setAgentInfo] = useState(null);
   const [contextWarnings, setContextWarnings] = useState(null);
   const [versionLockInfo, setVersionLockInfo] = useState(null);
@@ -164,6 +166,13 @@ export function Doctor(t0) {
   if ($[6] !== agentDefinitions || $[7] !== toolPermissionContext || $[8] !== tools) {
     t5 = () => {
       getDoctorDiagnostic().then(setDiagnostic);
+      runDoctorChecks().then(result => setDeepCodeChecks(result.checks)).catch(error => {
+        setDeepCodeChecks([{
+          name: "DeepCode checks",
+          status: "warn",
+          message: String(error?.message || error || "failed to run checks")
+        }]);
+      });
       (async () => {
         const userAgentsDir = join(getClaudeConfigHomeDir(), "agents");
         const projectAgentsDir = join(getOriginalCwd(), ".claude", "agents");
@@ -484,21 +493,27 @@ export function Doctor(t0) {
   } else {
     t40 = $[75];
   }
+  const deepCodeChecksSection = deepCodeChecks && <Box flexDirection="column" marginTop={1}><Text bold={true}>DeepCode Checks</Text>{deepCodeChecks.map(_temp19)}</Box>;
   let t41;
-  if ($[76] !== t23 || $[77] !== t30 || $[78] !== t35 || $[79] !== t36 || $[80] !== t37 || $[81] !== t38 || $[82] !== t39) {
-    t41 = <Pane>{t23}{t30}{t31}{t32}{t33}{t34}{t35}{t36}{t37}{t38}{t39}{t40}</Pane>;
+  if ($[76] !== t23 || $[77] !== deepCodeChecksSection || $[78] !== t30 || $[79] !== t35 || $[80] !== t36 || $[81] !== t37 || $[82] !== t38 || $[83] !== t39) {
+    t41 = <Pane>{t23}{deepCodeChecksSection}{t30}{t31}{t32}{t33}{t34}{t35}{t36}{t37}{t38}{t39}{t40}</Pane>;
     $[76] = t23;
-    $[77] = t30;
-    $[78] = t35;
-    $[79] = t36;
-    $[80] = t37;
-    $[81] = t38;
-    $[82] = t39;
-    $[83] = t41;
+    $[77] = deepCodeChecksSection;
+    $[78] = t30;
+    $[79] = t35;
+    $[80] = t36;
+    $[81] = t37;
+    $[82] = t38;
+    $[83] = t39;
+    $[84] = t41;
   } else {
-    t41 = $[83];
+    t41 = $[84];
   }
   return t41;
+}
+function _temp19(check, i_9) {
+  const color = check.status === "ok" ? "success" : check.status === "warn" ? "warning" : "error";
+  return <Box key={i_9} flexDirection="column"><Text color={color}>└ [{String(check.status).toUpperCase()}] {check.name}: {check.message}</Text>{check.hint && <Text dimColor={true}>  Hint: {check.hint}</Text>}</Box>;
 }
 function _temp18(detail_2, i_8) {
   return <Text key={i_8} dimColor={true}>{"    "}└ {detail_2}</Text>;
