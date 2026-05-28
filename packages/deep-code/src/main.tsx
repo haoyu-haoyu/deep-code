@@ -3513,7 +3513,18 @@ async function run(): Promise<CommanderCommand> {
   }
 
   // Doctor command - check installation health
-  program.command('doctor').description('Check the health of your Deep Code installation. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.').action(async () => {
+  program.command('doctor').description('Check the health of your Deep Code installation. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.').option('--json', 'Machine-readable JSON output').action(async (options: {
+    json?: boolean;
+  }) => {
+    if (options.json) {
+      const {
+        doctorHandler
+      } = await import('./cli/handlers/doctor.mjs');
+      await doctorHandler({
+        json: true
+      });
+      process.exit(0);
+    }
     const [{
       doctorHandler
     }, {
