@@ -657,8 +657,10 @@ export function REPL({
   // Local state for commands (hot-reloadable when skill files change)
   const [localCommands, setLocalCommands] = useState(initialCommands);
 
-  // Watch for skill file changes and reload all commands
-  useSkillsChange(getProjectRoot(), setLocalCommands);
+  const workspaceRoot = getProjectRoot();
+
+  // Watch for skill/workspace command file changes and reload all commands.
+  useSkillsChange(workspaceRoot, setLocalCommands);
 
   // Track proactive mode for tools dependency - SleepTool filters by proactive state
   const proactiveActive = React.useSyncExternalStore(proactiveModule?.subscribeToProactiveChanges ?? PROACTIVE_NO_OP_SUBSCRIBE, proactiveModule?.isProactiveActive ?? PROACTIVE_FALSE);
