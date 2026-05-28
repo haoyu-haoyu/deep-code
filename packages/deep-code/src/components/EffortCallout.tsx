@@ -210,7 +210,7 @@ function EffortOptionLabel(t0) {
 /**
  * Check whether to show the effort callout.
  *
- * DeepCode has no Claude subscription tiers, so mark as dismissed and keep
+ * DeepCode has no upstream subscription tiers, so mark as dismissed and keep
  * the callout suppressed.
  */
 export function shouldShowEffortCallout(model: string): boolean {
