@@ -3,6 +3,7 @@ import { getOriginalCwd } from '../../bootstrap/state.js'
 import { Select } from '../../components/CustomSelect/select.js'
 import { Dialog } from '../../components/design-system/Dialog.js'
 import { Box, Text } from '../../ink.js'
+import { useTranslation } from '../../i18n/useTranslation.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import {
   formatRestoreSnapshotLine,
@@ -29,6 +30,7 @@ function RestoreDialog({
   )
   const [error, setError] = React.useState<string | undefined>()
   const [isRestoring, setIsRestoring] = React.useState(false)
+  const { t } = useTranslation()
 
   React.useEffect(() => {
     let cancelled = false
@@ -66,18 +68,18 @@ function RestoreDialog({
   }
 
   if (items === null) {
-    return <RestoreMessageDialog title="Restore snapshots" message="Loading snapshots..." onDone={onDone} />
+    return <RestoreMessageDialog title="Restore snapshots" message={t('restore.loading')} onDone={onDone} />
   }
 
   if (items.length === 0) {
-    return <RestoreMessageDialog title="Restore snapshots" message="No snapshots available yet" onDone={onDone} />
+    return <RestoreMessageDialog title="Restore snapshots" message={t('restore.empty')} onDone={onDone} />
   }
 
   if (selected) {
     const item = items.find(candidate => candidate.snapshotId === selected)
     return (
       <Dialog
-        title="Restore snapshot?"
+        title={t('restore.confirmTitle')}
         subtitle="Workspace files may be overwritten"
         color="warning"
         onCancel={() => setSelected(undefined)}
@@ -85,8 +87,7 @@ function RestoreDialog({
         <Box flexDirection="column" gap={1}>
           <Text>{item ? formatRestoreSnapshotLine(item) : selected}</Text>
           <Text dimColor>
-            This restores local workspace files from the side-git snapshot. It
-            does not touch your repository .git directory.
+            {t('restore.confirmBody')}
           </Text>
           <Select<'yes' | 'no'>
             isDisabled={isRestoring}
@@ -101,8 +102,8 @@ function RestoreDialog({
               }
             }}
             options={[
-              { label: 'Yes, restore workspace files', value: 'yes' },
-              { label: 'No, keep current files', value: 'no' },
+              { label: t('restore.confirmLabel'), value: 'yes' },
+              { label: t('restore.cancelLabel'), value: 'no' },
             ]}
           />
         </Box>
@@ -112,7 +113,7 @@ function RestoreDialog({
 
   return (
     <Dialog
-      title="Restore snapshot"
+      title={t('restore.title')}
       subtitle="Select one of the last 10 side-git snapshots"
       onCancel={() => onDone(undefined, { display: 'skip' })}
     >

@@ -58,6 +58,8 @@ jobs:
             test/p2-7-fork.test.mjs \
             test/p2-8-doctor.test.mjs \
             test/p2-9-workspace-slash.test.mjs \
+            test/p2-10-i18n.test.mjs \
+            test/p2-10-render.test.mjs \
             test/p3-1-release.test.mjs \
             test/p3-2-docker.test.mjs \
             test/p3-3-binaries.test.mjs \

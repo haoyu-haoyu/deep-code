@@ -3,6 +3,7 @@ import figures from 'figures';
 import React, { useState } from 'react';
 import { Box, Text } from '../ink.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import TextInput from './TextInput.js';
 type Props = {
   initialLanguage: string | undefined;
@@ -16,6 +17,9 @@ export function LanguagePicker(t0) {
     onComplete,
     onCancel
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const [language, setLanguage] = useState(initialLanguage);
   const [cursorOffset, setCursorOffset] = useState((initialLanguage ?? "").length);
   let t1;
@@ -43,7 +47,7 @@ export function LanguagePicker(t0) {
   const handleSubmit = t2;
   let t3;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Text>Enter your preferred response and voice language:</Text>;
+    t3 = <Text>{t('languagePicker.prompt')}</Text>;
     $[4] = t3;
   } else {
     t3 = $[4];
@@ -58,7 +62,7 @@ export function LanguagePicker(t0) {
   const t5 = language ?? "";
   let t6;
   if ($[6] !== cursorOffset || $[7] !== handleSubmit || $[8] !== t5) {
-    t6 = <Box flexDirection="row" gap={1}>{t4}<TextInput value={t5} onChange={setLanguage} onSubmit={handleSubmit} focus={true} showCursor={true} placeholder={`e.g., Japanese, 日本語, Español${figures.ellipsis}`} columns={60} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} /></Box>;
+    t6 = <Box flexDirection="row" gap={1}>{t4}<TextInput value={t5} onChange={setLanguage} onSubmit={handleSubmit} focus={true} showCursor={true} placeholder={t('settings.responseLanguage.placeholder', { ellipsis: figures.ellipsis })} columns={60} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} /></Box>;
     $[6] = cursorOffset;
     $[7] = handleSubmit;
     $[8] = t5;
@@ -68,7 +72,7 @@ export function LanguagePicker(t0) {
   }
   let t7;
   if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Text dimColor={true}>Leave empty for default (English)</Text>;
+    t7 = <Text dimColor={true}>{t('languagePicker.emptyHint')}</Text>;
     $[10] = t7;
   } else {
     t7 = $[10];

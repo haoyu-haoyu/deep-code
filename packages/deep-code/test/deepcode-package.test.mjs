@@ -296,6 +296,10 @@ const doctorCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/doctor/index.ts'),
   'utf8',
 )
+const i18nEnglishSource = readFileSync(
+  resolve(root, 'packages/deep-code/src/i18n/messages/en.ts'),
+  'utf8',
+)
 const statuslineCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/statusline.tsx'),
   'utf8',
@@ -1376,11 +1380,12 @@ test('TUI slash command metadata uses Deep Code and DeepSeek branding', () => {
     statusCommandSource,
     modelCommandSource,
     doctorCommandSource,
+    i18nEnglishSource,
   ].join('\n')
 
   assert.match(statusCommandSource, /Show Deep Code status/)
   assert.match(modelCommandSource, /Set the AI model for Deep Code/)
-  assert.match(doctorCommandSource, /Diagnose and verify your Deep Code installation/)
+  assert.match(commandSources, /Diagnose and verify your Deep Code installation/)
   assert.doesNotMatch(commandSources, /Claude Code/)
   assert.doesNotMatch(commandSources, /Anthropic/)
 })
