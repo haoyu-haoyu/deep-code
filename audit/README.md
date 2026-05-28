@@ -35,7 +35,12 @@ read-only references for Phase 1 implementation.
   (auto mode + multi-provider + cache viz + workspace rollback + LSP +
   HTTP serve + session fork + doctor + workspace slash). P2.10 i18n
   deferred. See TODO.md for milestone list.
-- **Phase 3 (Distribution)**: not started; see PURE_DEEPSEEK_PLAN.md L1202+.
+- **Phase 3 (Distribution)**: complete at v0.4.0-distributed (2026-05-28).
+  Docker + GitHub Release binaries ready (autonomous channels using
+  GITHUB_TOKEN). npm publish (P3.1.c) deferred pending user `@deepcode-ai`
+  org ownership confirmation. Homebrew + Windows binary + multi-arch Docker
+  deferred. See TODO.md for milestone list.
+- **Future phases**: no formal Phase 4 defined; next based on user priorities.
 
 ## What lives here vs `docs/`
 
