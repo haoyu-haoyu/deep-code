@@ -1,4 +1,5 @@
 import type { Command } from '../commands.js'
+import { translate } from '../i18n/index.js'
 import { getAttributionTexts } from '../utils/attribution.js'
 import { executeShellCommandsInPrompt } from '../utils/promptShellExecution.js'
 import { getUndercoverInstructions, isUndercover } from '../utils/undercover.js'
@@ -57,7 +58,7 @@ You have the capability to call multiple tools in a single response. Stage and c
 const command = {
   type: 'prompt',
   name: 'commit',
-  description: 'Create a git commit',
+  description: translate('en', 'command.commit.description'),
   allowedTools: ALLOWED_TOOLS,
   contentLength: 0, // Dynamic content
   progressMessage: 'creating commit',

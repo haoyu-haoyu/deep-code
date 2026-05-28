@@ -3,11 +3,12 @@
  * Implementation is lazy-loaded from color.ts to reduce startup time.
  */
 import type { Command } from '../../commands.js'
+import { translate } from '../../i18n/index.js'
 
 const color = {
   type: 'local-jsx',
   name: 'color',
-  description: 'Set the prompt bar color for this session',
+  description: translate('en', 'command.color.description'),
   immediate: true,
   argumentHint: '<color|default>',
   load: () => import('./color.js'),

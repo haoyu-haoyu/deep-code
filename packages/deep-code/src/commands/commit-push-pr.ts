@@ -1,4 +1,5 @@
 import type { Command } from '../commands.js'
+import { translate } from '../i18n/index.js'
 import {
   getAttributionTexts,
   getEnhancedPRAttribution,
@@ -108,7 +109,7 @@ Return the PR URL when you're done, so the user can see it.`
 const command = {
   type: 'prompt',
   name: 'commit-push-pr',
-  description: 'Commit, push, and open a PR',
+  description: translate('en', 'command.commitPushPr.description'),
   allowedTools: ALLOWED_TOOLS,
   get contentLength() {
     // Use 'main' as estimate for content length calculation

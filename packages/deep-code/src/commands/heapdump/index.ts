@@ -1,9 +1,10 @@
 import type { Command } from '../../commands.js'
+import { translate } from '../../i18n/index.js'
 
 const heapDump = {
   type: 'local',
   name: 'heapdump',
-  description: 'Dump the JS heap to ~/Desktop',
+  description: translate('en', 'command.heapdump.description'),
   isHidden: true,
   supportsNonInteractive: true,
   load: () => import('./heapdump.js'),
