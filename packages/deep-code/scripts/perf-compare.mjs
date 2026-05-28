@@ -16,6 +16,20 @@
  * percentage exceeds threshold. This covers repeated CI timing flaps
  * on jsonl_parse_1k_msgs_ms in P1.5, P1.7.d.4.b, and P1.8.a while
  * preserving the percentage threshold for real hotspots above 10 ms.
+ *
+ * Statistic choice — the gate compares the MEDIAN, never the min. Min is
+ * tempting because it is noise-robust (the fastest sample sees the least
+ * scheduler interference), but it is structurally blind to exactly the
+ * regressions a perf gate exists to catch: intermittent / data-dependent
+ * slow paths, GC- or allocation-driven throughput loss, V8 deopt/bimodal
+ * tiering, and tail-latency (p99) regressions all leave the best-of-N run
+ * untouched while raising the median that users actually experience. Min
+ * also sits at or below the floor more often, widening the noise-floor
+ * suppression zone, and can spuriously report "improved" on a lucky draw.
+ * The flapping that motivated this comment is fixed at the SOURCE instead:
+ * perf-baseline.mjs oversamples the cheap sub-floor probes (jsonl parse/tail)
+ * so their median is robust to a transient hiccup, without going blind to
+ * real regressions the way a min-gate would.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs'

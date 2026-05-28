@@ -113,12 +113,56 @@ test(
       jsonlMetric.median > 0 && jsonlMetric.median < 1000,
       `jsonl parse median should be 0-1000ms, got ${jsonlMetric.median}`,
     )
+    // The cheap, noise-prone jsonl probe is oversampled (NOISY_PROBE_REPEAT_FACTOR
+    // in perf-baseline.mjs) so its median survives a transient CI hiccup. Even at
+    // --repeats=1 it must collect more than one sample.
+    assert.ok(
+      jsonlMetric.samples.length >= 5,
+      `jsonl parse must be oversampled for noise robustness, got ${jsonlMetric.samples.length} sample(s) at --repeats=1`,
+    )
+    // jsonl_tail is the other cheap, noise-prone probe and must be oversampled
+    // too. Assert kind first so the sample-count message below never dereferences
+    // `.samples` on an error placeholder (which has no `samples` field).
+    const jsonlTailMetric = report.metrics.find(
+      m => m.label === 'deepcode_jsonl_tail_100_msgs_ms',
+    )
+    assert.equal(
+      jsonlTailMetric.kind,
+      'measured',
+      `jsonl_tail must succeed locally, got ${jsonlTailMetric.kind} (${jsonlTailMetric.reason ?? ''})`,
+    )
+    assert.ok(
+      jsonlTailMetric.samples.length >= 5,
+      `jsonl tail must be oversampled, got ${jsonlTailMetric.samples.length} sample(s) at --repeats=1`,
+    )
+    // Oversampling is SELECTIVE: the expensive ~10s cold-start probes must NOT be
+    // oversampled, or CI time blows up. The exact contract is that cold-start
+    // uses plain `repeats` while jsonl uses repeats * factor, so a measured
+    // cold-start must record EXACTLY report.repeats samples (a `< jsonl` check
+    // would be fail-open for partial oversampling). Guard for network-restricted
+    // CI where a cold-start probe is an error placeholder with no `samples`.
+    const coldStartMetric = report.metrics.find(
+      m => m.label === 'deepcode_cold_start_version_ms',
+    )
+    if (coldStartMetric.kind === 'measured') {
+      assert.equal(
+        coldStartMetric.samples.length,
+        report.repeats,
+        `cold-start must NOT be oversampled — expected exactly ${report.repeats} sample(s), got ${coldStartMetric.samples.length}`,
+      )
+    }
 
     for (const metric of report.metrics.filter(m => m.kind === 'measured')) {
       assert.ok(metric.median > 0, `${metric.label} must have positive median`)
       assert.ok(
         Array.isArray(metric.samples) && metric.samples.length >= 1,
         `${metric.label} must record at least one sample`,
+      )
+      // The gate compares median, but min/median/max must stay ordered so the
+      // report — and any future statistic — is well-formed.
+      assert.ok(
+        metric.min <= metric.median && metric.median <= metric.max,
+        `${metric.label} must satisfy min <= median <= max, got ${metric.min}/${metric.median}/${metric.max}`,
       )
     }
   },
