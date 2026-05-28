@@ -1,0 +1,36 @@
+# Build artifacts
+node_modules/
+packages/deep-code/node_modules/
+.git/
+.github/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Test outputs
+coverage/
+*.log
+packages/deep-code/test/
+
+# Already-built dist is rebuilt in the container
+packages/deep-code/dist/
+
+# Docs and audit
+audit/
+docs/
+*.md
+
+# Snapshots / cache
+~/.deepcode/
+.deepcode/
+
+# Phase scan docs
+P1_*.md
+P2_*.md
+P3_*.md
+EXECUTION_LOG.md
+TODO.md
