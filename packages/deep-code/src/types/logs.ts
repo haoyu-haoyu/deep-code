@@ -193,7 +193,7 @@ export type FileHistorySnapshotMessage = {
 }
 
 /**
- * Per-file attribution state tracking Claude's character contributions.
+ * Per-file attribution state tracking DeepCode character contributions.
  */
 export type FileAttributionState = {
   contentHash: string // SHA-256 hash of file content
@@ -203,7 +203,7 @@ export type FileAttributionState = {
 
 /**
  * Attribution snapshot message stored in session transcript.
- * Tracks character-level contributions by Claude for commit attribution.
+ * Tracks character-level contributions by DeepCode for commit attribution.
  */
 export type AttributionSnapshotMessage = {
   type: 'attribution-snapshot'
