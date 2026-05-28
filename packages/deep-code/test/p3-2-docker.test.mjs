@@ -66,14 +66,29 @@ test('release workflow publishes Docker image to GHCR after pack validation', as
   assert.match(workflow, /registry: ghcr\.io/)
   assert.match(workflow, /username: \$\{\{ github\.actor \}\}/)
   assert.match(workflow, /password: \$\{\{ secrets\.GITHUB_TOKEN \}\}/)
+  assert.match(workflow, /uses: docker\/setup-qemu-action@v3/)
+  assert.match(workflow, /platforms: linux\/arm64/)
   assert.match(workflow, /uses: docker\/setup-buildx-action@v3/)
   assert.match(workflow, /uses: docker\/build-push-action@v5/)
-  assert.match(workflow, /platforms: linux\/amd64/)
-  assert.doesNotMatch(workflow, /linux\/arm64/)
+  assert.match(workflow, /platforms: linux\/amd64,linux\/arm64/)
+  assert.ok(
+    workflow.indexOf('uses: docker/setup-qemu-action@v3') <
+      workflow.indexOf('uses: docker/setup-buildx-action@v3'),
+    'QEMU setup must run before Docker Buildx',
+  )
   assert.match(workflow, /ghcr\.io\/haoyu-haoyu\/deepcode:\$\{\{ steps\.version\.outputs\.version \}\}/)
   assert.match(workflow, /ghcr\.io\/haoyu-haoyu\/deepcode:latest/)
   assert.doesNotMatch(workflow, /GHCR_TOKEN|PERSONAL_ACCESS_TOKEN|DOCKERHUB_TOKEN/)
   assert.match(workflow, /# - name: npm publish/)
+})
+
+test('install docs describe multi-arch Docker pull behavior', async () => {
+  const docs = await readFile(resolve(repoRoot, 'docs/install.md'), 'utf8')
+
+  assert.match(docs, /Docker \(multi-arch: linux\/amd64 \+ linux\/arm64\)/)
+  assert.match(docs, /Auto-selects matching platform/)
+  assert.match(docs, /docker pull ghcr\.io\/haoyu-haoyu\/deepcode:latest/)
+  assert.match(docs, /docker pull --platform linux\/arm64 ghcr\.io\/haoyu-haoyu\/deepcode:latest/)
 })
 
 test('CI registers the P3.2 static Docker test without running docker build', async () => {
