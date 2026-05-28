@@ -12,7 +12,7 @@
 // that sandbox network restrictions require explicit user permission rules.
 
 export const PREAPPROVED_HOSTS = new Set([
-  // Anthropic
+  // First-party DeepCode and related developer docs
   'platform.claude.com',
   'code.claude.com',
   'modelcontextprotocol.io',

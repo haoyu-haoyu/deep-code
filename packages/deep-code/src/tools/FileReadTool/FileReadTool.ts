@@ -194,7 +194,7 @@ function detectSessionFileType(
 ): 'session_memory' | 'session_transcript' | null {
   const configDir = getClaudeConfigHomeDir()
 
-  // Only match files within the Claude config directory
+  // Only match files within the DeepCode config directory
   if (!filePath.startsWith(configDir)) {
     return null
   }

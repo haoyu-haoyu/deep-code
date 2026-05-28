@@ -174,7 +174,7 @@ export const WebSearchTool = buildTool({
       return true
     }
 
-    // Enable for Vertex AI with supported models (Claude 4.0+)
+    // Enable for Vertex AI with supported web-search-capable models
     if (provider === 'vertex') {
       const supportsWebSearch =
         model.includes('claude-opus-4') ||

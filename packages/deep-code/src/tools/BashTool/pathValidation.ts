@@ -121,7 +121,7 @@ function checkDangerousRemovalPaths(
  * Here `-/../.claude/settings.local.json` starts with `-` so the naive filter
  * drops it, validation sees zero paths, returns passthrough, and the file is
  * deleted without a prompt. With `--` handling, the path IS extracted and
- * validated (blocked by isClaudeConfigFilePath / pathInAllowedWorkingPath).
+ * validated (blocked by internal config path / allowed working path checks).
  */
 function filterOutFlags(args: string[]): string[] {
   const result: string[] = []
