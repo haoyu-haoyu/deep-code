@@ -1,40 +1,14 @@
 # DeepCode Install
 
-DeepCode distribution currently supports GitHub Release binaries and Docker.
-The npm package path is prepared but deferred until the `@deepcode-ai` npm scope
-and publishing strategy are confirmed.
+DeepCode distribution currently supports Docker. The npm package path is
+prepared but deferred until the `@deepcode-ai` npm scope and publishing
+strategy are confirmed.
 
-## GitHub Release Binaries
+## Pre-built binaries (deferred)
 
-Download the binary for your platform from the latest GitHub Release, install it
-on your PATH, and mark it executable.
-
-### macOS Apple Silicon
-
-```bash
-curl -L https://github.com/haoyu-haoyu/deep-code/releases/latest/download/deepcode-darwin-arm64 -o /usr/local/bin/deepcode
-chmod +x /usr/local/bin/deepcode
-deepcode --help
-```
-
-### macOS Intel
-
-```bash
-curl -L https://github.com/haoyu-haoyu/deep-code/releases/latest/download/deepcode-darwin-x64 -o /usr/local/bin/deepcode
-chmod +x /usr/local/bin/deepcode
-deepcode --help
-```
-
-### Linux x64
-
-```bash
-curl -L https://github.com/haoyu-haoyu/deep-code/releases/latest/download/deepcode-linux-x64 -o /usr/local/bin/deepcode
-chmod +x /usr/local/bin/deepcode
-deepcode --help
-```
-
-Windows binaries are deferred until the Bun compile target is stable enough for
-this release path.
+P3.3 binary distribution is currently deferred pending build pipeline
+restructure. See `.github/workflows/release.yml` deferred section for details.
+Use Docker or npm (when available) instead.
 
 ## Docker (multi-arch: linux/amd64 + linux/arm64)
 

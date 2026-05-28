@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-28 (Phase 3 complete at v0.4.0-distributed)
+Last updated: 2026-05-28 (P3.3.fix binary jobs disabled; Phase 3 remains complete)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | P3.4 | Phase 3 done: Docker + GitHub Release binaries ready; npm publish deferred (user gate) | Future phases user-priority-driven (npm, Homebrew, Windows, multi-arch Docker, i18n, polish) | no |
+| A: Pure-DeepSeek | P3.3.fix | Phase 3 done: Docker ready; GitHub Release binary jobs disabled after bun --compile incompatibility discovery; npm publish deferred (user gate) | Future phases user-priority-driven (npm, binary build restructure, Homebrew, Windows, i18n, polish) | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -179,6 +179,7 @@ P2.11 readiness checklist:
 | P3.1.c first npm publish | blocked | - | - | Deferred user gate: requires @deepcode-ai npm scope ownership confirmation plus token vs trusted-publishing decision before enabling npm publish. |
 | P3.2 Docker image + GHCR publish | done | #238 | `c661b21` | Per P3_ROADMAP.md Phase D / P3.2: multi-stage Dockerfile (node:22-slim builder to runtime) builds with Bun and runs `ENTRYPOINT ["node", "/app/deepcode.js"]` plus default `CMD ["--help"]`; runtime image provides `/workspace` VOLUME and copies dist, deepcode.js, package metadata, and required src runtime imports; .dockerignore excludes node_modules, .git, docs, audit, phase scans, test output, and prebuilt dist so dist is rebuilt in-container; release.yml docker-publish job pushes ghcr.io/haoyu-haoyu/deepcode:<version> and latest on tag (linux/amd64 initial; multi-arch deferred) using `GITHUB_TOKEN`; test/p3-2-docker.test.mjs validates Dockerfile, .dockerignore, workflow config, and CI registration without real docker build in CI; npm publish step remains commented out per Path B selection. |
 | P3.3 GitHub Release prebuilt binaries | done | #240 | `a9b36f3` | Per P3_ROADMAP.md Phase D / P3.3 GitHub Release option, selected over immediate Homebrew tap for autonomous progression while allowing a later Homebrew formula to consume Release binaries: scripts/build-binaries.mjs spawns `bun build dist/deepcode-full.mjs --compile` for 3 targets (linux-x64, darwin-x64, darwin-arm64) into packages/deep-code/binaries; release.yml build-binaries job uses a matrix (ubuntu-latest, macos-latest, macos-14) producing self-contained binaries with Bun runtime bundled; create-release job uses softprops/action-gh-release with `GITHUB_TOKEN`, `draft: false`, `prerelease` from `-rc` tag suffix, and generated release notes; Windows binary deferred until Bun target stability is clearer; docs/install.md provides per-platform curl install, Docker install, and npm install marked deferred for P3.1.c; test/p3-3-binaries.test.mjs validates script structure, workflow config, CI registration, and install docs without actual binary compilation in CI. |
+| P3.3.fix disable broken binary jobs | done | (this PR) | (this commit) | P3.3 binary release path discovered broken during linux/arm64 polish attempt: bun --compile incompatible with build:full-cli optionalBarePackages external-deps strategy; Linux targets unresolved dynamic imports; Darwin binary cssfilter runtime miss. Path 2 chosen: comment out build-binaries + create-release jobs in release.yml (preserved as reference with deferred-header rationale); update docs/install.md to mark binaries deferred; update test/p3-3-binaries.test.mjs to disabled state; preserve Docker (GHCR multi-arch working) + npm (P3.1.c user gate) channels. Future fix options: dual bundle mode, Node SEA, or alternate binary strategy. Docker remains the primary autonomous distribution channel. |
 | P3.4 Phase 3 sign-off | done | (this PR) | (this commit) | Per P3_ROADMAP.md L455-463: TODO.md adds Phase 3 — Distribution (Complete) with P3.scan, P3.1.a/b, P3.1.c deferred, P3.2 Docker, P3.3 GitHub Release binaries, final metrics, install paths, and future follow-ups; audit/README.md marks Phase 3 complete at v0.4.0-distributed and future phases user-priority-driven; EXECUTION_LOG.md closes Phase 3; post-merge user tag v0.4.0-distributed triggers release.yml pack-and-validate, docker-publish, build-binaries, and create-release jobs while npm publish remains commented out. |
 
 ### Future phases
