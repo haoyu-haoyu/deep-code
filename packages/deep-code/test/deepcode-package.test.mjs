@@ -1717,7 +1717,10 @@ test('Deep Code front controller reads settings from DEEPCODE_CONFIG_DIR', () =>
 test('TUI status panel uses the shared Deep Code status adapter', () => {
   assert.match(settingsStatusSource, /buildDeepCodeStatusReport/)
   assert.match(settingsStatusSource, /deepCodeStatusReportToProperties/)
-  assert.match(settingsStatusSource, /DeepSeek Status/)
+  // P2.10.b.2 migrated the "DeepSeek Status" heading out of Status.tsx into the
+  // i18n catalog (settings.status.deepSeekHeading); Status.tsx now renders
+  // t('settings.status.deepSeekHeading'). Assert the literal where it now lives.
+  assert.match(i18nEnglishSource, /DeepSeek Status/)
 })
 
 test('source CLI entrypoint is branded for Deep Code and DeepSeek model env', () => {

@@ -68,7 +68,6 @@ test('English catalog contains the scoped P2.10.b.1 key set', () => {
   const keys = new Set(entries.map(([key]) => key))
 
   assert.ok(entries.length >= 70, `expected at least 70 keys, got ${entries.length}`)
-  assert.ok(entries.length <= 80, `expected at most 80 keys, got ${entries.length}`)
 
   for (const key of expectedB1Keys) {
     assert.ok(keys.has(key), `missing P2.10.b.1 key: ${key}`)
