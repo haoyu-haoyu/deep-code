@@ -237,3 +237,101 @@ Phase 3 (Distribution) targets:
 4. P3.4 Phase 3 sign-off
 
 See PURE_DEEPSEEK_PLAN.md L1202+ for Phase 3 detailed design.
+
+## Phase 3 — Distribution (Complete)
+
+Phase 3 closed at v0.4.0-distributed (2026-05-28) with Docker + GitHub
+Release binary distribution channels ready. npm publish (P3.1.c) is deferred
+pending user confirmation of `@deepcode-ai` npm org ownership and publishing
+strategy.
+
+### P3.scan — Distribution roadmap
+
+- PR #235 (P3_ROADMAP.md 600 lines, Path B selected: Docker-first autonomous
+  progression, npm later)
+
+### P3.1 — npm package preparation (a/b done; c deferred)
+
+- P3.1.a #236: release.yml scaffold + npm pack validation
+- P3.1.b #237: package.json metadata (`@deepcode-ai/deep-code` @ 0.3.0,
+  AGPL-3.0-only, publishConfig public + provenance) + release-checklist.md +
+  CHANGELOG.md
+- P3.1.c DEFERRED: actual npm publish blocked on user decisions:
+  1. `@deepcode-ai` npm scope ownership confirmation
+  2. Token-based vs trusted publishing OIDC
+  3. `NPM_TOKEN` secret or OIDC configuration
+  4. First publish version (0.3.0 vs 0.3.0-rc.1)
+  5. Approve uncommenting publish step
+
+### P3.2 — Docker image (2 PRs)
+
+- impl #238 + cite #239
+- Multi-stage Dockerfile (node:22-slim builder + runtime, `/workspace` VOLUME)
+- .dockerignore excludes node_modules/.git/docs/audit/phase scans
+- GHCR publish job in release.yml using `GITHUB_TOKEN` (no user setup)
+- Push triggers: `ghcr.io/haoyu-haoyu/deepcode:<version>` + `:latest`
+- linux/amd64 initial; multi-arch (linux/arm64) deferred
+
+### P3.3 — GitHub Release prebuilt binaries (2 PRs)
+
+- impl #240 + cite #241
+- Selected over Homebrew tap for autonomous progression
+- Homebrew formula can later consume Release binaries
+- scripts/build-binaries.mjs spawns `bun --compile` for 3 targets
+- Matrix workflow: ubuntu-latest + macos-latest + macos-14 (arm64)
+- create-release uses softprops/action-gh-release + `GITHUB_TOKEN`
+- Binaries: deepcode-linux-x64 + deepcode-darwin-x64 + deepcode-darwin-arm64
+- ~70-90MB each expected (Bun runtime bundled)
+- Pre-release detected via `-rc` tag suffix
+- Windows binary deferred (bun-windows-x64 unstable)
+- docs/install.md covers all platforms + Docker + npm (deferred)
+
+### P3.4 — Phase 3 sign-off (this PR)
+
+- TODO.md + audit/README.md + EXECUTION_LOG.md updates
+- Tag v0.4.0-distributed after merge to trigger actual Docker + binary release
+
+## Phase 3 Final Metrics
+
+- Total Phase 3 PRs: ~9 (P3.scan + P3.1.a/b + P3.2 + P3.2.cite + P3.3 +
+  P3.3.cite + P3.4)
+- Distribution channels ready: Docker (GHCR) + GitHub Release binaries
+- Distribution channels deferred: npm (P3.1.c user gate); Homebrew (can consume
+  Release binaries)
+- Tag: v0.4.0-distributed
+
+## How to use distribution channels
+
+After tag push `v0.4.0-distributed`:
+
+### Docker
+
+```bash
+docker pull ghcr.io/haoyu-haoyu/deepcode:0.4.0-distributed
+docker run -v "$(pwd)":/workspace ghcr.io/haoyu-haoyu/deepcode:latest
+```
+
+### Pre-built binaries
+
+```bash
+# macOS Apple Silicon
+curl -L https://github.com/haoyu-haoyu/deep-code/releases/latest/download/deepcode-darwin-arm64 -o /usr/local/bin/deepcode
+chmod +x /usr/local/bin/deepcode
+
+# See docs/install.md for macOS Intel and Linux x64.
+```
+
+### npm
+
+Deferred until P3.1.c. Once `@deepcode-ai` org ownership is confirmed and
+`NPM_TOKEN` or OIDC publishing is configured:
+
+```bash
+npm install -g @deepcode-ai/deep-code
+```
+
+## Phase 3 -> Future
+
+- Optional follow-ups: P3.1.c (npm), Homebrew formula, Windows binary,
+  multi-arch Docker (linux/arm64), P2.10 i18n, polish work
+- No formal Phase 4 is defined; next phase is based on user priorities
