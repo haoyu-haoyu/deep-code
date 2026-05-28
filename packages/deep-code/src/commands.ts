@@ -172,6 +172,10 @@ import {
   getCommandName,
   isCommandEnabled,
 } from './types/command.js'
+import {
+  loadWorkspaceCommands,
+  mergeWorkspaceSlashCommands,
+} from './commands/workspaceSlashLoader.mjs'
 
 // Re-export types from the centralized location
 export type {
@@ -404,13 +408,21 @@ const loadAllCommands = memoize(async (cwd: string): Promise<Command[]> => {
     { skillDirCommands, pluginSkills, bundledSkills, builtinPluginSkills },
     pluginCommands,
     workflowCommands,
+    workspaceCommands,
   ] = await Promise.all([
     getSkills(cwd),
     getPluginCommands(),
     getWorkflowCommands ? getWorkflowCommands(cwd) : Promise.resolve([]),
+    loadWorkspaceCommands(cwd, { warn: logForDebugging }).catch(err => {
+      logError(toError(err))
+      logForDebugging(
+        'Workspace slash commands failed to load, continuing without them',
+      )
+      return []
+    }),
   ])
 
-  return [
+  const commandSources = [
     ...bundledSkills,
     ...builtinPluginSkills,
     ...skillDirCommands,
@@ -419,6 +431,10 @@ const loadAllCommands = memoize(async (cwd: string): Promise<Command[]> => {
     ...pluginSkills,
     ...COMMANDS(),
   ]
+
+  return mergeWorkspaceSlashCommands(commandSources, workspaceCommands, {
+    warn: logForDebugging,
+  })
 })
 
 /**
