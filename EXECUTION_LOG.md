@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-28 (Phase 2 complete at v0.3.0-feature-parity)
+Last updated: 2026-05-28 (P3.2 Docker done)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | P2.11 | Phase 2 complete at v0.3.0-feature-parity | Phase 3 P3.1 public npm package | no |
+| A: Pure-DeepSeek | P3.2 | P3.1.a/b done; P3.1.c deferred (user gate); P3.2 Docker done | P3.3 Homebrew or alternative binary distribution (decision required) | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -169,7 +169,19 @@ P2.11 readiness checklist:
 - CI green throughout P2.9.a and P2.9.Z (CodeRabbit, perf gate, Node 20, Node 22).
 - Multi-provider, auto routing, cache, workspace rollback, LSP, HTTP/SSE, fork, doctor, and workspace slash command surfaces are working and cited above.
 
-### Phases 3-5
+### Phase 3: Distribution
+
+| Task | Status | PR | Commit | Notes |
+|---|---|---|---|---|
+| P3.scan Distribution roadmap | done | #235 | `34b2832` | P3_ROADMAP.md created from PURE_DEEPSEEK_PLAN.md L1202+ with npm, Docker, Homebrew, sign-off inventory; recommended P3.1 public npm package starter work and captured release-channel decisions. |
+| P3.1.a release workflow scaffold | done | #236 | `99dd4e9` | Release workflow scaffold added for tag-triggered pack validation only; npm publish step remains commented out pending user confirmation of npm org ownership and publishing strategy; p3-1-release node:test dry-run validation registered in CI. |
+| P3.1.b first publish dry-run + metadata polish | done | #237 | `9da38d2` | packages/deep-code/package.json metadata polished for npm display, publishConfig set to public + provenance, release checklist added with user-gated decisions, and p3-1-release test extended with real npm pack validation; no actual npm publish. |
+| P3.1.c first npm publish | blocked | - | - | Deferred user gate: requires @deepcode-ai npm scope ownership confirmation plus token vs trusted-publishing decision before enabling npm publish. |
+| P3.2 Docker image + GHCR publish | done | #238 | `c661b21` | Per P3_ROADMAP.md Phase D / P3.2: multi-stage Dockerfile (node:22-slim builder to runtime) builds with Bun and runs `ENTRYPOINT ["node", "/app/deepcode.js"]` plus default `CMD ["--help"]`; runtime image provides `/workspace` VOLUME and copies dist, deepcode.js, package metadata, and required src runtime imports; .dockerignore excludes node_modules, .git, docs, audit, phase scans, test output, and prebuilt dist so dist is rebuilt in-container; release.yml docker-publish job pushes ghcr.io/haoyu-haoyu/deepcode:<version> and latest on tag (linux/amd64 initial; multi-arch deferred) using `GITHUB_TOKEN`; test/p3-2-docker.test.mjs validates Dockerfile, .dockerignore, workflow config, and CI registration without real docker build in CI; npm publish step remains commented out per Path B selection. |
+| P3.3 Homebrew or alternative binary distribution | ready | - | - | Decision required before implementation: own tap vs GitHub Release binaries vs Homebrew formula, and whether this should depend on P3.1.c npm publish or proceed independently like P3.2. |
+| P3.4 Phase 3 sign-off | ready | - | - | Close Distribution phase after selected distribution channels are implemented and cite final release posture. |
+
+### Phases 4-5
 
 Not decomposed yet; refer to `PURE_DEEPSEEK_PLAN.md` and expand here on
 phase entry.
