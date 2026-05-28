@@ -1,13 +1,13 @@
 # DeepCode pure-DeepSeek migration — execution log
 
-Last updated: 2026-05-28 (P2.9 workspace slash done — all Phase 2 priority features complete)
+Last updated: 2026-05-28 (Phase 2 complete at v0.3.0-feature-parity)
 Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 ## Quick status
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | P2.9 | P2.1-P2.9 done (9/9 Phase 2 priority features) | P2.11 Phase 2 sign-off (P2.10 i18n optional/deferred) | no |
+| A: Pure-DeepSeek | P2.11 | Phase 2 complete at v0.3.0-feature-parity | Phase 3 P3.1 public npm package | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -160,6 +160,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 | P2.7 session fork (skip-scan + direct impl) | done | #225 + #226 | a `f2aa8d0` + Z `571da3a` | 1-day low-risk feature per PURE_DEEPSEEK_PLAN.md L1072-1094; scan skipped per minimal scope: utils/sessionFork.mjs forkSession({sourceSessionId, atTurn?}) copies JSONL records up to atTurn into a new unique session id; cli/handlers/session.mjs forkHandler validates sessionId+atTurn and prints the fork result; main.tsx adds fork <session-id> [--at-turn N] subcommand with default last turn; source session unchanged guarantee verified (read-only fork); 7 node:test cases in p2-7-fork.test.mjs covering 10-turn fork at 5, default last, edge cases (turn 0/negative/overflow), non-existent session id, source unchanged, unique new id, and handler output; bundled CLI smoke verified mocked 10-turn@5 creates a 5-turn child and missing sessions exit 1; full suite 61 pass locally and CI pass. |
 | P2.8 doctor command (skip-scan + direct impl) | done | #228 + #229 | a `af217f9` + Z `86edbce` | Half-day low-risk feature per PURE_DEEPSEEK_PLAN.md L1098+; scan skipped: Doctor TUI expanded via screens/Doctor.tsx with shared API key + network + model + LSP server availability checks; cli/handlers/doctor.mjs new --json non-interactive handler; cli/handlers/doctorChecks.mjs shared check implementations (avoid duplication between TUI and CLI); main.tsx doctor subcommand adds --json flag while preserving TUI default; each check returns {name, status: 'ok'\|'warn'\|'fail', message, hint?}; --json output {checks: [...], overall}; API key redacted in output; network timeout avoids offline hang; 9 node:test cases in p2-8-doctor.test.mjs covering structured output, check shape, mock API key missing, mock network unreachable, timeout, mock LSP binary missing, all-ok aggregate, fail aggregate, plain text handler, and redaction; full suite 61 pass + 0 fail locally and CI pass. |
 | P2.9 workspace-local slash commands (skip-scan + direct impl) | done | #231 + #232 | a `0c79696` + Z `9b44a4f` | 1-day low-risk feature per PURE_DEEPSEEK_PLAN.md L1130-1156; scan skipped: workspaceSlashLoader.mjs scans .deepcode/.cursor/.claude commands/*.md with priority order (deepcode > cursor > claude-legacy + deprecation warning once per session); filename (sans .md) = command name; full body = prompt template; $ARGUMENTS placeholder substitution at execution time; project-local shadows builtin/global on name conflict (warn); REPL bootstrap integration with autocomplete; 8 node:test cases in p2-9-workspace-slash.test.mjs covering priority resolution, substitution, deprecation warning, missing dir, empty file, name conflict shadowing, and mock autocomplete smoke; full suite 61 pass + 0 fail locally and CI pass. |
+| P2.11 Phase 2 sign-off | done | (this PR) | (this commit) | Per PURE_DEEPSEEK_PLAN.md L1192-1198: TODO.md extended with Phase 2 — DeepSeek-TUI Feature Parity (Complete) listing all 9 priority features and final metrics; audit/README.md marks Phase 2 complete at v0.3.0-feature-parity and Phase 3 not started; EXECUTION_LOG.md advances Track A to Phase 3 P3.1 public npm package; P2.10 i18n deferred as lower-priority optional polish; post-merge action applies annotated tag v0.3.0-feature-parity to this merge commit. |
 
 P2.11 readiness checklist:
 - 9/9 Phase 2 priority features done (P2.1 auto router, P2.2 multi-provider, P2.3 cache visualization, P2.4 workspace rollback, P2.5 LSP diagnostics, P2.6 HTTP/SSE serve, P2.7 session fork, P2.8 doctor, P2.9 workspace slash commands).
