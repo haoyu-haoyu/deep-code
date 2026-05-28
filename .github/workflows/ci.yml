@@ -58,6 +58,7 @@ jobs:
             test/p2-7-fork.test.mjs \
             test/p2-8-doctor.test.mjs \
             test/p2-9-workspace-slash.test.mjs \
+            test/p3-1-release.test.mjs \
             test/phase5-perf-compare.test.mjs \
             test/phase5-ci-workflow.test.mjs \
             test/a1-mcp-nonblocking.test.mjs \
