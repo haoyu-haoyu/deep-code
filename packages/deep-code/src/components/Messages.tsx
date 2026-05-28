@@ -307,7 +307,7 @@ const MAX_MESSAGES_TO_SHOW_IN_TRANSCRIPT_MODE = 30;
 // in-progress badge snapshots in scrollback.
 // DeepCode default: 75/20 (down from upstream 200/50). The non-virtualized
 // path is what every external user hits today (fullscreen / virtual scroll
-// is opt-in via CLAUDE_CODE_NO_FLICKER=1 / DEEPCODE_NO_FLICKER=1), so the
+// is opt-in via the no-flicker env flags), so the
 // cap directly drives per-render fiber allocation cost. 75 messages keeps a
 // generous "recent context" window in the React tree while cutting fiber
 // memory and yoga layout cost by ~62% versus 200. STEP=20 trades slightly
