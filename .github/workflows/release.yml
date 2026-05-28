@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  pack-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install
+        run: npm ci
+
+      - name: Build full CLI bundle
+        run: cd packages/deep-code && bun run build:full-cli
+
+      - name: npm pack (dry validation)
+        run: cd packages/deep-code && npm pack --dry-run
+
+      - name: Generate tarball
+        run: cd packages/deep-code && npm pack
+
+      - name: Validate tarball contents
+        run: |
+          cd packages/deep-code
+          tar -tzf deepcode-ai-deep-code-*.tgz | sort > /tmp/tarball-contents.txt
+          cat /tmp/tarball-contents.txt
+
+      - name: Assert required files in tarball
+        run: |
+          cd packages/deep-code
+          tarfile=$(ls deepcode-ai-deep-code-*.tgz)
+          tar -tzf "$tarfile" | grep -q 'package/dist/deepcode-full.mjs' || { echo "Missing dist/deepcode-full.mjs"; exit 1; }
+          tar -tzf "$tarfile" | grep -q 'package/deepcode.js' || { echo "Missing deepcode.js"; exit 1; }
+          tar -tzf "$tarfile" | grep -q 'package/package.json' || { echo "Missing package.json"; exit 1; }
+          tar -tzf "$tarfile" | grep -q 'package/LICENSE.md' || echo "WARN: LICENSE.md not in tarball (may be intentional)"
+
+      # === Real publish step disabled until P3.1.b/c ===
+      # - name: npm publish
+      #   run: cd packages/deep-code && npm publish --access public --provenance
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
