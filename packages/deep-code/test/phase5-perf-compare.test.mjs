@@ -49,6 +49,25 @@ function measured(label, median) {
   }
 }
 
+// Build a metric with an EXPLICIT min/median/max so a test can model a
+// distribution where the best run is unchanged but the median moved — the
+// shape that distinguishes median-gating from a (rejected) min-gate. The
+// default `measured()` helper pins min = median - 0.1, so it CANNOT express
+// divergent min/median and gives zero coverage of the statistic choice.
+function measuredExplicit(label, { min, median, max }) {
+  return {
+    kind: 'measured',
+    label,
+    samples: [min, median, max],
+    min,
+    median,
+    max,
+    mean: (min + median + max) / 3,
+    stddev: 0.1,
+    coefficientOfVariation: 0.05,
+  }
+}
+
 function placeholder(label) {
   return { kind: 'placeholder', label, note: 'pending' }
 }
@@ -77,6 +96,45 @@ test('perf-compare exits 1 on a regression beyond threshold', async () => {
   assert.equal(result.code, 1, `expected exit 1, got ${result.code}`)
   assert.match(result.stderr, /1 metric\(s\) regressed/)
   assert.match(result.stdout, /deepcode_cold_start_status_ms[\s\S]*regressed/)
+})
+
+test('perf-compare gates on MEDIAN: a doubled median fails even when the best run is unchanged', async () => {
+  // Models the regression class a min-gate would miss: an intermittent / GC /
+  // deopt slowdown leaves the fastest sample (min) flat but lifts the median
+  // users actually feel. base and head share min=5.0; head median jumps
+  // 5.0 -> 11.5 (delta 6.5ms, above the 4ms noise floor). This MUST fail CI.
+  // If anyone re-gates on min, base.min (5.0) === head.min (5.0) => 0% => exit 0
+  // and this test breaks — locking in median as the decision basis.
+  const base = await writeReport([
+    measuredExplicit('deepcode_jsonl_parse_1k_msgs_ms', { min: 5.0, median: 5.0, max: 5.2 }),
+  ])
+  const head = await writeReport([
+    measuredExplicit('deepcode_jsonl_parse_1k_msgs_ms', { min: 5.0, median: 11.5, max: 18.0 }),
+  ])
+  const result = await runCompare([`--base=${base}`, `--head=${head}`])
+  assert.equal(
+    result.code,
+    1,
+    `median regression must fail CI; got exit ${result.code}\n${result.stdout}`,
+  )
+  assert.match(result.stderr, /1 metric\(s\) regressed/)
+})
+
+test('perf-compare does not manufacture "improved" from a lucky min drop when the median rose', async () => {
+  // A min-gate would call this an improvement (best run 80 -> 58 = -27.5%) while
+  // the median — what the gate must track — actually got slightly WORSE
+  // (100 -> 108, +8%). Median-gating reports neither improved nor regressed:
+  // +8% is under the 20% threshold => 'ok'. Both numbers are above floorMs so
+  // the noise-floor escape is not what produces this result.
+  const base = await writeReport([
+    measuredExplicit('deepcode_cold_start_status_ms', { min: 80, median: 100, max: 130 }),
+  ])
+  const head = await writeReport([
+    measuredExplicit('deepcode_cold_start_status_ms', { min: 58, median: 108, max: 150 }),
+  ])
+  const result = await runCompare([`--base=${base}`, `--head=${head}`])
+  assert.equal(result.code, 0, `under-threshold median move must pass; got ${result.code}`)
+  assert.doesNotMatch(result.stdout, /improved/)
 })
 
 test('perf-compare exits 0 on a regression UNDER the noise floor', async () => {

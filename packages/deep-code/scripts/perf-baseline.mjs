@@ -36,6 +36,20 @@ if (!Number.isInteger(repeats) || repeats < 1) {
   )
   process.exit(2)
 }
+
+// Sub-floor microbenchmarks (jsonl parse/tail run ~2-5ms locally, ~5ms on CI)
+// are dominated by transient ~6ms scheduler/GC hiccups, not by code cost. A
+// single such hiccup swings median-of-3 enough to trip the perf gate — observed
+// as deepcode_jsonl_parse_1k_msgs_ms flapping 4.9->11.5ms (+133%) on a PR that
+// did not touch the parse path at all (P1.5, P1.7.d.4.b, P1.8.a, and again the
+// P2.10.b.2 i18n PR). We oversample ONLY these cheap probes so a transient
+// hiccup must land on a MAJORITY of samples to move the median; the expensive
+// ~10s cold-start probes stay at `repeats` so CI stays fast. The gate keeps
+// comparing MEDIAN on purpose (see perf-compare.mjs): min would be noise-robust
+// but blind to intermittent/GC/deopt/p99 regressions, which is exactly what a
+// perf gate must catch.
+const NOISY_PROBE_REPEAT_FACTOR = 5
+const jsonlRepeats = repeats * NOISY_PROBE_REPEAT_FACTOR
 const writeJson = args.json
 const verbose = args.verbose === '1' || args.verbose === 'true'
 
@@ -82,7 +96,7 @@ results.push(
 )
 
 results.push(
-  await safeMeasure('deepcode_jsonl_tail_100_msgs_ms', repeats, async () => {
+  await safeMeasure('deepcode_jsonl_tail_100_msgs_ms', jsonlRepeats, async () => {
     // S4 streaming-resume metric: time to extract just the last 100
     // records from a 1k-msg JSONL file by reading from the end. This
     // is what session resume needs to render a first paint quickly.
@@ -103,7 +117,7 @@ results.push(
 )
 
 results.push(
-  await safeMeasure('deepcode_jsonl_parse_1k_msgs_ms', repeats, async () => {
+  await safeMeasure('deepcode_jsonl_parse_1k_msgs_ms', jsonlRepeats, async () => {
     // Mirror the production parseJSONL fallback in src/utils/json.ts. Bun
     // 1.2.x doesn't ship Bun.JSONL.parseChunk in the public API yet, so
     // the production code path falls back to indexOf-based scanning over
