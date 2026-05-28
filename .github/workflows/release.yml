@@ -89,3 +89,63 @@ jobs:
             ghcr.io/haoyu-haoyu/deepcode:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  build-binaries:
+    runs-on: ${{ matrix.os }}
+    needs: pack-and-validate
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            name: deepcode-linux-x64
+          - os: macos-latest
+            target: bun-darwin-x64
+            name: deepcode-darwin-x64
+          - os: macos-14
+            target: bun-darwin-arm64
+            name: deepcode-darwin-arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install
+        run: npm ci
+
+      - name: Build full CLI bundle
+        run: cd packages/deep-code && bun run build:full-cli
+
+      - name: Compile binary
+        run: |
+          cd packages/deep-code
+          bun build dist/deepcode-full.mjs --compile --target=${{ matrix.target }} --outfile=${{ matrix.name }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: packages/deep-code/${{ matrix.name }}
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    permissions:
+      contents: write
+    steps:
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
