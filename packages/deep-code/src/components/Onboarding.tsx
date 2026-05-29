@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
 import { setupTerminal, shouldOfferTerminalSetup } from '../commands/terminalSetup/terminalSetup.js';
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Link, Newline, Text, useTheme } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { env } from '../utils/env.js';
@@ -22,6 +23,7 @@ type Props = {
 export function Onboarding({
   onDone
 }: Props): React.ReactNode {
+  const { t } = useTranslation();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [theme, setTheme] = useTheme();
   useEffect(() => {
@@ -46,11 +48,11 @@ export function Onboarding({
 
   // Define all onboarding steps
   const themeStep = <Box marginX={1}>
-      <ThemePicker onThemeSelect={handleThemeSelection} showIntroText={true} helpText="To change this later, run /theme" hideEscToCancel={true} skipExitHandling={true} // Skip exit handling as Onboarding already handles it
+      <ThemePicker onThemeSelect={handleThemeSelection} showIntroText={true} helpText={t('onboarding.theme.changeLaterHelp')} hideEscToCancel={true} skipExitHandling={true} // Skip exit handling as Onboarding already handles it
     />
     </Box>;
   const securityStep = <Box flexDirection="column" gap={1} paddingLeft={1}>
-      <Text bold>Security notes:</Text>
+      <Text bold>{t('onboarding.security.title')}</Text>
       <Box flexDirection="column" width={70}>
         {/**
          * OrderedList misnumbers items when rendering conditionally,
@@ -58,20 +60,17 @@ export function Onboarding({
          */}
         <OrderedList>
           <OrderedList.Item>
-            <Text>Deep Code can make mistakes</Text>
+            <Text>{t('onboarding.security.canMakeMistakes')}</Text>
             <Text dimColor wrap="wrap">
-              You should always review Deep Code&apos;s responses, especially when
-              <Newline />
-              running code.
-              <Newline />
+              {t('onboarding.security.reviewResponses')}
             </Text>
           </OrderedList.Item>
           <OrderedList.Item>
             <Text>
-              Due to prompt injection risks, only use it with code you trust
+              {t('onboarding.security.promptInjection')}
             </Text>
             <Text dimColor wrap="wrap">
-              For more details see:
+              {t('onboarding.security.moreDetails')}
               <Newline />
               <Link url="https://api-docs.deepseek.com/" />
             </Text>
@@ -94,19 +93,18 @@ export function Onboarding({
     steps.push({
       id: 'terminal-setup',
       component: <Box flexDirection="column" gap={1} paddingLeft={1}>
-          <Text bold>Use Deep Code&apos;s terminal setup?</Text>
+          <Text bold>{t('onboarding.terminalSetup.title')}</Text>
           <Box flexDirection="column" width={70} gap={1}>
             <Text>
-              For the optimal coding experience, enable the recommended settings
-              <Newline />
-              for your terminal:{' '}
-              {env.terminal === 'Apple_Terminal' ? 'Option+Enter for newlines and visual bell' : 'Shift+Enter for newlines'}
+              {t('onboarding.terminalSetup.description', {
+              terminalHint: env.terminal === 'Apple_Terminal' ? t('onboarding.terminalSetup.hintAppleTerminal') : t('onboarding.terminalSetup.hintDefault')
+            })}
             </Text>
             <Select options={[{
-            label: 'Yes, use recommended settings',
+            label: t('onboarding.terminalSetup.optionYes'),
             value: 'install'
           }, {
-            label: 'No, maybe later with /terminal-setup',
+            label: t('onboarding.terminalSetup.optionNo'),
             value: 'no'
           }]} onChange={value => {
             if (value === 'install') {
@@ -117,7 +115,9 @@ export function Onboarding({
             }
           }} onCancel={() => goToNextStep()} />
             <Text dimColor>
-              {exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Enter to confirm · Esc to skip</>}
+              {exitState.pending ? t('common.pressKeyAgainToExit', {
+              keyName: exitState.keyName
+            }) : t('onboarding.terminalSetup.confirmHint')}
             </Text>
           </Box>
         </Box>
@@ -154,7 +154,9 @@ export function Onboarding({
       <Box flexDirection="column" marginTop={1}>
         {currentStep?.component}
         {exitState.pending && <Box padding={1}>
-            <Text dimColor>Press {exitState.keyName} again to exit</Text>
+            <Text dimColor>{t('common.pressKeyAgainToExit', {
+            keyName: exitState.keyName
+          })}</Text>
           </Box>}
       </Box>
     </Box>;
