@@ -5,6 +5,7 @@ import { useCallback, useEffect } from 'react';
 import { getOriginalCwd } from '../../../bootstrap/state.js';
 import type { CommandResultDisplay } from '../../../commands.js';
 import { Select } from '../../../components/CustomSelect/select.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text } from '../../../ink.js';
 import type { ToolPermissionContext } from '../../../Tool.js';
 import { useTabHeaderFocus } from '../../design-system/Tabs.js';
@@ -23,7 +24,7 @@ type DirectoryItem = {
   isDeletable: boolean;
 };
 export function WorkspaceTab(t0) {
-  const $ = _c(23);
+  const $ = _c(26);
   const {
     onExit,
     toolPermissionContext,
@@ -31,6 +32,9 @@ export function WorkspaceTab(t0) {
     onRequestRemoveDirectory,
     onHeaderFocusChange
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const {
     headerFocused,
     focusHeader
@@ -92,31 +96,36 @@ export function WorkspaceTab(t0) {
   }
   const handleCancel = t5;
   let opts;
-  if ($[12] !== additionalDirectories) {
+  if ($[12] !== additionalDirectories || $[23] !== t) {
     opts = additionalDirectories.map(_temp2);
     let t6;
-    if ($[14] === Symbol.for("react.memo_cache_sentinel")) {
+    if ($[14] !== t) {
       t6 = {
-        label: `Add directory${figures.ellipsis}`,
+        label: t('permission.workspace.addDirectoryOption', {
+          ellipsis: figures.ellipsis
+        }),
         value: "add-directory"
       };
-      $[14] = t6;
+      $[14] = t;
+      $[24] = t6;
     } else {
-      t6 = $[14];
+      t6 = $[24];
     }
     opts.push(t6);
     $[12] = additionalDirectories;
+    $[23] = t;
     $[13] = opts;
   } else {
     opts = $[13];
   }
   const options = opts;
   let t6;
-  if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-    t6 = <Box flexDirection="row" marginTop={1} marginLeft={2} gap={1}><Text>{`-  ${getOriginalCwd()}`}</Text><Text dimColor={true}>(Original working directory)</Text></Box>;
-    $[15] = t6;
+  if ($[15] !== t) {
+    t6 = <Box flexDirection="row" marginTop={1} marginLeft={2} gap={1}><Text>{`-  ${getOriginalCwd()}`}</Text><Text dimColor={true}>{t('permission.workspace.originalWorkingDirectory')}</Text></Box>;
+    $[15] = t;
+    $[25] = t6;
   } else {
-    t6 = $[15];
+    t6 = $[25];
   }
   const t7 = Math.min(10, options.length);
   let t8;

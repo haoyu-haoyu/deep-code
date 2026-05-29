@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import React, { Suspense, use, useMemo } from 'react';
 import { useSettings } from '../../../hooks/useSettings.js';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { stringWidth } from '../../../ink/stringWidth.js';
 import { Ansi, Box, Text, useTheme } from '../../../ink.js';
 import { type CliHighlight, getCliHighlightPromise } from '../../../utils/cliHighlight.js';
@@ -82,7 +83,7 @@ function PreviewBoxWithHighlight(props) {
   return t1;
 }
 function PreviewBoxBody(t0) {
-  const $ = _c(34);
+  const $ = _c(35);
   const {
     content,
     maxLines,
@@ -91,6 +92,9 @@ function PreviewBoxBody(t0) {
     maxWidth,
     highlight
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const minWidth = t1 === undefined ? 40 : t1;
   const {
     columns: terminalWidth
@@ -115,7 +119,7 @@ function PreviewBoxBody(t0) {
   let t4;
   let t5;
   let truncationBar;
-  if ($[4] !== effectiveMaxLines || $[5] !== effectiveMaxWidth || $[6] !== minHeight || $[7] !== minWidth || $[8] !== rendered) {
+  if ($[4] !== effectiveMaxLines || $[5] !== effectiveMaxWidth || $[6] !== minHeight || $[7] !== minWidth || $[8] !== rendered || $[34] !== t) {
     const contentLines = rendered.split("\n");
     const isTruncated = contentLines.length > effectiveMaxLines;
     const truncatedLines = isTruncated ? contentLines.slice(0, effectiveMaxLines) : contentLines;
@@ -145,7 +149,9 @@ function PreviewBoxBody(t0) {
     bottomBorder = `${BOX_CHARS.bottomLeft}${t7}${BOX_CHARS.bottomRight}`;
     truncationBar = isTruncated ? (() => {
       const hiddenCount = contentLines.length - effectiveMaxLines;
-      const label = `${BOX_CHARS.horizontal.repeat(3)} \u2702 ${BOX_CHARS.horizontal.repeat(3)} ${hiddenCount} lines hidden `;
+      const label = `${BOX_CHARS.horizontal.repeat(3)} \u2702 ${BOX_CHARS.horizontal.repeat(3)} ${t('permission.askUserQuestion.preview.linesHidden', {
+        hiddenCount
+      })} `;
       const labelWidth = stringWidth(label);
       const fillWidth = Math.max(0, boxWidth - 2 - labelWidth);
       return `${BOX_CHARS.teeLeft}${label}${BOX_CHARS.horizontal.repeat(fillWidth)}${BOX_CHARS.teeRight}`;
@@ -178,6 +184,7 @@ function PreviewBoxBody(t0) {
     $[6] = minHeight;
     $[7] = minWidth;
     $[8] = rendered;
+    $[34] = t;
     $[9] = T0;
     $[10] = bottomBorder;
     $[11] = t3;

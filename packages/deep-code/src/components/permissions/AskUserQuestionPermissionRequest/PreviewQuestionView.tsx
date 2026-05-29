@@ -1,6 +1,7 @@
 import figures from 'figures';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import type { KeyboardEvent } from '../../../ink/events/keyboard-event.js';
 import { Box, Text } from '../../../ink.js';
 import { useKeybinding, useKeybindings } from '../../../keybindings/useKeybinding.js';
@@ -56,6 +57,7 @@ export function PreviewQuestionView({
   onRespondToClaude,
   onFinishPlanInterview
 }: Props): React.ReactNode {
+  const { t } = useTranslation();
   const isInPlanMode = useAppState(s => s.toolPermissionContext.mode) === 'plan';
   const [isFooterFocused, setIsFooterFocused] = useState(false);
   const [footerIndex, setFooterIndex] = useState(0);
@@ -282,15 +284,15 @@ export function PreviewQuestionView({
 
             {/* Right panel: preview + notes */}
             <Box flexDirection="column" flexGrow={1}>
-              <PreviewBox content={previewContent || 'No preview available'} maxLines={previewMaxLines} minWidth={minContentWidth} maxWidth={previewMaxWidth} />
+              <PreviewBox content={previewContent || t('permission.askUserQuestion.preview.noPreview')} maxLines={previewMaxLines} minWidth={minContentWidth} maxWidth={previewMaxWidth} />
               <Box marginTop={1} flexDirection="row" gap={1}>
-                <Text color="suggestion">Notes:</Text>
-                {isInNotesInput ? <TextInput value={notesValue} placeholder="Add notes on this design…" onChange={value => {
+                <Text color="suggestion">{t('permission.askUserQuestion.preview.notesLabel')}</Text>
+                {isInNotesInput ? <TextInput value={notesValue} placeholder={t('permission.askUserQuestion.preview.notesPlaceholder')} onChange={value => {
                 onUpdateQuestionState(questionText, {
                   textInputValue: value
                 }, false);
               }} onSubmit={handleNotesExit} onExit={handleNotesExit} focus={true} showCursor={true} columns={60} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} /> : <Text dimColor italic>
-                    {notesValue || 'press n to add notes'}
+                    {notesValue || t('permission.askUserQuestion.preview.pressNToAddNotes')}
                   </Text>}
               </Box>
             </Box>
@@ -302,23 +304,30 @@ export function PreviewQuestionView({
             <Box flexDirection="row" gap={1}>
               {isFooterFocused && footerIndex === 0 ? <Text color="suggestion">{figures.pointer}</Text> : <Text> </Text>}
               <Text color={isFooterFocused && footerIndex === 0 ? 'suggestion' : undefined}>
-                Chat about this
+                {t('permission.askUserQuestion.chatAboutThis')}
               </Text>
             </Box>
             {isInPlanMode && <Box flexDirection="row" gap={1}>
                 {isFooterFocused && footerIndex === 1 ? <Text color="suggestion">{figures.pointer}</Text> : <Text> </Text>}
                 <Text color={isFooterFocused && footerIndex === 1 ? 'suggestion' : undefined}>
-                  Skip interview and plan immediately
+                  {t('permission.askUserQuestion.skipInterview')}
                 </Text>
               </Box>}
           </Box>
           <Box marginTop={1}>
             <Text color="inactive" dimColor>
-              Enter to select · {figures.arrowUp}/{figures.arrowDown} to
-              navigate · n to add notes
-              {questions.length > 1 && <> · Tab to switch questions</>}
-              {isInNotesInput && editorName && <> · ctrl+g to edit in {editorName}</>}{' '}
-              · Esc to cancel
+              {(() => {
+                const [previewFooterHintA, previewFooterHintB] = t('permission.askUserQuestion.preview.footerHint', {
+                  arrowUp: figures.arrowUp,
+                  arrowDown: figures.arrowDown,
+                }).split('{insert}')
+                return <>
+                    {previewFooterHintA}
+                    {questions.length > 1 && <>{t('permission.askUserQuestion.preview.footerSwitchQuestions')}</>}
+                    {isInNotesInput && editorName && <>{t('permission.askUserQuestion.footer.editInEditor', { editorName })}</>}
+                    {previewFooterHintB}
+                  </>
+              })()}
             </Text>
           </Box>
         </Box>

@@ -3,6 +3,7 @@ import type { Base64ImageSource, ImageBlockParam } from '../../../types/sdk-shim
 import React, { Suspense, use, useCallback, useMemo, useRef, useState } from 'react';
 import { useSettings } from '../../../hooks/useSettings.js';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { stringWidth } from '../../../ink/stringWidth.js';
 import { useTheme } from '../../../ink.js';
 import { useKeybindings } from '../../../keybindings/useKeybinding.js';
@@ -73,13 +74,16 @@ function AskUserQuestionWithHighlight(props) {
   return t1;
 }
 function AskUserQuestionPermissionRequestBody(t0) {
-  const $ = _c(115);
+  const $ = _c(116);
   const {
     toolUseConfirm,
     onDone,
     onReject,
     highlight
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== toolUseConfirm.input) {
     t1 = AskUserQuestionTool.inputSchema.safeParse(toolUseConfirm.input);
@@ -171,7 +175,7 @@ function AskUserQuestionPermissionRequestBody(t0) {
   const [pastedContentsByQuestion, setPastedContentsByQuestion] = useState(t6);
   const nextPasteIdRef = useRef(0);
   let t7;
-  if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[16] !== t) {
     t7 = function onImagePaste(questionText, base64Image, mediaType, filename, dimensions, _sourcePath) {
       nextPasteIdRef.current = nextPasteIdRef.current + 1;
       const pasteId = nextPasteIdRef.current;
@@ -180,7 +184,7 @@ function AskUserQuestionPermissionRequestBody(t0) {
         type: "image",
         content: base64Image,
         mediaType: mediaType || "image/png",
-        filename: filename || "Pasted image",
+        filename: filename || t('permission.askUserQuestion.pastedImageName'),
         dimensions
       };
       cacheImagePath(newContent);
@@ -193,9 +197,10 @@ function AskUserQuestionPermissionRequestBody(t0) {
         }
       }));
     };
-    $[16] = t7;
+    $[16] = t;
+    $[115] = t7;
   } else {
-    t7 = $[16];
+    t7 = $[115];
   }
   const onImagePaste = t7;
   let t8;

@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import React, { useMemo } from 'react';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { stringWidth } from '../../../ink/stringWidth.js';
 import { Box, Text } from '../../../ink.js';
 import type { Question } from '../../../tools/AskUserQuestionTool/AskUserQuestionTool.js';
@@ -13,21 +14,24 @@ type Props = {
   hideSubmitTab?: boolean;
 };
 export function QuestionNavigationBar(t0) {
-  const $ = _c(39);
+  const $ = _c(41);
   const {
     questions,
     currentQuestionIndex,
     answers,
     hideSubmitTab: t1
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const hideSubmitTab = t1 === undefined ? false : t1;
   const {
     columns
   } = useTerminalSize();
   let t2;
-  if ($[0] !== columns || $[1] !== currentQuestionIndex || $[2] !== hideSubmitTab || $[3] !== questions) {
+  if ($[0] !== columns || $[1] !== currentQuestionIndex || $[2] !== hideSubmitTab || $[3] !== questions || $[39] !== t) {
     bb0: {
-      const submitText = hideSubmitTab ? "" : ` ${figures.tick} Submit `;
+      const submitText = hideSubmitTab ? "" : ` ${figures.tick} ${t('permission.askUserQuestion.nav.submit')} `;
       const fixedWidth = stringWidth("\u2190 ") + stringWidth(" \u2192") + stringWidth(submitText);
       const availableForTabs = columns - fixedWidth;
       if (availableForTabs <= 0) {
@@ -91,6 +95,7 @@ export function QuestionNavigationBar(t0) {
     $[1] = currentQuestionIndex;
     $[2] = hideSubmitTab;
     $[3] = questions;
+    $[39] = t;
     $[4] = t2;
   } else {
     t2 = $[4];
@@ -134,11 +139,12 @@ export function QuestionNavigationBar(t0) {
     t4 = $[21];
   }
   let t5;
-  if ($[26] !== currentQuestionIndex || $[27] !== hideSubmitTab || $[28] !== questions.length) {
-    t5 = !hideSubmitTab && <Box key="submit">{currentQuestionIndex === questions.length ? <Text backgroundColor="permission" color="inverseText">{" "}{figures.tick} Submit{" "}</Text> : <Text> {figures.tick} Submit </Text>}</Box>;
+  if ($[26] !== currentQuestionIndex || $[27] !== hideSubmitTab || $[28] !== questions.length || $[40] !== t) {
+    t5 = !hideSubmitTab && <Box key="submit">{currentQuestionIndex === questions.length ? <Text backgroundColor="permission" color="inverseText">{" "}{figures.tick} {t('permission.askUserQuestion.nav.submit')}{" "}</Text> : <Text> {figures.tick} {t('permission.askUserQuestion.nav.submit')} </Text>}</Box>;
     $[26] = currentQuestionIndex;
     $[27] = hideSubmitTab;
     $[28] = questions.length;
+    $[40] = t;
     $[29] = t5;
   } else {
     t5 = $[29];
