@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useCallback } from 'react';
 import type { ChannelEntry } from '../bootstrap/state.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Text } from '../ink.js';
 import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';
 import { Select } from './CustomSelect/index.js';
@@ -10,11 +11,14 @@ type Props = {
   onAccept(): void;
 };
 export function DevChannelsDialog(t0) {
-  const $ = _c(14);
+  const $ = _c(18);
   const {
     channels,
     onAccept
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== onAccept) {
     t1 = function onChange(value) {
@@ -39,9 +43,10 @@ export function DevChannelsDialog(t0) {
   const handleEscape = _temp;
   let t2;
   let t3;
-  if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Text>--dangerously-load-development-channels is for local channel development only. Do not use this option to run channels you have downloaded off the internet.</Text>;
-    t3 = <Text>Please use --channels to run a list of approved channels.</Text>;
+  if ($[14] !== t) {
+    t2 = <Text>{t('channel.dev.warning')}</Text>;
+    t3 = <Text>{t('channel.dev.useChannelsHint')}</Text>;
+    $[14] = t;
     $[2] = t2;
     $[3] = t3;
   } else {
@@ -57,22 +62,26 @@ export function DevChannelsDialog(t0) {
     t4 = $[5];
   }
   let t5;
-  if ($[6] !== t4) {
-    t5 = <Box flexDirection="column" gap={1}>{t2}{t3}<Text dimColor={true}>Channels:{" "}{t4}</Text></Box>;
+  if ($[6] !== t4 || $[15] !== t) {
+    t5 = <Box flexDirection="column" gap={1}>{t2}{t3}<Text dimColor={true}>{t('channel.dev.channelsLabel', {
+      channelList: t4
+    })}</Text></Box>;
     $[6] = t4;
+    $[15] = t;
     $[7] = t5;
   } else {
     t5 = $[7];
   }
   let t6;
-  if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[16] !== t) {
     t6 = [{
-      label: "I am using this for local development",
+      label: t('channel.dev.optionAccept'),
       value: "accept"
     }, {
-      label: "Exit",
+      label: t('common.exit'),
       value: "exit"
     }];
+    $[16] = t;
     $[8] = t6;
   } else {
     t6 = $[8];
@@ -86,10 +95,11 @@ export function DevChannelsDialog(t0) {
     t7 = $[10];
   }
   let t8;
-  if ($[11] !== t5 || $[12] !== t7) {
-    t8 = <Dialog title="WARNING: Loading development channels" color="error" onCancel={handleEscape}>{t5}{t7}</Dialog>;
+  if ($[11] !== t5 || $[12] !== t7 || $[17] !== t) {
+    t8 = <Dialog title={t('channel.dev.title')} color="error" onCancel={handleEscape}>{t5}{t7}</Dialog>;
     $[11] = t5;
     $[12] = t7;
+    $[17] = t;
     $[13] = t8;
   } else {
     t8 = $[13];

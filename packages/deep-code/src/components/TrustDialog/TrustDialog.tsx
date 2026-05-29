@@ -5,6 +5,7 @@ import { logEvent } from 'src/services/analytics/index.js';
 import { setSessionTrustAccepted } from '../../bootstrap/state.js';
 import type { Command } from '../../commands.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Link, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { getMcpConfigsByScope } from '../../services/mcp/config.js';
@@ -21,11 +22,14 @@ type Props = {
   commands?: Command[];
 };
 export function TrustDialog(t0) {
-  const $ = _c(33);
+  const $ = _c(38);
   const {
     onDone,
     commands
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = getMcpConfigsByScope("project");
@@ -203,10 +207,11 @@ export function TrustDialog(t0) {
   let t16;
   let t17;
   let t18;
-  if ($[20] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[33] !== t) {
     t16 = <Text bold={true}>{getFsImplementation().cwd()}</Text>;
-    t17 = <Text>Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what{"'"}s in this folder first.</Text>;
-    t18 = <Text>DeepCode{"'"}ll be able to read, edit, and execute files here.</Text>;
+    t17 = <Text>{t('trust.safetyCheck')}</Text>;
+    t18 = <Text>{t('trust.capabilities')}</Text>;
+    $[33] = t;
     $[20] = t16;
     $[21] = t17;
     $[22] = t18;
@@ -216,21 +221,23 @@ export function TrustDialog(t0) {
     t18 = $[22];
   }
   let t19;
-  if ($[23] === Symbol.for("react.memo_cache_sentinel")) {
-    t19 = <Text dimColor={true}><Link url="https://code.claude.com/docs/en/security">Security guide</Link></Text>;
+  if ($[34] !== t) {
+    t19 = <Text dimColor={true}><Link url="https://code.claude.com/docs/en/security">{t('trust.securityGuideLink')}</Link></Text>;
+    $[34] = t;
     $[23] = t19;
   } else {
     t19 = $[23];
   }
   let t20;
-  if ($[24] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[35] !== t) {
     t20 = [{
-      label: "Yes, I trust this folder",
+      label: t('trust.optionTrust'),
       value: "enable_all"
     }, {
-      label: "No, exit",
+      label: t('trust.optionExit'),
       value: "exit"
     }];
+    $[35] = t;
     $[24] = t20;
   } else {
     t20 = $[24];
@@ -244,19 +251,23 @@ export function TrustDialog(t0) {
     t21 = $[26];
   }
   let t22;
-  if ($[27] !== exitState.keyName || $[28] !== exitState.pending) {
-    t22 = <Text dimColor={true}>{exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Enter to confirm · Esc to cancel</>}</Text>;
+  if ($[27] !== exitState.keyName || $[28] !== exitState.pending || $[36] !== t) {
+    t22 = <Text dimColor={true}>{exitState.pending ? t('common.pressKeyAgainToExit', {
+      keyName: exitState.keyName
+    }) : t('common.enterToConfirmEscToCancel')}</Text>;
     $[27] = exitState.keyName;
     $[28] = exitState.pending;
+    $[36] = t;
     $[29] = t22;
   } else {
     t22 = $[29];
   }
   let t23;
-  if ($[30] !== t21 || $[31] !== t22) {
-    t23 = <PermissionDialog color="warning" titleColor="warning" title="Accessing workspace:"><Box flexDirection="column" gap={1} paddingTop={1}>{t16}{t17}{t18}{t19}{t21}{t22}</Box></PermissionDialog>;
+  if ($[30] !== t21 || $[31] !== t22 || $[37] !== t) {
+    t23 = <PermissionDialog color="warning" titleColor="warning" title={t('trust.title')}><Box flexDirection="column" gap={1} paddingTop={1}>{t16}{t17}{t18}{t19}{t21}{t22}</Box></PermissionDialog>;
     $[30] = t21;
     $[31] = t22;
+    $[37] = t;
     $[32] = t23;
   } else {
     t23 = $[32];
