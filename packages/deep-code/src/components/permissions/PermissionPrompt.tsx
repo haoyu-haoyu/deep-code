@@ -1,5 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { type ReactNode, useCallback, useMemo, useState } from 'react';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Text } from '../../ink.js';
 import type { KeybindingAction } from '../../keybindings/types.js';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
@@ -28,8 +30,8 @@ export type PermissionPromptProps<T extends string> = {
   toolAnalyticsContext?: ToolAnalyticsContext;
 };
 const DEFAULT_PLACEHOLDERS: Record<FeedbackType, string> = {
-  accept: 'tell Deep Code what to do next',
-  reject: 'tell Deep Code what to do differently'
+  accept: getMessage('permission.prompt.acceptFeedbackPlaceholder'),
+  reject: getMessage('permission.prompt.rejectFeedbackPlaceholder')
 };
 
 /**
@@ -51,7 +53,10 @@ export function PermissionPrompt(t0) {
     question: t1,
     toolAnalyticsContext
   } = t0;
-  const question = t1 === undefined ? "Do you want to proceed?" : t1;
+  const {
+    t
+  } = useTranslation();
+  const question = t1 === undefined ? t('permission.prompt.proceedQuestion') : t1;
   const setAppState = useSetAppState();
   const [acceptFeedback, setAcceptFeedback] = useState("");
   const [rejectFeedback, setRejectFeedback] = useState("");
@@ -303,10 +308,10 @@ export function PermissionPrompt(t0) {
   } else {
     t10 = $[47];
   }
-  const t11 = showTabHint && " \xB7 Tab to amend";
+  const t11 = showTabHint && t('permission.prompt.tabToAmend');
   let t12;
   if ($[48] !== t11) {
-    t12 = <Box marginTop={1}><Text dimColor={true}>Esc to cancel{t11}</Text></Box>;
+    t12 = <Box marginTop={1}><Text dimColor={true}>{t('permission.prompt.escToCancel')}{t11}</Text></Box>;
     $[48] = t11;
     $[49] = t12;
   } else {

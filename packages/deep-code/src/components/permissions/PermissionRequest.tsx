@@ -4,6 +4,7 @@ import * as React from 'react';
 import { EnterPlanModeTool } from 'src/tools/EnterPlanModeTool/EnterPlanModeTool.js';
 import { ExitPlanModeV2Tool } from 'src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.js';
 import { useNotifyAfterTimeout } from '../../hooks/useNotifyAfterTimeout.js';
+import { getMessage } from '../../i18n/index.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import type { AnyObject, Tool, ToolUseContext } from '../../Tool.js';
 import { AskUserQuestionTool } from '../../tools/AskUserQuestionTool/AskUserQuestionTool.js';
@@ -128,18 +129,18 @@ export type ToolUseConfirm<Input extends AnyObject = AnyObject> = {
 function getNotificationMessage(toolUseConfirm: ToolUseConfirm): string {
   const toolName = toolUseConfirm.tool.userFacingName(toolUseConfirm.input as never);
   if (toolUseConfirm.tool === ExitPlanModeV2Tool) {
-    return 'Deep Code needs your approval for the plan';
+    return getMessage('permission.notify.exitPlanApproval');
   }
   if (toolUseConfirm.tool === EnterPlanModeTool) {
-    return 'Deep Code wants to enter plan mode';
+    return getMessage('permission.notify.enterPlanMode');
   }
   if (feature('REVIEW_ARTIFACT') && toolUseConfirm.tool === ReviewArtifactTool) {
-    return 'Deep Code needs your approval for a review artifact';
+    return getMessage('permission.notify.reviewArtifactApproval');
   }
   if (!toolName || toolName.trim() === '') {
-    return 'Deep Code needs your attention';
+    return getMessage('permission.notify.attention');
   }
-  return `Deep Code needs your permission to use ${toolName}`;
+  return getMessage('permission.notify.usePermission', { toolName });
 }
 
 // TODO: Move this to Tool.renderPermissionRequest
