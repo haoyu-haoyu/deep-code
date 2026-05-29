@@ -1,5 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Text } from '../../ink.js';
 import { getAgentName, getTeammateColor, getTeamName } from '../../utils/teammate.js';
 import { Spinner } from '../Spinner.js';
@@ -19,6 +20,9 @@ export function WorkerPendingPermission(t0) {
     toolName,
     description
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = getTeamName();
@@ -46,7 +50,7 @@ export function WorkerPendingPermission(t0) {
   let t4;
   let t5;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <Box marginBottom={1}><Spinner /><Text color="warning" bold={true}>{" "}Waiting for team lead approval</Text></Box>;
+    t4 = <Box marginBottom={1}><Spinner /><Text color="warning" bold={true}>{" "}{t('permission.worker.waitingForApproval')}</Text></Box>;
     t5 = agentName && agentColor && <Box marginBottom={1}><WorkerBadge name={agentName} color={agentColor} /></Box>;
     $[3] = t4;
     $[4] = t5;
@@ -56,7 +60,7 @@ export function WorkerPendingPermission(t0) {
   }
   let t6;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t6 = <Text dimColor={true}>Tool: </Text>;
+    t6 = <Text dimColor={true}>{t('permission.worker.toolLabel')}</Text>;
     $[5] = t6;
   } else {
     t6 = $[5];
@@ -71,7 +75,7 @@ export function WorkerPendingPermission(t0) {
   }
   let t8;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t8 = <Text dimColor={true}>Action: </Text>;
+    t8 = <Text dimColor={true}>{t('permission.worker.actionLabel')}</Text>;
     $[8] = t8;
   } else {
     t8 = $[8];
@@ -86,7 +90,7 @@ export function WorkerPendingPermission(t0) {
   }
   let t10;
   if ($[11] === Symbol.for("react.memo_cache_sentinel")) {
-    t10 = teamName && <Box marginTop={1}><Text dimColor={true}>Permission request sent to team {"\""}{teamName}{"\""} leader</Text></Box>;
+    t10 = teamName && <Box marginTop={1}><Text dimColor={true}>{t('permission.worker.requestSentToTeam', { teamName })}</Text></Box>;
     $[11] = t10;
   } else {
     t10 = $[11];

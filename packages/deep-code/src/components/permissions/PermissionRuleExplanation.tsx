@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
 import chalk from 'chalk';
 import React from 'react';
+import { getMessage } from '../../i18n/index.js';
 import { Ansi, Box, Text } from '../../ink.js';
 import { useAppState } from '../../state/AppState.js';
 import type { PermissionDecision, PermissionDecisionReason } from '../../utils/permissions/PermissionResult.js';
@@ -25,29 +26,29 @@ function stringsForDecisionReason(reason: PermissionDecisionReason | undefined, 
   if ((feature('BASH_CLASSIFIER') || feature('TRANSCRIPT_CLASSIFIER')) && reason.type === 'classifier') {
     if (reason.classifier === 'auto-mode') {
       return {
-        reasonString: `Auto mode classifier requires confirmation for this ${toolType}.\n${reason.reason}`,
+        reasonString: getMessage('permission.ruleExplanation.autoModeClassifier', { toolType, reason: reason.reason }),
         configString: undefined,
         themeColor: 'error'
       };
     }
     return {
-      reasonString: `Classifier ${chalk.bold(reason.classifier)} requires confirmation for this ${toolType}.\n${reason.reason}`,
+      reasonString: getMessage('permission.ruleExplanation.classifier', { classifier: chalk.bold(reason.classifier), toolType, reason: reason.reason }),
       configString: undefined
     };
   }
   switch (reason.type) {
     case 'rule':
       return {
-        reasonString: `Permission rule ${chalk.bold(permissionRuleValueToString(reason.rule.ruleValue))} requires confirmation for this ${toolType}.`,
-        configString: reason.rule.source === 'policySettings' ? undefined : '/permissions to update rules'
+        reasonString: getMessage('permission.ruleExplanation.rule', { rule: chalk.bold(permissionRuleValueToString(reason.rule.ruleValue)), toolType }),
+        configString: reason.rule.source === 'policySettings' ? undefined : getMessage('permission.ruleExplanation.updateRulesHint')
       };
     case 'hook':
       {
         const hookReasonString = reason.reason ? `:\n${reason.reason}` : '.';
         const sourceLabel = reason.hookSource ? ` ${chalk.dim(`[${reason.hookSource}]`)}` : '';
         return {
-          reasonString: `Hook ${chalk.bold(reason.hookName)} requires confirmation for this ${toolType}${hookReasonString}${sourceLabel}`,
-          configString: '/hooks to update'
+          reasonString: getMessage('permission.ruleExplanation.hook', { hookName: chalk.bold(reason.hookName), toolType, reasonSuffix: hookReasonString, sourceLabel }),
+          configString: getMessage('permission.ruleExplanation.updateHooksHint')
         };
       }
     case 'safetyCheck':
@@ -59,7 +60,7 @@ function stringsForDecisionReason(reason: PermissionDecisionReason | undefined, 
     case 'workingDir':
       return {
         reasonString: reason.reason,
-        configString: '/permissions to update rules'
+        configString: getMessage('permission.ruleExplanation.updateRulesHint')
       };
     default:
       return null;

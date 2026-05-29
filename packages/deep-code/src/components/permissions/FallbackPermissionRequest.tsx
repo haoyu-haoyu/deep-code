@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useCallback, useMemo } from 'react';
 import { getOriginalCwd } from '../../bootstrap/state.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Text, useTheme } from '../../ink.js';
 import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.js';
 import { env } from '../../utils/env.js';
@@ -21,6 +22,9 @@ export function FallbackPermissionRequest(t0) {
     onReject,
     workerBadge
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const [theme] = useTheme();
   let originalUserFacingName;
   let t1;
@@ -157,7 +161,7 @@ export function FallbackPermissionRequest(t0) {
   let t7;
   if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
     t7 = {
-      label: "Yes",
+      label: t('permission.fallback.yes'),
       value: "yes",
       feedbackConfig: {
         type: "accept"
@@ -181,8 +185,9 @@ export function FallbackPermissionRequest(t0) {
       }
       let t10;
       if ($[19] !== t8) {
+        const [t10a, t10b, t10c] = t('permission.fallback.yesDontAskAgain').split(/\{toolName\}|\{dir\}/);
         t10 = {
-          label: <Text>Yes, and don't ask again for {t8}{" "}commands in {t9}</Text>,
+          label: <Text>{t10a}{t8}{t10b}{t9}{t10c}</Text>,
           value: "yes-dont-ask-again"
         };
         $[19] = t8;
@@ -195,7 +200,7 @@ export function FallbackPermissionRequest(t0) {
     let t8;
     if ($[21] === Symbol.for("react.memo_cache_sentinel")) {
       t8 = {
-        label: "No",
+        label: t('permission.fallback.no'),
         value: "no",
         feedbackConfig: {
           type: "reject"
@@ -249,7 +254,7 @@ export function FallbackPermissionRequest(t0) {
   }
   let t12;
   if ($[31] !== originalUserFacingName) {
-    t12 = originalUserFacingName.endsWith(" (MCP)") ? <Text dimColor={true}> (MCP)</Text> : "";
+    t12 = originalUserFacingName.endsWith(" (MCP)") ? <Text dimColor={true}>{t('permission.fallback.mcpSuffix')}</Text> : "";
     $[31] = originalUserFacingName;
     $[32] = t12;
   } else {
@@ -320,7 +325,7 @@ export function FallbackPermissionRequest(t0) {
   }
   let t20;
   if ($[54] !== t16 || $[55] !== t19 || $[56] !== workerBadge) {
-    t20 = <PermissionDialog title="Tool use" workerBadge={workerBadge}>{t16}{t19}</PermissionDialog>;
+    t20 = <PermissionDialog title={t('permission.fallback.dialogTitle')} workerBadge={workerBadge}>{t16}{t19}</PermissionDialog>;
     $[54] = t16;
     $[55] = t19;
     $[56] = workerBadge;

@@ -1,5 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { Suspense, use, useState } from 'react';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { logEvent } from '../../services/analytics/index.js';
@@ -7,7 +9,7 @@ import type { Message } from '../../types/message.js';
 import { generatePermissionExplanation, isPermissionExplainerEnabled, type PermissionExplanation as PermissionExplanationType, type RiskLevel } from '../../utils/permissions/permissionExplainer.js';
 import { ShimmerChar } from '../Spinner/ShimmerChar.js';
 import { useShimmerAnimation } from '../Spinner/useShimmerAnimation.js';
-const LOADING_MESSAGE = 'Loading explanation…';
+const LOADING_MESSAGE = getMessage('permission.explanation.loading');
 function ShimmerLoadingText() {
   const $ = _c(7);
   const [ref, glimmerIndex] = useShimmerAnimation("responding", LOADING_MESSAGE, false);
@@ -51,11 +53,11 @@ function getRiskColor(riskLevel: RiskLevel): 'success' | 'warning' | 'error' {
 function getRiskLabel(riskLevel: RiskLevel): string {
   switch (riskLevel) {
     case 'LOW':
-      return 'Low risk';
+      return getMessage('permission.explanation.riskLow');
     case 'MEDIUM':
-      return 'Med risk';
+      return getMessage('permission.explanation.riskMedium');
     case 'HIGH':
-      return 'High risk';
+      return getMessage('permission.explanation.riskHigh');
   }
 }
 type PermissionExplanationProps = {
@@ -158,11 +160,14 @@ function ExplanationResult(t0) {
   const {
     promise
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const explanation = use(promise);
   if (!explanation) {
     let t1;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-      t1 = <Box marginTop={1}><Text dimColor={true}>Explanation unavailable</Text></Box>;
+      t1 = <Box marginTop={1}><Text dimColor={true}>{t('permission.explanation.unavailable')}</Text></Box>;
       $[0] = t1;
     } else {
       t1 = $[0];
