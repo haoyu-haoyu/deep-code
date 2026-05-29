@@ -5,6 +5,7 @@ import { useState } from 'react';
 import TextInput from '../../../components/TextInput.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useTerminalSize } from '../../../hooks/useTerminalSize.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Newline, Text } from '../../../ink.js';
 import { useKeybinding } from '../../../keybindings/useKeybinding.js';
 import { BashTool } from '../../../tools/BashTool/BashTool.js';
@@ -17,12 +18,15 @@ export type PermissionRuleInputProps = {
   ruleBehavior: PermissionBehavior;
 };
 export function PermissionRuleInput(t0) {
-  const $ = _c(24);
+  const $ = _c(28);
   const {
     onCancel,
     onSubmit,
     ruleBehavior
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const [inputValue, setInputValue] = useState("");
   const [cursorOffset, setCursorOffset] = useState(0);
   const exitState = useExitOnCtrlCDWithKeybindings();
@@ -58,9 +62,11 @@ export function PermissionRuleInput(t0) {
   }
   const handleSubmit = t2;
   let t3;
-  if ($[4] !== ruleBehavior) {
-    t3 = <Text bold={true} color="permission">Add {ruleBehavior} permission rule</Text>;
+  if ($[4] !== ruleBehavior || $[24] !== t) {
+    const [ruleInputTitleA, ruleInputTitleB] = t('permission.ruleInput.title').split('{behavior}');
+    t3 = <Text bold={true} color="permission">{ruleInputTitleA}{ruleBehavior}{ruleInputTitleB}</Text>;
     $[4] = ruleBehavior;
+    $[24] = t;
     $[5] = t3;
   } else {
     t3 = $[5];
@@ -86,22 +92,29 @@ export function PermissionRuleInput(t0) {
     t6 = $[8];
   }
   let t7;
-  if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Text>Permission rules are a tool name, optionally followed by a specifier in parentheses.{t4}e.g.,{" "}{t5}{t6}<Text bold={true}>{permissionRuleValueToString({
+  if ($[9] !== t) {
+    const [ruleInputHelpA, ruleInputHelpB, ruleInputHelpC] = t('permission.ruleInput.help').split(/\{webFetchExample\}|\{bashExample\}/);
+    t7 = <Text>{ruleInputHelpA}<Text bold={true}>{permissionRuleValueToString({
+          toolName: WebFetchTool.name
+        })}</Text>{ruleInputHelpB}<Text bold={true}>{permissionRuleValueToString({
           toolName: BashTool.name,
           ruleContent: "ls:*"
-        })}</Text></Text>;
-    $[9] = t7;
+        })}</Text>{ruleInputHelpC}</Text>;
+    $[9] = t;
+    $[25] = t7;
   } else {
-    t7 = $[9];
+    t7 = $[25];
   }
   let t8;
-  if ($[10] !== cursorOffset || $[11] !== handleSubmit || $[12] !== inputValue || $[13] !== textInputColumns) {
-    t8 = <Box flexDirection="column">{t7}<Box borderDimColor={true} borderStyle="round" marginY={1} paddingLeft={1}><TextInput showCursor={true} value={inputValue} onChange={setInputValue} onSubmit={handleSubmit} placeholder={`Enter permission rule${figures.ellipsis}`} columns={textInputColumns} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} /></Box></Box>;
+  if ($[10] !== cursorOffset || $[11] !== handleSubmit || $[12] !== inputValue || $[13] !== textInputColumns || $[26] !== t) {
+    t8 = <Box flexDirection="column">{t7}<Box borderDimColor={true} borderStyle="round" marginY={1} paddingLeft={1}><TextInput showCursor={true} value={inputValue} onChange={setInputValue} onSubmit={handleSubmit} placeholder={t('permission.ruleInput.placeholder', {
+        ellipsis: figures.ellipsis
+      })} columns={textInputColumns} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} /></Box></Box>;
     $[10] = cursorOffset;
     $[11] = handleSubmit;
     $[12] = inputValue;
     $[13] = textInputColumns;
+    $[26] = t;
     $[14] = t8;
   } else {
     t8 = $[14];
@@ -116,10 +129,13 @@ export function PermissionRuleInput(t0) {
     t9 = $[17];
   }
   let t10;
-  if ($[18] !== exitState.keyName || $[19] !== exitState.pending) {
-    t10 = <Box marginLeft={3}>{exitState.pending ? <Text dimColor={true}>Press {exitState.keyName} again to exit</Text> : <Text dimColor={true}>Enter to submit · Esc to cancel</Text>}</Box>;
+  if ($[18] !== exitState.keyName || $[19] !== exitState.pending || $[27] !== t) {
+    t10 = <Box marginLeft={3}>{exitState.pending ? <Text dimColor={true}>{t('permission.common.pressAgainToExit', {
+        keyName: exitState.keyName
+      })}</Text> : <Text dimColor={true}>{t('permission.ruleInput.footerHint')}</Text>}</Box>;
     $[18] = exitState.keyName;
     $[19] = exitState.pending;
+    $[27] = t;
     $[20] = t10;
   } else {
     t10 = $[20];

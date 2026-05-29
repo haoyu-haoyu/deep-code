@@ -1,4 +1,5 @@
 import { z } from 'zod/v4'
+import { getMessage } from '../../i18n/index.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -65,7 +66,7 @@ export type Output = z.infer<OutputSchema>
 
 export const ConfigTool = buildTool({
   name: CONFIG_TOOL_NAME,
-  searchHint: 'get or set DeepCode settings (theme, model)',
+  searchHint: getMessage('permission.configTool.searchHint'),
   maxResultSizeChars: 100_000,
   async description() {
     return DESCRIPTION
@@ -80,7 +81,7 @@ export const ConfigTool = buildTool({
     return outputSchema()
   },
   userFacingName() {
-    return 'Config'
+    return getMessage('permission.configTool.userFacingName')
   },
   shouldDefer: true,
   isConcurrencySafe() {
@@ -101,7 +102,10 @@ export const ConfigTool = buildTool({
     }
     return {
       behavior: 'ask' as const,
-      message: `Set ${input.setting} to ${jsonStringify(input.value)}`,
+      message: getMessage('permission.configTool.setMessage', {
+        setting: input.setting,
+        value: jsonStringify(input.value),
+      }),
     }
   },
   renderToolUseMessage,

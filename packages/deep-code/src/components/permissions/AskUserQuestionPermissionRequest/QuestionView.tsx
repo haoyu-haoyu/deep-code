@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import React, { useCallback, useState } from 'react';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import type { KeyboardEvent } from '../../../ink/events/keyboard-event.js';
 import { Box, Text } from '../../../ink.js';
 import { useAppState } from '../../../state/AppState.js';
@@ -41,7 +42,7 @@ type Props = {
   onRemoveImage?: (id: number) => void;
 };
 export function QuestionView(t0) {
-  const $ = _c(114);
+  const $ = _c(123);
   const {
     question,
     questions,
@@ -65,6 +66,9 @@ export function QuestionView(t0) {
     pastedContents,
     onRemoveImage
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const hideSubmitTab = t1 === undefined ? false : t1;
   const isInPlanMode = useAppState(_temp) === "plan";
   const [isFooterFocused, setIsFooterFocused] = useState(false);
@@ -162,7 +166,7 @@ export function QuestionView(t0) {
   let handleOpenEditor;
   let questionText;
   let t7;
-  if ($[12] !== onUpdateQuestionState || $[13] !== question || $[14] !== questionStates) {
+  if ($[12] !== onUpdateQuestionState || $[13] !== question || $[14] !== questionStates || $[114] !== t) {
     const textOptions = question.options.map(_temp2);
     questionText = question.question;
     const questionState = questionStates[questionText];
@@ -185,7 +189,7 @@ export function QuestionView(t0) {
       t8 = $[21];
     }
     handleOpenEditor = t8;
-    const t9 = question.multiSelect ? "Type something" : "Type something.";
+    const t9 = question.multiSelect ? t('permission.askUserQuestion.typeSomething') : t('permission.askUserQuestion.typeSomethingDot');
     const t10 = questionState?.textInputValue ?? "";
     let t11;
     if ($[22] !== onUpdateQuestionState || $[23] !== question.multiSelect || $[24] !== questionText) {
@@ -202,11 +206,11 @@ export function QuestionView(t0) {
       t11 = $[25];
     }
     let t12;
-    if ($[26] !== t10 || $[27] !== t11 || $[28] !== t9) {
+    if ($[26] !== t10 || $[27] !== t11 || $[28] !== t9 || $[115] !== t) {
       t12 = {
         type: "input" as const,
         value: "__other__",
-        label: "Other",
+        label: t('permission.askUserQuestion.otherOption'),
         placeholder: t9,
         initialValue: t10,
         onChange: t11
@@ -214,6 +218,7 @@ export function QuestionView(t0) {
       $[26] = t10;
       $[27] = t11;
       $[28] = t9;
+      $[115] = t;
       $[29] = t12;
     } else {
       t12 = $[29];
@@ -223,6 +228,7 @@ export function QuestionView(t0) {
     $[12] = onUpdateQuestionState;
     $[13] = question;
     $[14] = questionStates;
+    $[114] = t;
     $[15] = handleOpenEditor;
     $[16] = questionText;
     $[17] = t7;
@@ -260,10 +266,11 @@ export function QuestionView(t0) {
     return t8;
   }
   let t8;
-  if ($[47] !== isInPlanMode || $[48] !== planFilePath) {
-    t8 = isInPlanMode && planFilePath && <Box flexDirection="column" gap={0}><Divider color="inactive" /><Text color="inactive">Planning: <FilePathLink filePath={planFilePath} /></Text></Box>;
+  if ($[47] !== isInPlanMode || $[48] !== planFilePath || $[116] !== t) {
+    t8 = isInPlanMode && planFilePath && <Box flexDirection="column" gap={0}><Divider color="inactive" /><Text color="inactive">{t('permission.askUserQuestion.planningPrefix')}<FilePathLink filePath={planFilePath} /></Text></Box>;
     $[47] = isInPlanMode;
     $[48] = planFilePath;
+    $[116] = t;
     $[49] = t8;
   } else {
     t8 = $[49];
@@ -295,7 +302,7 @@ export function QuestionView(t0) {
     t11 = $[57];
   }
   let t12;
-  if ($[58] !== currentQuestionIndex || $[59] !== handleFocus || $[60] !== handleOpenEditor || $[61] !== isFooterFocused || $[62] !== onAnswer || $[63] !== onCancel || $[64] !== onImagePaste || $[65] !== onRemoveImage || $[66] !== onSubmit || $[67] !== onUpdateQuestionState || $[68] !== options || $[69] !== pastedContents || $[70] !== question.multiSelect || $[71] !== question.question || $[72] !== questionStates || $[73] !== questionText || $[74] !== questions.length) {
+  if ($[58] !== currentQuestionIndex || $[59] !== handleFocus || $[60] !== handleOpenEditor || $[61] !== isFooterFocused || $[62] !== onAnswer || $[63] !== onCancel || $[64] !== onImagePaste || $[65] !== onRemoveImage || $[66] !== onSubmit || $[67] !== onUpdateQuestionState || $[68] !== options || $[69] !== pastedContents || $[70] !== question.multiSelect || $[71] !== question.question || $[72] !== questionStates || $[73] !== questionText || $[74] !== questions.length || $[117] !== t) {
     t12 = <Box marginTop={1}>{question.multiSelect ? <SelectMulti key={question.question} options={options} defaultValue={questionStates[question.question]?.selectedValue as string[] | undefined} onChange={values => {
         onUpdateQuestionState(questionText, {
           selectedValue: values
@@ -303,7 +310,7 @@ export function QuestionView(t0) {
         const textInput = values.includes("__other__") ? questionStates[questionText]?.textInputValue : undefined;
         const finalValues = values.filter(_temp4).concat(textInput ? [textInput] : []);
         onAnswer(questionText, finalValues, undefined, false);
-      }} onFocus={handleFocus} onCancel={onCancel} submitButtonText={currentQuestionIndex === questions.length - 1 ? "Submit" : "Next"} onSubmit={onSubmit} onDownFromLastItem={handleDownFromLastItem} isDisabled={isFooterFocused} onOpenEditor={handleOpenEditor} onImagePaste={onImagePaste} pastedContents={pastedContents} onRemoveImage={onRemoveImage} /> : <Select key={question.question} options={options} defaultValue={questionStates[question.question]?.selectedValue as string | undefined} onChange={value_1 => {
+      }} onFocus={handleFocus} onCancel={onCancel} submitButtonText={currentQuestionIndex === questions.length - 1 ? t('permission.askUserQuestion.nav.submit') : t('permission.askUserQuestion.nextButton')} onSubmit={onSubmit} onDownFromLastItem={handleDownFromLastItem} isDisabled={isFooterFocused} onOpenEditor={handleOpenEditor} onImagePaste={onImagePaste} pastedContents={pastedContents} onRemoveImage={onRemoveImage} /> : <Select key={question.question} options={options} defaultValue={questionStates[question.question]?.selectedValue as string | undefined} onChange={value_1 => {
         onUpdateQuestionState(questionText, {
           selectedValue: value_1
         }, false);
@@ -327,6 +334,7 @@ export function QuestionView(t0) {
     $[72] = questionStates;
     $[73] = questionText;
     $[74] = questions.length;
+    $[117] = t;
     $[75] = t12;
   } else {
     t12 = $[75];
@@ -350,10 +358,12 @@ export function QuestionView(t0) {
   const t15 = isFooterFocused && footerIndex === 0 ? "suggestion" : undefined;
   const t16 = options.length + 1;
   let t17;
-  if ($[80] !== t15 || $[81] !== t16) {
-    t17 = <Text color={t15}>{t16}. Chat about this</Text>;
+  if ($[80] !== t15 || $[81] !== t16 || $[118] !== t) {
+    const [chatAboutThisNumberedA, chatAboutThisNumberedB] = t('permission.askUserQuestion.chatAboutThisNumbered').split('{index}');
+    t17 = <Text color={t15}>{chatAboutThisNumberedA}{t16}{chatAboutThisNumberedB}</Text>;
     $[80] = t15;
     $[81] = t16;
+    $[118] = t;
     $[82] = t17;
   } else {
     t17 = $[82];
@@ -368,12 +378,14 @@ export function QuestionView(t0) {
     t18 = $[85];
   }
   let t19;
-  if ($[86] !== footerIndex || $[87] !== isFooterFocused || $[88] !== isInPlanMode || $[89] !== options.length) {
-    t19 = isInPlanMode && <Box flexDirection="row" gap={1}>{isFooterFocused && footerIndex === 1 ? <Text color="suggestion">{figures.pointer}</Text> : <Text> </Text>}<Text color={isFooterFocused && footerIndex === 1 ? "suggestion" : undefined}>{options.length + 2}. Skip interview and plan immediately</Text></Box>;
+  if ($[86] !== footerIndex || $[87] !== isFooterFocused || $[88] !== isInPlanMode || $[89] !== options.length || $[119] !== t) {
+    const [skipInterviewNumberedA, skipInterviewNumberedB] = t('permission.askUserQuestion.skipInterviewNumbered').split('{index}');
+    t19 = isInPlanMode && <Box flexDirection="row" gap={1}>{isFooterFocused && footerIndex === 1 ? <Text color="suggestion">{figures.pointer}</Text> : <Text> </Text>}<Text color={isFooterFocused && footerIndex === 1 ? "suggestion" : undefined}>{skipInterviewNumberedA}{options.length + 2}{skipInterviewNumberedB}</Text></Box>;
     $[86] = footerIndex;
     $[87] = isFooterFocused;
     $[88] = isInPlanMode;
     $[89] = options.length;
+    $[119] = t;
     $[90] = t19;
   } else {
     t19 = $[90];
@@ -388,26 +400,35 @@ export function QuestionView(t0) {
     t20 = $[93];
   }
   let t21;
-  if ($[94] !== questions.length) {
-    t21 = questions.length === 1 ? <>{figures.arrowUp}/{figures.arrowDown} to navigate</> : "Tab/Arrow keys to navigate";
+  if ($[94] !== questions.length || $[120] !== t) {
+    t21 = questions.length === 1 ? t('permission.askUserQuestion.footer.navigateSingle', {
+      arrowUp: figures.arrowUp,
+      arrowDown: figures.arrowDown
+    }) : t('permission.askUserQuestion.footer.navigateMulti');
     $[94] = questions.length;
+    $[120] = t;
     $[95] = t21;
   } else {
     t21 = $[95];
   }
   let t22;
-  if ($[96] !== isOtherFocused) {
-    t22 = isOtherFocused && editorName && <> · ctrl+g to edit in {editorName}</>;
+  if ($[96] !== isOtherFocused || $[121] !== t) {
+    t22 = isOtherFocused && editorName && <>{t('permission.askUserQuestion.footer.editInEditor', {
+      editorName
+    })}</>;
     $[96] = isOtherFocused;
+    $[121] = t;
     $[97] = t22;
   } else {
     t22 = $[97];
   }
   let t23;
-  if ($[98] !== t21 || $[99] !== t22) {
-    t23 = <Box marginTop={1}><Text color="inactive" dimColor={true}>Enter to select ·{" "}{t21}{t22}{" "}· Esc to cancel</Text></Box>;
+  if ($[98] !== t21 || $[99] !== t22 || $[122] !== t) {
+    const [questionFooterHintA, questionFooterHintB] = t('permission.askUserQuestion.footer.hint').split('{nav}');
+    t23 = <Box marginTop={1}><Text color="inactive" dimColor={true}>{questionFooterHintA}{t21}{t22}{questionFooterHintB}</Text></Box>;
     $[98] = t21;
     $[99] = t22;
+    $[122] = t;
     $[100] = t23;
   } else {
     t23 = $[100];

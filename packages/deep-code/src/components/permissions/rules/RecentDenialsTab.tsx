@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- 'r' is a view-specific key, not a global keybinding
 import { Box, Text, useInput } from '../../../ink.js';
 import { type AutoModeDenial, getAutoModeDenials } from '../../../utils/autoModeDenials.js';
@@ -17,11 +18,14 @@ type Props = {
   }) => void;
 };
 export function RecentDenialsTab(t0) {
-  const $ = _c(30);
+  const $ = _c(34);
   const {
     onHeaderFocusChange,
     onStateChange
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const {
     headerFocused,
     focusHeader
@@ -139,21 +143,22 @@ export function RecentDenialsTab(t0) {
   useInput(t7, t9);
   if (denials.length === 0) {
     let t10;
-    if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
-      t10 = <Text dimColor={true}>No recent denials. Commands denied by the auto mode classifier will appear here.</Text>;
-      $[16] = t10;
+    if ($[16] !== t) {
+      t10 = <Text dimColor={true}>{t('permission.recentDenials.empty')}</Text>;
+      $[16] = t;
+      $[30] = t10;
     } else {
-      t10 = $[16];
+      t10 = $[30];
     }
     return t10;
   }
   let t10;
-  if ($[17] !== approved || $[18] !== denials || $[19] !== retry) {
+  if ($[17] !== approved || $[18] !== denials || $[19] !== retry || $[32] !== t) {
     let t11;
-    if ($[21] !== approved || $[22] !== retry) {
+    if ($[21] !== approved || $[22] !== retry || $[31] !== t) {
       t11 = (d, idx_0) => {
         const isApproved = approved.has(idx_0);
-        const suffix = retry.has(idx_0) ? " (retry)" : "";
+        const suffix = retry.has(idx_0) ? t('permission.recentDenials.retrySuffix') : "";
         return {
           label: <Text><StatusIcon status={isApproved ? "success" : "error"} withSpace={true} />{d.display}<Text dimColor={true}>{suffix}</Text></Text>,
           value: String(idx_0)
@@ -161,6 +166,7 @@ export function RecentDenialsTab(t0) {
       };
       $[21] = approved;
       $[22] = retry;
+      $[31] = t;
       $[23] = t11;
     } else {
       t11 = $[23];
@@ -169,17 +175,19 @@ export function RecentDenialsTab(t0) {
     $[17] = approved;
     $[18] = denials;
     $[19] = retry;
+    $[32] = t;
     $[20] = t10;
   } else {
     t10 = $[20];
   }
   const options = t10;
   let t11;
-  if ($[24] === Symbol.for("react.memo_cache_sentinel")) {
-    t11 = <Text>Commands recently denied by the auto mode classifier.</Text>;
-    $[24] = t11;
+  if ($[24] !== t) {
+    t11 = <Text>{t('permission.recentDenials.header')}</Text>;
+    $[24] = t;
+    $[33] = t11;
   } else {
-    t11 = $[24];
+    t11 = $[33];
   }
   const t12 = Math.min(10, options.length);
   let t13;

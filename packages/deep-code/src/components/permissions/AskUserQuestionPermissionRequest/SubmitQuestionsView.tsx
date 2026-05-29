@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import React from 'react';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text } from '../../../ink.js';
 import type { Question } from '../../../tools/AskUserQuestionTool/AskUserQuestionTool.js';
 import type { PermissionDecision } from '../../../utils/permissions/PermissionResult.js';
@@ -19,7 +20,7 @@ type Props = {
   onFinalResponse: (value: 'submit' | 'cancel') => void;
 };
 export function SubmitQuestionsView(t0) {
-  const $ = _c(27);
+  const $ = _c(34);
   const {
     questions,
     currentQuestionIndex,
@@ -29,6 +30,9 @@ export function SubmitQuestionsView(t0) {
     minContentHeight,
     onFinalResponse
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = <Divider color="inactive" />;
@@ -47,28 +51,31 @@ export function SubmitQuestionsView(t0) {
     t2 = $[4];
   }
   let t3;
-  if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <PermissionRequestTitle title="Review your answers" color="text" />;
-    $[5] = t3;
+  if ($[5] !== t) {
+    t3 = <PermissionRequestTitle title={t('permission.askUserQuestion.submit.title')} color="text" />;
+    $[5] = t;
+    $[27] = t3;
   } else {
-    t3 = $[5];
+    t3 = $[27];
   }
   let t4;
-  if ($[6] !== allQuestionsAnswered) {
-    t4 = !allQuestionsAnswered && <Box marginBottom={1}><Text color="warning">{figures.warning} You have not answered all questions</Text></Box>;
+  if ($[6] !== allQuestionsAnswered || $[28] !== t) {
+    t4 = !allQuestionsAnswered && <Box marginBottom={1}><Text color="warning">{figures.warning} {t('permission.askUserQuestion.submit.notAllAnswered')}</Text></Box>;
     $[6] = allQuestionsAnswered;
+    $[28] = t;
     $[7] = t4;
   } else {
     t4 = $[7];
   }
   let t5;
-  if ($[8] !== answers || $[9] !== questions) {
+  if ($[8] !== answers || $[9] !== questions || $[29] !== t) {
     t5 = Object.keys(answers).length > 0 && <Box flexDirection="column" marginBottom={1}>{questions.filter(q => q?.question && answers[q.question]).map(q_0 => {
         const answer = answers[q_0?.question];
-        return <Box key={q_0?.question || "answer"} flexDirection="column" marginLeft={1}><Text>{figures.bullet} {q_0?.question || "Question"}</Text><Box marginLeft={2}><Text color="success">{figures.arrowRight} {answer}</Text></Box></Box>;
+        return <Box key={q_0?.question || "answer"} flexDirection="column" marginLeft={1}><Text>{figures.bullet} {q_0?.question || t('permission.askUserQuestion.submit.questionFallback')}</Text><Box marginLeft={2}><Text color="success">{figures.arrowRight} {answer}</Text></Box></Box>;
       })}</Box>;
     $[8] = answers;
     $[9] = questions;
+    $[29] = t;
     $[10] = t5;
   } else {
     t5 = $[10];
@@ -82,33 +89,37 @@ export function SubmitQuestionsView(t0) {
     t6 = $[12];
   }
   let t7;
-  if ($[13] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Text color="inactive">Ready to submit your answers?</Text>;
-    $[13] = t7;
+  if ($[13] !== t) {
+    t7 = <Text color="inactive">{t('permission.askUserQuestion.submit.readyPrompt')}</Text>;
+    $[13] = t;
+    $[30] = t7;
   } else {
-    t7 = $[13];
+    t7 = $[30];
   }
   let t8;
-  if ($[14] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[14] !== t) {
     t8 = {
       type: "text" as const,
-      label: "Submit answers",
+      label: t('permission.askUserQuestion.submit.submitOption'),
       value: "submit"
     };
-    $[14] = t8;
+    $[14] = t;
+    $[31] = t8;
   } else {
-    t8 = $[14];
+    t8 = $[31];
   }
   let t9;
-  if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[15] !== t || $[32] !== t8) {
     t9 = [t8, {
       type: "text" as const,
-      label: "Cancel",
+      label: t('permission.askUserQuestion.submit.cancelOption'),
       value: "cancel"
     }];
-    $[15] = t9;
+    $[15] = t;
+    $[32] = t8;
+    $[33] = t9;
   } else {
-    t9 = $[15];
+    t9 = $[33];
   }
   let t10;
   if ($[16] !== onFinalResponse) {

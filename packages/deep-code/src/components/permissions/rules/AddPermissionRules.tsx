@@ -2,6 +2,8 @@ import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { useCallback } from 'react';
 import { Select } from '../../../components/CustomSelect/select.js';
+import { getMessage } from '../../../i18n/index.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text } from '../../../ink.js';
 import type { ToolPermissionContext } from '../../../Tool.js';
 import type { PermissionBehavior, PermissionRule, PermissionRuleValue } from '../../../utils/permissions/PermissionRule.js';
@@ -19,20 +21,24 @@ export function optionForPermissionSaveDestination(saveDestination: EditableSett
   switch (saveDestination) {
     case 'localSettings':
       return {
-        label: 'Project settings (local)',
-        description: `Saved in ${getRelativeSettingsFilePathForSource('localSettings')}`,
+        label: getMessage('permission.saveDestination.localSettings'),
+        description: getMessage('permission.saveDestination.desc.localSettings', {
+          path: getRelativeSettingsFilePathForSource('localSettings')
+        }),
         value: saveDestination
       };
     case 'projectSettings':
       return {
-        label: 'Project settings',
-        description: `Checked in at ${getRelativeSettingsFilePathForSource('projectSettings')}`,
+        label: getMessage('permission.saveDestination.projectSettings'),
+        description: getMessage('permission.saveDestination.desc.projectSettings', {
+          path: getRelativeSettingsFilePathForSource('projectSettings')
+        }),
         value: saveDestination
       };
     case 'userSettings':
       return {
-        label: 'User settings',
-        description: `Saved in at ~/.claude/settings.json`,
+        label: getMessage('permission.saveDestination.userSettings'),
+        description: getMessage('permission.saveDestination.desc.userSettings'),
         value: saveDestination
       };
   }
@@ -55,6 +61,9 @@ export function AddPermissionRules(t0) {
     initialContext,
     setToolPermissionContext
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = SOURCES.map(optionForPermissionSaveDestination);
@@ -118,7 +127,10 @@ export function AddPermissionRules(t0) {
   } else {
     t3 = $[9];
   }
-  const title = `Add ${ruleBehavior} permission ${t3}`;
+  const title = t('permission.addRules.title', {
+    behavior: ruleBehavior,
+    rulePlural: t3
+  });
   let t4;
   if ($[10] !== ruleValues) {
     t4 = ruleValues.map(_temp);
@@ -135,7 +147,7 @@ export function AddPermissionRules(t0) {
   } else {
     t5 = $[13];
   }
-  const t6 = ruleValues.length === 1 ? "Where should this rule be saved?" : "Where should these rules be saved?";
+  const t6 = ruleValues.length === 1 ? t('permission.addRules.saveLocationSingular') : t('permission.addRules.saveLocationPlural');
   let t7;
   if ($[14] !== t6) {
     t7 = <Text>{t6}</Text>;
