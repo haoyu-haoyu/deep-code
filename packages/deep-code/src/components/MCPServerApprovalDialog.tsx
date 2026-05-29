@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from './design-system/Dialog.js';
@@ -10,11 +11,14 @@ type Props = {
   onDone(): void;
 };
 export function MCPServerApprovalDialog(t0) {
-  const $ = _c(13);
+  const $ = _c(14);
   const {
     serverName,
     onDone
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== onDone || $[1] !== serverName) {
     t1 = function onChange(value) {
@@ -60,7 +64,9 @@ export function MCPServerApprovalDialog(t0) {
     t1 = $[2];
   }
   const onChange = t1;
-  const t2 = `New MCP server found in .mcp.json: ${serverName}`;
+  const t2 = t('mcp.approval.title', {
+    serverName
+  });
   let t3;
   if ($[3] !== onChange) {
     t3 = () => onChange("no");
@@ -77,17 +83,18 @@ export function MCPServerApprovalDialog(t0) {
     t4 = $[5];
   }
   let t5;
-  if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[13] !== t) {
     t5 = [{
-      label: "Use this and all future MCP servers in this project",
+      label: t('mcp.approval.useAllOption'),
       value: "yes_all"
     }, {
-      label: "Use this MCP server",
+      label: t('mcp.approval.useOneOption'),
       value: "yes"
     }, {
-      label: "Continue without using this MCP server",
+      label: t('mcp.approval.skipOption'),
       value: "no"
     }];
+    $[13] = t;
     $[6] = t5;
   } else {
     t5 = $[6];
