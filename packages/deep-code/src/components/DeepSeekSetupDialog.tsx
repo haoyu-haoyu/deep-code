@@ -1,5 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import { useTerminalSize } from '../hooks/useTerminalSize.js'
+import { getMessage } from '../i18n/index.js'
+import { useTranslation } from '../i18n/useTranslation.js'
 import { Box, Text } from '../ink.js'
 import { useKeybinding } from '../keybindings/useKeybinding.js'
 import {
@@ -36,38 +38,38 @@ type Props = {
 
 const MODEL_OPTIONS = [
   {
-    label: 'DeepSeek V4 Pro (recommended)',
+    label: getMessage('setup.deepseek.model.proLabel'),
     value: 'deepseek-v4-pro',
-    description: 'Reasoning + tool use; default model for Deep Code sessions',
+    description: getMessage('setup.deepseek.model.proDescription'),
   },
   {
-    label: 'DeepSeek V4 Flash',
+    label: getMessage('setup.deepseek.model.flashLabel'),
     value: 'deepseek-v4-flash',
-    description: 'Faster, lower latency; great for quick tasks',
+    description: getMessage('setup.deepseek.model.flashDescription'),
   },
   {
-    label: 'Use a custom model name',
+    label: getMessage('setup.deepseek.model.customLabel'),
     value: '__custom__',
-    description: 'Type a model identifier on the next step',
+    description: getMessage('setup.deepseek.model.customDescription'),
   },
 ]
 
 const EFFORT_OPTIONS = [
   {
-    label: 'Max — full reasoning, deepest quality',
+    label: getMessage('setup.deepseek.effort.maxLabel'),
     value: 'max' as const,
-    description: 'Recommended for complex tasks',
+    description: getMessage('setup.deepseek.effort.maxDescription'),
   },
   {
-    label: 'High — balanced reasoning depth',
+    label: getMessage('setup.deepseek.effort.highLabel'),
     value: 'high' as const,
-    description: 'Faster turnarounds with shorter reasoning chains',
+    description: getMessage('setup.deepseek.effort.highDescription'),
   },
 ]
 
 const CONFIRM_OPTIONS = [
-  { label: 'Save and continue', value: 'save' as const },
-  { label: 'Cancel and skip setup', value: 'cancel' as const },
+  { label: getMessage('setup.deepseek.confirm.saveLabel'), value: 'save' as const },
+  { label: getMessage('setup.deepseek.confirm.cancelLabel'), value: 'cancel' as const },
 ]
 
 export function DeepSeekSetupDialog({
@@ -79,6 +81,7 @@ export function DeepSeekSetupDialog({
   initialEffort = 'max',
   onDone,
 }: Props): React.ReactNode {
+  const { t } = useTranslation()
   const { columns } = useTerminalSize()
   const configPath = resolveDeepSeekConfigPath()
   const [step, setStep] = useState<StepId>('api-key')
@@ -120,15 +123,15 @@ export function DeepSeekSetupDialog({
       try {
         parsed = new URL(trimmed)
       } catch {
-        setBaseUrlError('Invalid URL — must look like https://api.deepseek.com')
+        setBaseUrlError(t('setup.deepseek.baseUrlErrorInvalid'))
         return
       }
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        setBaseUrlError('Base URL must use http:// or https://')
+        setBaseUrlError(t('setup.deepseek.baseUrlErrorProtocol'))
         return
       }
       if (parsed.search || parsed.hash) {
-        setBaseUrlError('Base URL must not include a query string or fragment')
+        setBaseUrlError(t('setup.deepseek.baseUrlErrorQuery'))
         return
       }
       // Normalize to origin + pathname (no trailing slash). The request
@@ -142,7 +145,7 @@ export function DeepSeekSetupDialog({
       setBaseUrlCursor(normalized.length)
       setStep('model')
     },
-    [defaultBaseUrl],
+    [defaultBaseUrl, t],
   )
 
   const handleModelSelect = useCallback(
@@ -223,12 +226,12 @@ export function DeepSeekSetupDialog({
     if (step === 'api-key' || step === 'base-url' || pickingCustomModel) {
       return (
         <Byline>
-          <KeyboardShortcutHint shortcut="Enter" action="continue" />
+          <KeyboardShortcutHint shortcut="Enter" action={t('setup.deepseek.hint.continue')} />
           <ConfigurableShortcutHint
             action="confirm:no"
             context="Settings"
             fallback="Esc"
-            description="cancel"
+            description={t('setup.deepseek.hint.cancel')}
           />
         </Byline>
       )
@@ -238,20 +241,21 @@ export function DeepSeekSetupDialog({
         action="confirm:no"
         context="Confirmation"
         fallback="Esc"
-        description="cancel"
+        description={t('setup.deepseek.hint.cancel')}
       />
     )
   }
 
   let body: React.ReactNode = null
-  let subtitle = 'Configure DeepSeek credentials and defaults'
+  let subtitle = t('setup.deepseek.subtitleDefault')
 
   if (step === 'api-key') {
-    subtitle = 'Step 1 of 4 — DeepSeek API key'
+    subtitle = t('setup.deepseek.subtitleApiKey')
+    const [apiKeyPromptA, apiKeyPromptB] = t('setup.deepseek.apiKeyPrompt').split('{configPath}')
     body = (
       <Box flexDirection="column">
         <Text>
-          Paste your DeepSeek API key (saved to <Text bold>{configPath}</Text>):
+          {apiKeyPromptA}<Text bold>{configPath}</Text>{apiKeyPromptB}
         </Text>
         <Box flexDirection="row" gap={1} marginTop={1}>
           <Text>&gt;</Text>
@@ -268,17 +272,18 @@ export function DeepSeekSetupDialog({
         </Box>
         <Box marginTop={1}>
           <Text dimColor>
-            Get a key from https://platform.deepseek.com/api_keys
+            {t('setup.deepseek.apiKeyHelp')}
           </Text>
         </Box>
       </Box>
     )
   } else if (step === 'base-url') {
-    subtitle = 'Step 2 of 4 — API base URL'
+    subtitle = t('setup.deepseek.subtitleBaseUrl')
+    const [baseUrlPromptA, baseUrlPromptB] = t('setup.deepseek.baseUrlPrompt').split('{defaultBaseUrl}')
     body = (
       <Box flexDirection="column">
         <Text>
-          Base URL (Enter to keep default <Text bold>{defaultBaseUrl}</Text>):
+          {baseUrlPromptA}<Text bold>{defaultBaseUrl}</Text>{baseUrlPromptB}
         </Text>
         <Box flexDirection="row" gap={1} marginTop={1}>
           <Text>&gt;</Text>
@@ -304,11 +309,11 @@ export function DeepSeekSetupDialog({
       </Box>
     )
   } else if (step === 'model') {
-    subtitle = 'Step 3 of 4 — Default model'
+    subtitle = t('setup.deepseek.subtitleModel')
     if (pickingCustomModel) {
       body = (
         <Box flexDirection="column">
-          <Text>Type a custom DeepSeek model identifier:</Text>
+          <Text>{t('setup.deepseek.customModelPrompt')}</Text>
           <Box flexDirection="row" gap={1} marginTop={1}>
             <Text>&gt;</Text>
             <TextInput
@@ -339,7 +344,7 @@ export function DeepSeekSetupDialog({
       )
     }
   } else if (step === 'effort') {
-    subtitle = 'Step 4 of 4 — Reasoning effort'
+    subtitle = t('setup.deepseek.subtitleEffort')
     body = (
       <Select
         options={EFFORT_OPTIONS}
@@ -349,25 +354,25 @@ export function DeepSeekSetupDialog({
       />
     )
   } else if (step === 'confirm') {
-    subtitle = 'Review and save'
+    subtitle = t('setup.deepseek.subtitleConfirm')
     body = (
       <Box flexDirection="column">
         <Box flexDirection="column" marginBottom={1}>
           <Text>
-            <Text bold>API key:</Text>{' '}
+            <Text bold>{t('setup.deepseek.review.apiKeyLabel')}</Text>{' '}
             <Text>
-              {state.apiKey.slice(0, 4)}…{state.apiKey.slice(-4)} (
-              {state.apiKey.length} chars)
+              {state.apiKey.slice(0, 4)}…{state.apiKey.slice(-4)}{' '}
+              {t('setup.deepseek.review.apiKeyChars', { count: state.apiKey.length })}
             </Text>
           </Text>
           <Text>
-            <Text bold>Base URL:</Text> <Text>{state.baseUrl}</Text>
+            <Text bold>{t('setup.deepseek.review.baseUrlLabel')}</Text> <Text>{state.baseUrl}</Text>
           </Text>
           <Text>
-            <Text bold>Model:</Text> <Text>{state.model}</Text>
+            <Text bold>{t('setup.deepseek.review.modelLabel')}</Text> <Text>{state.model}</Text>
           </Text>
           <Text>
-            <Text bold>Reasoning effort:</Text>{' '}
+            <Text bold>{t('setup.deepseek.review.effortLabel')}</Text>{' '}
             <Text>{state.reasoningEffort}</Text>
           </Text>
         </Box>
@@ -382,7 +387,7 @@ export function DeepSeekSetupDialog({
 
   return (
     <Dialog
-      title="Deep Code · DeepSeek setup"
+      title={t('setup.deepseek.title')}
       subtitle={subtitle}
       color="permission"
       onCancel={handleCancel}

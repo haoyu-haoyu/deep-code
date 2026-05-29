@@ -1,5 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Text } from '../ink.js';
 import { saveGlobalConfig } from '../utils/config.js';
 import { Select } from './CustomSelect/index.js';
@@ -9,11 +10,14 @@ type Props = {
   onDone(approved: boolean): void;
 };
 export function ApproveApiKey(t0) {
-  const $ = _c(17);
+  const $ = _c(21);
   const {
     customApiKeyTruncated,
     onDone
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== customApiKeyTruncated || $[1] !== onDone) {
     t1 = function onChange(value) {
@@ -74,31 +78,35 @@ export function ApproveApiKey(t0) {
     t4 = $[7];
   }
   let t5;
-  if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text>Do you want to use this API key?</Text>;
-    $[8] = t5;
+  if ($[8] !== t) {
+    t5 = <Text>{t('setup.apiKey.approve.question')}</Text>;
+    $[8] = t;
+    $[17] = t5;
   } else {
-    t5 = $[8];
+    t5 = $[17];
   }
   let t6;
-  if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[9] !== t) {
     t6 = {
-      label: "Yes",
+      label: t('permission.shared.yes'),
       value: "yes"
     };
-    $[9] = t6;
+    $[9] = t;
+    $[18] = t6;
   } else {
-    t6 = $[9];
+    t6 = $[18];
   }
   let t7;
-  if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[10] !== t) {
+    const [approveNoA, approveNoB] = t('setup.apiKey.approve.optionNoRecommended').split('{recommended}');
     t7 = [t6, {
-      label: <Text>No (<Text bold={true}>recommended</Text>)</Text>,
+      label: <Text>{approveNoA}<Text bold={true}>{t('setup.apiKey.approve.recommendedTag')}</Text>{approveNoB}</Text>,
       value: "no"
     }];
-    $[10] = t7;
+    $[10] = t;
+    $[19] = t7;
   } else {
-    t7 = $[10];
+    t7 = $[19];
   }
   let t8;
   if ($[11] !== onChange) {
@@ -109,11 +117,12 @@ export function ApproveApiKey(t0) {
     t8 = $[12];
   }
   let t9;
-  if ($[13] !== t2 || $[14] !== t4 || $[15] !== t8) {
-    t9 = <Dialog title="Detected a custom API key in your environment" color="warning" onCancel={t2}>{t4}{t5}{t8}</Dialog>;
+  if ($[13] !== t2 || $[14] !== t4 || $[15] !== t8 || $[20] !== t) {
+    t9 = <Dialog title={t('setup.apiKey.approve.title')} color="warning" onCancel={t2}>{t4}{t5}{t8}</Dialog>;
     $[13] = t2;
     $[14] = t4;
     $[15] = t8;
+    $[20] = t;
     $[16] = t9;
   } else {
     t9 = $[16];

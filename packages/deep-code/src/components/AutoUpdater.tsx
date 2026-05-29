@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
 import { useInterval } from 'usehooks-ts';
 import { useUpdateNotification } from '../hooks/useUpdateNotification.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Text } from '../ink.js';
 import { type AutoUpdaterResult, getLatestVersion, getMaxVersion, type InstallStatus, installGlobalPackage, shouldSkipVersion } from '../utils/autoUpdater.js';
 import { getGlobalConfig, isAutoUpdaterDisabled } from '../utils/config.js';
@@ -28,6 +29,7 @@ export function AutoUpdater({
   showSuccessMessage,
   verbose
 }: Props): React.ReactNode {
+  const { t } = useTranslation();
   const [versions, setVersions] = useState<{
     global?: string | null;
     latest?: string | null;
@@ -173,6 +175,7 @@ export function AutoUpdater({
   if (!autoUpdaterResult?.version && !isUpdating) {
     return null;
   }
+  const [updateFailA, updateFailB, updateFailC] = t('update.failedTryDoctor').split(/\{doctorCommand\}|\{command\}/);
   return <Box flexDirection="row" gap={1}>
       {verbose && <Text dimColor wrap="truncate">
           globalVersion: {versions.global} &middot; latestVersion:{' '}
@@ -181,17 +184,16 @@ export function AutoUpdater({
       {isUpdating ? <>
           <Box>
             <Text color="text" dimColor wrap="truncate">
-              Auto-updating…
+              {t('update.autoUpdating')}
             </Text>
           </Box>
         </> : autoUpdaterResult?.status === 'success' && showSuccessMessage && updateSemver && <Text color="success" wrap="truncate">
-            ✓ Update installed · Restart to apply
+            {t('update.installedRestartToApply')}
           </Text>}
       {(autoUpdaterResult?.status === 'install_failed' || autoUpdaterResult?.status === 'no_permissions') && <Text color="error" wrap="truncate">
-          ✗ Auto-update failed &middot; Try <Text bold>claude doctor</Text> or{' '}
-          <Text bold>
+          {updateFailA}<Text bold>deepcode doctor</Text>{updateFailB}<Text bold>
             {hasLocalInstall ? `cd ~/.claude/local && npm update ${MACRO.PACKAGE_URL}` : `npm i -g ${MACRO.PACKAGE_URL}`}
-          </Text>
+          </Text>{updateFailC}
         </Text>}
     </Box>;
 }

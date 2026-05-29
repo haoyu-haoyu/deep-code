@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { useState } from 'react';
 import { useInterval } from 'usehooks-ts';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Text } from '../ink.js';
 import { type AutoUpdaterResult, getLatestVersionFromGcs, getMaxVersion, shouldSkipVersion } from '../utils/autoUpdater.js';
 import { isAutoUpdaterDisabled } from '../utils/config.js';
@@ -18,10 +19,13 @@ type Props = {
   verbose: boolean;
 };
 export function PackageManagerAutoUpdater(t0) {
-  const $ = _c(10);
+  const $ = _c(11);
   const {
     verbose
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [packageManager, setPackageManager] = useState("unknown");
   let t1;
@@ -83,9 +87,11 @@ export function PackageManagerAutoUpdater(t0) {
     t4 = $[4];
   }
   let t5;
-  if ($[5] !== updateCommand) {
-    t5 = <Text color="warning" wrap="truncate">Update available! Run: <Text bold={true}>{updateCommand}</Text></Text>;
+  if ($[5] !== updateCommand || $[10] !== t) {
+    const [updateAvailableA, updateAvailableB] = t('update.availableRunCommand').split('{command}');
+    t5 = <Text color="warning" wrap="truncate">{updateAvailableA}<Text bold={true}>{updateCommand}</Text>{updateAvailableB}</Text>;
     $[5] = updateCommand;
+    $[10] = t;
     $[6] = t5;
   } else {
     t5 = $[6];
