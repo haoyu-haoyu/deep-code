@@ -7,6 +7,8 @@ import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEve
 import { useAppState, useSetAppState } from 'src/state/AppState.js';
 import { getSdkBetas, getSessionId, isSessionPersistenceDisabled, setHasExitedPlanMode, setNeedsAutoModeExitAttachment, setNeedsPlanModeExitAttachment } from '../../../bootstrap/state.js';
 import { generateSessionName } from '../../../commands/rename/generateSessionName.js';
+import { getMessage } from '../../../i18n/index.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import type { KeyboardEvent } from '../../../ink/events/keyboard-event.js';
 import { Box, Text } from '../../../ink.js';
 import type { AppState } from '../../../state/AppStateStore.js';
@@ -120,6 +122,7 @@ export function ExitPlanModePermissionRequest({
   workerBadge,
   setStickyFooter
 }: PermissionRequestProps): React.ReactNode {
+  const { t } = useTranslation();
   const toolPermissionContext = useAppState(s => s.toolPermissionContext);
   const setAppState = useSetAppState();
   const {
@@ -197,7 +200,7 @@ export function ExitPlanModePermissionRequest({
   const [currentPlan, setCurrentPlan] = useState(() => {
     if (inputPlan) return inputPlan;
     const plan = getPlan();
-    return plan ?? 'No plan found. Please write your plan to the plan file first.';
+    return plan ?? t('permission.exitPlan.noPlanFound');
   });
   const [showSaveMessage, setShowSaveMessage] = useState(false);
   // Track Ctrl+G local edits so updatedInput can include the plan (the tool
@@ -496,19 +499,19 @@ export function ExitPlanModePermissionRequest({
   useLayoutEffect(() => {
     if (!useStickyFooter) return;
     setStickyFooter(<Box flexDirection="column" borderStyle="round" borderColor="planMode" borderLeft={false} borderRight={false} borderBottom={false} paddingX={1}>
-        <Text dimColor>Would you like to proceed?</Text>
+        <Text dimColor>{t('permission.exitPlan.proceedPrompt')}</Text>
         <Box marginTop={1}>
           <Select options={options} onChange={v => void handleResponseRef.current(v)} onCancel={() => handleCancelRef.current?.()} onImagePaste={onImagePaste} pastedContents={pastedContents} onRemoveImage={onRemoveImage} />
         </Box>
         {editorName && <Box flexDirection="row" gap={1} marginTop={1}>
-            <Text dimColor>ctrl-g to edit in </Text>
+            <Text dimColor>{t('permission.exitPlan.editInEditor')}</Text>
             <Text bold dimColor>
               {editorName}
             </Text>
             {isV2 && planFilePath && <Text dimColor> · {getDisplayPath(planFilePath)}</Text>}
             {showSaveMessage && <>
                 <Text dimColor>{' · '}</Text>
-                <Text color="success">{figures.tick}Plan saved!</Text>
+                <Text color="success">{figures.tick}{t('permission.exitPlan.planSaved')}</Text>
               </>}
           </Box>}
       </Box>);
@@ -561,15 +564,15 @@ export function ExitPlanModePermissionRequest({
         toolUseConfirm.onReject();
       }
     }
-    return <PermissionDialog color="planMode" title="Exit plan mode?" workerBadge={workerBadge}>
+    return <PermissionDialog color="planMode" title={t('permission.exitPlan.titleExit')} workerBadge={workerBadge}>
         <Box flexDirection="column" paddingX={1} marginTop={1}>
-          <Text>Deep Code wants to exit plan mode</Text>
+          <Text>{t('permission.exitPlan.emptyBody')}</Text>
           <Box marginTop={1}>
             <Select options={[{
-            label: 'Yes',
+            label: t('permission.shared.yes'),
             value: 'yes' as const
           }, {
-            label: 'No',
+            label: t('permission.shared.no'),
             value: 'no' as const
           }]} onChange={handleEmptyPlanResponse} onCancel={() => {
             logEvent('tengu_plan_exit', {
@@ -587,10 +590,10 @@ export function ExitPlanModePermissionRequest({
       </PermissionDialog>;
   }
   return <Box flexDirection="column" tabIndex={0} autoFocus onKeyDown={handleKeyDown}>
-      <PermissionDialog color="planMode" title="Ready to code?" innerPaddingX={0} workerBadge={workerBadge}>
+      <PermissionDialog color="planMode" title={t('permission.exitPlan.titleReady')} innerPaddingX={0} workerBadge={workerBadge}>
         <Box flexDirection="column" marginTop={1}>
           <Box paddingX={1} flexDirection="column">
-            <Text>Here is Deep Code&apos;s plan:</Text>
+            <Text>{t('permission.exitPlan.planHeading')}</Text>
           </Box>
           <Box borderColor="subtle" borderStyle="dashed" flexDirection="column" borderLeft={false} borderRight={false} paddingX={1} marginBottom={1}
         // Necessary for Windows Terminal to render properly
@@ -600,15 +603,14 @@ export function ExitPlanModePermissionRequest({
           <Box flexDirection="column" paddingX={1}>
             <PermissionRuleExplanation permissionResult={toolUseConfirm.permissionResult} toolType="tool" />
             {isClassifierPermissionsEnabled() && allowedPrompts && allowedPrompts.length > 0 && <Box flexDirection="column" marginBottom={1}>
-                  <Text bold>Requested permissions:</Text>
+                  <Text bold>{t('permission.exitPlan.requestedPermissions')}</Text>
                   {allowedPrompts.map((p, i) => <Text key={i} dimColor>
                       {'  '}· {p.tool}({PROMPT_PREFIX} {p.prompt})
                     </Text>)}
                 </Box>}
             {!useStickyFooter && <>
                 <Text dimColor>
-                  Deep Code has written up a plan and is ready to execute. Would
-                  you like to proceed?
+                  {t('permission.exitPlan.readyPrompt')}
                 </Text>
                 <Box marginTop={1}>
                   <Select options={options} onChange={handleResponse} onCancel={() => handleCancelRef.current?.()} onImagePaste={onImagePaste} pastedContents={pastedContents} onRemoveImage={onRemoveImage} />
@@ -619,7 +621,7 @@ export function ExitPlanModePermissionRequest({
       </PermissionDialog>
       {!useStickyFooter && editorName && <Box flexDirection="row" gap={1} paddingX={1} marginTop={1}>
           <Box>
-            <Text dimColor>ctrl-g to edit in </Text>
+            <Text dimColor>{t('permission.exitPlan.editInEditor')}</Text>
             <Text bold dimColor>
               {editorName}
             </Text>
@@ -627,7 +629,7 @@ export function ExitPlanModePermissionRequest({
           </Box>
           {showSaveMessage && <Box>
               <Text dimColor>{' · '}</Text>
-              <Text color="success">{figures.tick}Plan saved!</Text>
+              <Text color="success">{figures.tick}{t('permission.exitPlan.planSaved')}</Text>
             </Box>}
         </Box>}
     </Box>;
@@ -648,21 +650,29 @@ export function buildPlanApprovalOptions({
   onFeedbackChange: (v: string) => void;
 }): OptionWithDescription<ResponseValue>[] {
   const options: OptionWithDescription<ResponseValue>[] = [];
-  const usedLabel = usedPercent !== null ? ` (${usedPercent}% used)` : '';
+  const usedLabel = usedPercent !== null ? getMessage('permission.exitPlan.usedLabel', {
+    usedPercent
+  }) : '';
   if (showClearContext) {
     if (feature('TRANSCRIPT_CLASSIFIER') && isAutoModeAvailable) {
       options.push({
-        label: `Yes, clear context${usedLabel} and use auto mode`,
+        label: getMessage('permission.exitPlan.optClearAuto', {
+          usedLabel
+        }),
         value: 'yes-auto-clear-context'
       });
     } else if (isBypassPermissionsModeAvailable) {
       options.push({
-        label: `Yes, clear context${usedLabel} and bypass permissions`,
+        label: getMessage('permission.exitPlan.optClearBypass', {
+          usedLabel
+        }),
         value: 'yes-bypass-permissions'
       });
     } else {
       options.push({
-        label: `Yes, clear context${usedLabel} and auto-accept edits`,
+        label: getMessage('permission.exitPlan.optClearAcceptEdits', {
+          usedLabel
+        }),
         value: 'yes-accept-edits'
       });
     }
@@ -671,30 +681,30 @@ export function buildPlanApprovalOptions({
   // Slot 2: keep-context with elevated mode (same priority: auto > bypass > edits).
   if (feature('TRANSCRIPT_CLASSIFIER') && isAutoModeAvailable) {
     options.push({
-      label: 'Yes, and use auto mode',
+      label: getMessage('permission.exitPlan.optKeepAuto'),
       value: 'yes-resume-auto-mode'
     });
   } else if (isBypassPermissionsModeAvailable) {
     options.push({
-      label: 'Yes, and bypass permissions',
+      label: getMessage('permission.exitPlan.optKeepBypass'),
       value: 'yes-accept-edits-keep-context'
     });
   } else {
     options.push({
-      label: 'Yes, auto-accept edits',
+      label: getMessage('permission.exitPlan.optKeepAcceptEdits'),
       value: 'yes-accept-edits-keep-context'
     });
   }
   options.push({
-    label: 'Yes, manually approve edits',
+    label: getMessage('permission.exitPlan.optManualApprove'),
     value: 'yes-default-keep-context'
   });
   options.push({
     type: 'input',
-    label: 'No, keep planning',
+    label: getMessage('permission.exitPlan.optNoLabel'),
     value: 'no',
-    placeholder: 'Tell Deep Code what to change',
-    description: 'shift+tab to approve with this feedback',
+    placeholder: getMessage('permission.exitPlan.optNoPlaceholder'),
+    description: getMessage('permission.exitPlan.optNoDescription'),
     onChange: onFeedbackChange
   });
   return options;

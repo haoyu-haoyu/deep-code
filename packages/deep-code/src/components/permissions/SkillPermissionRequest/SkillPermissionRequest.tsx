@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import React, { useCallback, useMemo } from 'react';
 import { logError } from 'src/utils/log.js';
 import { getOriginalCwd } from '../../../bootstrap/state.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text } from '../../../ink.js';
 import { sanitizeToolNameForAnalytics } from '../../../services/analytics/metadata.js';
 import { SKILL_TOOL_NAME } from '../../../tools/SkillTool/constants.js';
@@ -16,13 +17,16 @@ import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 type SkillOptionValue = 'yes' | 'yes-exact' | 'yes-prefix' | 'no';
 export function SkillPermissionRequest(props) {
-  const $ = _c(51);
+  const $ = _c(66);
   const {
     toolUseConfirm,
     onDone,
     onReject,
     workerBadge
   } = props;
+  const {
+    t
+  } = useTranslation();
   const parseInput = _temp;
   let t0;
   if ($[0] !== toolUseConfirm.input) {
@@ -63,38 +67,45 @@ export function SkillPermissionRequest(props) {
   }
   const showAlwaysAllowOptions = t3;
   let t4;
-  if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[5] !== t) {
     t4 = [{
-      label: "Yes",
+      label: t('permission.shared.yes'),
       value: "yes",
       feedbackConfig: {
         type: "accept"
       }
     }];
-    $[5] = t4;
+    $[5] = t;
+    $[51] = t4;
   } else {
-    t4 = $[5];
+    t4 = $[51];
   }
   const baseOptions = t4;
   let alwaysAllowOptions;
-  if ($[6] !== skill) {
+  if ($[6] !== skill || $[52] !== t) {
     alwaysAllowOptions = [];
     if (showAlwaysAllowOptions) {
+      const [yesExactA, yesExactB, yesExactC] = t('permission.skill.optionYesExact').split(/\{skill\}|\{cwd\}/);
       const t5 = <Text bold={true}>{skill}</Text>;
       let t6;
-      if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
+      if ($[8] !== originalCwd) {
         t6 = <Text bold={true}>{originalCwd}</Text>;
-        $[8] = t6;
+        $[8] = originalCwd;
+        $[53] = t6;
       } else {
-        t6 = $[8];
+        t6 = $[53];
       }
       let t7;
-      if ($[9] !== t5) {
+      if ($[9] !== t5 || $[54] !== t6 || $[55] !== yesExactA || $[56] !== yesExactB || $[57] !== yesExactC) {
         t7 = {
-          label: <Text>Yes, and don't ask again for {t5} in{" "}{t6}</Text>,
+          label: <Text>{yesExactA}{t5}{yesExactB}{t6}{yesExactC}</Text>,
           value: "yes-exact"
         };
         $[9] = t5;
+        $[54] = t6;
+        $[55] = yesExactA;
+        $[56] = yesExactB;
+        $[57] = yesExactC;
         $[10] = t7;
       } else {
         t7 = $[10];
@@ -102,6 +113,7 @@ export function SkillPermissionRequest(props) {
       alwaysAllowOptions.push(t7);
       const spaceIndex = skill.indexOf(" ");
       if (spaceIndex > 0) {
+        const [yesPrefixA, yesPrefixB, yesPrefixC] = t('permission.skill.optionYesPrefix').split(/\{prefix\}|\{cwd\}/);
         const commandPrefix = skill.substring(0, spaceIndex);
         const t8 = commandPrefix + ":*";
         let t9;
@@ -113,19 +125,24 @@ export function SkillPermissionRequest(props) {
           t9 = $[12];
         }
         let t10;
-        if ($[13] === Symbol.for("react.memo_cache_sentinel")) {
+        if ($[13] !== originalCwd) {
           t10 = <Text bold={true}>{originalCwd}</Text>;
-          $[13] = t10;
+          $[13] = originalCwd;
+          $[58] = t10;
         } else {
-          t10 = $[13];
+          t10 = $[58];
         }
         let t11;
-        if ($[14] !== t9) {
+        if ($[14] !== t9 || $[59] !== t10 || $[60] !== yesPrefixA || $[61] !== yesPrefixB || $[62] !== yesPrefixC) {
           t11 = {
-            label: <Text>Yes, and don't ask again for{" "}{t9} commands in{" "}{t10}</Text>,
+            label: <Text>{yesPrefixA}{t9}{yesPrefixB}{t10}{yesPrefixC}</Text>,
             value: "yes-prefix"
           };
           $[14] = t9;
+          $[59] = t10;
+          $[60] = yesPrefixA;
+          $[61] = yesPrefixB;
+          $[62] = yesPrefixC;
           $[15] = t11;
         } else {
           t11 = $[15];
@@ -134,22 +151,24 @@ export function SkillPermissionRequest(props) {
       }
     }
     $[6] = skill;
+    $[52] = t;
     $[7] = alwaysAllowOptions;
   } else {
     alwaysAllowOptions = $[7];
   }
   let t5;
-  if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[16] !== t) {
     t5 = {
-      label: "No",
+      label: t('permission.shared.no'),
       value: "no",
       feedbackConfig: {
         type: "reject"
       }
     };
-    $[16] = t5;
+    $[16] = t;
+    $[63] = t5;
   } else {
-    t5 = $[16];
+    t5 = $[63];
   }
   const noOption = t5;
   let t6;
@@ -300,13 +319,16 @@ export function SkillPermissionRequest(props) {
     t11 = $[32];
   }
   const handleCancel = t11;
-  const t12 = `Use skill "${skill}"?`;
+  const t12 = t('permission.skill.title', {
+    skill
+  });
   let t13;
-  if ($[33] === Symbol.for("react.memo_cache_sentinel")) {
-    t13 = <Text>Deep Code may use instructions, code, or files from this Skill.</Text>;
-    $[33] = t13;
+  if ($[33] !== t) {
+    t13 = <Text>{t('permission.skill.body')}</Text>;
+    $[33] = t;
+    $[64] = t13;
   } else {
-    t13 = $[33];
+    t13 = $[64];
   }
   const t14 = commandObj?.description;
   let t15;
@@ -346,12 +368,13 @@ export function SkillPermissionRequest(props) {
     t18 = $[45];
   }
   let t19;
-  if ($[46] !== t12 || $[47] !== t15 || $[48] !== t18 || $[49] !== workerBadge) {
+  if ($[46] !== t12 || $[47] !== t15 || $[48] !== t18 || $[49] !== workerBadge || $[65] !== t13) {
     t19 = <PermissionDialog title={t12} workerBadge={workerBadge}>{t13}{t15}{t18}</PermissionDialog>;
     $[46] = t12;
     $[47] = t15;
     $[48] = t18;
     $[49] = workerBadge;
+    $[65] = t13;
     $[50] = t19;
   } else {
     t19 = $[50];
