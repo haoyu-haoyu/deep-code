@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { handlePlanModeTransition } from '../../../bootstrap/state.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text } from '../../../ink.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../../services/analytics/index.js';
 import { useAppState } from '../../../state/AppState.js';
@@ -9,13 +10,16 @@ import { Select } from '../../CustomSelect/index.js';
 import { PermissionDialog } from '../PermissionDialog.js';
 import type { PermissionRequestProps } from '../PermissionRequest.js';
 export function EnterPlanModePermissionRequest(t0) {
-  const $ = _c(18);
+  const $ = _c(24);
   const {
     toolUseConfirm,
     onDone,
     onReject,
     workerBadge
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const toolPermissionContextMode = useAppState(_temp);
   let t1;
   if ($[0] !== onDone || $[1] !== onReject || $[2] !== toolPermissionContextMode || $[3] !== toolUseConfirm) {
@@ -48,45 +52,50 @@ export function EnterPlanModePermissionRequest(t0) {
   }
   const handleResponse = t1;
   let t2;
-  if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Text>Deep Code wants to enter plan mode to explore and design an implementation approach.</Text>;
-    $[5] = t2;
+  if ($[5] !== t) {
+    t2 = <Text>{t('permission.enterPlan.intro')}</Text>;
+    $[5] = t;
+    $[18] = t2;
   } else {
-    t2 = $[5];
+    t2 = $[18];
   }
   let t3;
-  if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Box marginTop={1} flexDirection="column"><Text dimColor={true}>In plan mode, Deep Code will:</Text><Text dimColor={true}> · Explore the codebase thoroughly</Text><Text dimColor={true}> · Identify existing patterns</Text><Text dimColor={true}> · Design an implementation strategy</Text><Text dimColor={true}> · Present a plan for your approval</Text></Box>;
-    $[6] = t3;
+  if ($[6] !== t) {
+    t3 = <Box marginTop={1} flexDirection="column"><Text dimColor={true}>{t('permission.enterPlan.willHeading')}</Text><Text dimColor={true}>{t('permission.enterPlan.bulletExplore')}</Text><Text dimColor={true}>{t('permission.enterPlan.bulletIdentify')}</Text><Text dimColor={true}>{t('permission.enterPlan.bulletDesign')}</Text><Text dimColor={true}>{t('permission.enterPlan.bulletPresent')}</Text></Box>;
+    $[6] = t;
+    $[19] = t3;
   } else {
-    t3 = $[6];
+    t3 = $[19];
   }
   let t4;
-  if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <Box marginTop={1}><Text dimColor={true}>No code changes will be made until you approve the plan.</Text></Box>;
-    $[7] = t4;
+  if ($[7] !== t) {
+    t4 = <Box marginTop={1}><Text dimColor={true}>{t('permission.enterPlan.noChangesNote')}</Text></Box>;
+    $[7] = t;
+    $[20] = t4;
   } else {
-    t4 = $[7];
+    t4 = $[20];
   }
   let t5;
-  if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[8] !== t) {
     t5 = {
-      label: "Yes, enter plan mode",
+      label: t('permission.enterPlan.optionYes'),
       value: "yes" as const
     };
-    $[8] = t5;
+    $[8] = t;
+    $[21] = t5;
   } else {
-    t5 = $[8];
+    t5 = $[21];
   }
   let t6;
-  if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[9] !== t5) {
     t6 = [t5, {
-      label: "No, start implementing now",
+      label: t('permission.enterPlan.optionNo'),
       value: "no" as const
     }];
-    $[9] = t6;
+    $[9] = t5;
+    $[22] = t6;
   } else {
-    t6 = $[9];
+    t6 = $[22];
   }
   let t7;
   if ($[10] !== handleResponse) {
@@ -106,13 +115,14 @@ export function EnterPlanModePermissionRequest(t0) {
     t8 = $[14];
   }
   let t9;
-  if ($[15] !== t8 || $[16] !== workerBadge) {
-    t9 = <PermissionDialog color="planMode" title="Enter plan mode?" workerBadge={workerBadge}>{t8}</PermissionDialog>;
+  if ($[15] !== t8 || $[16] !== workerBadge || $[17] !== t) {
+    t9 = <PermissionDialog color="planMode" title={t('permission.enterPlan.title')} workerBadge={workerBadge}>{t8}</PermissionDialog>;
     $[15] = t8;
     $[16] = workerBadge;
-    $[17] = t9;
+    $[17] = t;
+    $[23] = t9;
   } else {
-    t9 = $[17];
+    t9 = $[23];
   }
   return t9;
 }

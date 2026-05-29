@@ -1,5 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useMemo } from 'react';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text, useTheme } from '../../../ink.js';
 import { WebFetchTool } from '../../../tools/WebFetchTool/WebFetchTool.js';
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
@@ -27,7 +28,7 @@ function inputToPermissionRuleContent(input: {
   }
 }
 export function WebFetchPermissionRequest(t0) {
-  const $ = _c(41);
+  const $ = _c(51);
   const {
     toolUseConfirm,
     onDone,
@@ -35,6 +36,9 @@ export function WebFetchPermissionRequest(t0) {
     verbose,
     workerBadge
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const [theme] = useTheme();
   const {
     url
@@ -71,45 +75,54 @@ export function WebFetchPermissionRequest(t0) {
   }
   const showAlwaysAllowOptions = t3;
   let t4;
-  if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
+  if ($[4] !== t) {
     t4 = {
-      label: "Yes",
+      label: t('permission.shared.yes'),
       value: "yes"
     };
-    $[4] = t4;
+    $[4] = t;
+    $[41] = t4;
   } else {
-    t4 = $[4];
+    t4 = $[41];
   }
   let result;
-  if ($[5] !== hostname) {
+  if ($[5] !== hostname || $[42] !== t || $[43] !== t4) {
     result = [t4];
     if (showAlwaysAllowOptions) {
+      const [yesDomainA, yesDomainB] = t('permission.webFetch.optionYesDontAskDomain').split(/\{hostname\}/);
       const t5 = <Text bold={true}>{hostname}</Text>;
       let t6;
-      if ($[7] !== t5) {
+      if ($[7] !== t5 || $[44] !== yesDomainA || $[45] !== yesDomainB) {
         t6 = {
-          label: <Text>Yes, and don't ask again for {t5}</Text>,
+          label: <Text>{yesDomainA}{t5}{yesDomainB}</Text>,
           value: "yes-dont-ask-again-domain"
         };
         $[7] = t5;
+        $[44] = yesDomainA;
+        $[45] = yesDomainB;
         $[8] = t6;
       } else {
         t6 = $[8];
       }
       result.push(t6);
     }
+    const [noDiffA, noDiffB] = t('permission.webFetch.optionNo').split(/\(esc\)/);
     let t5;
-    if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
+    if ($[9] !== noDiffA || $[46] !== noDiffB) {
       t5 = {
-        label: <Text>No, and tell Deep Code what to do differently <Text bold={true}>(esc)</Text></Text>,
+        label: <Text>{noDiffA}<Text bold={true}>(esc)</Text>{noDiffB}</Text>,
         value: "no"
       };
-      $[9] = t5;
+      $[9] = noDiffA;
+      $[46] = noDiffB;
+      $[47] = t5;
     } else {
-      t5 = $[9];
+      t5 = $[47];
     }
     result.push(t5);
     $[5] = hostname;
+    $[42] = t;
+    $[43] = t4;
     $[6] = result;
   } else {
     result = $[6];
@@ -210,11 +223,12 @@ export function WebFetchPermissionRequest(t0) {
     t10 = $[26];
   }
   let t11;
-  if ($[27] === Symbol.for("react.memo_cache_sentinel")) {
-    t11 = <Text>Do you want to allow Deep Code to fetch this content?</Text>;
-    $[27] = t11;
+  if ($[27] !== t) {
+    t11 = <Text>{t('permission.webFetch.prompt')}</Text>;
+    $[27] = t;
+    $[48] = t11;
   } else {
-    t11 = $[27];
+    t11 = $[48];
   }
   let t12;
   if ($[28] !== onChange) {
@@ -235,20 +249,22 @@ export function WebFetchPermissionRequest(t0) {
     t13 = $[33];
   }
   let t14;
-  if ($[34] !== t10 || $[35] !== t13) {
+  if ($[34] !== t10 || $[35] !== t13 || $[49] !== t11) {
     t14 = <Box flexDirection="column">{t10}{t11}{t13}</Box>;
     $[34] = t10;
     $[35] = t13;
+    $[49] = t11;
     $[36] = t14;
   } else {
     t14 = $[36];
   }
   let t15;
-  if ($[37] !== t14 || $[38] !== t9 || $[39] !== workerBadge) {
-    t15 = <PermissionDialog title="Fetch" workerBadge={workerBadge}>{t9}{t14}</PermissionDialog>;
+  if ($[37] !== t14 || $[38] !== t9 || $[39] !== workerBadge || $[50] !== t) {
+    t15 = <PermissionDialog title={t('permission.webFetch.title')} workerBadge={workerBadge}>{t9}{t14}</PermissionDialog>;
     $[37] = t14;
     $[38] = t9;
     $[39] = workerBadge;
+    $[50] = t;
     $[40] = t15;
   } else {
     t15 = $[40];
