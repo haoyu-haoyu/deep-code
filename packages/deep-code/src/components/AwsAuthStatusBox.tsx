@@ -1,10 +1,14 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Link, Text } from '../ink.js';
 import { type AwsAuthStatus, AwsAuthStatusManager } from '../utils/awsAuthStatusManager.js';
 const URL_RE = /https?:\/\/\S+/;
 export function AwsAuthStatusBox() {
-  const $ = _c(11);
+  const $ = _c(12);
+  const {
+    t
+  } = useTranslation();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = AwsAuthStatusManager.getInstance().getStatus();
@@ -35,11 +39,12 @@ export function AwsAuthStatusBox() {
     return null;
   }
   let t3;
-  if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Text bold={true} color="permission">Cloud Authentication</Text>;
-    $[3] = t3;
+  if ($[3] !== t) {
+    t3 = <Text bold={true} color="permission">{t('setup.awsAuth.heading')}</Text>;
+    $[3] = t;
+    $[11] = t3;
   } else {
-    t3 = $[3];
+    t3 = $[11];
   }
   let t4;
   if ($[4] !== status.output) {

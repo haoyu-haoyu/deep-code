@@ -5,6 +5,7 @@ import { logForDebugging } from 'src/utils/debug.js';
 import { logError } from 'src/utils/log.js';
 import { useInterval } from 'usehooks-ts';
 import { useUpdateNotification } from '../hooks/useUpdateNotification.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Text } from '../ink.js';
 import type { AutoUpdaterResult } from '../utils/autoUpdater.js';
 import { getMaxVersion, getMaxVersionMessage } from '../utils/autoUpdater.js';
@@ -56,6 +57,7 @@ export function NativeAutoUpdater({
   showSuccessMessage,
   verbose
 }: Props): React.ReactNode {
+  const { t } = useTranslation();
   const [versions, setVersions] = useState<{
     current?: string | null;
     latest?: string | null;
@@ -170,19 +172,20 @@ export function NativeAutoUpdater({
   if (!shouldRender) {
     return null;
   }
+  const [failStatusA, failStatusB] = t('update.failedTryStatus').split('{status}');
   return <Box flexDirection="row" gap={1}>
       {verbose && <Text dimColor wrap="truncate">
           current: {versions.current} &middot; {channel}: {versions.latest}
         </Text>}
       {isUpdating ? <Box>
           <Text dimColor wrap="truncate">
-            Checking for updates
+            {t('update.checkingForUpdates')}
           </Text>
         </Box> : autoUpdaterResult?.status === 'success' && showSuccessMessage && updateSemver && <Text color="success" wrap="truncate">
-            ✓ Update installed · Restart to update
+            {t('update.installedRestartToUpdate')}
           </Text>}
       {autoUpdaterResult?.status === 'install_failed' && <Text color="error" wrap="truncate">
-          ✗ Auto-update failed &middot; Try <Text bold>/status</Text>
+          {failStatusA}<Text bold>/status</Text>{failStatusB}
         </Text>}
       {maxVersionIssue && "external" === 'ant' && <Text color="warning">
           ⚠ Known issue: {maxVersionIssue} &middot; Run{' '}
