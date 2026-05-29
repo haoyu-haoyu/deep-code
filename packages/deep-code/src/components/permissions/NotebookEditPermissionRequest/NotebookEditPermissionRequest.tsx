@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import { basename } from 'path';
 import React from 'react';
 import type { z } from 'zod/v4';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Text } from '../../../ink.js';
 import { NotebookEditTool } from '../../../tools/NotebookEditTool/NotebookEditTool.js';
 import { logError } from '../../../utils/log.js';
@@ -10,7 +11,8 @@ import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { NotebookEditToolDiff } from './NotebookEditToolDiff.js';
 type NotebookEditInput = z.infer<typeof NotebookEditTool.inputSchema>;
 export function NotebookEditPermissionRequest(props) {
-  const $ = _c(52);
+  const $ = _c(53);
+  const { t } = useTranslation();
   const parseInput = _temp;
   let T0;
   let T1;
@@ -29,6 +31,7 @@ export function NotebookEditPermissionRequest(props) {
   let t7;
   let t8;
   let t9;
+  let questionSuffix;
   if ($[0] !== props.onDone || $[1] !== props.onReject || $[2] !== props.toolUseConfirm || $[3] !== props.toolUseContext || $[4] !== props.workerBadge) {
     parsed = parseInput(props.toolUseConfirm.input);
     const {
@@ -38,18 +41,20 @@ export function NotebookEditPermissionRequest(props) {
     } = parsed;
     notebook_path = t11;
     language = cell_type === "markdown" ? "markdown" : "python";
-    const editTypeText = edit_mode === "insert" ? "insert this cell into" : edit_mode === "delete" ? "delete this cell from" : "make this edit to";
+    const editTypeText = edit_mode === "insert" ? t('permission.notebookEdit.actionInsert') : edit_mode === "delete" ? t('permission.notebookEdit.actionDelete') : t('permission.notebookEdit.actionReplace');
     T2 = FilePermissionDialog;
     t5 = props.toolUseConfirm;
     t6 = props.toolUseContext;
     t7 = props.onDone;
     t8 = props.onReject;
     t9 = props.workerBadge;
-    t10 = "Edit notebook";
+    t10 = t('permission.notebookEdit.title');
     T1 = Text;
-    t2 = "Do you want to ";
+    const [questionA, questionB, questionC] = t('permission.notebookEdit.question').split(/\{editAction\}|\{fileName\}/);
+    t2 = questionA;
     t3 = editTypeText;
-    t4 = " ";
+    t4 = questionB;
+    questionSuffix = questionC;
     T0 = Text;
     t0 = true;
     t1 = basename(notebook_path);
@@ -75,6 +80,7 @@ export function NotebookEditPermissionRequest(props) {
     $[19] = t7;
     $[20] = t8;
     $[21] = t9;
+    $[52] = questionSuffix;
   } else {
     T0 = $[5];
     T1 = $[6];
@@ -93,6 +99,7 @@ export function NotebookEditPermissionRequest(props) {
     t7 = $[19];
     t8 = $[20];
     t9 = $[21];
+    questionSuffix = $[52];
   }
   let t11;
   if ($[22] !== T0 || $[23] !== t0 || $[24] !== t1) {
@@ -106,7 +113,7 @@ export function NotebookEditPermissionRequest(props) {
   }
   let t12;
   if ($[26] !== T1 || $[27] !== t11 || $[28] !== t2 || $[29] !== t3 || $[30] !== t4) {
-    t12 = <T1>{t2}{t3}{t4}{t11}?</T1>;
+    t12 = <T1>{t2}{t3}{t4}{t11}{questionSuffix}</T1>;
     $[26] = T1;
     $[27] = t11;
     $[28] = t2;

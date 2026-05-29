@@ -4,6 +4,7 @@ import React from 'react';
 import { FileEditToolDiff } from 'src/components/FileEditToolDiff.js';
 import { getCwd } from 'src/utils/cwd.js';
 import type { z } from 'zod/v4';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Text } from '../../../ink.js';
 import { FileEditTool } from '../../../tools/FileEditTool/FileEditTool.js';
 import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
@@ -27,6 +28,7 @@ const ideDiffSupport: IDEDiffSupport<FileEditInput> = {
 };
 export function FileEditPermissionRequest(props) {
   const $ = _c(51);
+  const { t } = useTranslation();
   const parseInput = _temp;
   let T0;
   let T1;
@@ -60,11 +62,12 @@ export function FileEditPermissionRequest(props) {
     t6 = props.onDone;
     t7 = props.onReject;
     t8 = props.workerBadge;
-    t9 = "Edit file";
+    t9 = t('permission.fileEdit.title');
     t10 = relative(getCwd(), file_path);
     T1 = Text;
-    t2 = "Do you want to make this edit to";
-    t3 = " ";
+    const [questionA, questionB] = t('permission.fileEdit.question').split(/\{fileName\}/);
+    t2 = questionA;
+    t3 = questionB;
     T0 = Text;
     t0 = true;
     t1 = basename(file_path);
@@ -123,7 +126,7 @@ export function FileEditPermissionRequest(props) {
   }
   let t12;
   if ($[27] !== T1 || $[28] !== t11 || $[29] !== t2 || $[30] !== t3) {
-    t12 = <T1>{t2}{t3}{t11}?</T1>;
+    t12 = <T1>{t2}{t11}{t3}</T1>;
     $[27] = T1;
     $[28] = t11;
     $[29] = t2;

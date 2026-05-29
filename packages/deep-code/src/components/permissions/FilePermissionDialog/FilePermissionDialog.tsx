@@ -1,6 +1,8 @@
 import { relative } from 'path';
 import React, { useMemo } from 'react';
 import { useDiffInIDE } from '../../../hooks/useDiffInIDE.js';
+import { getMessage } from '../../../i18n/index.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text } from '../../../ink.js';
 import type { ToolUseContext } from '../../../Tool.js';
 import { getLanguageName } from '../../../utils/cliHighlight.js';
@@ -52,7 +54,7 @@ export function FilePermissionDialog<T extends ToolInput = ToolInput>({
   onReject,
   title,
   subtitle,
-  question = 'Do you want to proceed?',
+  question = getMessage('permission.fileDialog.defaultQuestion'),
   content,
   completionType = 'tool_use_single',
   path,
@@ -62,6 +64,7 @@ export function FilePermissionDialog<T extends ToolInput = ToolInput>({
   workerBadge,
   languageName: languageNameOverride
 }: FilePermissionDialogProps<T>): React.ReactNode {
+  const { t } = useTranslation();
   // Derive from path unless caller provided an explicit override (NotebookEdit
   // passes 'python'/'markdown' from cell_type). getLanguageName is async;
   // downstream UnaryEvent.language_name and logPermissionEvent already accept
@@ -162,7 +165,11 @@ export function FilePermissionDialog<T extends ToolInput = ToolInput>({
   const isSymlinkOutsideCwd = symlinkTarget != null && relative(getCwd(), symlinkTarget).startsWith('..');
   const symlinkWarning = symlinkTarget ? <Box paddingX={1} marginBottom={1}>
       <Text color="warning">
-        {isSymlinkOutsideCwd ? `This will modify ${symlinkTarget} (outside working directory) via a symlink` : `Symlink target: ${symlinkTarget}`}
+        {isSymlinkOutsideCwd ? t('permission.fileDialog.symlinkOutsideCwdWarning', {
+        target: symlinkTarget
+      }) : t('permission.fileDialog.symlinkTarget', {
+        target: symlinkTarget
+      })}
       </Text>
     </Box> : null;
   return <>
@@ -195,8 +202,8 @@ export function FilePermissionDialog<T extends ToolInput = ToolInput>({
       </PermissionDialog>
       <Box paddingX={1} marginTop={1}>
         <Text dimColor>
-          Esc to cancel
-          {(focusedOption === 'yes' && !yesInputMode || focusedOption === 'no' && !noInputMode) && ' · Tab to amend'}
+          {t('permission.fileDialog.escToCancel')}
+          {(focusedOption === 'yes' && !yesInputMode || focusedOption === 'no' && !noInputMode) && t('permission.fileDialog.tabToAmend')}
         </Text>
       </Box>
     </>;

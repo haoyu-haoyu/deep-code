@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import { relative } from 'path';
 import * as React from 'react';
 import { Suspense, use, useMemo } from 'react';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, NoSelect, Text } from '../../../ink.js';
 import type { NotebookCellType, NotebookContent } from '../../../types/notebook.js';
 import { intersperse } from '../../../utils/array.js';
@@ -74,6 +75,7 @@ function NotebookEditToolDiffInner(t0) {
     promise
   } = t0;
   const edit_mode = t1 === undefined ? "replace" : t1;
+  const { t } = useTranslation();
   const notebookData = use(promise);
   let t2;
   if ($[0] !== cell_id || $[1] !== notebookData) {
@@ -154,17 +156,17 @@ function NotebookEditToolDiffInner(t0) {
   bb2: switch (edit_mode) {
     case "insert":
       {
-        editTypeDescription = "Insert new cell";
+        editTypeDescription = t('permission.notebookEdit.diffInsert');
         break bb2;
       }
     case "delete":
       {
-        editTypeDescription = "Delete cell";
+        editTypeDescription = t('permission.notebookEdit.diffDelete');
         break bb2;
       }
     default:
       {
-        editTypeDescription = "Replace cell contents";
+        editTypeDescription = t('permission.notebookEdit.diffReplace');
       }
   }
   let t4;
@@ -184,10 +186,13 @@ function NotebookEditToolDiffInner(t0) {
   } else {
     t5 = $[15];
   }
-  const t6 = cell_type ? ` (${cell_type})` : "";
+  const t6 = cell_type ? t('permission.notebookEdit.cellTypeSuffix', {
+    cellType: cell_type
+  }) : "";
+  const [headerA, headerB, headerC, headerD] = t('permission.notebookEdit.diffCellHeader').split(/\{description\}|\{cellId\}|\{cellTypeSuffix\}/);
   let t7;
   if ($[16] !== cell_id || $[17] !== editTypeDescription || $[18] !== t6) {
-    t7 = <Text dimColor={true}>{editTypeDescription} for cell {cell_id}{t6}</Text>;
+    t7 = <Text dimColor={true}>{headerA}{editTypeDescription}{headerB}{cell_id}{headerC}{t6}{headerD}</Text>;
     $[16] = cell_id;
     $[17] = editTypeDescription;
     $[18] = t6;
