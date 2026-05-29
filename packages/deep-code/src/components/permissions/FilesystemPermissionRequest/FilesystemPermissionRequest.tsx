@@ -1,5 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text, useTheme } from '../../../ink.js';
 import { FallbackPermissionRequest } from '../FallbackPermissionRequest.js';
 import { FilePermissionDialog } from '../FilePermissionDialog/FilePermissionDialog.js';
@@ -26,6 +27,9 @@ export function FilesystemPermissionRequest(t0) {
     toolUseContext,
     workerBadge
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const [theme] = useTheme();
   let t1;
   if ($[0] !== toolUseConfirm) {
@@ -47,8 +51,10 @@ export function FilesystemPermissionRequest(t0) {
   }
   const userFacingName = t2;
   const isReadOnly = toolUseConfirm.tool.isReadOnly(toolUseConfirm.input);
-  const userFacingReadOrEdit = isReadOnly ? "Read" : "Edit";
-  const title = `${userFacingReadOrEdit} file`;
+  const userFacingReadOrEdit = isReadOnly ? t('permission.filesystem.read') : t('permission.filesystem.edit');
+  const title = t('permission.filesystem.title', {
+    operation: userFacingReadOrEdit
+  });
   const parseInput = _temp;
   if (!path) {
     let t3;

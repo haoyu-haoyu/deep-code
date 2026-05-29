@@ -1,3 +1,4 @@
+import { getMessage } from '../../../i18n/index.js';
 import { POWERSHELL_TOOL_NAME } from '../../../tools/PowerShellTool/toolName.js';
 import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpdateSchema.js';
 import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
@@ -25,15 +26,15 @@ export function powershellToolUseOptions({
   if (yesInputMode) {
     options.push({
       type: 'input',
-      label: 'Yes',
+      label: getMessage('permission.shell.yes'),
       value: 'yes',
-      placeholder: 'and tell Deep Code what to do next',
+      placeholder: getMessage('permission.shell.yesFeedbackPlaceholder'),
       onChange: onAcceptFeedbackChange,
       allowEmptySubmitToCancel: true
     });
   } else {
     options.push({
-      label: 'Yes',
+      label: getMessage('permission.shell.yes'),
       value: 'yes'
     });
   }
@@ -51,9 +52,9 @@ export function powershellToolUseOptions({
     if (editablePrefix !== undefined && onEditablePrefixChange && !hasNonPowerShellSuggestions) {
       options.push({
         type: 'input',
-        label: 'Yes, and don\u2019t ask again for',
+        label: getMessage('permission.shell.yesDontAskAgainFor'),
         value: 'yes-prefix-edited',
-        placeholder: 'command prefix (e.g., Get-Process:*)',
+        placeholder: getMessage('permission.powershell.prefixPlaceholder'),
         initialValue: editablePrefix,
         onChange: onEditablePrefixChange,
         allowEmptySubmitToCancel: true,
@@ -74,15 +75,15 @@ export function powershellToolUseOptions({
   if (noInputMode) {
     options.push({
       type: 'input',
-      label: 'No',
+      label: getMessage('permission.shell.no'),
       value: 'no',
-      placeholder: 'and tell Deep Code what to do differently',
+      placeholder: getMessage('permission.shell.noFeedbackPlaceholder'),
       onChange: onRejectFeedbackChange,
       allowEmptySubmitToCancel: true
     });
   } else {
     options.push({
-      label: 'No',
+      label: getMessage('permission.shell.no'),
       value: 'no'
     });
   }
