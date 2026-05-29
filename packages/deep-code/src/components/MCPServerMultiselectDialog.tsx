@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import partition from 'lodash-es/partition.js';
 import React, { useCallback } from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Text } from '../ink.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
@@ -15,11 +16,14 @@ type Props = {
   onDone(): void;
 };
 export function MCPServerMultiselectDialog(t0) {
-  const $ = _c(21);
+  const $ = _c(22);
   const {
     serverNames,
     onDone
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== onDone || $[1] !== serverNames) {
     t1 = function onSubmit(selectedServers) {

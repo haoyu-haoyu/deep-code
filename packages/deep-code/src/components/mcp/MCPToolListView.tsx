@@ -1,5 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Text } from '../../ink.js';
 import { extractMcpToolDisplayName, getMcpDisplayName } from '../../services/mcp/mcpStringUtils.js';
 import { filterToolsByServer } from '../../services/mcp/utils.js';
@@ -18,12 +20,15 @@ type Props = {
   onBack: () => void;
 };
 export function MCPToolListView(t0) {
-  const $ = _c(21);
+  const $ = _c(23);
   const {
     server,
     onSelectTool,
     onBack
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const mcpTools = useAppState(_temp);
   let t1;
   bb0: {
@@ -53,7 +58,7 @@ export function MCPToolListView(t0) {
   let t2;
   if ($[4] !== server.name || $[5] !== serverTools) {
     let t3;
-    if ($[7] !== server.name) {
+    if ($[7] !== server.name || $[21] !== t) {
       t3 = (tool, index) => {
         const toolName = getMcpDisplayName(tool.name, server.name);
         const fullDisplayName = tool.userFacingName ? tool.userFacingName({}) : toolName;
@@ -63,13 +68,13 @@ export function MCPToolListView(t0) {
         const isOpenWorld = tool.isOpenWorld?.({}) ?? false;
         const annotations = [];
         if (isReadOnly) {
-          annotations.push("read-only");
+          annotations.push(t('mcp.toolList.annotationReadOnly'));
         }
         if (isDestructive) {
-          annotations.push("destructive");
+          annotations.push(t('mcp.toolList.annotationDestructive'));
         }
         if (isOpenWorld) {
-          annotations.push("open-world");
+          annotations.push(t('mcp.toolList.annotationOpenWorld'));
         }
         return {
           label: displayName,
@@ -79,6 +84,7 @@ export function MCPToolListView(t0) {
         };
       };
       $[7] = server.name;
+      $[21] = t;
       $[8] = t3;
     } else {
       t3 = $[8];
@@ -91,7 +97,9 @@ export function MCPToolListView(t0) {
     t2 = $[6];
   }
   const toolOptions = t2;
-  const t3 = `Tools for ${server.name}`;
+  const t3 = t('mcp.toolList.title', {
+    serverName: server.name
+  });
   const t4 = serverTools.length;
   let t5;
   if ($[9] !== serverTools.length) {
@@ -101,10 +109,13 @@ export function MCPToolListView(t0) {
   } else {
     t5 = $[10];
   }
-  const t6 = `${t4} ${t5}`;
+  const t6 = t('mcp.toolList.subtitle', {
+    count: t4,
+    toolLabel: t5
+  });
   let t7;
-  if ($[11] !== onBack || $[12] !== onSelectTool || $[13] !== serverTools || $[14] !== toolOptions) {
-    t7 = serverTools.length === 0 ? <Text dimColor={true}>No tools available</Text> : <Select options={toolOptions} onChange={value => {
+  if ($[11] !== onBack || $[12] !== onSelectTool || $[13] !== serverTools || $[14] !== toolOptions || $[22] !== t) {
+    t7 = serverTools.length === 0 ? <Text dimColor={true}>{t('mcp.toolList.empty')}</Text> : <Select options={toolOptions} onChange={value => {
       const index_0 = parseInt(value);
       const tool_0 = serverTools[index_0];
       if (tool_0) {
@@ -115,6 +126,7 @@ export function MCPToolListView(t0) {
     $[12] = onSelectTool;
     $[13] = serverTools;
     $[14] = toolOptions;
+    $[22] = t;
     $[15] = t7;
   } else {
     t7 = $[15];
@@ -133,7 +145,9 @@ export function MCPToolListView(t0) {
   return t8;
 }
 function _temp2(exitState) {
-  return exitState.pending ? <Text>Press {exitState.keyName} again to exit</Text> : <Byline><KeyboardShortcutHint shortcut={"\u2191\u2193"} action="navigate" /><KeyboardShortcutHint shortcut="Enter" action="select" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" /></Byline>;
+  return exitState.pending ? <Text>{getMessage('mcp.common.pressAgainToExit', {
+    keyName: exitState.keyName
+  })}</Text> : <Byline><KeyboardShortcutHint shortcut={"\u2191\u2193"} action="navigate" /><KeyboardShortcutHint shortcut="Enter" action="select" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" /></Byline>;
 }
 function _temp(s) {
   return s.mcp.tools;
