@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import { basename, relative } from 'path';
 import React, { useMemo } from 'react';
 import type { z } from 'zod/v4';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Text } from '../../../ink.js';
 import { FileWriteTool } from '../../../tools/FileWriteTool/FileWriteTool.js';
 import { getCwd } from '../../../utils/cwd.js';
@@ -37,6 +38,7 @@ const ideDiffSupport: IDEDiffSupport<FileWriteToolInput> = {
 };
 export function FileWritePermissionRequest(props) {
   const $ = _c(30);
+  const { t } = useTranslation();
   const parseInput = _temp;
   let t0;
   if ($[0] !== props.toolUseConfirm.input) {
@@ -85,13 +87,12 @@ export function FileWritePermissionRequest(props) {
     fileExists,
     oldContent
   } = t1;
-  const actionText = fileExists ? "overwrite" : "create";
   const t2 = props.toolUseConfirm;
   const t3 = props.toolUseContext;
   const t4 = props.onDone;
   const t5 = props.onReject;
   const t6 = props.workerBadge;
-  const t7 = fileExists ? "Overwrite file" : "Create file";
+  const t7 = fileExists ? t('permission.fileWrite.titleOverwrite') : t('permission.fileWrite.titleCreate');
   let t8;
   if ($[5] !== file_path) {
     t8 = relative(getCwd(), file_path);
@@ -117,9 +118,10 @@ export function FileWritePermissionRequest(props) {
     t10 = $[10];
   }
   let t11;
-  if ($[11] !== actionText || $[12] !== t10) {
-    t11 = <Text>Do you want to {actionText} {t10}?</Text>;
-    $[11] = actionText;
+  if ($[11] !== fileExists || $[12] !== t10) {
+    const [questionA, questionB] = t(fileExists ? 'permission.fileWrite.questionOverwrite' : 'permission.fileWrite.questionCreate').split(/\{fileName\}/);
+    t11 = <Text>{questionA}{t10}{questionB}</Text>;
+    $[11] = fileExists;
     $[12] = t10;
     $[13] = t11;
   } else {

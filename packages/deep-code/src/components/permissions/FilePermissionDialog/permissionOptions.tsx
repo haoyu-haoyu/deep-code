@@ -2,6 +2,7 @@ import { homedir } from 'os';
 import { basename, join, sep } from 'path';
 import React, { type ReactNode } from 'react';
 import { getOriginalCwd } from '../../../bootstrap/state.js';
+import { getMessage } from '../../../i18n/index.js';
 import { Text } from '../../../ink.js';
 import { getShortcutDisplay } from '../../../keybindings/shortcutFormat.js';
 import type { ToolPermissionContext } from '../../../Tool.js';
@@ -74,9 +75,9 @@ export function getFilePermissionOptions({
   if (yesInputMode && onAcceptFeedbackChange) {
     options.push({
       type: 'input',
-      label: 'Yes',
+      label: getMessage('permission.fileOptions.yes'),
       value: 'yes',
-      placeholder: 'and tell Deep Code what to do next',
+      placeholder: getMessage('permission.fileOptions.acceptFeedbackPlaceholder'),
       onChange: onAcceptFeedbackChange,
       allowEmptySubmitToCancel: true,
       option: {
@@ -85,7 +86,7 @@ export function getFilePermissionOptions({
     });
   } else {
     options.push({
-      label: 'Yes',
+      label: getMessage('permission.fileOptions.yes'),
       value: 'yes',
       option: {
         type: 'accept-once'
@@ -104,7 +105,7 @@ export function getFilePermissionOptions({
   // persisted permission rules.
   if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== 'read') {
     options.push({
-      label: 'Yes, and allow Deep Code to edit its own settings for this session',
+      label: getMessage('permission.fileOptions.yesClaudeFolder'),
       value: 'yes-claude-folder',
       option: {
         type: 'accept-session',
@@ -117,26 +118,26 @@ export function getFilePermissionOptions({
     if (inAllowedPath) {
       // Inside working directory
       if (operationType === 'read') {
-        sessionLabel = 'Yes, during this session';
+        sessionLabel = getMessage('permission.fileOptions.yesDuringSession');
       } else {
+        const [editsSessA, editsSessB] = getMessage('permission.fileOptions.yesAllEditsSession').split(/\(\{shortcut\}\)/);
         sessionLabel = <Text>
-            Yes, allow all edits during this session{' '}
-            <Text bold>({modeCycleShortcut})</Text>
+            {editsSessA}<Text bold>({modeCycleShortcut})</Text>{editsSessB}
           </Text>;
       }
     } else {
       // Outside working directory - include directory name
       const dirPath = getDirectoryForPath(filePath);
-      const dirName = basename(dirPath) || 'this directory';
+      const dirName = basename(dirPath) || getMessage('permission.fileOptions.thisDirectory');
       if (operationType === 'read') {
+        const [readDirA, readDirB] = getMessage('permission.fileOptions.yesAllowReadingFromDir').split(/\{dir\}\//);
         sessionLabel = <Text>
-            Yes, allow reading from <Text bold>{dirName}/</Text> during this
-            session
+            {readDirA}<Text bold>{dirName}/</Text>{readDirB}
           </Text>;
       } else {
+        const [editsDirA, editsDirB, editsDirC] = getMessage('permission.fileOptions.yesAllEditsInDirSession').split(/\{dir\}\/|\(\{shortcut\}\)/);
         sessionLabel = <Text>
-            Yes, allow all edits in <Text bold>{dirName}/</Text> during this
-            session <Text bold>({modeCycleShortcut})</Text>
+            {editsDirA}<Text bold>{dirName}/</Text>{editsDirB}<Text bold>({modeCycleShortcut})</Text>{editsDirC}
           </Text>;
       }
     }
@@ -153,9 +154,9 @@ export function getFilePermissionOptions({
   if (noInputMode && onRejectFeedbackChange) {
     options.push({
       type: 'input',
-      label: 'No',
+      label: getMessage('permission.fileOptions.no'),
       value: 'no',
-      placeholder: 'and tell Deep Code what to do differently',
+      placeholder: getMessage('permission.fileOptions.rejectFeedbackPlaceholder'),
       onChange: onRejectFeedbackChange,
       allowEmptySubmitToCancel: true,
       option: {
@@ -165,7 +166,7 @@ export function getFilePermissionOptions({
   } else {
     // Not in input mode - simple option
     options.push({
-      label: 'No',
+      label: getMessage('permission.fileOptions.no'),
       value: 'no',
       option: {
         type: 'reject'
