@@ -85,10 +85,12 @@ function createPlaceholderFixture() {
   for (const file of ['index.ts', 'locales.ts', 'types.ts']) {
     copyFileSync(resolve(i18nSourceRoot, file), resolve(fixtureRoot, 'i18n', file))
   }
-  copyFileSync(
-    resolve(i18nSourceRoot, 'messages/en.ts'),
-    resolve(fixtureRoot, 'i18n/messages/en.ts'),
-  )
+  for (const messages of ['messages/en.ts', 'messages/zh-Hans.ts']) {
+    copyFileSync(
+      resolve(i18nSourceRoot, messages),
+      resolve(fixtureRoot, 'i18n', messages),
+    )
+  }
   writeFileSync(
     resolve(fixtureRoot, 'mock-react.ts'),
     `
