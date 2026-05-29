@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text, useTheme } from '../../../ink.js';
 import { useKeybinding } from '../../../keybindings/useKeybinding.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../utils/featureFlags.js';
@@ -27,6 +28,7 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
     onReject,
     workerBadge
   } = props;
+  const { t } = useTranslation();
   const {
     command,
     description
@@ -192,7 +194,7 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
         }
     }
   }
-  return <PermissionDialog workerBadge={workerBadge} title="PowerShell command">
+  return <PermissionDialog workerBadge={workerBadge} title={t('permission.powershell.title')}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text dimColor={explainerState.visible}>
           {PowerShellTool.renderToolUseMessage({
@@ -210,7 +212,7 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
       {showPermissionDebug ? <>
           <PermissionDecisionDebugInfo permissionResult={toolUseConfirm.permissionResult} toolName="PowerShell" />
           {toolUseContext.options.debug && <Box justifyContent="flex-end" marginTop={1}>
-              <Text dimColor>Ctrl-D to hide debug info</Text>
+              <Text dimColor>{t('permission.shell.hideDebugInfo')}</Text>
             </Box>}
         </> : <>
           <Box flexDirection="column">
@@ -218,16 +220,18 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
             {destructiveWarning && <Box marginBottom={1}>
                 <Text color="warning">{destructiveWarning}</Text>
               </Box>}
-            <Text>Do you want to proceed?</Text>
+            <Text>{t('permission.shell.doYouWantToProceed')}</Text>
             <Select options={options} inlineDescriptions onChange={onSelect} onCancel={() => handleReject()} onFocus={handleFocus} onInputModeToggle={handleInputModeToggle} />
           </Box>
           <Box justifyContent="space-between" marginTop={1}>
             <Text dimColor>
-              Esc to cancel
-              {(focusedOption === 'yes' && !yesInputMode || focusedOption === 'no' && !noInputMode) && ' · Tab to amend'}
-              {explainerState.enabled && ` · ctrl+e to ${explainerState.visible ? 'hide' : 'explain'}`}
+              {t('permission.shell.escToCancel')}
+              {(focusedOption === 'yes' && !yesInputMode || focusedOption === 'no' && !noInputMode) && t('permission.shell.tabToAmend')}
+              {explainerState.enabled && t('permission.shell.ctrlEToExplain', {
+            action: explainerState.visible ? t('permission.shell.hide') : t('permission.shell.explain')
+          })}
             </Text>
-            {toolUseContext.options.debug && <Text dimColor>Ctrl+d to show debug info</Text>}
+            {toolUseContext.options.debug && <Text dimColor>{t('permission.shell.showDebugInfo')}</Text>}
           </Box>
         </>}
     </PermissionDialog>;

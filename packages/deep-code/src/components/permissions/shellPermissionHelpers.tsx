@@ -1,5 +1,6 @@
 import { basename, sep } from 'path';
 import React, { type ReactNode } from 'react';
+import { getMessage } from '../../i18n/index.js';
 import { getOriginalCwd } from '../../bootstrap/state.js';
 import { Text } from '../../ink.js';
 import type { PermissionUpdate } from '../../utils/permissions/PermissionUpdateSchema.js';
@@ -12,11 +13,11 @@ function commandListDisplay(commands: string[]): ReactNode {
       return <Text bold>{commands[0]}</Text>;
     case 2:
       return <Text>
-          <Text bold>{commands[0]}</Text> and <Text bold>{commands[1]}</Text>
+          <Text bold>{commands[0]}</Text> {getMessage('permission.shell.suggestions.and')} <Text bold>{commands[1]}</Text>
         </Text>;
     default:
       return <Text>
-          <Text bold>{commands.slice(0, -1).join(', ')}</Text>, and{' '}
+          <Text bold>{commands.slice(0, -1).join(', ')}</Text>{getMessage('permission.shell.suggestions.andSerial')}
           <Text bold>{commands.slice(-1)[0]}</Text>
         </Text>;
   }
@@ -25,7 +26,7 @@ function commandListDisplayTruncated(commands: string[]): ReactNode {
   // Check if the plain text representation would be too long
   const plainText = commands.join(', ');
   if (plainText.length > 50) {
-    return 'similar';
+    return getMessage('permission.shell.suggestions.similar');
   }
   return commandListDisplay(commands);
 }
@@ -52,7 +53,7 @@ function formatPathList(paths: string[]): ReactNode {
   return <Text>
       <Text bold>{names[0]}</Text>
       {sep}, <Text bold>{names[1]}</Text>
-      {sep} and {paths.length - 2} more
+      {sep}{getMessage('permission.shell.suggestions.andMore', { count: paths.length - 2 })}
     </Text>;
 }
 
@@ -94,15 +95,16 @@ export function generateShellSuggestionsLabel(suggestions: PermissionUpdate[], s
     if (readPaths.length === 1) {
       const firstPath = readPaths[0]!;
       const dirName = basename(firstPath) || firstPath;
+      const [readDirA, readDirB, readDirC] = getMessage('permission.shell.suggestions.allowReadingFromDir').split(/\{dir\}|\{sep\}/);
       return <Text>
-          Yes, allow reading from <Text bold>{dirName}</Text>
-          {sep} from this project
+          {readDirA}<Text bold>{dirName}</Text>{readDirB}{sep}{readDirC}
         </Text>;
     }
 
     // Multiple read paths
+    const [readPathsA, readPathsB] = getMessage('permission.shell.suggestions.allowReadingFromPaths').split(/\{paths\}/);
     return <Text>
-        Yes, allow reading from {formatPathList(readPaths)} from this project
+        {readPathsA}{formatPathList(readPaths)}{readPathsB}
       </Text>;
   }
   if (hasDirectories && !hasReadPaths && !hasCommands) {
@@ -110,24 +112,25 @@ export function generateShellSuggestionsLabel(suggestions: PermissionUpdate[], s
     if (directories.length === 1) {
       const firstDir = directories[0]!;
       const dirName = basename(firstDir) || firstDir;
+      const [accessDirA, accessDirB, accessDirC] = getMessage('permission.shell.suggestions.allowAccessToDir').split(/\{dir\}|\{sep\}/);
       return <Text>
-          Yes, and always allow access to <Text bold>{dirName}</Text>
-          {sep} from this project
+          {accessDirA}<Text bold>{dirName}</Text>{accessDirB}{sep}{accessDirC}
         </Text>;
     }
 
     // Multiple directories
+    const [accessDirsA, accessDirsB] = getMessage('permission.shell.suggestions.allowAccessToPaths').split(/\{paths\}/);
     return <Text>
-        Yes, and always allow access to {formatPathList(directories)} from this
-        project
+        {accessDirsA}{formatPathList(directories)}{accessDirsB}
       </Text>;
   }
   if (hasCommands && !hasDirectories && !hasReadPaths) {
     // Only shell command permissions
+    const [cmdsCwdA, cmdsCwdB, cmdsCwdC] = getMessage('permission.shell.suggestions.allowCommandsInCwd').split(/\{commands\}|\{cwd\}/);
     return <Text>
-        {"Yes, and don't ask again for "}
-        {commandListDisplayTruncated(shellCommands)} commands in{' '}
-        <Text bold>{getOriginalCwd()}</Text>
+        {cmdsCwdA}
+        {commandListDisplayTruncated(shellCommands)}{cmdsCwdB}
+        <Text bold>{getOriginalCwd()}</Text>{cmdsCwdC}
       </Text>;
   }
 
@@ -137,9 +140,9 @@ export function generateShellSuggestionsLabel(suggestions: PermissionUpdate[], s
     const allPaths = [...directories, ...readPaths];
     if (hasDirectories && hasReadPaths) {
       // Mixed - use generic "access to"
+      const [accessMixedA, accessMixedB] = getMessage('permission.shell.suggestions.allowAccessToPaths').split(/\{paths\}/);
       return <Text>
-          Yes, and always allow access to {formatPathList(allPaths)} from this
-          project
+          {accessMixedA}{formatPathList(allPaths)}{accessMixedB}
         </Text>;
     }
   }
@@ -149,14 +152,16 @@ export function generateShellSuggestionsLabel(suggestions: PermissionUpdate[], s
 
     // Keep it concise but informative
     if (allPaths.length === 1 && shellCommands.length === 1) {
+      const [accessCmdsA, accessCmdsB, accessCmdsC] = getMessage('permission.shell.suggestions.allowAccessAndCommands').split(/\{paths\}|\{commands\}/);
       return <Text>
-          Yes, and allow access to {formatPathList(allPaths)} and{' '}
-          {commandListDisplayTruncated(shellCommands)} commands
+          {accessCmdsA}{formatPathList(allPaths)}{accessCmdsB}
+          {commandListDisplayTruncated(shellCommands)}{accessCmdsC}
         </Text>;
     }
+    const [pathsCmdsA, pathsCmdsB, pathsCmdsC] = getMessage('permission.shell.suggestions.allowPathsAccessAndCommands').split(/\{paths\}|\{commands\}/);
     return <Text>
-        Yes, and allow {formatPathList(allPaths)} access and{' '}
-        {commandListDisplayTruncated(shellCommands)} commands
+        {pathsCmdsA}{formatPathList(allPaths)}{pathsCmdsB}
+        {commandListDisplayTruncated(shellCommands)}{pathsCmdsC}
       </Text>;
   }
   return null;

@@ -2,6 +2,8 @@ import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
 import figures from 'figures';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getMessage } from '../../../i18n/index.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text, useTheme } from '../../../ink.js';
 import { useKeybinding } from '../../../keybindings/useKeybinding.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../utils/featureFlags.js';
@@ -31,7 +33,7 @@ import { SedEditPermissionRequest } from '../SedEditPermissionRequest/SedEditPer
 import { useShellPermissionFeedback } from '../useShellPermissionFeedback.js';
 import { logUnaryPermissionEvent } from '../utils.js';
 import { bashToolUseOptions } from './bashToolUseOptions.js';
-const CHECKING_TEXT = 'Attempting to auto-approve\u2026';
+const CHECKING_TEXT = getMessage('permission.bash.attemptingAutoApprove');
 
 // Isolates the 20fps shimmer clock from BashPermissionRequestInner. Before this
 // extraction, useShimmerAnimation lived inside the 535-line Inner body, so every
@@ -146,6 +148,7 @@ function BashPermissionRequestInner({
   command: string;
   description?: string;
 }): React.ReactNode {
+  const { t } = useTranslation();
   const [theme] = useTheme();
   const toolPermissionContext = useAppState(s => s.toolPermissionContext);
   const explainerState = usePermissionExplainerUI({
@@ -425,14 +428,16 @@ function BashPermissionRequestInner({
     }
   }
   const classifierSubtitle = feature('BASH_CLASSIFIER') ? toolUseConfirm.classifierAutoApproved ? <Text>
-        <Text color="success">{figures.tick} Auto-approved</Text>
+        <Text color="success">{t('permission.bash.autoApproved', {
+        tick: figures.tick
+      })}</Text>
         {toolUseConfirm.classifierMatchedRule && <Text dimColor>
-            {' \u00b7 matched "'}
-            {toolUseConfirm.classifierMatchedRule}
-            {'"'}
+            {t('permission.bash.matchedRule', {
+          rule: toolUseConfirm.classifierMatchedRule
+        })}
           </Text>}
-      </Text> : toolUseConfirm.classifierCheckInProgress ? <ClassifierCheckingSubtitle /> : classifierWasChecking ? <Text dimColor>Requires manual approval</Text> : undefined : undefined;
-  return <PermissionDialog workerBadge={workerBadge} title={sandboxingEnabled_0 && !isSandboxed_0 ? 'Bash command (unsandboxed)' : 'Bash command'} subtitle={classifierSubtitle}>
+      </Text> : toolUseConfirm.classifierCheckInProgress ? <ClassifierCheckingSubtitle /> : classifierWasChecking ? <Text dimColor>{t('permission.bash.requiresManualApproval')}</Text> : undefined : undefined;
+  return <PermissionDialog workerBadge={workerBadge} title={sandboxingEnabled_0 && !isSandboxed_0 ? t('permission.bash.titleUnsandboxed') : t('permission.bash.title')} subtitle={classifierSubtitle}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text dimColor={explainerState.visible}>
           {BashTool.renderToolUseMessage({
@@ -450,7 +455,7 @@ function BashPermissionRequestInner({
       {showPermissionDebug ? <>
           <PermissionDecisionDebugInfo permissionResult={toolUseConfirm.permissionResult} toolName="Bash" />
           {toolUseContext.options.debug && <Box justifyContent="flex-end" marginTop={1}>
-              <Text dimColor>Ctrl-D to hide debug info</Text>
+              <Text dimColor>{t('permission.shell.hideDebugInfo')}</Text>
             </Box>}
         </> : <>
           <Box flexDirection="column">
@@ -461,7 +466,7 @@ function BashPermissionRequestInner({
                 </Text>
               </Box>}
             <Text dimColor={feature('BASH_CLASSIFIER') ? toolUseConfirm.classifierAutoApproved : false}>
-              Do you want to proceed?
+              {t('permission.shell.doYouWantToProceed')}
             </Text>
             <Select options={feature('BASH_CLASSIFIER') ? toolUseConfirm.classifierAutoApproved ? options.map(o => ({
           ...o,
@@ -470,11 +475,13 @@ function BashPermissionRequestInner({
           </Box>
           <Box justifyContent="space-between" marginTop={1}>
             <Text dimColor>
-              Esc to cancel
-              {(focusedOption === 'yes' && !yesInputMode || focusedOption === 'no' && !noInputMode) && ' · Tab to amend'}
-              {explainerState.enabled && ` · ctrl+e to ${explainerState.visible ? 'hide' : 'explain'}`}
+              {t('permission.shell.escToCancel')}
+              {(focusedOption === 'yes' && !yesInputMode || focusedOption === 'no' && !noInputMode) && t('permission.shell.tabToAmend')}
+              {explainerState.enabled && t('permission.shell.ctrlEToExplain', {
+            action: explainerState.visible ? t('permission.shell.hide') : t('permission.shell.explain')
+          })}
             </Text>
-            {toolUseContext.options.debug && <Text dimColor>Ctrl+d to show debug info</Text>}
+            {toolUseContext.options.debug && <Text dimColor>{t('permission.shell.showDebugInfo')}</Text>}
           </Box>
         </>}
     </PermissionDialog>;
