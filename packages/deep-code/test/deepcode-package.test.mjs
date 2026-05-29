@@ -300,6 +300,20 @@ const i18nEnglishSource = readFileSync(
   resolve(root, 'packages/deep-code/src/i18n/messages/en.ts'),
   'utf8',
 )
+// Return only the en.ts catalog lines for the given keys. Used by branding
+// guards after slash-command descriptions migrated into the catalog: scanning
+// the WHOLE catalog would let /Deep Code/ pass on unrelated entries (e.g.
+// 'doctor.title': 'Deep Code Doctor'), so we scope to the specific migrated
+// command descriptions the test cares about.
+function catalogLinesFor(...keys) {
+  // Match `'<key>':` (with the trailing colon) so a key is never a substring of
+  // a longer key — e.g. command.thinkback.description must not pull
+  // command.thinkbackPlay.description.
+  return i18nEnglishSource
+    .split('\n')
+    .filter(line => keys.some(key => line.includes(`'${key}':`)))
+    .join('\n')
+}
 const statuslineCommandSource = readFileSync(
   resolve(root, 'packages/deep-code/src/commands/statusline.tsx'),
   'utf8',
@@ -1547,6 +1561,8 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
   const publicCommandSources = [
     pluginCommandSource,
     memoryCommandSource,
+    // plugin/memory descriptions migrated into the catalog; scope to those keys.
+    catalogLinesFor('command.plugin.description', 'command.memory.description'),
   ].map(stripInlineSourceMap).join('\n')
   const legacyCommandSources = [
     mobileCommandSource,
@@ -1566,8 +1582,11 @@ test('DeepSeek-native slash commands hide legacy Claude service integrations by 
   assert.doesNotMatch(commandRegistry, /webCmd \? \[webCmd\]/)
 
   assert.match(commandsSource, /includeLegacyClaudeServiceCommands/)
-  assert.match(publicCommandSources, /Deep Code/)
-  assert.doesNotMatch(publicCommandSources, /Claude Code|Anthropic/)
+  // Fail-closed per migrated description: each must individually carry Deep Code
+  // branding (a group-level match would still pass if only one regressed).
+  assert.match(catalogLinesFor('command.plugin.description'), /Deep Code/)
+  assert.match(catalogLinesFor('command.memory.description'), /Deep Code/)
+  assert.doesNotMatch(publicCommandSources, /Claude|Anthropic/)
   assert.doesNotMatch(legacyCommandSources, /Claude mobile app/)
   assert.doesNotMatch(legacyCommandSources, /Claude Slack app/)
   assert.doesNotMatch(legacyCommandSources, /Anthropic account/)
@@ -1578,10 +1597,21 @@ test('default visible slash command descriptions use Deep Code branding', () => 
     statsCommandSource,
     reviewCommandSource,
     thinkbackCommandSource,
+    // stats/review/thinkback descriptions migrated into the catalog; scope to them.
+    catalogLinesFor(
+      'command.stats.description',
+      'command.review.description',
+      'command.thinkback.description',
+    ),
   ].map(stripInlineSourceMap).join('\n')
 
-  assert.match(defaultSlashCommandSources, /Deep Code/)
-  assert.doesNotMatch(defaultSlashCommandSources, /Claude Code|Anthropic/)
+  // Fail-closed per migrated description. review's description is intentionally
+  // unbranded ('Review a pull request'), so it is the explicit exception — but
+  // still presence-checked so it cannot silently drop out via a typo/reformat.
+  assert.match(catalogLinesFor('command.stats.description'), /Deep Code/)
+  assert.match(catalogLinesFor('command.thinkback.description'), /Deep Code/)
+  assert.match(catalogLinesFor('command.review.description'), /Review a pull request/)
+  assert.doesNotMatch(defaultSlashCommandSources, /Claude|Anthropic/)
 })
 
 test('common public command copy uses Deep Code branding', () => {

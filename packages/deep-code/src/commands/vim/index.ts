@@ -1,8 +1,9 @@
 import type { Command } from '../../commands.js'
+import { translate } from '../../i18n/index.js'
 
 const command = {
   name: 'vim',
-  description: 'Toggle between Vim and Normal editing modes',
+  description: translate('en', 'command.vim.description'),
   supportsNonInteractive: false,
   type: 'local',
   load: () => import('./vim.js'),

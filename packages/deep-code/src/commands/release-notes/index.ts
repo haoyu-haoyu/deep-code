@@ -1,7 +1,8 @@
 import type { Command } from '../../commands.js'
+import { translate } from '../../i18n/index.js'
 
 const releaseNotes: Command = {
-  description: 'View release notes',
+  description: translate('en', 'command.releaseNotes.description'),
   name: 'release-notes',
   type: 'local',
   supportsNonInteractive: true,
