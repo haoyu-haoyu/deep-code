@@ -16,6 +16,8 @@ function runI18nExpression(expression) {
         import { getMessage, resolveLocale, setActiveLocale, translate } from './src/i18n/index.ts'
         import { normalizeLocale } from './src/i18n/locales.ts'
         import { EN_MESSAGES } from './src/i18n/messages/en.ts'
+        import { ZH_HANS_MESSAGES } from './src/i18n/messages/zh-Hans.ts'
+        const placeholders = s => (String(s).match(/\\{[A-Za-z0-9_.-]+\\}/g) || []).sort().join(',')
         const result = await (${expression})
         process.stdout.write(JSON.stringify(result))
       `,
@@ -87,4 +89,53 @@ test('English catalog has a bounded non-empty string message set', () => {
     assert.equal(typeof value, 'string')
     assert.notEqual(value.trim(), '')
   }
+})
+
+test('zh-Hans catalog covers every English key (completeness)', () => {
+  const result = runI18nExpression(`(() => {
+    const en = Object.keys(EN_MESSAGES)
+    const zh = new Set(Object.keys(ZH_HANS_MESSAGES))
+    return {
+      enCount: en.length,
+      zhCount: zh.size,
+      missing: en.filter(k => !zh.has(k)),
+      extra: Object.keys(ZH_HANS_MESSAGES).filter(k => !(k in EN_MESSAGES)),
+    }
+  })()`)
+  assert.equal(result.missing.length, 0, `zh-Hans missing keys: ${result.missing.slice(0, 10).join(', ')}`)
+  assert.equal(result.extra.length, 0, `zh-Hans has extra keys: ${result.extra.slice(0, 10).join(', ')}`)
+  assert.equal(result.zhCount, result.enCount)
+})
+
+test('zh-Hans values preserve English placeholder sets (interpolation parity)', () => {
+  const mismatches = runI18nExpression(`Object.keys(EN_MESSAGES)
+    .filter(k => ZH_HANS_MESSAGES[k] !== undefined && placeholders(EN_MESSAGES[k]) !== placeholders(ZH_HANS_MESSAGES[k]))
+    .map(k => ({ key: k, en: placeholders(EN_MESSAGES[k]), zh: placeholders(ZH_HANS_MESSAGES[k]) }))`)
+  assert.equal(mismatches.length, 0, `placeholder mismatches: ${JSON.stringify(mismatches.slice(0, 8))}`)
+})
+
+test('translate resolves Simplified Chinese values', () => {
+  assert.equal(runI18nExpression("translate('zh-Hans', 'doctor.title')"), 'Deep Code 诊断')
+  assert.equal(runI18nExpression("translate('zh-Hans', 'permission.allowOnce')"), '允许一次')
+})
+
+test('zh-Hans interpolation keeps placeholders and English-only tokens intact', () => {
+  assert.equal(
+    runI18nExpression("translate('zh-Hans', 'restore.snapshot.count', { count: 3 })"),
+    '3 个快照',
+  )
+})
+
+test('zh-Hans normalization maps zh / zh-CN / zh-SG', () => {
+  assert.equal(runI18nExpression("normalizeLocale('zh-CN')"), 'zh-Hans')
+  assert.equal(runI18nExpression("normalizeLocale('zh')"), 'zh-Hans')
+  assert.equal(runI18nExpression("normalizeLocale('zh-SG')"), 'zh-Hans')
+})
+
+test('missing key falls back through English to the key string', () => {
+  // zh-Hans is complete, so exercise the fallback path with a key in neither catalog.
+  assert.equal(
+    runI18nExpression("translate('zh-Hans', 'totally.missing.key')"),
+    'totally.missing.key',
+  )
 })

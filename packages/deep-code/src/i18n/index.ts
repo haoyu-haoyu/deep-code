@@ -1,11 +1,13 @@
 import { DEFAULT_LOCALE, normalizeLocale } from './locales.js'
 import { EN_MESSAGES } from './messages/en.js'
+import { ZH_HANS_MESSAGES } from './messages/zh-Hans.js'
 import type { Locale, MessageCatalog, MessageParams, ResolveLocaleOptions } from './types.js'
 
 const LOCALE_SETTING_KEY = 'locale'
 
 const CATALOGS: Partial<Record<Locale, MessageCatalog>> = {
   en: EN_MESSAGES,
+  'zh-Hans': ZH_HANS_MESSAGES,
 }
 
 let activeLocale: Locale = DEFAULT_LOCALE
