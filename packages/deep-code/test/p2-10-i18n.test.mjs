@@ -17,6 +17,7 @@ function runI18nExpression(expression) {
         import { normalizeLocale } from './src/i18n/locales.ts'
         import { EN_MESSAGES } from './src/i18n/messages/en.ts'
         import { ZH_HANS_MESSAGES } from './src/i18n/messages/zh-Hans.ts'
+        import { JA_MESSAGES } from './src/i18n/messages/ja.ts'
         const placeholders = s => (String(s).match(/\\{[A-Za-z0-9_.-]+\\}/g) || []).sort().join(',')
         const result = await (${expression})
         process.stdout.write(JSON.stringify(result))
@@ -70,13 +71,15 @@ test('resolveLocale honors explicit override before other signals', () => {
   )
 })
 
-test('getMessage reads the active locale with English fallback', () => {
-  assert.equal(
-    runI18nExpression(
-      "(() => { setActiveLocale('ja'); const message = getMessage('help.title'); setActiveLocale('en'); return message })()",
-    ),
-    'Help',
+test('getMessage reads the active locale and falls back to the key when absent everywhere', () => {
+  const result = runI18nExpression(
+    "(() => { setActiveLocale('ja'); const localized = getMessage('help.title'); const missing = getMessage('totally.missing.key'); setActiveLocale('en'); return { localized, missing } })()",
   )
+  // Active locale 'ja' now has a catalog, so getMessage resolves the Japanese value
+  // (proving it reads the active locale, not a hardcoded 'en'); an unknown key still
+  // falls through (active -> English -> the key string).
+  assert.equal(result.localized, 'ヘルプ')
+  assert.equal(result.missing, 'totally.missing.key')
 })
 
 test('English catalog has a bounded non-empty string message set', () => {
@@ -138,4 +141,33 @@ test('missing key falls back through English to the key string', () => {
     runI18nExpression("translate('zh-Hans', 'totally.missing.key')"),
     'totally.missing.key',
   )
+})
+
+test('ja catalog covers every English key (completeness)', () => {
+  const result = runI18nExpression(`(() => {
+    const en = Object.keys(EN_MESSAGES)
+    const ja = new Set(Object.keys(JA_MESSAGES))
+    return {
+      enCount: en.length, jaCount: ja.size,
+      missing: en.filter(k => !ja.has(k)),
+      extra: Object.keys(JA_MESSAGES).filter(k => !(k in EN_MESSAGES)),
+    }
+  })()`)
+  assert.equal(result.missing.length, 0, `ja missing keys: ${result.missing.slice(0, 10).join(', ')}`)
+  assert.equal(result.extra.length, 0, `ja has extra keys: ${result.extra.slice(0, 10).join(', ')}`)
+  assert.equal(result.jaCount, result.enCount)
+})
+
+test('ja values preserve English placeholder sets (interpolation parity)', () => {
+  const mismatches = runI18nExpression(`Object.keys(EN_MESSAGES)
+    .filter(k => JA_MESSAGES[k] !== undefined && placeholders(EN_MESSAGES[k]) !== placeholders(JA_MESSAGES[k]))
+    .map(k => ({ key: k, en: placeholders(EN_MESSAGES[k]), ja: placeholders(JA_MESSAGES[k]) }))`)
+  assert.equal(mismatches.length, 0, `placeholder mismatches: ${JSON.stringify(mismatches.slice(0, 8))}`)
+})
+
+test('translate resolves Japanese values and ja-JP normalizes to ja', () => {
+  assert.equal(runI18nExpression("translate('ja', 'doctor.title')"), 'Deep Code Doctor')
+  assert.equal(runI18nExpression("translate('ja', 'permission.deny')"), '拒否')
+  assert.equal(runI18nExpression("normalizeLocale('ja-JP')"), 'ja')
+  assert.equal(runI18nExpression("translate('ja', 'restore.snapshot.count', { count: 3 })"), '3 件のスナップショット')
 })

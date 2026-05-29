@@ -24,7 +24,7 @@ function createI18nHookFixture() {
   for (const file of ['index.ts', 'locales.ts', 'types.ts']) {
     copyFileSync(resolve(i18nSourceRoot, file), resolve(fixtureRoot, file))
   }
-  for (const messages of ['messages/en.ts', 'messages/zh-Hans.ts']) {
+  for (const messages of ['messages/en.ts', 'messages/zh-Hans.ts', 'messages/ja.ts']) {
     copyFileSync(
       resolve(i18nSourceRoot, messages),
       resolve(fixtureRoot, messages),
