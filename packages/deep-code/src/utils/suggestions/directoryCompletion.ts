@@ -5,6 +5,7 @@ import { getCwd } from 'src/utils/cwd.js'
 import { getFsImplementation } from 'src/utils/fsOperations.js'
 import { logError } from 'src/utils/log.js'
 import { expandPath } from 'src/utils/path.js'
+import { getMessage } from 'src/i18n/index.js'
 // Types
 export type DirectoryEntry = {
   name: string
@@ -134,7 +135,7 @@ export async function getDirectoryCompletions(
   return matches.map(entry => ({
     id: entry.path,
     displayText: entry.name + '/',
-    description: 'directory',
+    description: getMessage('suggestion.directory'),
     metadata: { type: 'directory' as const },
   }))
 }

@@ -9,6 +9,7 @@ import { getModeFromInput, getValueFromInput } from '../components/PromptInput/i
 import type { SuggestionItem, SuggestionType } from '../components/PromptInput/PromptInputFooterSuggestions.js';
 import { useIsModalOverlayActive, useRegisterOverlay } from '../context/overlayContext.js';
 import { KeyboardEvent } from '../ink/events/keyboard-event.js';
+import { getMessage } from '../i18n/index.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- backward-compat bridge until consumers wire handleKeyDown to <Box onKeyDown>
 import { useInput } from '../ink.js';
 import { useOptionalKeybindingContext, useRegisterKeybindingContext } from '../keybindings/KeybindingContext.js';
@@ -609,7 +610,7 @@ export function useTypeahead({
           members.push({
             id: `dm-${t.name}`,
             displayText: `@${t.name}`,
-            description: 'send message'
+            description: getMessage('suggestion.sendMessage')
           });
         }
       }

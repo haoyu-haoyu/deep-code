@@ -129,3 +129,45 @@ test('migrated picker/dialog components stay catalog-backed (P2.10.f)', () => {
     `Picker/dialog i18n regression (P2.10.f):\n${offenders.join('\n')}`,
   )
 })
+
+test('migrated It2 setup + autocomplete stay catalog-backed (P2.10.f.2)', () => {
+  // P2.10.f.2 migrated the iTerm2 split-pane setup flow and the two
+  // autocomplete-suggestion descriptions ('directory', 'send message').
+  // It2SetupPrompt uses useTranslation(); the .ts suggestion sources use
+  // module-scope getMessage().
+  const srcRoot = resolve(commandsDir, '..')
+  const checks = [
+    {
+      rel: 'utils/swarm/It2SetupPrompt.tsx',
+      forbidden: [
+        'Install it2 now',
+        'iTerm2 Split Pane Setup',
+        'Skip teammate spawning for now',
+        'No Python package manager found',
+      ],
+    },
+    // 'directory'/'send message' are too common to match bare — anchor on the
+    // full `description:` assignment so we only flag a reverted suggestion item.
+    {
+      rel: 'utils/suggestions/directoryCompletion.ts',
+      forbidden: ["description: 'directory'"],
+    },
+    { rel: 'hooks/useTypeahead.tsx', forbidden: ["description: 'send message'"] },
+  ]
+  const offenders = []
+  for (const { rel, forbidden } of checks) {
+    const raw = readFileSync(join(srcRoot, rel), 'utf8')
+    const code = raw.replace(/\/\/# sourceMappingURL=.*$/s, '')
+    for (const lit of forbidden) {
+      if (code.includes(lit)) offenders.push(`${rel}: reverted literal ${JSON.stringify(lit)}`)
+    }
+    if (!/i18n\/(useTranslation|index)\.js/.test(code)) {
+      offenders.push(`${rel}: missing i18n catalog import`)
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `It2/autocomplete i18n regression (P2.10.f.2):\n${offenders.join('\n')}`,
+  )
+})
