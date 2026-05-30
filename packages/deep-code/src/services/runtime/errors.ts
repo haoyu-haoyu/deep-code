@@ -6,6 +6,7 @@ import {
   PDF_TARGET_RAW_SIZE,
 } from '../../constants/apiLimits.js'
 import { formatFileSize } from '../../utils/format.js'
+import { getMessage } from '../../i18n/index.js'
 
 export type { SDKAssistantMessageError }
 
@@ -45,13 +46,16 @@ export function formatRuntimeErrorForUser(err: unknown): string {
   }
   if (isRuntimeRequestError(err)) {
     return err.status
-      ? `Runtime API error (${err.status}): ${err.message}`
-      : `Runtime API error: ${err.message}`
+      ? getMessage('error.runtime.apiErrorWithStatus', {
+          status: err.status,
+          message: err.message,
+        })
+      : getMessage('error.runtime.apiError', { message: err.message })
   }
   if (err instanceof Error && err.message) {
-    return `Runtime error: ${err.message}`
+    return getMessage('error.runtime.error', { message: err.message })
   }
-  return 'Runtime error: request failed'
+  return getMessage('error.runtime.requestFailed')
 }
 
 export function toRuntimeError(
@@ -289,7 +293,7 @@ function extractConnectionErrorDetails(
 export function getSSLErrorHint(error: unknown): string | null {
   const details = extractConnectionErrorDetails(error)
   if (!details?.isSSLError) return null
-  return `SSL certificate error (${details.code}). If you are behind a corporate proxy or TLS-intercepting firewall, set NODE_EXTRA_CA_CERTS to your CA bundle path, or ask IT to allowlist *.anthropic.com. Run /doctor for details.`
+  return getMessage('error.ssl.certHint', { code: details.code })
 }
 
 function sanitizeMessageHTML(message: string): string {
@@ -346,37 +350,39 @@ export function formatAPIError(error: unknown): string {
   if (connectionDetails) {
     const { code, isSSLError } = connectionDetails
     if (code === 'ETIMEDOUT') {
-      return 'Request timed out. Check your internet connection and proxy settings'
+      return getMessage('error.api.requestTimedOut')
     }
     if (isSSLError) {
       switch (code) {
         case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':
         case 'UNABLE_TO_GET_ISSUER_CERT':
         case 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY':
-          return 'Unable to connect to API: SSL certificate verification failed. Check your proxy or corporate SSL certificates'
+          return getMessage('error.api.sslVerificationFailed')
         case 'CERT_HAS_EXPIRED':
-          return 'Unable to connect to API: SSL certificate has expired'
+          return getMessage('error.api.sslCertExpired')
         case 'CERT_REVOKED':
-          return 'Unable to connect to API: SSL certificate has been revoked'
+          return getMessage('error.api.sslCertRevoked')
         case 'DEPTH_ZERO_SELF_SIGNED_CERT':
         case 'SELF_SIGNED_CERT_IN_CHAIN':
-          return 'Unable to connect to API: Self-signed certificate detected. Check your proxy or corporate SSL certificates'
+          return getMessage('error.api.sslSelfSigned')
         case 'ERR_TLS_CERT_ALTNAME_INVALID':
         case 'HOSTNAME_MISMATCH':
-          return 'Unable to connect to API: SSL certificate hostname mismatch'
+          return getMessage('error.api.sslHostnameMismatch')
         case 'CERT_NOT_YET_VALID':
-          return 'Unable to connect to API: SSL certificate is not yet valid'
+          return getMessage('error.api.sslCertNotYetValid')
         default:
-          return `Unable to connect to API: SSL error (${code})`
+          return getMessage('error.api.sslError', { code })
       }
     }
   }
 
   if (error instanceof Error && error.message === 'Connection error.') {
     if (connectionDetails?.code) {
-      return `Unable to connect to API (${connectionDetails.code})`
+      return getMessage('error.api.unableToConnectWithCode', {
+        code: connectionDetails.code,
+      })
     }
-    return 'Unable to connect to API. Check your internet connection'
+    return getMessage('error.api.unableToConnect')
   }
 
   const message = error instanceof Error ? error.message : undefined
@@ -387,7 +393,10 @@ export function formatAPIError(error: unknown): string {
       typeof (error as { status?: unknown }).status !== 'undefined'
         ? (error as { status?: unknown }).status
         : 'unknown'
-    return extractNestedErrorMessage(error) ?? `API error (status ${status})`
+    return (
+      extractNestedErrorMessage(error) ??
+      getMessage('error.api.statusFallback', { status: String(status) })
+    )
   }
 
   const sanitizedMessage = sanitizeMessageHTML(message)

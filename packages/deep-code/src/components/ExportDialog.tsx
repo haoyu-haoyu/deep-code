@@ -76,7 +76,7 @@ export function ExportDialog({
       onDone({
         success: false,
         message: t('export.result.error', {
-          error: error instanceof Error ? error.message : 'Unknown error'
+          error: error instanceof Error ? error.message : t('error.unknown')
         })
       });
     }

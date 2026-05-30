@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { Box, render, Text } from '../ink.js';
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { AppStateProvider } from '../state/AppState.js';
 import type { ConfigParseError } from '../utils/errors.js';
 import { getBaseRenderOptions } from '../utils/renderOptions.js';
@@ -30,6 +31,9 @@ function InvalidConfigDialog(t0) {
     onExit,
     onReset
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== onExit || $[1] !== onReset) {
     t1 = value => {
@@ -48,7 +52,7 @@ function InvalidConfigDialog(t0) {
   const handleSelect = t1;
   let t2;
   if ($[3] !== filePath) {
-    t2 = <Text>The configuration file at <Text bold={true}>{filePath}</Text> contains invalid JSON.</Text>;
+    t2 = <Text>{t('invalidConfig.body').split('{path}')[0]}<Text bold={true}>{filePath}</Text>{t('invalidConfig.body').split('{path}')[1]}</Text>;
     $[3] = filePath;
     $[4] = t2;
   } else {
@@ -73,7 +77,7 @@ function InvalidConfigDialog(t0) {
   }
   let t5;
   if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text bold={true}>Choose an option:</Text>;
+    t5 = <Text bold={true}>{t('invalidConfig.chooseOption')}</Text>;
     $[10] = t5;
   } else {
     t5 = $[10];
@@ -81,10 +85,10 @@ function InvalidConfigDialog(t0) {
   let t6;
   if ($[11] === Symbol.for("react.memo_cache_sentinel")) {
     t6 = [{
-      label: "Exit and fix manually",
+      label: t('settings.invalidDialog.exitAndFix'),
       value: "exit"
     }, {
-      label: "Reset with default configuration",
+      label: t('invalidConfig.option.reset'),
       value: "reset"
     }];
     $[11] = t6;
@@ -102,7 +106,7 @@ function InvalidConfigDialog(t0) {
   }
   let t8;
   if ($[15] !== onExit || $[16] !== t4 || $[17] !== t7) {
-    t8 = <Dialog title="Configuration Error" color="error" onCancel={onExit}>{t4}{t7}</Dialog>;
+    t8 = <Dialog title={t('invalidConfig.title')} color="error" onCancel={onExit}>{t4}{t7}</Dialog>;
     $[15] = onExit;
     $[16] = t4;
     $[17] = t7;

@@ -1348,7 +1348,9 @@ test('TUI visible copy uses Deep Code and DeepSeek branding', () => {
     managedSettingsSecuritySource,
   ].join('\n')
 
-  assert.match(autoModeOptInSource, /Deep Code checks each tool call/)
+  // The auto-mode description literal migrated into the i18n catalog
+  // (autoMode.optIn.description); AutoModeOptInDialog now renders getMessage(...).
+  assert.match(catalogLinesFor('autoMode.optIn.description'), /Deep Code checks each tool call/)
   assert.match(autoModeOptInSource, /https:\/\/api-docs\.deepseek\.com/)
   // The "Deep Code repository" link label migrated into the i18n catalog
   // (mcp.dialogCopy.repoLinkLabel); MCPServerDialogCopy now renders t(...).

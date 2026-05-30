@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from './design-system/Dialog.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 type Props = {
   onDone: () => void;
 };
@@ -10,11 +11,14 @@ export function CostThresholdDialog(t0) {
   const {
     onDone
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = [{
       value: "ok",
-      label: "Got it, thanks!"
+      label: t('costThreshold.gotIt')
     }];
     $[1] = t2;
   } else {
@@ -30,7 +34,7 @@ export function CostThresholdDialog(t0) {
   }
   let t4;
   if ($[4] !== onDone || $[5] !== t3) {
-    t4 = <Dialog title="You've spent $5 on the Anthropic API this session." onCancel={onDone}>{t3}</Dialog>;
+    t4 = <Dialog title={t('costThreshold.title')} onCancel={onDone}>{t3}</Dialog>;
     $[4] = onDone;
     $[5] = t3;
     $[6] = t4;

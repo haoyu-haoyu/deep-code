@@ -6,6 +6,7 @@ import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from './design-system/Dialog.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 type Props = {
   onAccept(): void;
 };
@@ -14,6 +15,9 @@ export function BypassPermissionsModeDialog(t0) {
   const {
     onAccept
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [];
@@ -50,7 +54,7 @@ export function BypassPermissionsModeDialog(t0) {
   const handleEscape = _temp2;
   let t3;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Box flexDirection="column" gap={1}><Text>In Bypass Permissions mode, DeepCode will not ask for your approval before running potentially dangerous commands.<Newline />This mode should only be used in a sandboxed container/VM that has restricted internet access and can easily be restored if damaged.</Text><Text>By proceeding, you accept all responsibility for actions taken while running in Bypass Permissions mode.</Text></Box>;
+    t3 = <Box flexDirection="column" gap={1}><Text>{t('bypassPermissions.dialog.body').split('{newline}')[0]}<Newline />{t('bypassPermissions.dialog.body').split('{newline}')[1]}</Text><Text>{t('bypassPermissions.dialog.disclaimer')}</Text></Box>;
     $[3] = t3;
   } else {
     t3 = $[3];
@@ -58,10 +62,10 @@ export function BypassPermissionsModeDialog(t0) {
   let t4;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
     t4 = [{
-      label: "No, exit",
+      label: t('trust.optionExit'),
       value: "decline"
     }, {
-      label: "Yes, I accept",
+      label: t('bypassPermissions.dialog.option.accept'),
       value: "accept"
     }];
     $[4] = t4;
@@ -70,7 +74,7 @@ export function BypassPermissionsModeDialog(t0) {
   }
   let t5;
   if ($[5] !== onChange) {
-    t5 = <Dialog title="WARNING: Claude Code running in Bypass Permissions mode" color="error" onCancel={handleEscape}>{t3}<Select options={t4} onChange={value_0 => onChange(value_0 as 'accept' | 'decline')} /></Dialog>;
+    t5 = <Dialog title={t('bypassPermissions.dialog.title')} color="error" onCancel={handleEscape}>{t3}<Select options={t4} onChange={value_0 => onChange(value_0 as 'accept' | 'decline')} /></Dialog>;
     $[5] = onChange;
     $[6] = t5;
   } else {
