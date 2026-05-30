@@ -395,7 +395,14 @@ test('provider slash command is registered and exposes valid provider choices', 
   assert.match(index, /Switch model provider/)
   assert.match(provider, /executeProviderCommand/)
   assert.match(provider, /deepseek\/ollama\/vllm\/openai-compatible/)
-  assert.match(provider, /legacy-only, not supported/)
+  // "legacy-only, not supported" migrated to the i18n catalog
+  // (command.provider.legacyOnly); provider.tsx now renders the key.
+  assert.match(provider, /command\.provider\.legacyOnly/)
+  const enCatalog = await readFile(
+    join(packageRoot, 'src/i18n/messages/en.ts'),
+    'utf8',
+  )
+  assert.match(enCatalog, /legacy-only, not supported/)
 })
 
 test('provider config resolves CLI overrides before provider env, generic env, config, and defaults', async () => {
