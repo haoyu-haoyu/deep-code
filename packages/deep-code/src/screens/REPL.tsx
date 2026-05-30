@@ -18,6 +18,7 @@ import { renderMessagesToPlainText } from '../utils/exportRenderer.js';
 import { openFileInExternalEditor } from '../utils/editor.js';
 import { writeFile } from 'fs/promises';
 import { Box, Text, useStdin, useTheme, useTerminalFocus, useTerminalTitle, useTabStatus } from '../ink.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import type { TabStatusKind } from '../ink/hooks/use-tab-status.js';
 import { CostThresholdDialog } from '../components/CostThresholdDialog.js';
 import { IdleReturnDialog } from '../components/IdleReturnDialog.js';
@@ -307,12 +308,15 @@ function TranscriptModeFooter(t0) {
     status
   } = t0;
   const suppressShowAll = t1 === undefined ? false : t1;
+  const {
+    t
+  } = useTranslation();
   const toggleShortcut = useShortcutDisplay("app:toggleTranscript", "Global", "ctrl+o");
   const showAllShortcut = useShortcutDisplay("transcript:toggleShowAll", "Transcript", "ctrl+e");
-  const t2 = searchBadge ? " \xB7 n/N to navigate" : virtualScroll ? ` · ${figures.arrowUp}${figures.arrowDown} scroll · home/end top/bottom` : suppressShowAll ? "" : ` · ${showAllShortcut} to ${showAllInTranscript ? "collapse" : "show all"}`;
+  const t2 = searchBadge ? t('transcript.footer.navHint') : virtualScroll ? t('transcript.footer.scrollHint', { arrowUp: figures.arrowUp, arrowDown: figures.arrowDown }) : suppressShowAll ? "" : t('transcript.footer.showAllHint', { shortcut: showAllShortcut, action: showAllInTranscript ? t('transcript.footer.collapse') : t('transcript.footer.showAll') });
   let t3;
   if ($[0] !== t2 || $[1] !== toggleShortcut) {
-    t3 = <Text dimColor={true}>Showing detailed transcript · {toggleShortcut} to toggle{t2}</Text>;
+    t3 = <Text dimColor={true}>{t('transcript.footer.showingDetailed', { toggleShortcut })}{t2}</Text>;
     $[0] = t2;
     $[1] = toggleShortcut;
     $[2] = t3;
@@ -366,6 +370,9 @@ function TranscriptSearchBar({
   // nearest-ptr, same highlights). User can edit or clear.
   initialQuery: string;
 }): React.ReactNode {
+  const {
+    t
+  } = useTranslation();
   const {
     query,
     cursorOffset
@@ -438,7 +445,7 @@ function TranscriptSearchBar({
       <Text inverse>{cursorChar}</Text>
       {off < query.length && <Text>{query.slice(off + 1)}</Text>}
       <Box flexGrow={1} />
-      {indexStatus === 'building' ? <Text dimColor>indexing… </Text> : indexStatus ? <Text dimColor>indexed in {indexStatus.ms}ms </Text> : count === 0 && query ? <Text color="error">no matches </Text> : count > 0 ?
+      {indexStatus === 'building' ? <Text dimColor>{t('transcript.search.indexing')}</Text> : indexStatus ? <Text dimColor>{t('transcript.search.indexedIn', { ms: indexStatus.ms })}</Text> : count === 0 && query ? <Text color="error">{t('transcript.search.noMatches')}</Text> : count > 0 ?
     // Engine-counted (indexOf on extractSearchText). May drift from
     // render-count for ghost/phantom messages — badge is a rough
     // location hint. scanElement gives exact per-message positions
@@ -572,6 +579,7 @@ export function REPL({
   sshSession,
   thinkingConfig
 }: Props): React.ReactNode {
+  const { t } = useTranslation();
   // Env-var gates hoisted to mount-time — isEnvTruthy does toLowerCase+trim+
   // includes, and these were on the render path (hot during PageUp spam).
   const titleDisabled = useMemo(() => isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE), []);
@@ -1115,7 +1123,7 @@ export function REPL({
     }
   }, [isLoading, isWaitingForApproval, isShowingLocalJSXCommand]);
   const sessionStatus: TabStatusKind = isWaitingForApproval || isShowingLocalJSXCommand ? 'waiting' : isLoading ? 'busy' : 'idle';
-  const waitingFor = sessionStatus !== 'waiting' ? undefined : toolUseConfirmQueue.length > 0 ? `approve ${toolUseConfirmQueue[0]!.tool.name}` : pendingWorkerRequest ? 'worker request' : pendingSandboxRequest ? 'sandbox request' : isShowingLocalJSXCommand ? 'dialog open' : 'input needed';
+  const waitingFor = sessionStatus !== 'waiting' ? undefined : toolUseConfirmQueue.length > 0 ? t('session.waitingFor.approve', { tool: toolUseConfirmQueue[0]!.tool.name }) : pendingWorkerRequest ? t('session.waitingFor.workerRequest') : pendingSandboxRequest ? t('session.waitingFor.sandboxRequest') : isShowingLocalJSXCommand ? t('session.waitingFor.dialogOpen') : t('session.waitingFor.inputNeeded');
 
   // Push status to the PID file for `claude ps`. Fire-and-forget; ps falls
   // back to transcript-tail derivation when this is missing/stale.
@@ -1607,7 +1615,7 @@ export function REPL({
     if (wt.creationDurationMs < 15_000) return;
     worktreeTipShownRef.current = true;
     const secs = Math.round(wt.creationDurationMs / 1000);
-    setMessages(prev => [...prev, createSystemMessage(`Worktree creation took ${secs}s. For large repos, set \`worktree.sparsePaths\` in .claude/settings.json to check out only the directories you need — e.g. \`{"worktree": {"sparsePaths": ["src", "packages/foo"]}}\`.`, 'info')]);
+    setMessages(prev => [...prev, createSystemMessage(t('worktree.sparsePathsTip', { secs }), 'info')]);
   }, [setMessages]);
 
   // Hide spinner when the only in-progress tool is Sleep
@@ -2211,7 +2219,7 @@ export function REPL({
           const bridgeRequestId = randomUUID();
           bridgeCallbacks.sendRequest(bridgeRequestId, SANDBOX_NETWORK_ACCESS_TOOL_NAME, {
             host: hostPattern.host
-          }, randomUUID(), `Allow network connection to ${hostPattern.host}?`);
+          }, randomUUID(), t('sandbox.network.allowConnectionPrompt', { host: hostPattern.host }));
           const unsubscribe = bridgeCallbacks.onResponse(bridgeRequestId, response => {
             unsubscribe();
             const allow = response.behavior === 'allow';
@@ -2266,8 +2274,8 @@ export function REPL({
     addNotification({
       key: 'sandbox-unavailable',
       jsx: <>
-          <Text color="warning">sandbox disabled</Text>
-          <Text dimColor> · /sandbox</Text>
+          <Text color="warning">{t('notification.sandboxUnavailable.title')}</Text>
+          <Text dimColor>{t('notification.sandboxUnavailable.hint')}</Text>
         </>,
       priority: 'medium'
     });
@@ -3535,7 +3543,7 @@ export function REPL({
           addNotification({
             key: `resume-agent-failed-${task.id}`,
             jsx: <Text color="error">
-                  Failed to resume agent: {errorMessage(err)}
+                  {t('notification.resumeAgentFailed')}{errorMessage(err)}
                 </Text>,
             priority: 'low'
           });
@@ -3711,7 +3719,7 @@ export function REPL({
       addNotification({
         // Same key as text-selection copy — repeated copies replace toast, don't queue.
         key: 'selection-copied',
-        text: 'copied',
+        text: t('notification.selectionCopied'),
         color: 'success',
         priority: 'immediate',
         timeoutMs: 2000
@@ -3877,7 +3885,7 @@ export function REPL({
       // Use ref to get current dialog state, avoiding stale closure
       focusedInputDialogRef.current === undefined && idleTimeSinceResponse >= getGlobalConfig().messageIdleNotifThresholdMs) {
         void sendNotification({
-          message: 'Claude is waiting for your input',
+          message: t('notification.idlePrompt'),
           notificationType: 'idle_prompt'
         }, terminal);
       }
@@ -3907,12 +3915,12 @@ export function REPL({
       addNotif({
         key: 'idle-return-hint',
         jsx: mode === 'hint_v2' ? <>
-                <Text dimColor>new task? </Text>
+                <Text dimColor>{t('notification.idleReturnHint.newTask')}</Text>
                 <Text color="suggestion">/clear</Text>
-                <Text dimColor> to save </Text>
-                <Text color="suggestion">{formattedTokens} tokens</Text>
+                <Text dimColor>{t('notification.idleReturnHint.toSave')}</Text>
+                <Text color="suggestion">{t('notification.idleReturnHint.tokens', { tokens: formattedTokens })}</Text>
               </> : <Text color="warning">
-                new task? /clear to save {formattedTokens} tokens
+                {t('notification.idleReturnHint.fallback', { tokens: formattedTokens })}
               </Text>,
         priority: 'medium',
         // Persist until submit — the hint fires at T+75min idle, user may
@@ -4102,13 +4110,13 @@ export function REPL({
     }
 
     // Fall back to default behavior
-    const hookType = currentHooks[0]?.data.hookEvent === 'SubagentStop' ? 'subagent stop' : 'stop';
+    const hookType = currentHooks[0]?.data.hookEvent === 'SubagentStop' ? t('spinner.stopHooks.subagentStopType') : t('spinner.stopHooks.stopType');
     if ("external" === 'ant') {
       const cmd = currentHooks[completedCount]?.data.command;
       const label = cmd ? ` '${truncateToWidth(cmd, 40)}'` : '';
-      return total === 1 ? `running ${hookType} hook${label}` : `running ${hookType} hook${label}\u2026 ${completedCount}/${total}`;
+      return total === 1 ? t('spinner.stopHooks.runningHook', { hookType, label }) : t('spinner.stopHooks.runningHookProgress', { hookType, label, count: completedCount, total });
     }
-    return total === 1 ? `running ${hookType} hook` : `running stop hooks… ${completedCount}/${total}`;
+    return total === 1 ? t('spinner.stopHooks.runningHook', { hookType, label: '' }) : t('spinner.stopHooks.runningStopHooksProgress', { count: completedCount, total });
   }, [messages, isLoading]);
 
   // Callback to capture frozen state when entering transcript mode
@@ -4235,7 +4243,7 @@ export function REPL({
         clearTimeout(editorTimerRef.current);
         setEditorStatus(s);
       };
-      setStatus(`rendering ${deferredMessages.length} messages…`);
+      setStatus(t('transcript.editor.rendering', { count: deferredMessages.length }));
       void (async () => {
         try {
           // Width = terminal minus vim's line-number gutter (4 digits +
@@ -4249,9 +4257,9 @@ export function REPL({
           const path = join(tmpdir(), `cc-transcript-${Date.now()}.txt`);
           await writeFile(path, text);
           const opened = openFileInExternalEditor(path);
-          setStatus(opened ? `opening ${path}` : `wrote ${path} · no $VISUAL/$EDITOR set`);
+          setStatus(opened ? t('transcript.editor.opening', { path }) : t('transcript.editor.wroteNoEditor', { path }));
         } catch (e) {
-          setStatus(`render failed: ${e instanceof Error ? e.message : String(e)}`);
+          setStatus(t('transcript.editor.renderFailed', { message: e instanceof Error ? e.message : String(e) }));
         }
         editorRenderingRef.current = false;
         if (gen !== editorGenRef.current) return;
@@ -4601,7 +4609,7 @@ export function REPL({
                 {/* Show pending indicator on worker while waiting for leader approval */}
                 {pendingWorkerRequest && <WorkerPendingPermission toolName={pendingWorkerRequest.toolName} description={pendingWorkerRequest.description} />}
                 {/* Show pending indicator for sandbox permission on worker side */}
-                {pendingSandboxRequest && <WorkerPendingPermission toolName="Network Access" description={`Waiting for leader to approve network access to ${pendingSandboxRequest.host}`} />}
+                {pendingSandboxRequest && <WorkerPendingPermission toolName={t('permission.worker.networkAccessLabel')} description={t('permission.worker.sandboxWaitingDescription', { host: pendingSandboxRequest.host })} />}
                 {/* Worker sandbox permission requests from swarm workers */}
                 {focusedInputDialog === 'worker-sandbox-permission' && <SandboxPermissionRequest key={workerSandboxPermissions.queue[0]!.requestId} hostPattern={{
             host: workerSandboxPermissions.queue[0]!.host,
@@ -4763,7 +4771,7 @@ export function REPL({
 
                 {!toolJSX?.shouldHidePromptInput && !focusedInputDialog && !isExiting && !disabled && !cursor && <>
                       {autoRunIssueReason && <AutoRunIssueNotification onRun={handleAutoRunIssue} onCancel={handleCancelAutoRunIssue} reason={getAutoRunIssueReasonText(autoRunIssueReason)} />}
-                      {postCompactSurvey.state !== 'closed' ? <FeedbackSurvey state={postCompactSurvey.state} lastResponse={postCompactSurvey.lastResponse} handleSelect={postCompactSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} /> : memorySurvey.state !== 'closed' ? <FeedbackSurvey state={memorySurvey.state} lastResponse={memorySurvey.lastResponse} handleSelect={memorySurvey.handleSelect} handleTranscriptSelect={memorySurvey.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} message="How well did Claude use its memory? (optional)" /> : <FeedbackSurvey state={feedbackSurvey.state} lastResponse={feedbackSurvey.lastResponse} handleSelect={feedbackSurvey.handleSelect} handleTranscriptSelect={feedbackSurvey.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} />}
+                      {postCompactSurvey.state !== 'closed' ? <FeedbackSurvey state={postCompactSurvey.state} lastResponse={postCompactSurvey.lastResponse} handleSelect={postCompactSurvey.handleSelect} inputValue={inputValue} setInputValue={setInputValue} /> : memorySurvey.state !== 'closed' ? <FeedbackSurvey state={memorySurvey.state} lastResponse={memorySurvey.lastResponse} handleSelect={memorySurvey.handleSelect} handleTranscriptSelect={memorySurvey.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} message={t('feedbackSurvey.memory.prompt')} /> : <FeedbackSurvey state={feedbackSurvey.state} lastResponse={feedbackSurvey.lastResponse} handleSelect={feedbackSurvey.handleSelect} handleTranscriptSelect={feedbackSurvey.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} />}
                       {/* Frustration-triggered transcript sharing prompt */}
                       {frustrationDetection.state !== 'closed' && <FeedbackSurvey state={frustrationDetection.state} lastResponse={null} handleSelect={() => {}} handleTranscriptSelect={frustrationDetection.handleTranscriptSelect} inputValue={inputValue} setInputValue={setInputValue} />}
                       {/* Skill improvement survey - appears when improvements detected (ant-only) */}
@@ -4795,7 +4803,7 @@ export function REPL({
               // selector still shows (REPL keeps full history for
               // scrollback). Surface why nothing happened instead
               // of silently no-oping.
-              setMessages(prev => [...prev, createSystemMessage('That message is no longer in the active context (snipped or pre-compact). Choose a more recent message.', 'warning')]);
+              setMessages(prev => [...prev, createSystemMessage(t('compact.messageNotInActiveContext'), 'warning')]);
               return;
             }
             const newAbortController = createAbortController();
@@ -4852,7 +4860,7 @@ export function REPL({
             const historyShortcut = getShortcutDisplay('app:toggleTranscript', 'Global', 'ctrl+o');
             addNotification({
               key: 'summarize-ctrl-o-hint',
-              text: `Conversation summarized (${historyShortcut} for history)`,
+              text: t('notification.conversationSummarized', { historyShortcut }),
               priority: 'medium',
               timeoutMs: 8000
             });

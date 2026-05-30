@@ -2,6 +2,8 @@ import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { Markdown } from '../../components/Markdown.js';
 import { Box, Text } from '../../ink.js';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { jsonParse } from '../../utils/slowOperations.js';
 import { type IdleNotificationMessage, isIdleNotification, isPlanApprovalRequest, isPlanApprovalResponse, type PlanApprovalRequestMessage, type PlanApprovalResponseMessage } from '../../utils/teammateMailbox.js';
 import { getShutdownMessageSummary } from './ShutdownMessage.js';
@@ -19,9 +21,14 @@ export function PlanApprovalRequestDisplay(t0) {
   const {
     request
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== request.from) {
-    t1 = <Box marginBottom={1}><Text color="planMode" bold={true}>Plan Approval Request from {request.from}</Text></Box>;
+    t1 = <Box marginBottom={1}><Text color="planMode" bold={true}>{t('planApproval.request.header', {
+      from: request.from
+    })}</Text></Box>;
     $[0] = request.from;
     $[1] = t1;
   } else {
@@ -37,7 +44,9 @@ export function PlanApprovalRequestDisplay(t0) {
   }
   let t3;
   if ($[4] !== request.planFilePath) {
-    t3 = <Text dimColor={true}>Plan file: {request.planFilePath}</Text>;
+    t3 = <Text dimColor={true}>{t('planApproval.request.planFile', {
+      path: request.planFilePath
+    })}</Text>;
     $[4] = request.planFilePath;
     $[5] = t3;
   } else {
@@ -69,10 +78,15 @@ export function PlanApprovalResponseDisplay(t0) {
     response,
     senderName
   } = t0;
+  const {
+    t
+  } = useTranslation();
   if (response.approved) {
     let t1;
     if ($[0] !== senderName) {
-      t1 = <Box><Text color="success" bold={true}>✓ Plan Approved by {senderName}</Text></Box>;
+      t1 = <Box><Text color="success" bold={true}>{t('planApproval.response.approvedHeader', {
+        senderName
+      })}</Text></Box>;
       $[0] = senderName;
       $[1] = t1;
     } else {
@@ -80,7 +94,7 @@ export function PlanApprovalResponseDisplay(t0) {
     }
     let t2;
     if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-      t2 = <Box marginTop={1}><Text>You can now proceed with implementation. Your plan mode restrictions have been lifted.</Text></Box>;
+      t2 = <Box marginTop={1}><Text>{t('planApproval.response.approvedBody')}</Text></Box>;
       $[2] = t2;
     } else {
       t2 = $[2];
@@ -97,7 +111,9 @@ export function PlanApprovalResponseDisplay(t0) {
   }
   let t1;
   if ($[5] !== senderName) {
-    t1 = <Box><Text color="error" bold={true}>✗ Plan Rejected by {senderName}</Text></Box>;
+    t1 = <Box><Text color="error" bold={true}>{t('planApproval.response.rejectedHeader', {
+      senderName
+    })}</Text></Box>;
     $[5] = senderName;
     $[6] = t1;
   } else {
@@ -105,7 +121,9 @@ export function PlanApprovalResponseDisplay(t0) {
   }
   let t2;
   if ($[7] !== response.feedback) {
-    t2 = response.feedback && <Box marginTop={1} borderStyle="dashed" borderColor="subtle" borderLeft={false} borderRight={false} paddingX={1}><Text>Feedback: {response.feedback}</Text></Box>;
+    t2 = response.feedback && <Box marginTop={1} borderStyle="dashed" borderColor="subtle" borderLeft={false} borderRight={false} paddingX={1}><Text>{t('planApproval.response.feedbackLabel', {
+      feedback: response.feedback
+    })}</Text></Box>;
     $[7] = response.feedback;
     $[8] = t2;
   } else {
@@ -113,7 +131,7 @@ export function PlanApprovalResponseDisplay(t0) {
   }
   let t3;
   if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Box marginTop={1}><Text dimColor={true}>Please revise your plan based on the feedback and call ExitPlanMode again.</Text></Box>;
+    t3 = <Box marginTop={1}><Text dimColor={true}>{t('planApproval.response.reviseInstruction')}</Text></Box>;
     $[9] = t3;
   } else {
     t3 = $[9];
@@ -154,14 +172,18 @@ export function tryRenderPlanApprovalMessage(content: string, senderName: string
 function getPlanApprovalSummary(content: string): string | null {
   const request = isPlanApprovalRequest(content);
   if (request) {
-    return `[Plan Approval Request from ${request.from}]`;
+    return getMessage('planApproval.summary.request', {
+      from: request.from
+    });
   }
   const response = isPlanApprovalResponse(content);
   if (response) {
     if (response.approved) {
-      return '[Plan Approved] You can now proceed with implementation';
+      return getMessage('planApproval.summary.approved');
     } else {
-      return `[Plan Rejected] ${response.feedback || 'Please revise your plan'}`;
+      return getMessage('planApproval.summary.rejected', {
+        feedback: response.feedback || getMessage('planApproval.summary.rejectedFallback')
+      });
     }
   }
   return null;
@@ -171,13 +193,18 @@ function getPlanApprovalSummary(content: string): string | null {
  * Get a brief summary text for an idle notification.
  */
 function getIdleNotificationSummary(msg: IdleNotificationMessage): string {
-  const parts: string[] = ['Agent idle'];
+  const parts: string[] = [getMessage('idleNotification.summary.idle')];
   if (msg.completedTaskId) {
     const status = msg.completedStatus || 'completed';
-    parts.push(`Task ${msg.completedTaskId} ${status}`);
+    parts.push(getMessage('idleNotification.summary.task', {
+      id: msg.completedTaskId,
+      status
+    }));
   }
   if (msg.summary) {
-    parts.push(`Last DM: ${msg.summary}`);
+    parts.push(getMessage('idleNotification.summary.lastDm', {
+      summary: msg.summary
+    }));
   }
   return parts.join(' · ');
 }

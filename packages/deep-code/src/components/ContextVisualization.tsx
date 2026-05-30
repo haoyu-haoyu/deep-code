@@ -2,6 +2,8 @@ import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { Box, Text } from '../ink.js';
+import { getMessage } from '../i18n/index.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import type { ContextData } from '../utils/analyzeContext.js';
 import { generateContextSuggestions } from '../utils/contextSuggestions.js';
 import { getDisplayPath } from '../utils/file.js';
@@ -20,6 +22,9 @@ const RESERVED_CATEGORY_NAME = 'Autocompact buffer';
  */
 function CollapseStatus() {
   const $ = _c(2);
+  const {
+    t
+  } = useTranslation();
   if (feature("CONTEXT_COLLAPSE")) {
     let t0;
     let t1;
@@ -40,21 +45,39 @@ function CollapseStatus() {
         } = s;
         const parts = [];
         if (s.collapsedSpans > 0) {
-          parts.push(`${s.collapsedSpans} ${plural(s.collapsedSpans, "span")} summarized (${s.collapsedMessages} msgs)`);
+          parts.push(t('context.collapse.spansSummarized', {
+            count: s.collapsedSpans,
+            spanWord: plural(s.collapsedSpans, "span"),
+            messages: s.collapsedMessages
+          }));
         }
         if (s.stagedSpans > 0) {
-          parts.push(`${s.stagedSpans} staged`);
+          parts.push(t('context.collapse.staged', {
+            count: s.stagedSpans
+          }));
         }
-        const summary = parts.length > 0 ? parts.join(", ") : h.totalSpawns > 0 ? `${h.totalSpawns} ${plural(h.totalSpawns, "spawn")}, nothing staged yet` : "waiting for first trigger";
+        const summary = parts.length > 0 ? parts.join(", ") : h.totalSpawns > 0 ? t('context.collapse.spawnsNothingStaged', {
+          count: h.totalSpawns,
+          spawnWord: plural(h.totalSpawns, "spawn")
+        }) : t('context.collapse.waitingFirstTrigger');
         let line2 = null;
         if (h.totalErrors > 0) {
-          line2 = <Text color="warning">Collapse errors: {h.totalErrors}/{h.totalSpawns} spawns failed{h.lastError ? ` (last: ${h.lastError.slice(0, 60)})` : ""}</Text>;
+          line2 = <Text color="warning">{t('context.collapse.errors', {
+            errors: h.totalErrors,
+            spawns: h.totalSpawns
+          })}{h.lastError ? t('context.collapse.lastError', {
+            error: h.lastError.slice(0, 60)
+          }) : ""}</Text>;
         } else {
           if (h.emptySpawnWarningEmitted) {
-            line2 = <Text color="warning">Collapse idle: {h.totalEmptySpawns} consecutive empty runs</Text>;
+            line2 = <Text color="warning">{t('context.collapse.idle', {
+              empty: h.totalEmptySpawns
+            })}</Text>;
           }
         }
-        t0 = <><Text dimColor={true}>Context strategy: collapse ({summary})</Text>{line2}</>;
+        t0 = <><Text dimColor={true}>{t('context.collapse.strategy', {
+          summary
+        })}</Text>{line2}</>;
       }
       $[0] = t0;
       $[1] = t1;
@@ -123,6 +146,9 @@ export function ContextVisualization(t0) {
     skills,
     messageBreakdown
   } = data;
+  const {
+    t
+  } = useTranslation();
   let T0;
   let T1;
   let t2;
@@ -151,7 +177,7 @@ export function ContextVisualization(t0) {
     t6 = "column";
     t7 = 1;
     if ($[21] === Symbol.for("react.memo_cache_sentinel")) {
-      t8 = <Text bold={true}>Context Usage</Text>;
+      t8 = <Text bold={true}>{t('context.usage.title')}</Text>;
       $[21] = t8;
     } else {
       t8 = $[21];
@@ -190,7 +216,7 @@ export function ContextVisualization(t0) {
     }
     let t15;
     if ($[30] !== model || $[31] !== percentage || $[32] !== t13 || $[33] !== t14) {
-      t15 = <Text dimColor={true}>{model} · {t13}/{t14}{" "}tokens ({percentage}%)</Text>;
+      t15 = <Text dimColor={true}>{model} · {t13}/{t14}{" "}{t('context.usage.tokensLabel')} ({percentage}%)</Text>;
       $[30] = model;
       $[31] = percentage;
       $[32] = t13;
@@ -205,7 +231,7 @@ export function ContextVisualization(t0) {
     if ($[35] === Symbol.for("react.memo_cache_sentinel")) {
       t16 = <CollapseStatus />;
       t17 = <Text> </Text>;
-      t18 = <Text dimColor={true} italic={true}>Estimated usage by category</Text>;
+      t18 = <Text dimColor={true} italic={true}>{t('context.usage.byCategory')}</Text>;
       $[35] = t16;
       $[36] = t17;
       $[37] = t18;
@@ -222,7 +248,7 @@ export function ContextVisualization(t0) {
         const isReserved = cat_2.name === RESERVED_CATEGORY_NAME;
         const displayName = cat_2.name;
         const symbol = cat_2.isDeferred ? " " : isReserved ? "\u26DD" : "\u26C1";
-        return <Box key={index}><Text color={cat_2.color}>{symbol}</Text><Text> {displayName}: </Text><Text dimColor={true}>{tokenDisplay} tokens ({percentDisplay})</Text></Box>;
+        return <Box key={index}><Text color={cat_2.color}>{symbol}</Text><Text> {displayName}: </Text><Text dimColor={true}>{tokenDisplay} {t('context.usage.tokensLabel')} ({percentDisplay})</Text></Box>;
       };
       $[38] = rawMaxTokens;
       $[39] = t19;
@@ -232,14 +258,14 @@ export function ContextVisualization(t0) {
     const t20 = visibleCategories.map(t19);
     let t21;
     if ($[40] !== categories || $[41] !== rawMaxTokens) {
-      t21 = (categories.find(_temp6)?.tokens ?? 0) > 0 && <Box><Text dimColor={true}>⛶</Text><Text> Free space: </Text><Text dimColor={true}>{formatTokens(categories.find(_temp7)?.tokens || 0)}{" "}({((categories.find(_temp8)?.tokens || 0) / rawMaxTokens * 100).toFixed(1)}%)</Text></Box>;
+      t21 = (categories.find(_temp6)?.tokens ?? 0) > 0 && <Box><Text dimColor={true}>⛶</Text><Text> {t('context.usage.freeSpace')} </Text><Text dimColor={true}>{formatTokens(categories.find(_temp7)?.tokens || 0)}{" "}({((categories.find(_temp8)?.tokens || 0) / rawMaxTokens * 100).toFixed(1)}%)</Text></Box>;
       $[40] = categories;
       $[41] = rawMaxTokens;
       $[42] = t21;
     } else {
       t21 = $[42];
     }
-    const t22 = autocompactCategory && autocompactCategory.tokens > 0 && <Box><Text color={autocompactCategory.color}>⛝</Text><Text dimColor={true}> {autocompactCategory.name}: </Text><Text dimColor={true}>{formatTokens(autocompactCategory.tokens)} tokens ({(autocompactCategory.tokens / rawMaxTokens * 100).toFixed(1)}%)</Text></Box>;
+    const t22 = autocompactCategory && autocompactCategory.tokens > 0 && <Box><Text color={autocompactCategory.color}>⛝</Text><Text dimColor={true}> {autocompactCategory.name}: </Text><Text dimColor={true}>{formatTokens(autocompactCategory.tokens)} {t('context.usage.tokensLabel')} ({(autocompactCategory.tokens / rawMaxTokens * 100).toFixed(1)}%)</Text></Box>;
     let t23;
     if ($[43] !== t15 || $[44] !== t20 || $[45] !== t21 || $[46] !== t22) {
       t23 = <Box flexDirection="column" gap={0} flexShrink={0}>{t15}{t16}{t17}{t18}{t20}{t21}{t22}</Box>;
@@ -263,7 +289,7 @@ export function ContextVisualization(t0) {
     t2 = "column";
     t3 = -1;
     if ($[51] !== hasDeferredMcpTools || $[52] !== mcpTools) {
-      t4 = mcpTools.length > 0 && <Box flexDirection="column" marginTop={1}><Box><Text bold={true}>MCP tools</Text><Text dimColor={true}>{" "}· /mcp{hasDeferredMcpTools ? " (loaded on-demand)" : ""}</Text></Box>{mcpTools.some(_temp9) && <Box flexDirection="column" marginTop={1}><Text dimColor={true}>Loaded</Text>{mcpTools.filter(_temp0).map(_temp1)}</Box>}{hasDeferredMcpTools && mcpTools.some(_temp10) && <Box flexDirection="column" marginTop={1}><Text dimColor={true}>Available</Text>{mcpTools.filter(_temp11).map(_temp12)}</Box>}{!hasDeferredMcpTools && mcpTools.map(_temp13)}</Box>;
+      t4 = mcpTools.length > 0 && <Box flexDirection="column" marginTop={1}><Box><Text bold={true}>{t('context.mcpTools.header')}</Text><Text dimColor={true}>{" "}· /mcp{hasDeferredMcpTools ? t('context.mcpTools.loadedOnDemand') : ""}</Text></Box>{mcpTools.some(_temp9) && <Box flexDirection="column" marginTop={1}><Text dimColor={true}>{t('context.mcpTools.loaded')}</Text>{mcpTools.filter(_temp0).map(_temp1)}</Box>}{hasDeferredMcpTools && mcpTools.some(_temp10) && <Box flexDirection="column" marginTop={1}><Text dimColor={true}>{t('context.mcpTools.available')}</Text>{mcpTools.filter(_temp11).map(_temp12)}</Box>}{!hasDeferredMcpTools && mcpTools.map(_temp13)}</Box>;
       $[51] = hasDeferredMcpTools;
       $[52] = mcpTools;
       $[53] = t4;
@@ -312,7 +338,7 @@ export function ContextVisualization(t0) {
   }
   let t11;
   if ($[56] !== agents) {
-    t11 = agents.length > 0 && <Box flexDirection="column" marginTop={1}><Box><Text bold={true}>Custom agents</Text><Text dimColor={true}> · /agents</Text></Box>{Array.from(groupBySource(agents).entries()).map(_temp22)}</Box>;
+    t11 = agents.length > 0 && <Box flexDirection="column" marginTop={1}><Box><Text bold={true}>{t('context.agents.header')}</Text><Text dimColor={true}> · /agents</Text></Box>{Array.from(groupBySource(agents).entries()).map(_temp22)}</Box>;
     $[56] = agents;
     $[57] = t11;
   } else {
@@ -320,7 +346,7 @@ export function ContextVisualization(t0) {
   }
   let t12;
   if ($[58] !== memoryFiles) {
-    t12 = memoryFiles.length > 0 && <Box flexDirection="column" marginTop={1}><Box><Text bold={true}>Memory files</Text><Text dimColor={true}> · /memory</Text></Box>{memoryFiles.map(_temp23)}</Box>;
+    t12 = memoryFiles.length > 0 && <Box flexDirection="column" marginTop={1}><Box><Text bold={true}>{t('context.memory.header')}</Text><Text dimColor={true}> · /memory</Text></Box>{memoryFiles.map(_temp23)}</Box>;
     $[58] = memoryFiles;
     $[59] = t12;
   } else {
@@ -328,7 +354,7 @@ export function ContextVisualization(t0) {
   }
   let t13;
   if ($[60] !== skills) {
-    t13 = skills && skills.tokens > 0 && <Box flexDirection="column" marginTop={1}><Box><Text bold={true}>Skills</Text><Text dimColor={true}> · /skills</Text></Box>{Array.from(groupBySource(skills.skillFrontmatter).entries()).map(_temp25)}</Box>;
+    t13 = skills && skills.tokens > 0 && <Box flexDirection="column" marginTop={1}><Box><Text bold={true}>{t('context.skills.header')}</Text><Text dimColor={true}> · /skills</Text></Box>{Array.from(groupBySource(skills.skillFrontmatter).entries()).map(_temp25)}</Box>;
     $[60] = skills;
     $[61] = t13;
   } else {
@@ -402,17 +428,17 @@ function _temp25(t0) {
   return <Box key={sourceDisplay_0} flexDirection="column" marginTop={1}><Text dimColor={true}>{sourceDisplay_0}</Text>{sourceSkills.map(_temp24)}</Box>;
 }
 function _temp24(skill, i_8) {
-  return <Box key={i_8}><Text>└ {skill.name}: </Text><Text dimColor={true}>{formatTokens(skill.tokens)} tokens</Text></Box>;
+  return <Box key={i_8}><Text>└ {skill.name}: </Text><Text dimColor={true}>{formatTokens(skill.tokens)} {getMessage('context.usage.tokensLabel')}</Text></Box>;
 }
 function _temp23(file, i_7) {
-  return <Box key={i_7}><Text>└ {getDisplayPath(file.path)}: </Text><Text dimColor={true}>{formatTokens(file.tokens)} tokens</Text></Box>;
+  return <Box key={i_7}><Text>└ {getDisplayPath(file.path)}: </Text><Text dimColor={true}>{formatTokens(file.tokens)} {getMessage('context.usage.tokensLabel')}</Text></Box>;
 }
 function _temp22(t0) {
   const [sourceDisplay, sourceAgents] = t0;
   return <Box key={sourceDisplay} flexDirection="column" marginTop={1}><Text dimColor={true}>{sourceDisplay}</Text>{sourceAgents.map(_temp21)}</Box>;
 }
 function _temp21(agent, i_6) {
-  return <Box key={i_6}><Text>└ {agent.agentType}: </Text><Text dimColor={true}>{formatTokens(agent.tokens)} tokens</Text></Box>;
+  return <Box key={i_6}><Text>└ {agent.agentType}: </Text><Text dimColor={true}>{formatTokens(agent.tokens)} {getMessage('context.usage.tokensLabel')}</Text></Box>;
 }
 function _temp20(section, i_5) {
   return <Box key={i_5}><Text>└ {section.name}: </Text><Text dimColor={true}>{formatTokens(section.tokens)} tokens</Text></Box>;
@@ -436,7 +462,7 @@ function _temp14(tool_2, i_2) {
   return <Box key={`sys-${i_2}`}><Text>└ {tool_2.name}: </Text><Text dimColor={true}>{formatTokens(tool_2.tokens)} tokens</Text></Box>;
 }
 function _temp13(tool_1, i_1) {
-  return <Box key={i_1}><Text>└ {tool_1.name}: </Text><Text dimColor={true}>{formatTokens(tool_1.tokens)} tokens</Text></Box>;
+  return <Box key={i_1}><Text>└ {tool_1.name}: </Text><Text dimColor={true}>{formatTokens(tool_1.tokens)} {getMessage('context.usage.tokensLabel')}</Text></Box>;
 }
 function _temp12(tool_0, i_0) {
   return <Box key={i_0}><Text dimColor={true}>└ {tool_0.name}</Text></Box>;
@@ -448,7 +474,7 @@ function _temp10(t_2) {
   return !t_2.isLoaded;
 }
 function _temp1(tool, i) {
-  return <Box key={i}><Text>└ {tool.name}: </Text><Text dimColor={true}>{formatTokens(tool.tokens)} tokens</Text></Box>;
+  return <Box key={i}><Text>└ {tool.name}: </Text><Text dimColor={true}>{formatTokens(tool.tokens)} {getMessage('context.usage.tokensLabel')}</Text></Box>;
 }
 function _temp0(t) {
   return t.isLoaded;

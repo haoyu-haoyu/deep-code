@@ -5,8 +5,9 @@ import { useMemo } from 'react';
 import { Box, Text } from '../../ink.js';
 import { extractTag } from '../../utils/messages.js';
 import { MessageResponse } from '../MessageResponse.js';
+import { getMessage } from '../../i18n/index.js';
 function getSavingMessage(): string {
-  return sample(['Got it.', 'Good to know.', 'Noted.']);
+  return sample([getMessage('message.userMemoryInput.savedGotIt'), getMessage('message.userMemoryInput.savedGoodToKnow'), getMessage('message.userMemoryInput.savedNoted')]);
 }
 type Props = {
   addMargin: boolean;

@@ -3,6 +3,7 @@ import type { TextBlockParam } from '../../types/sdk-shim.js';
 import figures from 'figures';
 import * as React from 'react';
 import { TEAMMATE_MESSAGE_TAG } from '../../constants/xml.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Ansi, Box, Text, type TextProps } from '../../ink.js';
 import { toInkColor } from '../../utils/ink.js';
 import { jsonParse } from '../../utils/slowOperations.js';
@@ -59,6 +60,9 @@ export function UserTeammateMessage({
   },
   isTranscriptMode
 }: Props): React.ReactNode {
+  const {
+    t
+  } = useTranslation();
   const messages = parseTeammateMessages(text).filter(msg => {
     // Pre-filter shutdown lifecycle messages to avoid empty wrapper
     // Box elements creating blank lines between model turns
@@ -128,8 +132,12 @@ export function UserTeammateMessage({
                 <Text color="success">✓</Text>
                 <Text>
                   {' '}
-                  Completed task #{taskCompleted.taskId}
-                  {taskCompleted.taskSubject && <Text dimColor> ({taskCompleted.taskSubject})</Text>}
+                  {t('message.teammate.completedTask', {
+                  taskId: taskCompleted.taskId
+                })}
+                  {taskCompleted.taskSubject && <Text dimColor>{t('message.teammate.completedTaskSubject', {
+                  taskSubject: taskCompleted.taskSubject
+                })}</Text>}
                 </Text>
               </MessageResponse>
             </Box>;

@@ -7,6 +7,7 @@ import { Text } from '../../../ink.js';
 import { filterToolProgressMessages, type Tool, type Tools } from '../../../Tool.js';
 import type { ProgressMessage } from '../../../types/message.js';
 import { INTERRUPT_MESSAGE_FOR_TOOL_USE, isClassifierDenial, PLAN_REJECTION_PREFIX, REJECT_MESSAGE_WITH_REASON_PREFIX } from '../../../utils/messages.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { FallbackToolUseErrorMessage } from '../../FallbackToolUseErrorMessage.js';
 import { InterruptedByUser } from '../../InterruptedByUser.js';
 import { MessageResponse } from '../../MessageResponse.js';
@@ -30,6 +31,9 @@ export function UserToolErrorMessage(t0) {
     verbose,
     isTranscriptMode
   } = t0;
+  const {
+    t
+  } = useTranslation();
   if (typeof param.content === "string" && param.content.includes(INTERRUPT_MESSAGE_FOR_TOOL_USE)) {
     let t1;
     if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -73,7 +77,10 @@ export function UserToolErrorMessage(t0) {
   if (feature("TRANSCRIPT_CLASSIFIER") && typeof param.content === "string" && isClassifierDenial(param.content)) {
     let t1;
     if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
-      t1 = <MessageResponse height={1}><Text dimColor={true}>Denied by auto mode classifier {BULLET_OPERATOR} {MACRO.ISSUES_EXPLAINER} if incorrect</Text></MessageResponse>;
+      t1 = <MessageResponse height={1}><Text dimColor={true}>{t('toolError.classifierDenial', {
+        bullet: BULLET_OPERATOR,
+        issuesExplainer: MACRO.ISSUES_EXPLAINER
+      })}</Text></MessageResponse>;
       $[6] = t1;
     } else {
       t1 = $[6];

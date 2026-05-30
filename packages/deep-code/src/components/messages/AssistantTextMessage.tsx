@@ -4,6 +4,7 @@ import React, { useContext } from 'react';
 import { ERROR_MESSAGE_USER_ABORT } from 'src/services/compact/compact.js';
 import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { Box, NoSelect, Text } from '../../ink.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { API_ERROR_MESSAGE_PREFIX, API_TIMEOUT_ERROR_MESSAGE, CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE, CUSTOM_OFF_SWITCH_MESSAGE, INVALID_API_KEY_ERROR_MESSAGE, INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL, ORG_DISABLED_ERROR_MESSAGE_ENV_KEY, ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH, PROMPT_TOO_LONG_ERROR_MESSAGE, startsWithApiErrorPrefix, TOKEN_REVOKED_ERROR_MESSAGE } from '../../services/runtime/errors.js';
 import { isEmptyMessageText, NO_RESPONSE_REQUESTED } from '../../utils/messages.js';
 import { getUpgradeMessage } from '../../utils/model/contextWindowUpgradeCheck.js';
@@ -25,6 +26,9 @@ type Props = {
 };
 function InvalidApiKeyMessage() {
   const $ = _c(2);
+  const {
+    t
+  } = useTranslation();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = isMacOsKeychainLocked();
@@ -35,7 +39,7 @@ function InvalidApiKeyMessage() {
   const isKeychainLocked = t0;
   let t1;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <MessageResponse><Box flexDirection="column"><Text color="error">{INVALID_API_KEY_ERROR_MESSAGE}</Text>{isKeychainLocked && <Text dimColor={true}>· Run in another terminal: security unlock-keychain</Text>}</Box></MessageResponse>;
+    t1 = <MessageResponse><Box flexDirection="column"><Text color="error">{INVALID_API_KEY_ERROR_MESSAGE}</Text>{isKeychainLocked && <Text dimColor={true}>{t('messages.assistant.keychainUnlockHint')}</Text>}</Box></MessageResponse>;
     $[1] = t1;
   } else {
     t1 = $[1];
@@ -54,6 +58,9 @@ export function AssistantTextMessage(t0) {
     text
   } = t1;
   const isSelected = useContext(MessageActionsSelectedContext);
+  const {
+    t
+  } = useTranslation();
   if (isEmptyMessageText(text)) {
     return null;
   }
@@ -74,7 +81,7 @@ export function AssistantTextMessage(t0) {
         const upgradeHint = t2;
         let t3;
         if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-          t3 = <MessageResponse height={1}><Text color="error">Context limit reached · /compact or /clear to continue{upgradeHint ? ` · ${upgradeHint}` : ""}</Text></MessageResponse>;
+          t3 = <MessageResponse height={1}><Text color="error">{t('messages.assistant.contextLimitReached')}{upgradeHint ? ` · ${upgradeHint}` : ""}</Text></MessageResponse>;
           $[4] = t3;
         } else {
           t3 = $[4];
@@ -85,7 +92,7 @@ export function AssistantTextMessage(t0) {
       {
         let t2;
         if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-          t2 = <MessageResponse height={1}><Text color="error">Credit balance too low</Text></MessageResponse>;
+          t2 = <MessageResponse height={1}><Text color="error">{t('messages.assistant.creditBalanceTooLow')}</Text></MessageResponse>;
           $[5] = t2;
         } else {
           t2 = $[5];
@@ -142,7 +149,9 @@ export function AssistantTextMessage(t0) {
       {
         let t2;
         if ($[11] === Symbol.for("react.memo_cache_sentinel")) {
-          t2 = <MessageResponse height={1}><Text color="error">{API_TIMEOUT_ERROR_MESSAGE}{process.env.API_TIMEOUT_MS && <>{" "}(API_TIMEOUT_MS={process.env.API_TIMEOUT_MS}ms, try increasing it)</>}</Text></MessageResponse>;
+          t2 = <MessageResponse height={1}><Text color="error">{API_TIMEOUT_ERROR_MESSAGE}{process.env.API_TIMEOUT_MS && <>{" "}{t('messages.assistant.apiTimeoutEnvHint', {
+            ms: process.env.API_TIMEOUT_MS
+          })}</>}</Text></MessageResponse>;
           $[11] = t2;
         } else {
           t2 = $[11];
@@ -153,14 +162,16 @@ export function AssistantTextMessage(t0) {
       {
         let t2;
         if ($[12] === Symbol.for("react.memo_cache_sentinel")) {
-          t2 = <Text color="error">We are experiencing high demand for Opus 4.</Text>;
+          t2 = <Text color="error">{t('messages.assistant.highDemandOpus')}</Text>;
           $[12] = t2;
         } else {
           t2 = $[12];
         }
         let t3;
         if ($[13] === Symbol.for("react.memo_cache_sentinel")) {
-          t3 = <MessageResponse><Box flexDirection="column" gap={1}>{t2}<Text>To continue immediately, use /model to switch to{" "}{renderModelName(getDefaultSonnetModel())} and continue coding.</Text></Box></MessageResponse>;
+          t3 = <MessageResponse><Box flexDirection="column" gap={1}>{t2}<Text>{t('messages.assistant.switchModelHint', {
+          model: renderModelName(getDefaultSonnetModel())
+        })}</Text></Box></MessageResponse>;
           $[13] = t3;
         } else {
           t3 = $[13];
@@ -182,7 +193,9 @@ export function AssistantTextMessage(t0) {
       {
         if (startsWithApiErrorPrefix(text)) {
           const truncated = !verbose && text.length > MAX_API_ERROR_CHARS;
-          const t2 = text === API_ERROR_MESSAGE_PREFIX ? `${API_ERROR_MESSAGE_PREFIX}: Please wait a moment and try again.` : truncated ? text.slice(0, MAX_API_ERROR_CHARS) + "\u2026" : text;
+          const t2 = text === API_ERROR_MESSAGE_PREFIX ? t('messages.assistant.apiErrorRetry', {
+            prefix: API_ERROR_MESSAGE_PREFIX
+          }) : truncated ? text.slice(0, MAX_API_ERROR_CHARS) + "\u2026" : text;
           let t3;
           if ($[15] !== t2) {
             t3 = <Text color="error">{t2}</Text>;

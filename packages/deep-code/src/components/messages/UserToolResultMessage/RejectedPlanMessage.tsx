@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Markdown } from 'src/components/Markdown.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
 import { Box, Text } from '../../../ink.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 type Props = {
   plan: string;
 };
@@ -11,9 +12,12 @@ export function RejectedPlanMessage(t0) {
   const {
     plan
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Text color="subtle">User rejected Claude's plan:</Text>;
+    t1 = <Text color="subtle">{t('message.rejectedPlan.header')}</Text>;
     $[0] = t1;
   } else {
     t1 = $[0];

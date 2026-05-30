@@ -6,6 +6,7 @@ import { supportsHyperlinks } from '../../ink/supports-hyperlinks.js';
 import { Box, Text } from '../../ink.js';
 import { getStoredImagePath } from '../../utils/imageStore.js';
 import { MessageResponse } from '../MessageResponse.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 type Props = {
   imageId?: number;
   addMargin?: boolean;
@@ -23,7 +24,12 @@ export function UserImageMessage(t0) {
     imageId,
     addMargin
   } = t0;
-  const label = imageId ? `[Image #${imageId}]` : "[Image]";
+  const {
+    t
+  } = useTranslation();
+  const label = imageId ? t('message.userImage.labelNumbered', {
+    imageId
+  }) : t('message.userImage.label');
   let t1;
   if ($[0] !== imageId || $[1] !== label) {
     const imagePath = imageId ? getStoredImagePath(imageId) : null;

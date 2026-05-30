@@ -2,7 +2,7 @@ import { isInBundledMode } from 'src/utils/bundledMode.js';
 import { getCurrentInstallationType } from 'src/utils/doctorDiagnostic.js';
 import { isEnvTruthy } from 'src/utils/envUtils.js';
 import { useStartupNotification } from './useStartupNotification.js';
-const NPM_DEPRECATION_MESSAGE = 'Deep Code is running from the local development package.';
+import { getMessage } from '../../i18n/index.js';
 function isDeepCodeDeepSeekProvider(): boolean {
   const provider = (process.env.DEEPCODE_PROVIDER ?? process.env.DEEP_CODE_PROVIDER ?? 'deepseek').toLowerCase();
   return provider === 'deepseek';
@@ -24,7 +24,7 @@ async function _temp() {
   return {
     timeoutMs: 15000,
     key: "npm-deprecation-warning",
-    text: NPM_DEPRECATION_MESSAGE,
+    text: getMessage('notification.npmDeprecation.message'),
     color: "warning",
     priority: "high"
   };

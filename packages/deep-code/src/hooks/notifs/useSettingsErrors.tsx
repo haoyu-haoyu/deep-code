@@ -4,6 +4,7 @@ import { useNotifications } from 'src/context/notifications.js';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
 import { getSettingsWithAllErrors } from '../../utils/settings/allErrors.js';
 import type { ValidationError } from '../../utils/settings/validation.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { useSettingsChange } from '../useSettingsChange.js';
 const SETTINGS_ERRORS_NOTIFICATION_KEY = 'settings-errors';
 export function useSettingsErrors() {
@@ -12,6 +13,9 @@ export function useSettingsErrors() {
     addNotification,
     removeNotification
   } = useNotifications();
+  const {
+    t
+  } = useTranslation();
   const [errors_0, setErrors] = useState(_temp);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -35,7 +39,11 @@ export function useSettingsErrors() {
         return;
       }
       if (errors_0.length > 0) {
-        const message = `Found ${errors_0.length} settings ${errors_0.length === 1 ? "issue" : "issues"} · /doctor for details`;
+        const issueLabel = errors_0.length === 1 ? t('diagnostics.issue.singular') : t('diagnostics.issue.plural');
+        const message = t('notifs.settingsErrors.found', {
+          count: errors_0.length,
+          issueLabel
+        });
         addNotification({
           key: SETTINGS_ERRORS_NOTIFICATION_KEY,
           text: message,

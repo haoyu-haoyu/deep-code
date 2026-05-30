@@ -2,6 +2,7 @@ import { feature } from 'bun:bundle';
 import figures from 'figures';
 import * as React from 'react';
 import { SentryErrorBoundary } from 'src/components/SentryErrorBoundary.js';
+import { useTranslation } from '../../../i18n/useTranslation.js';
 import { Box, Text, useTheme } from '../../../ink.js';
 import { useAppState } from '../../../state/AppState.js';
 import { filterToolProgressMessages, type Tool, type Tools } from '../../../Tool.js';
@@ -35,6 +36,7 @@ export function UserToolSuccessMessage({
   isTranscriptMode
 }: Props): React.ReactNode {
   const [theme] = useTheme();
+  const { t } = useTranslation();
   // Hook stays inside feature() ternary so external builds don't pay a
   // per-scrollback-message store subscription — same pattern as
   // UserPromptMessage.tsx.
@@ -88,12 +90,12 @@ export function UserToolSuccessMessage({
         {feature('BASH_CLASSIFIER') ? classifierRule && <MessageResponse height={1}>
                 <Text dimColor>
                   <Text color="success">{figures.tick}</Text>
-                  {' Auto-approved \u00b7 matched '}
+                  {t('message.toolResult.autoApprovedMatched')}
                   {`"${classifierRule}"`}
                 </Text>
               </MessageResponse> : null}
         {feature('TRANSCRIPT_CLASSIFIER') ? yoloReason && <MessageResponse height={1}>
-                <Text dimColor>Allowed by auto mode classifier</Text>
+                <Text dimColor>{t('message.toolResult.allowedByAutoModeClassifier')}</Text>
               </MessageResponse> : null}
       </Box>
       <SentryErrorBoundary>

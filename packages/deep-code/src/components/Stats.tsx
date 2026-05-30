@@ -6,6 +6,8 @@ import figures from 'figures';
 import React, { Suspense, use, useCallback, useEffect, useMemo, useState } from 'react';
 import stripAnsi from 'strip-ansi';
 import type { CommandResultDisplay } from '../commands.js';
+import { getMessage } from '../i18n/index.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { applyColor } from '../ink/colorize.js';
 import { stringWidth as getStringWidth } from '../ink/stringWidth.js';
@@ -45,10 +47,10 @@ type StatsResult = {
 } | {
   type: 'empty';
 };
-const DATE_RANGE_LABELS: Record<StatsDateRange, string> = {
-  '7d': 'Last 7 days',
-  '30d': 'Last 30 days',
-  all: 'All time'
+const DATE_RANGE_LABEL_KEYS: Record<StatsDateRange, string> = {
+  '7d': 'stats.dateRange.last7days',
+  '30d': 'stats.dateRange.last30days',
+  all: 'stats.dateRange.allTime'
 };
 const DATE_RANGE_ORDER: StatsDateRange[] = ['all', '7d', '30d'];
 function getNextDateRange(current: StatsDateRange): StatsDateRange {
@@ -72,7 +74,7 @@ function createAllTimeStatsPromise(): Promise<StatsResult> {
       data
     };
   }).catch((err): StatsResult => {
-    const message = err instanceof Error ? err.message : 'Failed to load stats';
+    const message = err instanceof Error ? err.message : getMessage('stats.error.loadFailedFallback');
     return {
       type: 'error',
       message
@@ -84,6 +86,9 @@ export function Stats(t0) {
   const {
     onClose
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = createAllTimeStatsPromise();
@@ -94,7 +99,7 @@ export function Stats(t0) {
   const allTimePromise = t1;
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Box marginTop={1}><Spinner /><Text> Loading your DeepCode stats…</Text></Box>;
+    t2 = <Box marginTop={1}><Spinner /><Text> {t('stats.loading.initial')}</Text></Box>;
     $[1] = t2;
   } else {
     t2 = $[1];
@@ -124,6 +129,9 @@ function StatsContent(t0) {
     allTimePromise,
     onClose
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const allTimeResult = use(allTimePromise);
   const [dateRange, setDateRange] = useState("all");
   let t1;
@@ -181,7 +189,7 @@ function StatsContent(t0) {
   let t4;
   if ($[5] !== onClose) {
     t4 = () => {
-      onClose("Stats dialog dismissed", {
+      onClose(t("stats.status.dismissed"), {
         display: "system"
       });
     };
@@ -205,7 +213,7 @@ function StatsContent(t0) {
   if ($[8] !== activeTab || $[9] !== dateRange || $[10] !== displayStats || $[11] !== onClose) {
     t6 = (input, key) => {
       if (key.ctrl && (input === "c" || input === "d")) {
-        onClose("Stats dialog dismissed", {
+        onClose(t("stats.status.dismissed"), {
           display: "system"
         });
       }
@@ -231,7 +239,9 @@ function StatsContent(t0) {
   if (allTimeResult.type === "error") {
     let t7;
     if ($[13] !== allTimeResult.message) {
-      t7 = <Box marginTop={1}><Text color="error">Failed to load stats: {allTimeResult.message}</Text></Box>;
+      t7 = <Box marginTop={1}><Text color="error">{t('stats.error.loadFailed', {
+        message: allTimeResult.message
+      })}</Text></Box>;
       $[13] = allTimeResult.message;
       $[14] = t7;
     } else {
@@ -242,7 +252,7 @@ function StatsContent(t0) {
   if (allTimeResult.type === "empty") {
     let t7;
     if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-      t7 = <Box marginTop={1}><Text color="warning">No stats available yet. Start using DeepCode!</Text></Box>;
+      t7 = <Box marginTop={1}><Text color="warning">{t('stats.empty.message')}</Text></Box>;
       $[15] = t7;
     } else {
       t7 = $[15];
@@ -252,7 +262,7 @@ function StatsContent(t0) {
   if (!displayStats || !allTimeStats) {
     let t7;
     if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
-      t7 = <Box marginTop={1}><Spinner /><Text> Loading stats…</Text></Box>;
+      t7 = <Box marginTop={1}><Spinner /><Text> {t('stats.loading.filtered')}</Text></Box>;
       $[16] = t7;
     } else {
       t7 = $[16];
@@ -261,7 +271,7 @@ function StatsContent(t0) {
   }
   let t7;
   if ($[17] !== allTimeStats || $[18] !== dateRange || $[19] !== displayStats || $[20] !== isLoadingFiltered) {
-    t7 = <Tab title="Overview"><OverviewTab stats={displayStats} allTimeStats={allTimeStats} dateRange={dateRange} isLoading={isLoadingFiltered} /></Tab>;
+    t7 = <Tab id="Overview" title={t('stats.tab.overview')}><OverviewTab stats={displayStats} allTimeStats={allTimeStats} dateRange={dateRange} isLoading={isLoadingFiltered} /></Tab>;
     $[17] = allTimeStats;
     $[18] = dateRange;
     $[19] = displayStats;
@@ -272,7 +282,7 @@ function StatsContent(t0) {
   }
   let t8;
   if ($[22] !== dateRange || $[23] !== displayStats || $[24] !== isLoadingFiltered) {
-    t8 = <Tab title="Models"><ModelsTab stats={displayStats} dateRange={dateRange} isLoading={isLoadingFiltered} /></Tab>;
+    t8 = <Tab id="Models" title={t('stats.tab.models')}><ModelsTab stats={displayStats} dateRange={dateRange} isLoading={isLoadingFiltered} /></Tab>;
     $[22] = dateRange;
     $[23] = displayStats;
     $[24] = isLoadingFiltered;
@@ -292,7 +302,7 @@ function StatsContent(t0) {
   const t10 = copyStatus ? ` · ${copyStatus}` : "";
   let t11;
   if ($[29] !== t10) {
-    t11 = <Box paddingLeft={2}><Text dimColor={true}>Esc to cancel · r to cycle dates · ctrl+s to copy{t10}</Text></Box>;
+    t11 = <Box paddingLeft={2}><Text dimColor={true}>{t('stats.footer.hints')}{t10}</Text></Box>;
     $[29] = t10;
     $[30] = t11;
   } else {
@@ -318,9 +328,12 @@ function DateRangeSelector(t0) {
     dateRange,
     isLoading
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== dateRange) {
-    t1 = DATE_RANGE_ORDER.map((range, i) => <Text key={range}>{i > 0 && <Text dimColor={true}> · </Text>}{range === dateRange ? <Text bold={true} color="claude">{DATE_RANGE_LABELS[range]}</Text> : <Text dimColor={true}>{DATE_RANGE_LABELS[range]}</Text>}</Text>);
+    t1 = DATE_RANGE_ORDER.map((range, i) => <Text key={range}>{i > 0 && <Text dimColor={true}> · </Text>}{range === dateRange ? <Text bold={true} color="claude">{t(DATE_RANGE_LABEL_KEYS[range]!)}</Text> : <Text dimColor={true}>{t(DATE_RANGE_LABEL_KEYS[range]!)}</Text>}</Text>);
     $[0] = dateRange;
     $[1] = t1;
   } else {
@@ -367,6 +380,7 @@ function OverviewTab({
   const {
     columns: terminalWidth
   } = useTerminalSize();
+  const { t } = useTranslation();
 
   // Calculate favorite model and total tokens
   const modelEntries = Object.entries(stats.modelUsage).sort(([, a], [, b]) => b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens));
@@ -405,19 +419,19 @@ function OverviewTab({
       shotStatsData = {
         avgShots: (totalShots / total).toFixed(1),
         buckets: [{
-          label: '1-shot',
+          label: t('stats.shot.bucket.1'),
           count: b1,
           pct: pct(b1)
         }, {
-          label: '2\u20135 shot',
+          label: t('stats.shot.bucket.2to5'),
           count: b2_5,
           pct: pct(b2_5)
         }, {
-          label: '6\u201310 shot',
+          label: t('stats.shot.bucket.6to10'),
           count: b6_10,
           pct: pct(b6_10)
         }, {
-          label: '11+ shot',
+          label: t('stats.shot.bucket.11plus'),
           count: b11,
           pct: pct(b11)
         }]
@@ -441,7 +455,7 @@ function OverviewTab({
       <Box flexDirection="row" gap={4} marginBottom={1}>
         <Box flexDirection="column" width={28}>
           {favoriteModel && <Text wrap="truncate">
-              Favorite model:{' '}
+              {t('stats.label.favoriteModel')}{' '}
               <Text color="claude" bold>
                 {renderModelName(favoriteModel[0])}
               </Text>
@@ -449,7 +463,7 @@ function OverviewTab({
         </Box>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Total tokens:{' '}
+            {t('stats.label.totalTokens')}{' '}
             <Text color="claude">{formatNumber(totalTokens)}</Text>
           </Text>
         </Box>
@@ -459,13 +473,13 @@ function OverviewTab({
       <Box flexDirection="row" gap={4}>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Sessions:{' '}
+            {t('stats.label.sessions')}{' '}
             <Text color="claude">{formatNumber(stats.totalSessions)}</Text>
           </Text>
         </Box>
         <Box flexDirection="column" width={28}>
           {stats.longestSession && <Text wrap="truncate">
-              Longest session:{' '}
+              {t('stats.label.longestSession')}{' '}
               <Text color="claude">
                 {formatDuration(stats.longestSession.duration)}
               </Text>
@@ -477,17 +491,17 @@ function OverviewTab({
       <Box flexDirection="row" gap={4}>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Active days: <Text color="claude">{stats.activeDays}</Text>
+            {t('stats.label.activeDays')}{' '}<Text color="claude">{stats.activeDays}</Text>
             <Text color="subtle">/{rangeDays}</Text>
           </Text>
         </Box>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Longest streak:{' '}
+            {t('stats.label.longestStreak')}{' '}
             <Text color="claude" bold>
               {stats.streaks.longestStreak}
             </Text>{' '}
-            {stats.streaks.longestStreak === 1 ? 'day' : 'days'}
+            {stats.streaks.longestStreak === 1 ? t('stats.unit.day') : t('stats.unit.days')}
           </Text>
         </Box>
       </Box>
@@ -496,17 +510,17 @@ function OverviewTab({
       <Box flexDirection="row" gap={4}>
         <Box flexDirection="column" width={28}>
           {stats.peakActivityDay && <Text wrap="truncate">
-              Most active day:{' '}
+              {t('stats.label.mostActiveDay')}{' '}
               <Text color="claude">{formatPeakDay(stats.peakActivityDay)}</Text>
             </Text>}
         </Box>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Current streak:{' '}
+            {t('stats.label.currentStreak')}{' '}
             <Text color="claude" bold>
               {allTimeStats.streaks.currentStreak}
             </Text>{' '}
-            {allTimeStats.streaks.currentStreak === 1 ? 'day' : 'days'}
+            {allTimeStats.streaks.currentStreak === 1 ? t('stats.unit.day') : t('stats.unit.days')}
           </Text>
         </Box>
       </Box>
@@ -515,7 +529,7 @@ function OverviewTab({
       {"external" === 'ant' && stats.totalSpeculationTimeSavedMs > 0 && <Box flexDirection="row" gap={4}>
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
-                Speculation saved:{' '}
+                {t('stats.label.speculationSaved')}{' '}
                 <Text color="claude">
                   {formatDuration(stats.totalSpeculationTimeSavedMs)}
                 </Text>
@@ -526,7 +540,7 @@ function OverviewTab({
       {/* Shot stats (ant-only) */}
       {shotStatsData && <>
           <Box marginTop={1}>
-            <Text>Shot distribution</Text>
+            <Text>{t('stats.section.shotDistribution')}</Text>
           </Box>
           <Box flexDirection="row" gap={4}>
             <Box flexDirection="column" width={28}>
@@ -563,7 +577,7 @@ function OverviewTab({
           <Box flexDirection="row" gap={4}>
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
-                Avg/session:{' '}
+                {t('stats.label.avgPerSession')}{' '}
                 <Text color="claude">{shotStatsData.avgShots}</Text>
               </Text>
             </Box>
@@ -655,34 +669,34 @@ const BOOK_COMPARISONS = [{
 
 // Time equivalents for session durations
 const TIME_COMPARISONS = [{
-  name: 'a TED talk',
+  nameKey: 'stats.timeComparison.tedTalk',
   minutes: 18
 }, {
-  name: 'an episode of The Office',
+  nameKey: 'stats.timeComparison.officeEpisode',
   minutes: 22
 }, {
-  name: 'listening to Abbey Road',
+  nameKey: 'stats.timeComparison.abbeyRoad',
   minutes: 47
 }, {
-  name: 'a yoga class',
+  nameKey: 'stats.timeComparison.yogaClass',
   minutes: 60
 }, {
-  name: 'a World Cup soccer match',
+  nameKey: 'stats.timeComparison.worldCupMatch',
   minutes: 90
 }, {
-  name: 'a half marathon (average time)',
+  nameKey: 'stats.timeComparison.halfMarathon',
   minutes: 120
 }, {
-  name: 'the movie Inception',
+  nameKey: 'stats.timeComparison.inception',
   minutes: 148
 }, {
-  name: 'watching Titanic',
+  nameKey: 'stats.timeComparison.titanic',
   minutes: 195
 }, {
-  name: 'a transatlantic flight',
+  nameKey: 'stats.timeComparison.transatlanticFlight',
   minutes: 420
 }, {
-  name: 'a full night of sleep',
+  nameKey: 'stats.timeComparison.fullNightSleep',
   minutes: 480
 }];
 function generateFunFactoid(stats: ClaudeCodeStats, totalTokens: number): string {
@@ -692,9 +706,14 @@ function generateFunFactoid(stats: ClaudeCodeStats, totalTokens: number): string
     for (const book of matchingBooks) {
       const times = totalTokens / book.tokens;
       if (times >= 2) {
-        factoids.push(`You've used ~${Math.floor(times)}x more tokens than ${book.name}`);
+        factoids.push(getMessage('stats.factoid.tokensMoreThan', {
+          n: Math.floor(times),
+          book: book.name
+        }));
       } else {
-        factoids.push(`You've used the same number of tokens as ${book.name}`);
+        factoids.push(getMessage('stats.factoid.tokensSameAs', {
+          book: book.name
+        }));
       }
     }
   }
@@ -703,7 +722,10 @@ function generateFunFactoid(stats: ClaudeCodeStats, totalTokens: number): string
     for (const comparison of TIME_COMPARISONS) {
       const ratio = sessionMinutes / comparison.minutes;
       if (ratio >= 2) {
-        factoids.push(`Your longest session is ~${Math.floor(ratio)}x longer than ${comparison.name}`);
+        factoids.push(getMessage('stats.factoid.sessionLongerThan', {
+          n: Math.floor(ratio),
+          comparison: getMessage(comparison.nameKey)
+        }));
       }
     }
   }
@@ -720,6 +742,9 @@ function ModelsTab(t0) {
     dateRange,
     isLoading
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const {
     headerFocused,
     focusHeader
@@ -755,7 +780,7 @@ function ModelsTab(t0) {
   if (modelEntries.length === 0) {
     let t3;
     if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-      t3 = <Box><Text color="subtle">No model usage data available</Text></Box>;
+      t3 = <Box><Text color="subtle">{t('stats.models.empty')}</Text></Box>;
       $[2] = t3;
     } else {
       t3 = $[2];
@@ -798,7 +823,11 @@ function ModelsTab(t0) {
   }
   let t10;
   if ($[9] !== canScrollDown || $[10] !== canScrollUp || $[11] !== modelEntries || $[12] !== scrollOffset || $[13] !== showScrollHint) {
-    t10 = showScrollHint && <Box marginTop={1}><Text color="subtle">{canScrollUp ? figures.arrowUp : " "}{" "}{canScrollDown ? figures.arrowDown : " "} {scrollOffset + 1}-{Math.min(scrollOffset + 4, modelEntries.length)} of{" "}{modelEntries.length} models (↑↓ to scroll)</Text></Box>;
+    t10 = showScrollHint && <Box marginTop={1}><Text color="subtle">{canScrollUp ? figures.arrowUp : " "}{" "}{canScrollDown ? figures.arrowDown : " "} {t('stats.models.scrollHint', {
+      a: scrollOffset + 1,
+      b: Math.min(scrollOffset + 4, modelEntries.length),
+      n: modelEntries.length
+    })}</Text></Box>;
     $[9] = canScrollDown;
     $[10] = canScrollUp;
     $[11] = modelEntries;
@@ -808,7 +837,7 @@ function ModelsTab(t0) {
   } else {
     t10 = $[14];
   }
-  return <Box flexDirection="column" marginTop={1}>{chartOutput && <Box flexDirection="column" marginBottom={1}><Text bold={true}>Tokens per Day</Text><Ansi>{chartOutput.chart}</Ansi><Text color="subtle">{chartOutput.xAxisLabels}</Text><Box>{chartOutput.legend.map(_temp1)}</Box></Box>}{t3}<Box flexDirection="row" gap={4}><Box flexDirection="column" width={36}>{leftModels.map(t4 => {
+  return <Box flexDirection="column" marginTop={1}>{chartOutput && <Box flexDirection="column" marginBottom={1}><Text bold={true}>{t('stats.models.tokensPerDay')}</Text><Ansi>{chartOutput.chart}</Ansi><Text color="subtle">{chartOutput.xAxisLabels}</Text><Box>{chartOutput.legend.map(_temp1)}</Box></Box>}{t3}<Box flexDirection="row" gap={4}><Box flexDirection="column" width={36}>{leftModels.map(t4 => {
           const [model_0, usage_0] = t4;
           return <ModelEntry key={model_0} model={model_0} usage={usage_0} totalTokens={totalTokens} />;
         })}</Box>{t9}</Box>{t10}</Box>;
@@ -848,6 +877,9 @@ function ModelEntry(t0) {
     usage,
     totalTokens
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const modelTokens = usage.inputTokens + usage.outputTokens;
   const t1 = modelTokens / totalTokens * 100;
   let t2;
@@ -910,7 +942,10 @@ function ModelEntry(t0) {
   }
   let t9;
   if ($[15] !== t7 || $[16] !== t8) {
-    t9 = <Text color="subtle">{"  "}In: {t7} · Out:{" "}{t8}</Text>;
+    t9 = <Text color="subtle">{"  "}{t('stats.modelEntry.inOut', {
+      in: t7,
+      out: t8
+    })}</Text>;
     $[15] = t7;
     $[16] = t8;
     $[17] = t9;
@@ -1057,10 +1092,10 @@ function generateXAxisLabels(data: DailyModelTokens[], _chartWidth: number, yAxi
 
 // Screenshot functionality
 async function handleScreenshot(stats: ClaudeCodeStats, activeTab: 'Overview' | 'Models', setStatus: (status: string | null) => void): Promise<void> {
-  setStatus('copying…');
+  setStatus(getMessage('stats.copy.copying'));
   const ansiText = renderStatsToAnsi(stats, activeTab);
   const result = await copyAnsiToClipboard(ansiText);
-  setStatus(result.success ? 'copied!' : 'copy failed');
+  setStatus(result.success ? getMessage('stats.copy.copied') : getMessage('stats.copy.failed'));
 
   // Clear status after 2 seconds
   setTimeout(setStatus, 2000, null);
@@ -1133,26 +1168,26 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
 
   // Row 1: Favorite model | Total tokens
   if (favoriteModel) {
-    lines.push(row('Favorite model', renderModelName(favoriteModel[0]), 'Total tokens', formatNumber(totalTokens)));
+    lines.push(row(getMessage('stats.ansi.label.favoriteModel'), renderModelName(favoriteModel[0]), getMessage('stats.ansi.label.totalTokens'), formatNumber(totalTokens)));
   }
   lines.push('');
 
   // Row 2: Sessions | Longest session
-  lines.push(row('Sessions', formatNumber(stats.totalSessions), 'Longest session', stats.longestSession ? formatDuration(stats.longestSession.duration) : 'N/A'));
+  lines.push(row(getMessage('stats.ansi.label.sessions'), formatNumber(stats.totalSessions), getMessage('stats.ansi.label.longestSession'), stats.longestSession ? formatDuration(stats.longestSession.duration) : getMessage('stats.value.notAvailable')));
 
   // Row 3: Current streak | Longest streak
-  const currentStreakVal = `${stats.streaks.currentStreak} ${stats.streaks.currentStreak === 1 ? 'day' : 'days'}`;
-  const longestStreakVal = `${stats.streaks.longestStreak} ${stats.streaks.longestStreak === 1 ? 'day' : 'days'}`;
-  lines.push(row('Current streak', currentStreakVal, 'Longest streak', longestStreakVal));
+  const currentStreakVal = `${stats.streaks.currentStreak} ${stats.streaks.currentStreak === 1 ? getMessage('stats.unit.day') : getMessage('stats.unit.days')}`;
+  const longestStreakVal = `${stats.streaks.longestStreak} ${stats.streaks.longestStreak === 1 ? getMessage('stats.unit.day') : getMessage('stats.unit.days')}`;
+  lines.push(row(getMessage('stats.ansi.label.currentStreak'), currentStreakVal, getMessage('stats.ansi.label.longestStreak'), longestStreakVal));
 
   // Row 4: Active days | Peak hour
   const activeDaysVal = `${stats.activeDays}/${stats.totalDays}`;
-  const peakHourVal = stats.peakActivityHour !== null ? `${stats.peakActivityHour}:00-${stats.peakActivityHour + 1}:00` : 'N/A';
-  lines.push(row('Active days', activeDaysVal, 'Peak hour', peakHourVal));
+  const peakHourVal = stats.peakActivityHour !== null ? `${stats.peakActivityHour}:00-${stats.peakActivityHour + 1}:00` : getMessage('stats.value.notAvailable');
+  lines.push(row(getMessage('stats.ansi.label.activeDays'), activeDaysVal, getMessage('stats.ansi.label.peakHour'), peakHourVal));
 
   // Speculation time saved (ant-only)
   if ("external" === 'ant' && stats.totalSpeculationTimeSavedMs > 0) {
-    const label = 'Speculation saved:'.padEnd(COL1_LABEL_WIDTH);
+    const label = getMessage('stats.label.speculationSaved').padEnd(COL1_LABEL_WIDTH);
     lines.push(label + h(formatDuration(stats.totalSpeculationTimeSavedMs)));
   }
 
@@ -1174,10 +1209,10 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
       const b6_10 = bucket(6, 10);
       const b11 = bucket(11);
       lines.push('');
-      lines.push('Shot distribution');
-      lines.push(row('1-shot', fmtBucket(b1, pct(b1)), '2\u20135 shot', fmtBucket(b2_5, pct(b2_5))));
-      lines.push(row('6\u201310 shot', fmtBucket(b6_10, pct(b6_10)), '11+ shot', fmtBucket(b11, pct(b11))));
-      lines.push(`${'Avg/session:'.padEnd(COL1_LABEL_WIDTH)}${h(avgShots)}`);
+      lines.push(getMessage('stats.section.shotDistribution'));
+      lines.push(row(getMessage('stats.shot.bucket.1'), fmtBucket(b1, pct(b1)), getMessage('stats.shot.bucket.2to5'), fmtBucket(b2_5, pct(b2_5))));
+      lines.push(row(getMessage('stats.shot.bucket.6to10'), fmtBucket(b6_10, pct(b6_10)), getMessage('stats.shot.bucket.11plus'), fmtBucket(b11, pct(b11))));
+      lines.push(`${getMessage('stats.label.avgPerSession').padEnd(COL1_LABEL_WIDTH)}${h(avgShots)}`);
     }
   }
   lines.push('');
@@ -1185,14 +1220,16 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   // Fun factoid
   const factoid = generateFunFactoid(stats, totalTokens);
   lines.push(h(factoid));
-  lines.push(chalk.gray(`Stats from the last ${stats.totalDays} days`));
+  lines.push(chalk.gray(getMessage('stats.ansi.lastDays', {
+    days: stats.totalDays
+  })));
   return lines;
 }
 function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
   const lines: string[] = [];
   const modelEntries = Object.entries(stats.modelUsage).sort(([, a], [, b]) => b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens));
   if (modelEntries.length === 0) {
-    lines.push(chalk.gray('No model usage data available'));
+    lines.push(chalk.gray(getMessage('stats.models.empty')));
     return lines;
   }
   const favoriteModel = modelEntries[0];
@@ -1202,7 +1239,7 @@ function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
   const chartOutput = generateTokenChart(stats.dailyModelTokens, modelEntries.map(([model]) => model), 80 // Fixed width for screenshot
   );
   if (chartOutput) {
-    lines.push(chalk.bold('Tokens per Day'));
+    lines.push(chalk.bold(getMessage('stats.models.tokensPerDay')));
     lines.push(chartOutput.chart);
     lines.push(chalk.gray(chartOutput.xAxisLabels));
     // Legend - use pre-colored bullets from chart output
@@ -1212,7 +1249,7 @@ function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
   }
 
   // Summary
-  lines.push(`${figures.star} Favorite: ${chalk.magenta.bold(renderModelName(favoriteModel?.[0] || ''))} · ${figures.circle} Total: ${chalk.magenta(formatNumber(totalTokens))} tokens`);
+  lines.push(`${figures.star} ${getMessage('stats.ansi.summary.favorite')} ${chalk.magenta.bold(renderModelName(favoriteModel?.[0] || ''))} · ${figures.circle} ${getMessage('stats.ansi.summary.total')} ${chalk.magenta(formatNumber(totalTokens))} ${getMessage('stats.ansi.summary.tokens')}`);
   lines.push('');
 
   // Model breakdown - only show top 3 for screenshot
@@ -1221,7 +1258,10 @@ function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
     const modelTokens = usage.inputTokens + usage.outputTokens;
     const percentage = (modelTokens / totalTokens * 100).toFixed(1);
     lines.push(`${figures.bullet} ${chalk.bold(renderModelName(model))} ${chalk.gray(`(${percentage}%)`)}`);
-    lines.push(chalk.dim(`  In: ${formatNumber(usage.inputTokens)} · Out: ${formatNumber(usage.outputTokens)}`));
+    lines.push(chalk.dim(`  ${getMessage('stats.modelEntry.inOut', {
+      in: formatNumber(usage.inputTokens),
+      out: formatNumber(usage.outputTokens)
+    })}`));
   }
   return lines;
 }
