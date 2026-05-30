@@ -7,6 +7,7 @@ import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithK
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- enter to proceed through setup steps
 import { Box, Text, useInput } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { detectPythonPackageManager, getPythonApiInstructions, installIt2, markIt2SetupComplete, type PythonPackageManager, setPreferTmuxOverIterm2, verifyIt2Setup } from './backends/it2Setup.js';
 type SetupStep = 'initial' | 'installing' | 'install-failed' | 'verify-api' | 'api-instructions' | 'verifying' | 'success' | 'failed';
 type Props = {
@@ -23,6 +24,9 @@ export function It2SetupPrompt(t0) {
   const [packageManager, setPackageManager] = useState(null);
   const [error, setError] = useState(null);
   const exitState = useExitOnCtrlCDWithKeybindings();
+  const {
+    t
+  } = useTranslation();
   let t1;
   let t2;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -74,7 +78,7 @@ export function It2SetupPrompt(t0) {
             setStep("success");
             setTimeout(onDone, 1500, "installed" as const);
           } else {
-            setError(result.error || "Verification failed");
+            setError(result.error || t('it2.failed.header'));
             setStep("failed");
           }
         });
@@ -91,7 +95,7 @@ export function It2SetupPrompt(t0) {
   if ($[9] !== packageManager) {
     t7 = async function handleInstall() {
       if (!packageManager) {
-        setError("No Python package manager found (uvx, pipx, or pip)");
+        setError(t('it2.error.noPackageManager'));
         setStep("failed");
         return;
       }
@@ -100,7 +104,7 @@ export function It2SetupPrompt(t0) {
       if (result_0.success) {
         setStep("api-instructions");
       } else {
-        setError(result_0.error || "Installation failed");
+        setError(result_0.error || t('it2.installFailed.header'));
         setStep("install-failed");
       }
     };
@@ -169,23 +173,25 @@ export function It2SetupPrompt(t0) {
     };
     function renderInitialPrompt() {
       const options = [{
-        label: "Install it2 now",
+        label: t('it2.option.install.label'),
         value: "install",
-        description: packageManager ? `Uses ${packageManager} to install the it2 CLI tool` : "Requires Python (uvx, pipx, or pip)"
+        description: packageManager ? t('it2.option.install.descriptionWithPm', {
+          packageManager
+        }) : t('it2.option.install.descriptionNoPm')
       }];
       if (tmuxAvailable) {
         options.push({
-          label: "Use tmux instead",
+          label: t('it2.option.tmux.label'),
           value: "tmux",
-          description: "Opens teammates in a separate tmux session"
+          description: t('it2.option.tmux.descriptionInitial')
         });
       }
       options.push({
-        label: "Cancel",
+        label: t('it2.option.cancel.label'),
         value: "cancel",
-        description: "Skip teammate spawning for now"
+        description: t('it2.option.cancel.description')
       });
-      return <Box flexDirection="column" gap={1}><Text>To use native iTerm2 split panes for teammates, you need the{" "}<Text bold={true}>it2</Text> CLI tool.</Text><Text dimColor={true}>This enables teammates to appear as split panes within your current window.</Text><Box marginTop={1}><Select options={options} onChange={value => {
+      return <Box flexDirection="column" gap={1}><Text>{t('it2.initial.intro').split('{it2}')[0]}<Text bold={true}>it2</Text>{t('it2.initial.intro').split('{it2}')[1]}</Text><Text dimColor={true}>{t('it2.initial.subtitle')}</Text><Box marginTop={1}><Select options={options} onChange={value => {
             bb61: switch (value) {
               case "install":
                 {
@@ -205,27 +211,31 @@ export function It2SetupPrompt(t0) {
           }} onCancel={() => onDone("cancelled")} /></Box></Box>;
     }
     function renderInstalling() {
-      return <Box flexDirection="column" gap={1}><Box><Spinner /><Text> Installing it2 using {packageManager}…</Text></Box><Text dimColor={true}>This may take a moment.</Text></Box>;
+      return <Box flexDirection="column" gap={1}><Box><Spinner /><Text> {t('it2.installing.spinner', {
+        packageManager
+      })}</Text></Box><Text dimColor={true}>{t('it2.installing.subtitle')}</Text></Box>;
     }
     function renderInstallFailed() {
       const options_0 = [{
-        label: "Try again",
+        label: t('it2.option.retry.label'),
         value: "retry",
-        description: "Retry the installation"
+        description: t('it2.option.retry.descriptionInstall')
       }];
       if (tmuxAvailable) {
         options_0.push({
-          label: "Use tmux instead",
+          label: t('it2.option.tmux.label'),
           value: "tmux",
-          description: "Falls back to tmux for teammate panes"
+          description: t('it2.option.tmux.descriptionFallback')
         });
       }
       options_0.push({
-        label: "Cancel",
+        label: t('it2.option.cancel.label'),
         value: "cancel",
-        description: "Skip teammate spawning for now"
+        description: t('it2.option.cancel.description')
       });
-      return <Box flexDirection="column" gap={1}><Text color="error">Installation failed</Text>{error && <Text dimColor={true}>{error}</Text>}<Text dimColor={true}>You can try installing manually:{" "}{packageManager === "uvx" ? "uv tool install it2" : packageManager === "pipx" ? "pipx install it2" : "pip install --user it2"}</Text><Box marginTop={1}><Select options={options_0} onChange={value_0 => {
+      return <Box flexDirection="column" gap={1}><Text color="error">{t('it2.installFailed.header')}</Text>{error && <Text dimColor={true}>{error}</Text>}<Text dimColor={true}>{t('it2.installFailed.manualHint', {
+        command: packageManager === "uvx" ? "uv tool install it2" : packageManager === "pipx" ? "pipx install it2" : "pip install --user it2"
+      })}</Text><Box marginTop={1}><Select options={options_0} onChange={value_0 => {
             bb89: switch (value_0) {
               case "retry":
                 {
@@ -246,33 +256,33 @@ export function It2SetupPrompt(t0) {
     }
     function renderApiInstructions() {
       const instructions = getPythonApiInstructions();
-      return <Box flexDirection="column" gap={1}><Text color="success">✓ it2 installed successfully</Text><Box flexDirection="column" marginTop={1}>{instructions.map(_temp)}</Box><Box marginTop={1}><Text dimColor={true}>Press Enter when ready to verify…</Text></Box></Box>;
+      return <Box flexDirection="column" gap={1}><Text color="success">{t('it2.apiInstructions.success')}</Text><Box flexDirection="column" marginTop={1}>{instructions.map(_temp)}</Box><Box marginTop={1}><Text dimColor={true}>{t('it2.apiInstructions.verifyHint')}</Text></Box></Box>;
     }
     function renderVerifying() {
-      return <Box><Spinner /><Text> Verifying it2 can communicate with iTerm2…</Text></Box>;
+      return <Box><Spinner /><Text> {t('it2.verifying.spinner')}</Text></Box>;
     }
     function renderSuccess() {
-      return <Box flexDirection="column"><Text color="success">✓ iTerm2 split pane support is ready</Text><Text dimColor={true}>Teammates will now appear as split panes.</Text></Box>;
+      return <Box flexDirection="column"><Text color="success">{t('it2.success.header')}</Text><Text dimColor={true}>{t('it2.success.subtitle')}</Text></Box>;
     }
     function renderFailed() {
       const options_1 = [{
-        label: "Try again",
+        label: t('it2.option.retry.label'),
         value: "retry",
-        description: "Verify the connection again"
+        description: t('it2.option.retry.descriptionVerify')
       }];
       if (tmuxAvailable) {
         options_1.push({
-          label: "Use tmux instead",
+          label: t('it2.option.tmux.label'),
           value: "tmux",
-          description: "Falls back to tmux for teammate panes"
+          description: t('it2.option.tmux.descriptionFallback')
         });
       }
       options_1.push({
-        label: "Cancel",
+        label: t('it2.option.cancel.label'),
         value: "cancel",
-        description: "Skip teammate spawning for now"
+        description: t('it2.option.cancel.description')
       });
-      return <Box flexDirection="column" gap={1}><Text color="error">Verification failed</Text>{error && <Text dimColor={true}>{error}</Text>}<Text>Make sure:</Text><Box flexDirection="column" paddingLeft={2}><Text>· Python API is enabled in iTerm2 preferences</Text><Text>· You may need to restart iTerm2 after enabling</Text></Box><Box marginTop={1}><Select options={options_1} onChange={value_1 => {
+      return <Box flexDirection="column" gap={1}><Text color="error">{t('it2.failed.header')}</Text>{error && <Text dimColor={true}>{error}</Text>}<Text>{t('it2.failed.makeSure')}</Text><Box flexDirection="column" paddingLeft={2}><Text>{t('it2.failed.bulletApi')}</Text><Text>{t('it2.failed.bulletRestart')}</Text></Box><Box marginTop={1}><Select options={options_1} onChange={value_1 => {
             bb115: switch (value_1) {
               case "retry":
                 {
@@ -283,7 +293,7 @@ export function It2SetupPrompt(t0) {
                       setStep("success");
                       setTimeout(onDone, 1500, "installed" as const);
                     } else {
-                      setError(result_1.error || "Verification failed");
+                      setError(result_1.error || t('it2.failed.header'));
                       setStep("failed");
                     }
                   });
@@ -308,7 +318,7 @@ export function It2SetupPrompt(t0) {
     t10 = 1;
     t11 = 1;
     if ($[28] === Symbol.for("react.memo_cache_sentinel")) {
-      t12 = <Text bold={true} color="permission">iTerm2 Split Pane Setup</Text>;
+      t12 = <Text bold={true} color="permission">{t('it2.title')}</Text>;
       $[28] = t12;
     } else {
       t12 = $[28];
@@ -341,7 +351,9 @@ export function It2SetupPrompt(t0) {
   }
   let t15;
   if ($[29] !== exitState || $[30] !== step) {
-    t15 = step !== "installing" && step !== "verifying" && step !== "success" && <Text dimColor={true} italic={true}>{exitState.pending ? <>Press {exitState.keyName} again to exit</> : <>Esc to cancel</>}</Text>;
+    t15 = step !== "installing" && step !== "verifying" && step !== "success" && <Text dimColor={true} italic={true}>{exitState.pending ? <>{t('common.pressKeyAgainToExit', {
+      keyName: exitState.keyName
+    })}</> : <>{t('it2.escToCancel')}</>}</Text>;
     $[29] = exitState;
     $[30] = step;
     $[31] = t15;
