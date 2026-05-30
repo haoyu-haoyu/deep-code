@@ -5,8 +5,10 @@ import { Box, Link, Text } from '../ink.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';
 import { Select } from './CustomSelect/index.js';
 import { Dialog } from './design-system/Dialog.js';
+import { getMessage } from '../i18n/index.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 
-export const AUTO_MODE_DESCRIPTION = "Auto mode lets Deep Code handle permission prompts automatically. Deep Code checks each tool call for risky actions and prompt injection before executing. Actions Deep Code identifies as safe are executed, while actions Deep Code identifies as risky are blocked and Deep Code may try a different approach. Ideal for long-running tasks. Sessions are slightly more expensive. Deep Code can make mistakes that allow harmful commands to run, so only use this in isolated environments. Shift+Tab to change mode.";
+export const AUTO_MODE_DESCRIPTION = getMessage('autoMode.optIn.description');
 type Props = {
   onAccept(): void;
   onDecline(): void;
@@ -20,6 +22,9 @@ export function AutoModeOptInDialog(t0) {
     onDecline,
     declineExits
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [];
@@ -77,7 +82,7 @@ export function AutoModeOptInDialog(t0) {
   let t4;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
     t4 = true ? [{
-      label: "Yes, and make it my default mode",
+      label: t('autoMode.optIn.acceptDefault'),
       value: "accept-default" as const
     }] : [];
     $[5] = t4;
@@ -87,14 +92,14 @@ export function AutoModeOptInDialog(t0) {
   let t5;
   if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
     t5 = {
-      label: "Yes, enable auto mode",
+      label: t('autoMode.optIn.accept'),
       value: "accept" as const
     };
     $[6] = t5;
   } else {
     t5 = $[6];
   }
-  const t6 = declineExits ? "No, exit" : "No, go back";
+  const t6 = declineExits ? t('trust.optionExit') : t('autoMode.optIn.declineBack');
   let t7;
   if ($[7] !== t6) {
     t7 = [...t4, t5, {
@@ -126,7 +131,7 @@ export function AutoModeOptInDialog(t0) {
   }
   let t10;
   if ($[15] !== onDecline || $[16] !== t9) {
-    t10 = <Dialog title="Enable auto mode?" color="warning" onCancel={onDecline}>{t3}{t9}</Dialog>;
+    t10 = <Dialog title={t('autoMode.optIn.title')} color="warning" onCancel={onDecline}>{t3}{t9}</Dialog>;
     $[15] = onDecline;
     $[16] = t9;
     $[17] = t10;

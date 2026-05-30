@@ -12,6 +12,8 @@ import { openFileInExternalEditor } from '../utils/editor.js';
 import { truncatePathMiddle, truncateToWidth } from '../utils/format.js';
 import { highlightMatch } from '../utils/highlightMatch.js';
 import { readFileInRange } from '../utils/readFileInRange.js';
+import { getMessage } from '../i18n/index.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { FuzzyPicker } from './design-system/FuzzyPicker.js';
 import { LoadingState } from './design-system/LoadingState.js';
 type Props = {
@@ -31,6 +33,9 @@ export function QuickOpenDialog(t0) {
     onDone,
     onInsert
   } = t0;
+  const {
+    t
+  } = useTranslation();
   useRegisterOverlay("quick-open");
   const {
     columns,
@@ -197,7 +202,7 @@ export function QuickOpenDialog(t0) {
   }
   let t13;
   if ($[21] !== preview || $[22] !== previewWidth || $[23] !== query) {
-    t13 = p_7 => preview ? <><Text dimColor={true}>{truncatePathMiddle(p_7, previewWidth)}{preview.path !== p_7 ? " \xB7 loading\u2026" : ""}</Text>{preview.content.split("\n").map((line, i_1) => <Text key={i_1}>{highlightMatch(truncateToWidth(line, previewWidth), query)}</Text>)}</> : <LoadingState message={"Loading preview\u2026"} dimColor={true} />;
+    t13 = p_7 => preview ? <><Text dimColor={true}>{truncatePathMiddle(p_7, previewWidth)}{preview.path !== p_7 ? t('quickOpen.preview.loadingInline') : ""}</Text>{preview.content.split("\n").map((line, i_1) => <Text key={i_1}>{highlightMatch(truncateToWidth(line, previewWidth), query)}</Text>)}</> : <LoadingState message={t('quickOpen.preview.loading')} dimColor={true} />;
     $[21] = preview;
     $[22] = previewWidth;
     $[23] = query;
@@ -207,7 +212,7 @@ export function QuickOpenDialog(t0) {
   }
   let t14;
   if ($[25] !== handleOpen || $[26] !== onDone || $[27] !== results || $[28] !== t10 || $[29] !== t11 || $[30] !== t12 || $[31] !== t13 || $[32] !== t9 || $[33] !== visibleResults) {
-    t14 = <FuzzyPicker title="Quick Open" placeholder={"Type to search files\u2026"} items={results} getKey={_temp5} visibleCount={visibleResults} direction="up" previewPosition={t9} onQueryChange={handleQueryChange} onFocus={setFocusedPath} onSelect={handleOpen} onTab={t10} onShiftTab={t11} onCancel={onDone} emptyMessage={_temp6} selectAction="open in editor" renderItem={t12} renderPreview={t13} />;
+    t14 = <FuzzyPicker title={t('quickOpen.title')} placeholder={t('quickOpen.placeholder')} items={results} getKey={_temp5} visibleCount={visibleResults} direction="up" previewPosition={t9} onQueryChange={handleQueryChange} onFocus={setFocusedPath} onSelect={handleOpen} onTab={t10} onShiftTab={t11} onCancel={onDone} emptyMessage={_temp6} selectAction="open in editor" renderItem={t12} renderPreview={t13} />;
     $[25] = handleOpen;
     $[26] = onDone;
     $[27] = results;
@@ -224,7 +229,7 @@ export function QuickOpenDialog(t0) {
   return t14;
 }
 function _temp6(q_0) {
-  return q_0 ? "No matching files" : "Start typing to search\u2026";
+  return q_0 ? getMessage('quickOpen.empty.noMatches') : getMessage('quickOpen.empty.startTyping');
 }
 function _temp5(p_3) {
   return p_3;

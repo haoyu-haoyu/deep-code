@@ -3,6 +3,7 @@ import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Text, usePreviewTheme, useTheme, useThemeSetting } from '../ink.js';
 import { useRegisterKeybindingContext } from '../keybindings/KeybindingContext.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
@@ -43,6 +44,9 @@ export function ThemePicker(t0) {
   const showHelpTextBelow = t3 === undefined ? false : t3;
   const hideEscToCancel = t4 === undefined ? false : t4;
   const skipExitHandling = t5 === undefined ? false : t5;
+  const {
+    t
+  } = useTranslation();
   const [theme] = useTheme();
   const themeSetting = useThemeSetting();
   const {
@@ -111,25 +115,25 @@ export function ThemePicker(t0) {
   let t10;
   if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
     t10 = [...(feature("AUTO_THEME") ? [{
-      label: "Auto (match terminal)",
+      label: t('themePicker.option.auto'),
       value: "auto" as const
     }] : []), {
-      label: "Dark mode",
+      label: t('themePicker.option.dark'),
       value: "dark"
     }, {
-      label: "Light mode",
+      label: t('themePicker.option.light'),
       value: "light"
     }, {
-      label: "Dark mode (colorblind-friendly)",
+      label: t('themePicker.option.darkDaltonized'),
       value: "dark-daltonized"
     }, {
-      label: "Light mode (colorblind-friendly)",
+      label: t('themePicker.option.lightDaltonized'),
       value: "light-daltonized"
     }, {
-      label: "Dark mode (ANSI colors only)",
+      label: t('themePicker.option.darkAnsi'),
       value: "dark-ansi"
     }, {
-      label: "Light mode (ANSI colors only)",
+      label: t('themePicker.option.lightAnsi'),
       value: "light-ansi"
     }];
     $[7] = t10;
@@ -139,7 +143,7 @@ export function ThemePicker(t0) {
   const themeOptions = t10;
   let t11;
   if ($[8] !== showIntroText) {
-    t11 = showIntroText ? <Text>Let's get started.</Text> : <Text bold={true} color="permission">Theme</Text>;
+    t11 = showIntroText ? <Text>{t('themePicker.header.getStarted')}</Text> : <Text bold={true} color="permission">{t('themePicker.header.theme')}</Text>;
     $[8] = showIntroText;
     $[9] = t11;
   } else {
@@ -147,7 +151,7 @@ export function ThemePicker(t0) {
   }
   let t12;
   if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
-    t12 = <Text bold={true}>Choose the text style that looks best with your terminal</Text>;
+    t12 = <Text bold={true}>{t('themePicker.instruction')}</Text>;
     $[10] = t12;
   } else {
     t12 = $[10];
@@ -297,7 +301,7 @@ export function ThemePicker(t0) {
     }
     let t28;
     if ($[50] !== exitState || $[51] !== hideEscToCancel) {
-      t28 = !hideEscToCancel && <Box><Text dimColor={true} italic={true}>{exitState.pending ? <>Press {exitState.keyName} again to exit</> : <Byline><KeyboardShortcutHint shortcut="Enter" action="select" /><KeyboardShortcutHint shortcut="Esc" action="cancel" /></Byline>}</Text></Box>;
+      t28 = !hideEscToCancel && <Box><Text dimColor={true} italic={true}>{exitState.pending ? <>{t('common.pressKeyAgainToExit', { keyName: exitState.keyName })}</> : <Byline><KeyboardShortcutHint shortcut="Enter" action="select" /><KeyboardShortcutHint shortcut="Esc" action="cancel" /></Byline>}</Text></Box>;
       $[50] = exitState;
       $[51] = hideEscToCancel;
       $[52] = t28;

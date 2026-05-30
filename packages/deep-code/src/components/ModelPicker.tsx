@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useExitOnCtrlCDWithKeybindings } from 'src/hooks/useExitOnCtrlCDWithKeybindings.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
 import { FAST_MODE_MODEL_DISPLAY, isFastModeAvailable, isFastModeCooldown, isFastModeEnabled } from 'src/utils/fastMode.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Text } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
@@ -48,6 +49,9 @@ export function ModelPicker(t0) {
     headerText,
     skipSettingsWrite
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const setAppState = useSetAppState();
   const exitState = useExitOnCtrlCDWithKeybindings();
   const initialValue = initial === null ? NO_PREFERENCE : initial;
@@ -91,7 +95,7 @@ export function ModelPicker(t0) {
         t6 = {
           value: initial,
           label: t5,
-          description: "Current model"
+          description: t('modelPicker.currentModelOption.description')
         };
         $[6] = initial;
         $[7] = t5;
@@ -261,12 +265,12 @@ export function ModelPicker(t0) {
   const handleSelect = t14;
   let t15;
   if ($[41] === Symbol.for("react.memo_cache_sentinel")) {
-    t15 = <Text color="remember" bold={true}>Select model</Text>;
+    t15 = <Text color="remember" bold={true}>{t('modelPicker.header')}</Text>;
     $[41] = t15;
   } else {
     t15 = $[41];
   }
-  const t16 = headerText ?? (isDeepCodeNative ? "Switch between DeepSeek models for this Deep Code session. Use ←/→ to adjust reasoning effort." : "Switch between Claude models. Applies to this session and future DeepCode sessions. For other/previous model names, specify with --model.");
+  const t16 = headerText ?? (isDeepCodeNative ? t('modelPicker.subheader.deepseek') : t('modelPicker.subheader.claude'));
   let t17;
   if ($[42] !== t16) {
     t17 = <Text dimColor={true}>{t16}</Text>;
@@ -277,7 +281,9 @@ export function ModelPicker(t0) {
   }
   let t18;
   if ($[44] !== sessionModel) {
-    t18 = sessionModel && <Text dimColor={true}>Currently using {modelDisplayString(sessionModel)} for this session (set by plan mode). Selecting a model will undo this.</Text>;
+    t18 = sessionModel && <Text dimColor={true}>{t('modelPicker.sessionModelNotice', {
+      model: modelDisplayString(sessionModel)
+    })}</Text>;
     $[44] = sessionModel;
     $[45] = t18;
   } else {
@@ -309,7 +315,9 @@ export function ModelPicker(t0) {
   }
   let t22;
   if ($[57] !== hiddenCount) {
-    t22 = hiddenCount > 0 && <Box paddingLeft={3}><Text dimColor={true}>and {hiddenCount} more…</Text></Box>;
+    t22 = hiddenCount > 0 && <Box paddingLeft={3}><Text dimColor={true}>{t('modelPicker.hiddenOptionsMore', {
+      count: hiddenCount
+    })}</Text></Box>;
     $[57] = hiddenCount;
     $[58] = t22;
   } else {
@@ -326,7 +334,11 @@ export function ModelPicker(t0) {
   }
   let t24;
   if ($[62] !== displayEffort || $[63] !== focusedDefaultEffort || $[64] !== focusedModelName || $[65] !== focusedSupportsEffort) {
-    t24 = <Box marginBottom={1} flexDirection="column">{focusedSupportsEffort ? <Text dimColor={true}><EffortLevelIndicator effort={displayEffort} />{" "}{capitalize(displayEffort)} effort{displayEffort === focusedDefaultEffort ? " (default)" : ""}{" "}<Text color="subtle">← → to adjust</Text></Text> : <Text color="subtle"><EffortLevelIndicator effort={undefined} /> Effort not supported{focusedModelName ? ` for ${focusedModelName}` : ""}</Text>}</Box>;
+    t24 = <Box marginBottom={1} flexDirection="column">{focusedSupportsEffort ? <Text dimColor={true}><EffortLevelIndicator effort={displayEffort} />{" "}{t('modelPicker.effort.label', {
+      effort: capitalize(displayEffort)
+    })}{displayEffort === focusedDefaultEffort ? t('modelPicker.effort.default') : ""}{" "}<Text color="subtle">{t('modelPicker.effort.adjustHint')}</Text></Text> : <Text color="subtle"><EffortLevelIndicator effort={undefined} /> {t('modelPicker.effort.notSupported')}{focusedModelName ? t('modelPicker.effort.notSupportedFor', {
+      model: focusedModelName
+    }) : ""}</Text>}</Box>;
     $[62] = displayEffort;
     $[63] = focusedDefaultEffort;
     $[64] = focusedModelName;
@@ -337,7 +349,15 @@ export function ModelPicker(t0) {
   }
   let t25;
   if ($[67] !== showFastModeNotice) {
-    t25 = isDeepCodeNative ? <Box marginBottom={1}><Text dimColor={true}>DeepSeek thinking uses reasoning_effort. Use ←/→ to choose low, medium, high, or max.</Text></Box> : isFastModeEnabled() ? showFastModeNotice ? <Box marginBottom={1}><Text dimColor={true}>Fast mode is <Text bold={true}>ON</Text> and available with{" "}{FAST_MODE_MODEL_DISPLAY} only (/fast). Switching to other models turn off fast mode.</Text></Box> : isFastModeAvailable() && !isFastModeCooldown() ? <Box marginBottom={1}><Text dimColor={true}>Use <Text bold={true}>/fast</Text> to turn on Fast mode ({FAST_MODE_MODEL_DISPLAY} only).</Text></Box> : null : null;
+    t25 = isDeepCodeNative ? <Box marginBottom={1}><Text dimColor={true}>{t('modelPicker.notice.deepseekEffort')}</Text></Box> : isFastModeEnabled() ? showFastModeNotice ? <Box marginBottom={1}><Text dimColor={true}>{t('modelPicker.notice.fastModeOn', {
+      model: FAST_MODE_MODEL_DISPLAY
+    }).split('{on}')[0]}<Text bold={true}>{t('modelPicker.notice.fastModeOnLabel')}</Text>{t('modelPicker.notice.fastModeOn', {
+      model: FAST_MODE_MODEL_DISPLAY
+    }).split('{on}')[1]}</Text></Box> : isFastModeAvailable() && !isFastModeCooldown() ? <Box marginBottom={1}><Text dimColor={true}>{t('modelPicker.notice.fastModeAvailable', {
+      model: FAST_MODE_MODEL_DISPLAY
+    }).split('{fast}')[0]}<Text bold={true}>/fast</Text>{t('modelPicker.notice.fastModeAvailable', {
+      model: FAST_MODE_MODEL_DISPLAY
+    }).split('{fast}')[1]}</Text></Box> : null : null;
     $[67] = showFastModeNotice;
     $[68] = t25;
   } else {
@@ -356,7 +376,9 @@ export function ModelPicker(t0) {
   }
   let t27;
   if ($[74] !== exitState || $[75] !== isStandaloneCommand) {
-    t27 = isStandaloneCommand && <Text dimColor={true} italic={true}>{exitState.pending ? <>Press {exitState.keyName} again to exit</> : <Byline><KeyboardShortcutHint shortcut="Enter" action="confirm" /><ConfigurableShortcutHint action="select:cancel" context="Select" fallback="Esc" description="exit" /></Byline>}</Text>;
+    t27 = isStandaloneCommand && <Text dimColor={true} italic={true}>{exitState.pending ? <>{t('common.pressKeyAgainToExit', {
+      keyName: exitState.keyName
+    })}</> : <Byline><KeyboardShortcutHint shortcut="Enter" action="confirm" /><ConfigurableShortcutHint action="select:cancel" context="Select" fallback="Esc" description="exit" /></Byline>}</Text>;
     $[74] = exitState;
     $[75] = isStandaloneCommand;
     $[76] = t27;
