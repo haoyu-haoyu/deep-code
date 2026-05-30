@@ -186,6 +186,9 @@ export type GlobalConfig = {
   doctorShownAtSession?: number
   userID?: string
   theme: ThemeSetting
+  // UI language (BCP 47): 'en' | 'zh-Hans' | 'ja'. Distinct from the response-
+  // language preference. Resolved at startup (P2.10.e); empty = auto-detect.
+  locale?: string
   hasCompletedOnboarding?: boolean
   // Tracks the last version that reset onboarding, used with MIN_VERSION_REQUIRING_ONBOARDING_RESET
   lastOnboardingVersion?: string
@@ -574,6 +577,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'autoUpdates',
   'autoUpdatesProtectedForNative',
   'theme',
+  'locale',
   'verbose',
   'preferredNotifChannel',
   'shiftEnterKeyBindingInstalled',

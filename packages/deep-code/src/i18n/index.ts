@@ -36,6 +36,26 @@ export function resolveLocale(options: ResolveLocaleOptions = {}): Locale {
   )
 }
 
+/**
+ * Resolve and install the active UI locale at startup. Priority:
+ *   --locale flag (override) → persisted GlobalConfig.locale → LC_ALL → LANG →
+ *   system locale → 'en'. Call once early in the interactive boot path so
+ *   useTranslation()/getMessage() consumers render in the chosen language.
+ */
+export function initActiveLocale(options: {
+  override?: string | null
+  configLocale?: string | null
+  env?: ResolveLocaleOptions['env']
+} = {}): Locale {
+  return setActiveLocale(
+    resolveLocale({
+      override: options.override,
+      settingsLocale: options.configLocale,
+      env: options.env ?? (typeof process !== 'undefined' ? process.env : undefined),
+    }),
+  )
+}
+
 export function translate(
   locale: string | null | undefined,
   key: string,

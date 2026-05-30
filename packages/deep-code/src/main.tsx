@@ -46,6 +46,7 @@ import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js';
 import { uniq } from './utils/array.js';
 import { installAsciicastRecorder } from './utils/asciicast.js';
 import { checkHasTrustDialogAccepted, getGlobalConfig, getRemoteControlAtStartup, isAutoUpdaterDisabled, saveGlobalConfig } from './utils/config.js';
+import { initActiveLocale } from './i18n/index.js';
 import { seedEarlyInput, stopCapturingEarlyInput } from './utils/earlyInput.js';
 import { getInitialEffortSetting, parseEffortValue } from './utils/effort.js';
 import { getInitialFastModeSetting, isFastModeEnabled, prefetchFastModeStatus, resolveFastModeStatusFromCache } from './utils/fastMode.js';
@@ -897,7 +898,7 @@ async function run(): Promise<CommanderCommand> {
   // `mcp` and `add` as paths, then choked on --transport as an unknown
   // top-level option. Single-value + collect accumulator means each
   // --plugin-dir takes exactly one arg; repeat the flag for multiple dirs.
-  .option('--plugin-dir <path>', 'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)', (val: string, prev: string[]) => [...prev, val], [] as string[]).option('--disable-slash-commands', 'Disable all skills', () => true).action(async (prompt, options) => {
+  .option('--plugin-dir <path>', 'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)', (val: string, prev: string[]) => [...prev, val], [] as string[]).option('--disable-slash-commands', 'Disable all skills', () => true).option('--locale <locale>', 'UI language: en, zh-Hans, ja (default: auto-detect from settings/env)', String).action(async (prompt, options) => {
     profileCheckpoint('action_handler_start');
 
     // --bare = one-switch minimal mode. Sets SIMPLE so all the existing
@@ -968,6 +969,9 @@ async function run(): Promise<CommanderCommand> {
     let outputFormat = options.outputFormat;
     let inputFormat = options.inputFormat;
     let verbose = options.verbose ?? getGlobalConfig().verbose;
+    // Install the UI locale early so the interactive TUI renders in the chosen
+    // language: --locale > GlobalConfig.locale > LC_ALL/LANG > system > en. (P2.10.e)
+    initActiveLocale({ override: options.locale, configLocale: getGlobalConfig().locale, env: process.env });
     let print = options.print;
     const init = options.init ?? false;
     const initOnly = options.initOnly ?? false;
