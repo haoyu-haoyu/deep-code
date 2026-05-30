@@ -6,6 +6,7 @@ import { Byline } from '../../components/design-system/Byline.js';
 import { KeyboardShortcutHint } from '../../components/design-system/KeyboardShortcutHint.js';
 import { Spinner } from '../../components/Spinner.js';
 import TextInput from '../../components/TextInput.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Text } from '../../ink.js';
 import { toError } from '../../utils/errors.js';
 import { logError } from '../../utils/log.js';
@@ -39,18 +40,19 @@ export function AddMarketplace({
   onAddComplete,
   cliMode = false
 }: Props): React.ReactNode {
+  const { t } = useTranslation();
   const hasAttemptedAutoAdd = useRef(false);
   const [isLoading, setLoading] = useState(false);
   const [progressMessage, setProgressMessage] = useState<string>('');
   const handleAdd = async () => {
     const input = inputValue.trim();
     if (!input) {
-      setError('Please enter a marketplace source');
+      setError(t('plugin.addMarketplace.error.empty'));
       return;
     }
     const parsed = await parseMarketplaceInput(input);
     if (!parsed) {
-      setError('Invalid marketplace source format. Try: owner/repo, https://..., or ./path');
+      setError(t('plugin.addMarketplace.error.invalidFormat'));
       return;
     }
 
@@ -87,7 +89,7 @@ export function AddMarketplace({
       setLoading(false);
       if (cliMode) {
         // In CLI mode, set result to trigger completion
-        setResult(`Successfully added marketplace: ${name}`);
+        setResult(t('plugin.addMarketplace.result.success', { name }));
       } else {
         // In interactive mode, switch to browse view
         setViewState({
@@ -103,7 +105,7 @@ export function AddMarketplace({
       setLoading(false);
       if (cliMode) {
         // In CLI mode, set result with error to trigger completion
-        setResult(`Error: ${error.message}`);
+        setResult(t('tool.useError.prefix', { message: error.message }));
       } else {
         setResult(null);
       }
@@ -123,15 +125,15 @@ export function AddMarketplace({
   return <Box flexDirection="column">
       <Box flexDirection="column" paddingX={1} borderStyle="round">
         <Box marginBottom={1}>
-          <Text bold>Add Marketplace</Text>
+          <Text bold>{t('plugin.addMarketplace.title')}</Text>
         </Box>
         <Box flexDirection="column">
-          <Text>Enter marketplace source:</Text>
-          <Text dimColor>Examples:</Text>
-          <Text dimColor> · owner/repo (GitHub)</Text>
-          <Text dimColor> · git@github.com:owner/repo.git (SSH)</Text>
-          <Text dimColor> · https://example.com/marketplace.json</Text>
-          <Text dimColor> · ./path/to/marketplace</Text>
+          <Text>{t('plugin.addMarketplace.prompt')}</Text>
+          <Text dimColor>{t('plugin.addMarketplace.examples')}</Text>
+          <Text dimColor>{t('plugin.addMarketplace.example.github')}</Text>
+          <Text dimColor>{t('plugin.addMarketplace.example.ssh')}</Text>
+          <Text dimColor>{t('plugin.addMarketplace.example.https')}</Text>
+          <Text dimColor>{t('plugin.addMarketplace.example.path')}</Text>
           <Box marginTop={1}>
             <TextInput value={inputValue} onChange={setInputValue} onSubmit={handleAdd} columns={80} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} focus showCursor />
           </Box>
@@ -139,7 +141,7 @@ export function AddMarketplace({
         {isLoading && <Box marginTop={1}>
             <Spinner />
             <Text>
-              {progressMessage || 'Adding marketplace to configuration…'}
+              {progressMessage || t('plugin.addMarketplace.progress')}
             </Text>
           </Box>}
         {error && <Box marginTop={1}>

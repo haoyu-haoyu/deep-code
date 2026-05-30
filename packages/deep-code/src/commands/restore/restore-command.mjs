@@ -1,4 +1,5 @@
 import { listSnapshots, restoreSnapshot } from '../../services/snapshot/index.mjs'
+import { getMessage } from '../../i18n/index.js'
 
 export async function getRestoreSnapshotItems({
   workspaceRoot = process.cwd(),
@@ -22,8 +23,10 @@ export async function getRestoreSnapshotItems({
 export function formatRestoreSnapshotLine(item) {
   const fileLabel =
     item.changedFileCount === 1
-      ? '1 file'
-      : `${item.changedFileCount} files`
+      ? getMessage('restore.fileLabel.singular')
+      : getMessage('restore.fileLabel.plural', {
+          count: item.changedFileCount,
+        })
   const preview =
     item.previewFiles.length > 0 ? `: ${item.previewFiles.join(', ')}` : ''
   return `${String(item.turnId)} ${item.phase} ${formatTimestamp(item.timestamp)} (${fileLabel}${preview})`
@@ -39,15 +42,14 @@ export async function performRestore({
   if (!snapshotId) {
     return {
       kind: 'error',
-      message: 'No snapshot selected',
+      message: getMessage('restore.error.noSnapshotSelected'),
     }
   }
 
   if (!confirmed) {
     return {
       kind: 'confirmation_required',
-      message:
-        'Restore requires confirmation because workspace files may be overwritten.',
+      message: getMessage('restore.confirmationRequired'),
     }
   }
 
@@ -59,19 +61,28 @@ export async function performRestore({
     })
     return {
       kind: 'restored',
-      message: `Restored snapshot ${snapshotId.slice(0, 12)} (${result.affectedFileCount} affected ${result.affectedFileCount === 1 ? 'file' : 'files'}).`,
+      message: getMessage('restore.result.restored', {
+        snapshotId: snapshotId.slice(0, 12),
+        count: result.affectedFileCount,
+        fileWord:
+          result.affectedFileCount === 1
+            ? getMessage('diagnostics.file.singular')
+            : getMessage('diagnostics.file.plural'),
+      }),
       result,
     }
   } catch (error) {
     if (isSnapshotStoreBusyError(error)) {
       return {
         kind: 'busy',
-        message: 'Snapshot store busy, try again',
+        message: getMessage('restore.error.storeBusy'),
       }
     }
     return {
       kind: 'error',
-      message: `Restore failed: ${error?.message ?? String(error)}`,
+      message: getMessage('restore.error.failed', {
+        error: error?.message ?? String(error),
+      }),
     }
   }
 }
@@ -81,6 +92,6 @@ export function isSnapshotStoreBusyError(error) {
 }
 
 function formatTimestamp(timestamp) {
-  if (!Number.isFinite(timestamp)) return 'unknown time'
+  if (!Number.isFinite(timestamp)) return getMessage('restore.unknownTime')
   return new Date(timestamp).toISOString()
 }

@@ -1,5 +1,6 @@
 import { join } from 'path'
 import type { LocalCommandResult } from '../../commands.js'
+import { getMessage } from '../../i18n/index.js'
 import { loadInstalledPluginsV2 } from '../../utils/plugins/installedPluginsManager.js'
 import { OFFICIAL_MARKETPLACE_NAME } from '../../utils/plugins/officialMarketplace.js'
 import { playAnimation } from '../thinkback/thinkback.js'
@@ -24,8 +25,7 @@ export async function call(): Promise<LocalCommandResult> {
   if (!installations || installations.length === 0) {
     return {
       type: 'text' as const,
-      value:
-        'Thinkback plugin not installed. Run /think-back first to install it.',
+      value: getMessage('thinkbackPlay.notInstalled'),
     }
   }
 
@@ -33,7 +33,7 @@ export async function call(): Promise<LocalCommandResult> {
   if (!firstInstall?.installPath) {
     return {
       type: 'text' as const,
-      value: 'Thinkback plugin installation path not found.',
+      value: getMessage('thinkbackPlay.installPathNotFound'),
     }
   }
 

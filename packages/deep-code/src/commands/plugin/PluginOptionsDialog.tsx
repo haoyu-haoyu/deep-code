@@ -7,6 +7,7 @@ import { stringWidth } from '../../ink/stringWidth.js';
 import { Box, Text, useInput } from '../../ink.js';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import type { PluginOptionSchema, PluginOptionValues } from '../../utils/plugins/pluginOptionsStorage.js';
 
 /**
@@ -62,6 +63,9 @@ export function PluginOptionsDialog(t0) {
     onSave,
     onCancel
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== configSchema) {
     t1 = Object.keys(configSchema);
@@ -296,7 +300,10 @@ export function PluginOptionsDialog(t0) {
   const t21 = currentFieldIndex + 1;
   let t22;
   if ($[51] !== fields.length || $[52] !== t21) {
-    t22 = <Text dimColor={true}>Field {t21} of {fields.length}</Text>;
+    t22 = <Text dimColor={true}>{t('plugin.options.fieldProgress', {
+      current: t21,
+      total: fields.length
+    })}</Text>;
     $[51] = fields.length;
     $[52] = t21;
     $[53] = t22;
@@ -305,7 +312,7 @@ export function PluginOptionsDialog(t0) {
   }
   let t23;
   if ($[54] !== currentFieldIndex || $[55] !== fields.length) {
-    t23 = currentFieldIndex < fields.length - 1 && <Text dimColor={true}>Tab: Next field · Enter: Save and continue</Text>;
+    t23 = currentFieldIndex < fields.length - 1 && <Text dimColor={true}>{t('plugin.options.hint.tabNext')}</Text>;
     $[54] = currentFieldIndex;
     $[55] = fields.length;
     $[56] = t23;
@@ -314,7 +321,7 @@ export function PluginOptionsDialog(t0) {
   }
   let t24;
   if ($[57] !== currentFieldIndex || $[58] !== fields.length) {
-    t24 = currentFieldIndex === fields.length - 1 && <Text dimColor={true}>Enter: Save configuration</Text>;
+    t24 = currentFieldIndex === fields.length - 1 && <Text dimColor={true}>{t('plugin.options.hint.enterSave')}</Text>;
     $[57] = currentFieldIndex;
     $[58] = fields.length;
     $[59] = t24;

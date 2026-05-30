@@ -1,5 +1,5 @@
 import type { Command } from '../commands.js'
-import { translate } from '../i18n/index.js'
+import { getMessage, translate } from '../i18n/index.js'
 import type { LocalCommandCall } from '../types/command.js'
 import {
   canUserConfigureAdvisor,
@@ -25,19 +25,21 @@ const call: LocalCommandCall = async (args, context) => {
     if (!current) {
       return {
         type: 'text',
-        value:
-          'Advisor: not set\nUse "/advisor <model>" to enable (e.g. "/advisor opus").',
+        value: getMessage('command.advisor.notSet'),
       }
     }
     if (!modelSupportsAdvisor(baseModel)) {
       return {
         type: 'text',
-        value: `Advisor: ${current} (inactive)\nThe current model (${baseModel}) does not support advisors.`,
+        value: getMessage('command.advisor.inactive', {
+          current,
+          baseModel,
+        }),
       }
     }
     return {
       type: 'text',
-      value: `Advisor: ${current}\nUse "/advisor unset" to disable or "/advisor <model>" to change.`,
+      value: getMessage('command.advisor.current', { current }),
     }
   }
 
@@ -51,8 +53,8 @@ const call: LocalCommandCall = async (args, context) => {
     return {
       type: 'text',
       value: prev
-        ? `Advisor disabled (was ${prev}).`
-        : 'Advisor already unset.',
+        ? getMessage('command.advisor.disabled', { prev })
+        : getMessage('command.advisor.alreadyUnset'),
     }
   }
 
@@ -63,15 +65,15 @@ const call: LocalCommandCall = async (args, context) => {
     return {
       type: 'text',
       value: error
-        ? `Invalid advisor model: ${error}`
-        : `Unknown model: ${arg} (${resolvedModel})`,
+        ? getMessage('command.advisor.invalidModel', { error })
+        : getMessage('command.advisor.unknownModel', { arg, resolvedModel }),
     }
   }
 
   if (!isValidAdvisorModel(resolvedModel)) {
     return {
       type: 'text',
-      value: `The model ${arg} (${resolvedModel}) cannot be used as an advisor`,
+      value: getMessage('command.advisor.cannotUse', { arg, resolvedModel }),
     }
   }
 
@@ -84,13 +86,16 @@ const call: LocalCommandCall = async (args, context) => {
   if (!modelSupportsAdvisor(baseModel)) {
     return {
       type: 'text',
-      value: `Advisor set to ${normalizedModel}.\nNote: Your current model (${baseModel}) does not support advisors. Switch to a supported model to use the advisor.`,
+      value: getMessage('command.advisor.setUnsupported', {
+        normalizedModel,
+        baseModel,
+      }),
     }
   }
 
   return {
     type: 'text',
-    value: `Advisor set to ${normalizedModel}.`,
+    value: getMessage('command.advisor.set', { normalizedModel }),
   }
 }
 

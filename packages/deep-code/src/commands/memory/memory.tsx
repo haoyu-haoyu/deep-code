@@ -11,6 +11,7 @@ import { getClaudeConfigHomeDir } from '../../utils/envUtils.js';
 import { getErrnoCode } from '../../utils/errors.js';
 import { logError } from '../../utils/log.js';
 import { editFileInEditor } from '../../utils/promptEditor.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 function MemoryCommand({
   onDone
 }: {
@@ -18,6 +19,9 @@ function MemoryCommand({
     display?: CommandResultDisplay;
   }) => void;
 }): React.ReactNode {
+  const {
+    t
+  } = useTranslation();
   const handleSelectMemoryFile = async (memoryPath: string) => {
     try {
       // Create claude directory if it doesn't exist (idempotent with recursive)
@@ -51,22 +55,32 @@ function MemoryCommand({
         editorSource = '$EDITOR';
         editorValue = process.env.EDITOR;
       }
-      const editorInfo = editorSource !== 'default' ? `Using ${editorSource}="${editorValue}".` : '';
-      const editorHint = editorInfo ? `> ${editorInfo} To change editor, set $EDITOR or $VISUAL environment variable.` : `> To use a different editor, set the $EDITOR or $VISUAL environment variable.`;
-      onDone(`Opened memory file at ${getRelativeMemoryPath(memoryPath)}\n\n${editorHint}`, {
+      const editorInfo = editorSource !== 'default' ? t('command.memory.editorInfo', {
+        editorSource,
+        editorValue
+      }) : '';
+      const editorHint = editorInfo ? t('command.memory.editorHintWithInfo', {
+        editorInfo
+      }) : t('command.memory.editorHint');
+      onDone(t('command.memory.opened', {
+        path: getRelativeMemoryPath(memoryPath),
+        editorHint
+      }), {
         display: 'system'
       });
     } catch (error) {
       logError(error);
-      onDone(`Error opening memory file: ${error}`);
+      onDone(t('command.memory.errorOpening', {
+        error: String(error)
+      }));
     }
   };
   const handleCancel = () => {
-    onDone('Cancelled memory editing', {
+    onDone(t('command.memory.cancelled'), {
       display: 'system'
     });
   };
-  return <Dialog title="Memory" onCancel={handleCancel} color="remember">
+  return <Dialog title={t('command.memory.dialogTitle')} onCancel={handleCancel} color="remember">
       <Box flexDirection="column">
         <React.Suspense fallback={null}>
           <MemoryFileSelector onSelect={handleSelectMemoryFile} onCancel={handleCancel} />
@@ -74,7 +88,7 @@ function MemoryCommand({
 
         <Box marginTop={1}>
           <Text dimColor>
-            Learn more: <Link url="https://api-docs.deepseek.com/" />
+            {t('command.memory.learnMore')} <Link url="https://api-docs.deepseek.com/" />
           </Text>
         </Box>
       </Box>

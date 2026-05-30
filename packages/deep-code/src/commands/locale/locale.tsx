@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Pane } from '../../components/design-system/Pane.js';
 import { Select } from '../../components/CustomSelect/select.js';
 import { setActiveLocale } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 
@@ -18,6 +19,7 @@ function LocalePickerCommand({
 }: {
   onDone: (result?: string) => void;
 }): React.ReactNode {
+  const { t } = useTranslation();
   const current = getGlobalConfig().locale;
   const defaultValue = LOCALE_OPTIONS.some(option => option.value === current)
     ? (current as string)
@@ -30,11 +32,9 @@ function LocalePickerCommand({
         onChange={value => {
           saveGlobalConfig(config => ({ ...config, locale: value }));
           setActiveLocale(value);
-          onDone(
-            `UI language set to ${value}. Restart Deep Code to fully apply it across the interface.`,
-          );
+          onDone(t('command.locale.result.set', { value }));
         }}
-        onCancel={() => onDone('Language picker dismissed')}
+        onCancel={() => onDone(t('command.locale.result.dismissed'))}
       />
     </Pane>
   );

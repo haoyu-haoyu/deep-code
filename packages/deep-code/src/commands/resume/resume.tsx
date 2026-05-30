@@ -10,6 +10,8 @@ import { MessageResponse } from '../../components/MessageResponse.js';
 import { Spinner } from '../../components/Spinner.js';
 import { useIsInsideModal } from '../../context/modalContext.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { setClipboard } from '../../ink/termio/osc.js';
 import { Box, Text } from '../../ink.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
@@ -31,9 +33,14 @@ type ResumeResult = {
 function resumeHelpMessage(result: ResumeResult): string {
   switch (result.resultType) {
     case 'sessionNotFound':
-      return `Session ${chalk.bold(result.arg)} was not found.`;
+      return getMessage('command.resume.error.sessionNotFound', {
+        arg: chalk.bold(result.arg)
+      });
     case 'multipleMatches':
-      return `Found ${result.count} sessions matching ${chalk.bold(result.arg)}. Please use /resume to pick a specific session.`;
+      return getMessage('command.resume.error.multipleMatches', {
+        count: result.count,
+        arg: chalk.bold(result.arg)
+      });
   }
 }
 function ResumeError(t0) {
@@ -104,22 +111,25 @@ function ResumeCommand({
     rows
   } = useTerminalSize();
   const insideModal = useIsInsideModal();
+  const {
+    t
+  } = useTranslation();
   const loadLogs = React.useCallback(async (allProjects: boolean, paths: string[]) => {
     setLoading(true);
     try {
       const allLogs = allProjects ? await loadAllProjectsMessageLogs() : await loadSameRepoMessageLogs(paths);
       const resumable = filterResumableSessions(allLogs, getSessionId());
       if (resumable.length === 0) {
-        onDone('No conversations found to resume');
+        onDone(t('command.resume.noConversations'));
         return;
       }
       setLogs(resumable);
     } catch (_err) {
-      onDone('Failed to load conversations');
+      onDone(t('command.resume.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [onDone]);
+  }, [onDone, t]);
   React.useEffect(() => {
     async function init() {
       const paths_0 = await getWorktreePaths(getOriginalCwd());
@@ -136,7 +146,7 @@ function ResumeCommand({
   async function handleSelect(log: LogOption) {
     const sessionId = validateUuid(getSessionIdFromLog(log));
     if (!sessionId) {
-      onDone('Failed to resume conversation');
+      onDone(t('command.resume.resumeFailed'));
       return;
     }
 
@@ -158,7 +168,7 @@ function ResumeCommand({
       if (raw) process.stdout.write(raw);
 
       // Format the output message
-      const message = ['', 'This conversation is from a different directory.', '', 'To resume, run:', `  ${crossProjectCheck.command}`, '', '(Command copied to clipboard)', ''].join('\n');
+      const message = ['', t('command.resume.crossProject.heading'), '', t('command.resume.crossProject.toResume'), `  ${crossProjectCheck.command}`, '', t('command.resume.crossProject.copied'), ''].join('\n');
       onDone(message, {
         display: 'user'
       });
@@ -170,20 +180,20 @@ function ResumeCommand({
     void onResume(sessionId, fullLog, 'slash_command_picker');
   }
   function handleCancel() {
-    onDone('Resume cancelled', {
+    onDone(t('command.resume.cancelled'), {
       display: 'system'
     });
   }
   if (loading) {
     return <Box>
         <Spinner />
-        <Text> Loading conversations…</Text>
+        <Text> {t('command.resume.loading')}</Text>
       </Box>;
   }
   if (resuming) {
     return <Box>
         <Spinner />
-        <Text> Resuming conversation…</Text>
+        <Text> {t('command.resume.resuming')}</Text>
       </Box>;
   }
   return <LogSelector logs={logs} maxHeight={insideModal ? Math.floor(rows / 2) : rows - 2} onCancel={handleCancel} onSelect={handleSelect} onLogsChanged={() => loadLogs(showAllProjects, worktreePaths)} showAllProjects={showAllProjects} onToggleAllProjects={handleToggleAllProjects} onAgenticSearch={agenticSessionSearch} />;
@@ -200,7 +210,9 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
       });
     } catch (error) {
       logError(error as Error);
-      onDone(`Failed to resume: ${(error as Error).message}`);
+      onDone(getMessage('command.resume.resumeFailedWithError', {
+        error: (error as Error).message
+      }));
     }
   };
   const arg = args?.trim();
@@ -214,7 +226,7 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   const worktreePaths = await getWorktreePaths(getOriginalCwd());
   const logs = await loadSameRepoMessageLogs(worktreePaths);
   if (logs.length === 0) {
-    const message = 'No conversations found to resume.';
+    const message = getMessage('command.resume.noConversationsPeriod');
     return <ResumeError message={message} args={arg} onDone={() => onDone(message)} />;
   }
 

@@ -17,6 +17,7 @@ import {
   warmDeepSeekCache,
 } from '../../cache/deepseek-warmup.mjs'
 import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
+import { getMessage } from '../../i18n/index.js'
 
 const HELP_ARGS = new Set(['help', '-h', '--help'])
 const SUPPORTED_SUBCOMMANDS = new Set(['inspect', 'warmup', 'clear'])
@@ -32,7 +33,7 @@ export async function executeCacheCommand(args = '', {
   if (!providerSupports(provider, 'cache_breakpoint')) {
     return {
       kind: 'text',
-      value: 'Cache visualization unavailable for current provider',
+      value: getMessage('command.cache.unavailable'),
     }
   }
 
@@ -40,13 +41,13 @@ export async function executeCacheCommand(args = '', {
   if (HELP_ARGS.has(subcommand)) {
     return {
       kind: 'text',
-      value: 'Usage: /cache [inspect|warmup|clear]',
+      value: getMessage('command.cache.usage'),
     }
   }
   if (!SUPPORTED_SUBCOMMANDS.has(subcommand)) {
     return {
       kind: 'text',
-      value: `Unknown cache subcommand: ${subcommand}. Usage: /cache [inspect|warmup|clear]`,
+      value: getMessage('command.cache.unknownSubcommand', { subcommand }),
     }
   }
 
@@ -54,8 +55,7 @@ export async function executeCacheCommand(args = '', {
     clear()
     return {
       kind: 'text',
-      value:
-        'Local DeepSeek cache visualization state cleared. This does not clear DeepSeek remote cache.',
+      value: getMessage('command.cache.cleared'),
     }
   }
 
@@ -95,27 +95,44 @@ export function formatCacheInspectReport({
   const hitRate = formatRate(totals.hitRate)
   const savings = estimateDeepSeekCacheSavingsUsd({ hitTokens: hit, model })
   const lines = [
-    'DeepSeek cache',
-    `Session: hit=${hit} miss=${miss} hit_rate=${hitRate} turns=${totals.turnCount ?? turns.length}`,
-    `Session compact: ${formatCompactTokenCount(hit)} hit / ${formatCompactTokenCount(hit + miss)} total`,
-    `Estimated savings: ${formatUsdEstimate(savings)} (pricing snapshot ${DEEPSEEK_PRICING_SNAPSHOT_DATE})`,
-    'Recent turns:',
+    getMessage('command.cache.report.title'),
+    getMessage('command.cache.report.session', {
+      hit,
+      miss,
+      hitRate,
+      turns: totals.turnCount ?? turns.length,
+    }),
+    getMessage('command.cache.report.compact', {
+      hit: formatCompactTokenCount(hit),
+      total: formatCompactTokenCount(hit + miss),
+    }),
+    getMessage('command.cache.report.savings', {
+      savings: formatUsdEstimate(savings),
+      snapshot: DEEPSEEK_PRICING_SNAPSHOT_DATE,
+    }),
+    getMessage('command.cache.report.recentTurns'),
   ]
 
   if (turns.length === 0) {
-    lines.push('- none')
+    lines.push(getMessage('command.cache.report.none'))
   } else {
     for (const turn of turns) {
-      const prefix = turn.prefixHash ? ` prefix=${turn.prefixHash}` : ''
+      const prefix = turn.prefixHash
+        ? getMessage('command.cache.report.turnPrefix', { prefix: turn.prefixHash })
+        : ''
       lines.push(
-        `- ${turn.turnId}: hit=${turn.hitTokens} miss=${turn.missTokens} hit_rate=${formatRate(turn.hitRate)}${prefix}`,
+        getMessage('command.cache.report.turn', {
+          turnId: turn.turnId,
+          hit: turn.hitTokens,
+          miss: turn.missTokens,
+          hitRate: formatRate(turn.hitRate),
+          prefix,
+        }),
       )
     }
   }
 
-  lines.push(
-    'Local stats only; /cache clear does not clear DeepSeek remote cache.',
-  )
+  lines.push(getMessage('command.cache.report.footer'))
   return lines.join('\n')
 }
 

@@ -3,6 +3,7 @@ import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js';
 import { Byline } from '../../components/design-system/Byline.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Text } from '../../ink.js';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { LoadedPlugin } from '../../types/plugin.js';
@@ -56,6 +57,8 @@ export function BrowseMarketplace({
   targetMarketplace,
   targetPlugin
 }: Props): React.ReactNode {
+  const { t } = useTranslation();
+
   // View state
   const [viewState, setViewState] = useState<ViewState>('marketplace-list');
   const [selectedMarketplace, setSelectedMarketplace] = useState<string | null>(null);
@@ -163,7 +166,7 @@ export function BrowseMarketplace({
         const errorResult = formatMarketplaceLoadingErrors(failures, successCount);
         if (errorResult) {
           if (errorResult.type === 'warning') {
-            setWarning(errorResult.message + '. Showing available marketplaces.');
+            setWarning(t('plugin.browse.warning.showingAvailable', { message: errorResult.message }));
           } else {
             throw new Error(errorResult.message);
           }
@@ -213,7 +216,7 @@ export function BrowseMarketplace({
             const pluginId_0 = foundPlugin.pluginId;
             const globallyInstalled = isPluginGloballyInstalled(pluginId_0);
             if (globallyInstalled) {
-              setError(`Plugin '${pluginId_0}' is already installed globally. Use '/plugin' to manage existing plugins.`);
+              setError(t('plugin.browse.error.alreadyInstalledGlobally', { pluginId: pluginId_0 }));
             } else {
               // Navigate to the plugin details view
               setSelectedMarketplace(foundMarketplace);
@@ -221,7 +224,7 @@ export function BrowseMarketplace({
               setViewState('plugin-details');
             }
           } else {
-            setError(`Plugin "${targetPlugin}" not found in any marketplace`);
+            setError(t('plugin.browse.error.pluginNotFound', { plugin: targetPlugin }));
           }
         } else if (targetMarketplace) {
           // Navigate directly to the specified marketplace
@@ -230,11 +233,11 @@ export function BrowseMarketplace({
             setSelectedMarketplace(targetMarketplace);
             setViewState('plugin-list');
           } else {
-            setError(`Marketplace "${targetMarketplace}" not found`);
+            setError(t('plugin.browse.error.marketplaceNotFound', { marketplace: targetMarketplace }));
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load marketplaces');
+        setError(err instanceof Error ? err.message : t('plugin.browse.error.failedToLoadMarketplaces'));
       } finally {
         setLoading(false);
       }
@@ -252,7 +255,7 @@ export function BrowseMarketplace({
         const marketplace_1 = await getMarketplace(marketplaceName);
         if (cancelled) return;
         if (!marketplace_1) {
-          throw new Error(`Failed to load marketplace: ${marketplaceName}`);
+          throw new Error(t('plugin.browse.error.failedToLoadMarketplace', { marketplace: marketplaceName }));
         }
 
         // Filter out already installed plugins
@@ -299,7 +302,7 @@ export function BrowseMarketplace({
         setSelectedForInstall(new Set());
       } catch (err_0) {
         if (cancelled) return;
-        setError(err_0 instanceof Error ? err_0.message : 'Failed to load plugins');
+        setError(err_0 instanceof Error ? err_0.message : t('plugin.browse.error.failedToLoadPlugins'));
       } finally {
         setLoading(false);
       }
@@ -345,14 +348,21 @@ export function BrowseMarketplace({
     // Handle installation results
     if (failureCount === 0) {
       // All succeeded
-      const message = `✓ Installed ${successCount_0} ${plural(successCount_0, 'plugin')}. ` + `Run /reload-plugins to activate.`;
+      const message = t('plugin.browse.install.allSucceeded', {
+        count: successCount_0,
+        plugins: plural(successCount_0, 'plugin')
+      });
       setResult(message);
     } else if (successCount_0 === 0) {
       // All failed - show error with reasons
-      setError(`Failed to install: ${formatFailureDetails(newFailedPlugins, true)}`);
+      setError(t('plugin.browse.install.allFailed', { details: formatFailureDetails(newFailedPlugins, true) }));
     } else {
       // Mixed results - show partial success
-      const message_0 = `✓ Installed ${successCount_0} of ${successCount_0 + failureCount} plugins. ` + `Failed: ${formatFailureDetails(newFailedPlugins, false)}. ` + `Run /reload-plugins to activate successfully installed plugins.`;
+      const message_0 = t('plugin.browse.install.partialSuccess', {
+        count: successCount_0,
+        total: successCount_0 + failureCount,
+        details: formatFailureDetails(newFailedPlugins, false)
+      });
       setResult(message_0);
     }
 
@@ -553,13 +563,13 @@ export function BrowseMarketplace({
     return <PluginOptionsFlow plugin={plugin_5} pluginId={pluginId_2} onDone={(outcome, detail) => {
       switch (outcome) {
         case 'configured':
-          finish(`✓ Installed and configured ${plugin_5.name}. Run /reload-plugins to apply.`);
+          finish(t('plugin.browse.options.configured', { name: plugin_5.name }));
           break;
         case 'skipped':
-          finish(`✓ Installed ${plugin_5.name}. Run /reload-plugins to apply.`);
+          finish(t('plugin.browse.options.installed', { name: plugin_5.name }));
           break;
         case 'error':
-          finish(`Installed but failed to save config: ${detail}`);
+          finish(t('plugin.browse.options.saveConfigFailed', { detail }));
           break;
       }
     }} />;
@@ -567,7 +577,7 @@ export function BrowseMarketplace({
 
   // Loading state
   if (loading) {
-    return <Text>Loading…</Text>;
+    return <Text>{t('plugin.browse.loading')}</Text>;
   }
 
   // Error state
@@ -580,11 +590,11 @@ export function BrowseMarketplace({
     if (marketplaces.length === 0) {
       return <Box flexDirection="column">
           <Box marginBottom={1}>
-            <Text bold>Select marketplace</Text>
+            <Text bold>{t('plugin.browse.selectMarketplace')}</Text>
           </Box>
-          <Text>No marketplaces configured.</Text>
+          <Text>{t('plugin.browse.noMarketplacesConfigured')}</Text>
           <Text dimColor>
-            Add a marketplace first using {"'Add marketplace'"}.
+            {t('plugin.browse.addMarketplaceFirst')}
           </Text>
           <Box marginTop={1} paddingLeft={1}>
             <Text dimColor>
@@ -595,7 +605,7 @@ export function BrowseMarketplace({
     }
     return <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Select marketplace</Text>
+          <Text bold>{t('plugin.browse.selectMarketplace')}</Text>
         </Box>
 
         {/* Warning banner for marketplace load failures */}
@@ -613,9 +623,11 @@ export function BrowseMarketplace({
             </Box>
             <Box marginLeft={2}>
               <Text dimColor>
-                {marketplace_3.totalPlugins}{' '}
-                {plural(marketplace_3.totalPlugins, 'plugin')} available
-                {marketplace_3.installedCount > 0 && ` · ${marketplace_3.installedCount} already installed`}
+                {t('plugin.browse.pluginsAvailable', {
+            count: marketplace_3.totalPlugins,
+            plugins: plural(marketplace_3.totalPlugins, 'plugin')
+          })}
+                {marketplace_3.installedCount > 0 && t('plugin.browse.alreadyInstalledSuffix', { count: marketplace_3.installedCount })}
                 {marketplace_3.source && ` · ${marketplace_3.source}`}
               </Text>
             </Box>
@@ -639,45 +651,49 @@ export function BrowseMarketplace({
     const menuOptions = buildPluginDetailsMenuOptions(hasHomepage_1, githubRepo_1);
     return <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Plugin Details</Text>
+          <Text bold>{t('plugin.browse.details.title')}</Text>
         </Box>
 
         {/* Plugin metadata */}
         <Box flexDirection="column" marginBottom={1}>
           <Text bold>{selectedPlugin.entry.name}</Text>
-          {selectedPlugin.entry.version && <Text dimColor>Version: {selectedPlugin.entry.version}</Text>}
+          {selectedPlugin.entry.version && <Text dimColor>{t('plugin.browse.details.version', { version: selectedPlugin.entry.version })}</Text>}
           {selectedPlugin.entry.description && <Box marginTop={1}>
               <Text>{selectedPlugin.entry.description}</Text>
             </Box>}
           {selectedPlugin.entry.author && <Box marginTop={1}>
               <Text dimColor>
-                By:{' '}
-                {typeof selectedPlugin.entry.author === 'string' ? selectedPlugin.entry.author : selectedPlugin.entry.author.name}
+                {t('plugin.browse.details.author', {
+              author: typeof selectedPlugin.entry.author === 'string' ? selectedPlugin.entry.author : selectedPlugin.entry.author.name
+            })}
               </Text>
             </Box>}
         </Box>
 
         {/* What will be installed */}
         <Box flexDirection="column" marginBottom={1}>
-          <Text bold>Will install:</Text>
+          <Text bold>{t('plugin.browse.details.willInstall')}</Text>
           {selectedPlugin.entry.commands && <Text dimColor>
-              · Commands:{' '}
-              {Array.isArray(selectedPlugin.entry.commands) ? selectedPlugin.entry.commands.join(', ') : Object.keys(selectedPlugin.entry.commands).join(', ')}
+              {t('plugin.browse.details.commands', {
+            items: Array.isArray(selectedPlugin.entry.commands) ? selectedPlugin.entry.commands.join(', ') : Object.keys(selectedPlugin.entry.commands).join(', ')
+          })}
             </Text>}
           {selectedPlugin.entry.agents && <Text dimColor>
-              · Agents:{' '}
-              {Array.isArray(selectedPlugin.entry.agents) ? selectedPlugin.entry.agents.join(', ') : Object.keys(selectedPlugin.entry.agents).join(', ')}
+              {t('plugin.browse.details.agents', {
+            items: Array.isArray(selectedPlugin.entry.agents) ? selectedPlugin.entry.agents.join(', ') : Object.keys(selectedPlugin.entry.agents).join(', ')
+          })}
             </Text>}
           {selectedPlugin.entry.hooks && <Text dimColor>
-              · Hooks: {Object.keys(selectedPlugin.entry.hooks).join(', ')}
+              {t('plugin.browse.details.hooks', { items: Object.keys(selectedPlugin.entry.hooks).join(', ') })}
             </Text>}
           {selectedPlugin.entry.mcpServers && <Text dimColor>
-              · MCP Servers:{' '}
-              {Array.isArray(selectedPlugin.entry.mcpServers) ? selectedPlugin.entry.mcpServers.join(', ') : typeof selectedPlugin.entry.mcpServers === 'object' ? Object.keys(selectedPlugin.entry.mcpServers).join(', ') : 'configured'}
+              {t('plugin.browse.details.mcpServers', {
+            items: Array.isArray(selectedPlugin.entry.mcpServers) ? selectedPlugin.entry.mcpServers.join(', ') : typeof selectedPlugin.entry.mcpServers === 'object' ? Object.keys(selectedPlugin.entry.mcpServers).join(', ') : t('plugin.browse.details.mcpServersConfigured')
+          })}
             </Text>}
           {!selectedPlugin.entry.commands && !selectedPlugin.entry.agents && !selectedPlugin.entry.hooks && !selectedPlugin.entry.mcpServers && <>
                 {typeof selectedPlugin.entry.source === 'object' && 'source' in selectedPlugin.entry.source && (selectedPlugin.entry.source.source === 'github' || selectedPlugin.entry.source.source === 'url' || selectedPlugin.entry.source.source === 'npm' || selectedPlugin.entry.source.source === 'pip') ? <Text dimColor>
-                    · Component summary not available for remote plugin
+                    {t('plugin.browse.details.remoteSummaryUnavailable')}
                   </Text> :
           // TODO: Actually scan local plugin directories to show real components
           // This would require accessing the filesystem to check for:
@@ -686,7 +702,7 @@ export function BrowseMarketplace({
           // - hooks/ directory and list files
           // - .mcp.json or mcp-servers.json files
           <Text dimColor>
-                    · Components will be discovered at installation
+                    {t('plugin.browse.details.componentsDiscoveredAtInstall')}
                   </Text>}
               </>}
         </Box>
@@ -695,7 +711,7 @@ export function BrowseMarketplace({
 
         {/* Error message */}
         {installError && <Box marginBottom={1}>
-            <Text color="error">Error: {installError}</Text>
+            <Text color="error">{t('plugin.browse.details.errorPrefix', { error: installError })}</Text>
           </Box>}
 
         {/* Menu options */}
@@ -704,7 +720,7 @@ export function BrowseMarketplace({
               {detailsMenuIndex === index_0 && <Text>{'> '}</Text>}
               {detailsMenuIndex !== index_0 && <Text>{'  '}</Text>}
               <Text bold={detailsMenuIndex === index_0}>
-                {isInstalling && option.action === 'install' ? 'Installing…' : option.label}
+                {isInstalling && option.action === 'install' ? t('plugin.browse.details.installing') : option.label}
               </Text>
             </Box>)}
         </Box>
@@ -724,11 +740,11 @@ export function BrowseMarketplace({
   if (availablePlugins.length === 0) {
     return <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Install plugins</Text>
+          <Text bold>{t('plugin.browse.installPluginsTitle')}</Text>
         </Box>
-        <Text dimColor>No new plugins available to install.</Text>
+        <Text dimColor>{t('plugin.browse.noNewPlugins')}</Text>
         <Text dimColor>
-          All plugins from this marketplace are already installed.
+          {t('plugin.browse.allAlreadyInstalled')}
         </Text>
         <Box marginLeft={3}>
           <Text dimColor italic>
@@ -742,12 +758,12 @@ export function BrowseMarketplace({
   const visiblePlugins = pagination.getVisibleItems(availablePlugins);
   return <Box flexDirection="column">
       <Box marginBottom={1}>
-        <Text bold>Install Plugins</Text>
+        <Text bold>{t('plugin.browse.installPluginsHeading')}</Text>
       </Box>
 
       {/* Scroll up indicator */}
       {pagination.scrollPosition.canScrollUp && <Box>
-          <Text dimColor> {figures.arrowUp} more above</Text>
+          <Text dimColor> {figures.arrowUp} {t('plugin.browse.moreAbove')}</Text>
         </Box>}
 
       {/* Plugin list */}
@@ -766,12 +782,10 @@ export function BrowseMarketplace({
                 {plugin_6.isInstalled ? figures.tick : isInstalling_0 ? figures.ellipsis : isSelectedForInstall ? figures.radioOn : figures.radioOff}{' '}
                 {plugin_6.entry.name}
                 {plugin_6.entry.category && <Text dimColor> [{plugin_6.entry.category}]</Text>}
-                {plugin_6.entry.tags?.includes('community-managed') && <Text dimColor> [Community Managed]</Text>}
-                {plugin_6.isInstalled && <Text dimColor> (installed)</Text>}
+                {plugin_6.entry.tags?.includes('community-managed') && <Text dimColor> {t('plugin.browse.communityManagedBadge')}</Text>}
+                {plugin_6.isInstalled && <Text dimColor> {t('plugin.browse.installedBadge')}</Text>}
                 {installCounts && selectedMarketplace === OFFICIAL_MARKETPLACE_NAME && <Text dimColor>
-                      {' · '}
-                      {formatInstallCount(installCounts.get(plugin_6.pluginId) ?? 0)}{' '}
-                      installs
+                      {t('plugin.browse.installsSuffix', { count: formatInstallCount(installCounts.get(plugin_6.pluginId) ?? 0) })}
                     </Text>}
               </Text>
             </Box>
@@ -786,7 +800,7 @@ export function BrowseMarketplace({
 
       {/* Scroll down indicator */}
       {pagination.scrollPosition.canScrollDown && <Box>
-          <Text dimColor> {figures.arrowDown} more below</Text>
+          <Text dimColor> {figures.arrowDown} {t('plugin.browse.moreBelow')}</Text>
         </Box>}
 
       {/* Error messages shown in the UI */}

@@ -4,6 +4,7 @@ import { ExportDialog } from '../../components/ExportDialog.js';
 import type { ToolUseContext } from '../../Tool.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import type { Message } from '../../types/message.js';
+import { getMessage } from '../../i18n/index.js';
 import { getCwd } from '../../utils/cwd.js';
 import { renderMessagesToPlainText } from '../../utils/exportRenderer.js';
 import { writeFileSync_DEPRECATED } from '../../utils/slowOperations.js';
@@ -64,10 +65,10 @@ export async function call(onDone: LocalJSXCommandOnDone, context: ToolUseContex
         encoding: 'utf-8',
         flush: true
       });
-      onDone(`Conversation exported to: ${filepath}`);
+      onDone(getMessage('export.result.file', { path: filepath }));
       return null;
     } catch (error) {
-      onDone(`Failed to export conversation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      onDone(getMessage('export.result.error', { error: error instanceof Error ? error.message : getMessage('error.unknown') }));
       return null;
     }
   }

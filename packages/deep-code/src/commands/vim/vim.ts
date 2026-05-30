@@ -4,6 +4,7 @@ import {
 } from '../../services/analytics/index.js'
 import type { LocalCommandCall } from '../../types/command.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { getMessage } from '../../i18n/index.js'
 
 export const call: LocalCommandCall = async () => {
   const config = getGlobalConfig()
@@ -29,10 +30,10 @@ export const call: LocalCommandCall = async () => {
 
   return {
     type: 'text',
-    value: `Editor mode set to ${newMode}. ${
+    value: `${getMessage('command.vim.modeSet', { mode: newMode })} ${
       newMode === 'vim'
-        ? 'Use Escape key to toggle between INSERT and NORMAL modes.'
-        : 'Using standard (readline) keyboard bindings.'
+        ? getMessage('command.vim.vimHint')
+        : getMessage('command.vim.normalHint')
     }`,
   }
 }

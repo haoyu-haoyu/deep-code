@@ -6,6 +6,7 @@ import { Pane } from '../../components/design-system/Pane.js';
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
 import { Box, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 type Platform = 'ios' | 'android';
 type Props = {
@@ -26,6 +27,9 @@ function MobileQRCode(t0) {
   const {
     onDone
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const [platform, setPlatform] = useState("ios");
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -209,7 +213,7 @@ function MobileQRCode(t0) {
   }
   let t24;
   if ($[33] === Symbol.for("react.memo_cache_sentinel")) {
-    t24 = <Text dimColor={true}>(tab to switch, esc to close)</Text>;
+    t24 = <Text dimColor={true}>{t('command.mobile.hint')}</Text>;
     $[33] = t24;
   } else {
     t24 = $[33];

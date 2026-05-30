@@ -2,6 +2,7 @@ import { relative } from 'path';
 import React from 'react';
 import { getCwdState } from '../../bootstrap/state.js';
 import { SandboxSettings } from '../../components/sandbox/SandboxSettings.js';
+import { getMessage } from '../../i18n/index.js';
 import { color } from '../../ink.js';
 import { getPlatform } from '../../utils/platform.js';
 import { addToExcludedCommands, SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
@@ -13,7 +14,7 @@ export async function call(onDone: (result?: string) => void, _context: unknown,
   const platform = getPlatform();
   if (!SandboxManager.isSupportedPlatform()) {
     // WSL1 users will see this since isSupportedPlatform returns false for WSL1
-    const errorMessage = platform === 'wsl' ? 'Error: Sandboxing requires WSL2. WSL1 is not supported.' : 'Error: Sandboxing is currently only supported on macOS, Linux, and WSL2.';
+    const errorMessage = platform === 'wsl' ? getMessage('command.sandbox.error.requiresWsl2') : getMessage('command.sandbox.error.unsupportedPlatform');
     const message = color('error', themeName)(errorMessage);
     onDone(message);
     return null;
@@ -24,14 +25,14 @@ export async function call(onDone: (result?: string) => void, _context: unknown,
 
   // Check if platform is in enabledPlatforms list (undocumented enterprise setting)
   if (!SandboxManager.isPlatformInEnabledList()) {
-    const message = color('error', themeName)(`Error: Sandboxing is disabled for this platform (${platform}) via the enabledPlatforms setting.`);
+    const message = color('error', themeName)(getMessage('command.sandbox.error.platformDisabled', { platform }));
     onDone(message);
     return null;
   }
 
   // Check if sandbox settings are locked by higher-priority settings
   if (SandboxManager.areSandboxSettingsLockedByPolicy()) {
-    const message = color('error', themeName)('Error: Sandbox settings are overridden by a higher-priority configuration and cannot be changed locally.');
+    const message = color('error', themeName)(getMessage('command.sandbox.error.settingsLocked'));
     onDone(message);
     return null;
   }
@@ -52,7 +53,7 @@ export async function call(onDone: (result?: string) => void, _context: unknown,
       // Handle exclude subcommand
       const commandPattern = trimmedArgs.slice('exclude '.length).trim();
       if (!commandPattern) {
-        const message = color('error', themeName)('Error: Please provide a command pattern to exclude (e.g., /sandbox exclude "npm run test:*")');
+        const message = color('error', themeName)(getMessage('command.sandbox.error.missingPattern'));
         onDone(message);
         return null;
       }
@@ -66,12 +67,12 @@ export async function call(onDone: (result?: string) => void, _context: unknown,
       // Get the local settings path and make it relative to cwd
       const localSettingsPath = getSettingsFilePathForSource('localSettings');
       const relativePath = localSettingsPath ? relative(getCwdState(), localSettingsPath) : '.claude/settings.local.json';
-      const message = color('success', themeName)(`Added "${cleanPattern}" to excluded commands in ${relativePath}`);
+      const message = color('success', themeName)(getMessage('command.sandbox.exclude.added', { cleanPattern, relativePath }));
       onDone(message);
       return null;
     } else {
       // Unknown subcommand
-      const message = color('error', themeName)(`Error: Unknown subcommand "${subcommand}". Available subcommand: exclude`);
+      const message = color('error', themeName)(getMessage('command.sandbox.error.unknownSubcommand', { subcommand }));
       onDone(message);
       return null;
     }

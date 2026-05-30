@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join, parse } from 'node:path'
+import { getMessage } from '../i18n/index.js'
 
 const COMMAND_DIRS = [
   { dir: '.deepcode', source: 'deepcode' },
@@ -40,7 +41,7 @@ export async function loadWorkspaceCommands(workspaceRoot, options = {}) {
       !warnedLegacyClaudeCommands
     ) {
       options.warn?.(
-        'Workspace slash commands loaded from .claude/commands; use .deepcode/commands instead.',
+        getMessage('command.workspaceSlash.legacyClaudeWarning'),
       )
       warnedLegacyClaudeCommands = true
     }
@@ -86,7 +87,7 @@ export function createWorkspaceSlashCommands(workspaceCommands) {
     hasUserSpecifiedDescription: false,
     argumentHint: '[arguments]',
     contentLength: command.promptTemplate.length,
-    progressMessage: 'running',
+    progressMessage: getMessage('command.workspaceSlash.progressMessage'),
     source: 'projectSettings',
     loadedFrom: 'commands_DEPRECATED',
     skillRoot: command.filePath,
@@ -125,7 +126,10 @@ export function mergeWorkspaceSlashCommands(
   for (const command of workspaceCommands) {
     if (existingNames.has(command.name)) {
       options.warn?.(
-        `Workspace slash command /${command.name} shadows existing command from ${command.filePath}`,
+        getMessage('command.workspaceSlash.shadowsWarning', {
+          name: command.name,
+          filePath: command.filePath,
+        }),
       )
     }
   }

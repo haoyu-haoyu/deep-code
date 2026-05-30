@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Box, Text } from '../../ink.js'
 import { Dialog } from '../../components/design-system/Dialog.js'
+import { useTranslation } from '../../i18n/useTranslation.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import { executeCacheCommand } from './cache-command.mjs'
 
@@ -13,11 +14,12 @@ function CacheInspectDialog({
   report,
   onDone,
 }: CacheInspectDialogProps): React.ReactNode {
+  const { t } = useTranslation()
   const lines = report.split('\n')
   return (
     <Dialog
-      title="DeepSeek cache"
-      subtitle="Prompt cache telemetry for the current session"
+      title={t('command.cache.inspect.title')}
+      subtitle={t('command.cache.inspect.subtitle')}
       onCancel={() => onDone(undefined, { display: 'skip' })}
     >
       <Box flexDirection="column">

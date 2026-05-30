@@ -89,9 +89,16 @@ async function copyOrWriteToFile(text: string, filename: string): Promise<string
   // terminal support), so the file provides a reliable fallback.
   try {
     const filePath = await writeToFile(text, filename);
-    return `Copied to clipboard (${charCount} characters, ${lineCount} lines)\nAlso written to ${filePath}`;
+    return getMessage('copy.result.copiedAndWritten', {
+      chars: charCount,
+      lines: lineCount,
+      path: filePath
+    });
   } catch {
-    return `Copied to clipboard (${charCount} characters, ${lineCount} lines)`;
+    return getMessage('copy.result.copied', {
+      chars: charCount,
+      lines: lineCount
+    });
   }
 }
 function truncateLine(text: string, maxLen: number): string {
@@ -205,7 +212,9 @@ function CopyPicker(t0) {
           message_age: messageAge
         });
         const result = await copyOrWriteToFile(content.text, content.filename);
-        onDone(`${result}\nPreference saved. Use /config to change copyFullResponse`);
+        onDone(t('copy.result.preferenceSaved', {
+          result
+        }));
         return;
       }
       logEvent("tengu_copy", {
@@ -238,10 +247,14 @@ function CopyPicker(t0) {
       ;
       try {
         const filePath = await writeToFile(content_0.text, content_0.filename);
-        onDone(`Written to ${filePath}`);
+        onDone(t('copy.result.written', {
+          path: filePath
+        }));
       } catch (t7) {
         const e = t7;
-        onDone(`Failed to write file: ${e instanceof Error ? e.message : e}`);
+        onDone(t('copy.error.writeFailed', {
+          error: e instanceof Error ? e.message : String(e)
+        }));
       }
     };
     t6 = function handleKeyDown(e_0) {
@@ -344,7 +357,7 @@ function _temp(block, index) {
 export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   const texts = collectRecentAssistantTexts(context.messages);
   if (texts.length === 0) {
-    onDone('No assistant message to copy');
+    onDone(getMessage('copy.error.noMessage'));
     return null;
   }
 
@@ -354,11 +367,16 @@ export const call: LocalJSXCommandCall = async (onDone, context, args) => {
   if (arg) {
     const n = Number(arg);
     if (!Number.isInteger(n) || n < 1) {
-      onDone(`Usage: /copy [N] where N is 1 (latest), 2, 3, \u2026 Got: ${arg}`);
+      onDone(getMessage('copy.error.usage', {
+        arg
+      }));
       return null;
     }
     if (n > texts.length) {
-      onDone(`Only ${texts.length} assistant ${texts.length === 1 ? 'message' : 'messages'} available to copy`);
+      onDone(getMessage('copy.error.notEnoughMessages', {
+        count: texts.length,
+        messageLabel: getMessage(texts.length === 1 ? 'copy.error.messageSingular' : 'copy.error.messagePlural')
+      }));
       return null;
     }
     age = n - 1;

@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import { getIsRemoteMode } from '../../bootstrap/state.js'
+import { getMessage } from '../../i18n/index.js'
 import { redownloadUserSettings } from '../../services/settingsSync/index.js'
 import type { LocalCommandCall } from '../../types/command.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -37,25 +38,30 @@ export const call: LocalCommandCall = async (_args, context) => {
   const r = await refreshActivePlugins(context.setAppState)
 
   const parts = [
-    n(r.enabled_count, 'plugin'),
-    n(r.command_count, 'skill'),
-    n(r.agent_count, 'agent'),
-    n(r.hook_count, 'hook'),
+    n(r.enabled_count, 'command.reloadPlugins.result.count.plugin'),
+    n(r.command_count, 'command.reloadPlugins.result.count.skill'),
+    n(r.agent_count, 'command.reloadPlugins.result.count.agent'),
+    n(r.hook_count, 'command.reloadPlugins.result.count.hook'),
     // "plugin MCP/LSP" disambiguates from user-config/built-in servers,
     // which /reload-plugins doesn't touch. Commands/hooks are plugin-only;
     // agent_count is total agents (incl. built-ins). (gh-31321)
-    n(r.mcp_count, 'plugin MCP server'),
-    n(r.lsp_count, 'plugin LSP server'),
+    n(r.mcp_count, 'command.reloadPlugins.result.count.mcpServer'),
+    n(r.lsp_count, 'command.reloadPlugins.result.count.lspServer'),
   ]
-  let msg = `Reloaded: ${parts.join(' · ')}`
+  let msg = getMessage('command.reloadPlugins.result.reloaded', {
+    parts: parts.join(' · '),
+  })
 
   if (r.error_count > 0) {
-    msg += `\n${n(r.error_count, 'error')} during load. Run /doctor for details.`
+    msg += `\n${getMessage('command.reloadPlugins.result.errorsDuringLoad', {
+      errors: n(r.error_count, 'command.reloadPlugins.result.count.error'),
+    })}`
   }
 
   return { type: 'text', value: msg }
 }
 
-function n(count: number, noun: string): string {
+function n(count: number, nounKey: string): string {
+  const noun = getMessage(nounKey)
   return `${count} ${plural(count, noun)}`
 }

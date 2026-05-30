@@ -1,6 +1,6 @@
 import type { ContentBlockParam } from '../types/sdk-shim.js'
 import type { Command } from '../commands.js'
-import { translate } from '../i18n/index.js'
+import { getMessage, translate } from '../i18n/index.js'
 
 const LOCAL_REVIEW_PROMPT = (args: string) => `
       You are an expert code reviewer. Follow these steps:
@@ -30,7 +30,7 @@ const review: Command = {
   type: 'prompt',
   name: 'review',
   description: translate('en', 'command.review.description'),
-  progressMessage: 'reviewing pull request',
+  progressMessage: getMessage('command.review.progress'),
   contentLength: 0,
   source: 'builtin',
   async getPromptForCommand(args): Promise<ContentBlockParam[]> {

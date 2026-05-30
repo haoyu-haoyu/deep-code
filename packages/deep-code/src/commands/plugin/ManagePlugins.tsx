@@ -12,6 +12,8 @@ import { MCPToolDetailView } from '../../components/mcp/MCPToolDetailView.js';
 import { MCPToolListView } from '../../components/mcp/MCPToolListView.js';
 import type { ClaudeAIServerInfo, HTTPServerInfo, SSEServerInfo, StdioServerInfo } from '../../components/mcp/types.js';
 import { SearchBox } from '../../components/SearchBox.js';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { useSearchInput } from '../../hooks/useSearchInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- useInput needed for raw search mode text input
@@ -207,6 +209,7 @@ function PluginComponentsDisplay({
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useTranslation();
   useEffect(() => {
     async function loadComponents() {
       try {
@@ -226,7 +229,7 @@ function PluginComponentsDisplay({
               mcpServers: mcpServerNames.length > 0 ? mcpServerNames : null
             });
           } else {
-            setError(`Built-in plugin ${plugin.name} not found`);
+            setError(t('managePlugins.error.builtinNotFound', { name: plugin.name }));
           }
           setLoading(false);
           return;
@@ -318,23 +321,23 @@ function PluginComponentsDisplay({
             mcpServers: mcpServersList.length > 0 ? mcpServersList : null
           });
         } else {
-          setError(`Plugin ${plugin.name} not found in marketplace`);
+          setError(t('managePlugins.error.notFoundInMarketplace', { name: plugin.name }));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load components');
+        setError(err instanceof Error ? err.message : t('managePlugins.error.failedToLoadComponents'));
       } finally {
         setLoading(false);
       }
     }
     void loadComponents();
-  }, [plugin.name, plugin.commandsPath, plugin.commandsPaths, plugin.agentsPath, plugin.agentsPaths, plugin.skillsPath, plugin.skillsPaths, plugin.hooksConfig, plugin.mcpServers, marketplace]);
+  }, [plugin.name, plugin.commandsPath, plugin.commandsPaths, plugin.agentsPath, plugin.agentsPaths, plugin.skillsPath, plugin.skillsPaths, plugin.hooksConfig, plugin.mcpServers, marketplace, t]);
   if (loading) {
     return null; // Don't show loading state for cleaner UI
   }
   if (error) {
     return <Box flexDirection="column" marginBottom={1}>
-        <Text bold>Components:</Text>
-        <Text dimColor>Error: {error}</Text>
+        <Text bold>{t('managePlugins.componentsHeader')}</Text>
+        <Text dimColor>{t('managePlugins.errorPrefix', { error })}</Text>
       </Box>;
   }
   if (!components) {
@@ -345,25 +348,25 @@ function PluginComponentsDisplay({
     return null; // No components defined
   }
   return <Box flexDirection="column" marginBottom={1}>
-      <Text bold>Installed components:</Text>
+      <Text bold>{t('managePlugins.installedComponentsHeader')}</Text>
       {components.commands ? <Text dimColor>
-          • Commands:{' '}
+          {t('managePlugins.componentLabel.commands')}{' '}
           {typeof components.commands === 'string' ? components.commands : Array.isArray(components.commands) ? components.commands.join(', ') : Object.keys(components.commands).join(', ')}
         </Text> : null}
       {components.agents ? <Text dimColor>
-          • Agents:{' '}
+          {t('managePlugins.componentLabel.agents')}{' '}
           {typeof components.agents === 'string' ? components.agents : Array.isArray(components.agents) ? components.agents.join(', ') : Object.keys(components.agents).join(', ')}
         </Text> : null}
       {components.skills ? <Text dimColor>
-          • Skills:{' '}
+          {t('managePlugins.componentLabel.skills')}{' '}
           {typeof components.skills === 'string' ? components.skills : Array.isArray(components.skills) ? components.skills.join(', ') : Object.keys(components.skills).join(', ')}
         </Text> : null}
       {components.hooks ? <Text dimColor>
-          • Hooks:{' '}
+          {t('managePlugins.componentLabel.hooks')}{' '}
           {typeof components.hooks === 'string' ? components.hooks : Array.isArray(components.hooks) ? components.hooks.map(String).join(', ') : typeof components.hooks === 'object' && components.hooks !== null ? Object.keys(components.hooks).join(', ') : String(components.hooks)}
         </Text> : null}
       {components.mcpServers ? <Text dimColor>
-          • MCP Servers:{' '}
+          {t('managePlugins.componentLabel.mcpServers')}{' '}
           {typeof components.mcpServers === 'string' ? components.mcpServers : Array.isArray(components.mcpServers) ? components.mcpServers.map(String).join(', ') : typeof components.mcpServers === 'object' && components.mcpServers !== null ? Object.keys(components.mcpServers).join(', ') : String(components.mcpServers)}
         </Text> : null}
     </Box>;
@@ -377,7 +380,7 @@ async function checkIfLocalPlugin(pluginName: string, marketplaceName: string): 
   const marketplace = await getMarketplace(marketplaceName);
   const entry = marketplace?.plugins.find(p => p.name === pluginName);
   if (entry && typeof entry.source === 'string') {
-    return `Local plugins cannot be updated remotely. To update, modify the source at: ${entry.source}`;
+    return getMessage('managePlugins.error.localCannotUpdate', { source: entry.source });
   }
   return null;
 }
@@ -408,6 +411,7 @@ export function ManagePlugins({
   const mcpTools = useAppState(s_0 => s_0.mcp.tools);
   const pluginErrors = useAppState(s_1 => s_1.plugins.errors);
   const flaggedPlugins = getFlaggedPlugins();
+  const { t } = useTranslation();
 
   // Search state
   const [isSearchMode, setIsSearchModeRaw] = useState(false);
@@ -468,7 +472,7 @@ export function ManagePlugins({
       // User can configure later via the Configure options menu if they want.
       setViewState('plugin-list');
       setSelectedPlugin(null);
-      setResult('Plugin enabled. Configuration skipped — run /reload-plugins to apply.');
+      setResult(t('managePlugins.result.enabledConfigSkipped'));
       if (onManageComplete) {
         void onManageComplete();
       }
@@ -490,14 +494,14 @@ export function ManagePlugins({
       });
     } else {
       if (pendingToggles.size > 0) {
-        setResult('Run /reload-plugins to apply plugin changes.');
+        setResult(t('managePlugins.result.runReloadToApply'));
         return;
       }
       setParentViewState({
         type: 'menu'
       });
     }
-  }, [viewState, setParentViewState, pendingToggles, setResult]);
+  }, [viewState, setParentViewState, pendingToggles, setResult, t]);
 
   // Escape when not in search mode - go back.
   // Excludes confirm-project-uninstall (has its own confirm:no handler in
@@ -727,7 +731,7 @@ export function ManagePlugins({
         marketplace: marketplace_0,
         scope: 'flagged',
         reason: 'delisted',
-        text: 'Removed from marketplace',
+        text: t('managePlugins.flagged.removedFromMarketplace'),
         flaggedAt: entry.flaggedAt
       });
     }
@@ -779,7 +783,7 @@ export function ManagePlugins({
       unified.push(...standaloneMcpsInScope);
     }
     return unified;
-  }, [pluginStates, mcpClients, pluginErrors, pendingToggles, flaggedPlugins]);
+  }, [pluginStates, mcpClients, pluginErrors, pendingToggles, flaggedPlugins, t]);
 
   // Mark flagged plugins as seen when the Installed view renders them.
   // After 48 hours from seenAt, they auto-clear on next load.
@@ -989,10 +993,10 @@ export function ManagePlugins({
       // plain navigation (/plugin manage) should still just show the list.
       if (!hasAutoNavigated.current && action) {
         hasAutoNavigated.current = true;
-        setResult(`Plugin "${targetPlugin}" is not installed in this project`);
+        setResult(t('managePlugins.result.notInstalledInProject', { name: targetPlugin }));
       }
     }
-  }, [targetPlugin, targetMarketplace, marketplaces, loading, unifiedItems, action, setResult]);
+  }, [targetPlugin, targetMarketplace, marketplaces, loading, unifiedItems, action, setResult, t]);
 
   // Handle single plugin operations from details view
   const handleSingleOperation = async (operation: 'enable' | 'disable' | 'update' | 'uninstall') => {
@@ -1002,13 +1006,13 @@ export function ManagePlugins({
 
     // Built-in plugins can only be enabled/disabled, not updated/uninstalled.
     if (isBuiltin && (operation === 'update' || operation === 'uninstall')) {
-      setProcessError('Built-in plugins cannot be updated or uninstalled.');
+      setProcessError(t('managePlugins.error.builtinCannotModify'));
       return;
     }
 
     // Managed scope plugins can only be updated, not enabled/disabled/uninstalled
     if (!isBuiltin && !isInstallableScope(pluginScope) && operation !== 'update') {
-      setProcessError('This plugin is managed by your organization. Contact your admin to disable it.');
+      setProcessError(t('managePlugins.error.managedByOrg'));
       return;
     }
     setIsProcessing(true);
@@ -1086,7 +1090,7 @@ export function ManagePlugins({
             }
             // If already up to date, show message and exit
             if (result.alreadyUpToDate) {
-              setResult(`${selectedPlugin.plugin.name} is already at the latest version (${result.newVersion}).`);
+              setResult(t('managePlugins.result.alreadyLatest', { name: selectedPlugin.plugin.name, version: result.newVersion }));
               if (onManageComplete) {
                 await onManageComplete();
               }
@@ -1119,12 +1123,12 @@ export function ManagePlugins({
         });
         return;
       }
-      const operationName = operation === 'enable' ? 'Enabled' : operation === 'disable' ? 'Disabled' : operation === 'update' ? 'Updated' : 'Uninstalled';
+      const operationName = operation === 'enable' ? t('managePlugins.opVerb.enabled') : operation === 'disable' ? t('managePlugins.opVerb.disabled') : operation === 'update' ? t('managePlugins.opVerb.updated') : t('managePlugins.opVerb.uninstalled');
 
       // Single-line warning — notification timeout is ~8s, multi-line would scroll off.
       // The persistent record is in the Errors tab (dependency-unsatisfied after reload).
-      const depWarn = reverseDependents && reverseDependents.length > 0 ? ` · required by ${reverseDependents.join(', ')}` : '';
-      const message = `✓ ${operationName} ${selectedPlugin.plugin.name}${depWarn}. Run /reload-plugins to apply.`;
+      const depWarn = reverseDependents && reverseDependents.length > 0 ? t('managePlugins.result.requiredBy', { dependents: reverseDependents.join(', ') }) : '';
+      const message = t('managePlugins.result.operationSuccess', { operation: operationName, name: selectedPlugin.plugin.name, depWarn });
       setResult(message);
       if (onManageComplete) {
         await onManageComplete();
@@ -1135,7 +1139,8 @@ export function ManagePlugins({
     } catch (error_0) {
       setIsProcessing(false);
       const errorMessage = error_0 instanceof Error ? error_0.message : String(error_0);
-      setProcessError(`Failed to ${operation}: ${errorMessage}`);
+      const operationVerb = operation === 'enable' ? t('managePlugins.opVerbLower.enable') : operation === 'disable' ? t('managePlugins.opVerbLower.disable') : operation === 'update' ? t('managePlugins.opVerbLower.update') : t('managePlugins.opVerbLower.uninstall');
+      setProcessError(t('managePlugins.error.operationFailed', { operation: operationVerb, error: errorMessage }));
       logError(toError(error_0));
     }
   };
@@ -1303,16 +1308,18 @@ export function ManagePlugins({
     const menuItems: Array<{
       label: string;
       action: () => void;
+      color?: 'error' | 'suggestion';
     }> = [];
     menuItems.push({
-      label: isEnabled_1 ? 'Disable plugin' : 'Enable plugin',
+      label: isEnabled_1 ? t('managePlugins.menu.disable') : t('managePlugins.menu.enable'),
       action: () => void handleSingleOperation(isEnabled_1 ? 'disable' : 'enable')
     });
 
     // Update/Uninstall options — not available for built-in plugins
     if (!isBuiltin_1) {
       menuItems.push({
-        label: selectedPlugin.pendingUpdate ? 'Unmark for update' : 'Mark for update',
+        label: selectedPlugin.pendingUpdate ? t('managePlugins.menu.unmarkForUpdate') : t('managePlugins.menu.markForUpdate'),
+        color: 'suggestion',
         action: async () => {
           try {
             const localError = await checkIfLocalPlugin(selectedPlugin.plugin.name, selectedPlugin.marketplace);
@@ -1331,13 +1338,13 @@ export function ManagePlugins({
               });
             }
           } catch (error_1) {
-            setProcessError(error_1 instanceof Error ? error_1.message : 'Failed to check plugin update availability');
+            setProcessError(error_1 instanceof Error ? error_1.message : t('managePlugins.error.failedToCheckUpdate'));
           }
         }
       });
       if (selectedPluginHasMcpb) {
         menuItems.push({
-          label: 'Configure',
+          label: t('managePlugins.menu.configure'),
           action: async () => {
             setIsLoadingConfig(true);
             try {
@@ -1354,7 +1361,7 @@ export function ManagePlugins({
                 }
               }
               if (!mcpbPath) {
-                setProcessError('No MCPB file found in plugin');
+                setProcessError(t('managePlugins.error.noMcpbInPlugin'));
                 setIsLoadingConfig(false);
                 return;
               }
@@ -1364,11 +1371,11 @@ export function ManagePlugins({
                 setConfigNeeded(result_1);
                 setViewState('configuring');
               } else {
-                setProcessError('Failed to load MCPB for configuration');
+                setProcessError(t('managePlugins.error.failedToLoadMcpb'));
               }
             } catch (err_2) {
               const errorMsg = errorMessage(err_2);
-              setProcessError(`Failed to load configuration: ${errorMsg}`);
+              setProcessError(t('managePlugins.error.failedToLoadConfig', { error: errorMsg }));
             } finally {
               setIsLoadingConfig(false);
             }
@@ -1377,7 +1384,7 @@ export function ManagePlugins({
       }
       if (selectedPlugin.plugin.manifest.userConfig && Object.keys(selectedPlugin.plugin.manifest.userConfig).length > 0) {
         menuItems.push({
-          label: 'Configure options',
+          label: t('managePlugins.menu.configureOptions'),
           action: () => {
             setViewState({
               type: 'configuring-options',
@@ -1387,17 +1394,19 @@ export function ManagePlugins({
         });
       }
       menuItems.push({
-        label: 'Update now',
+        label: t('managePlugins.menu.updateNow'),
+        color: 'suggestion',
         action: () => void handleSingleOperation('update')
       });
       menuItems.push({
-        label: 'Uninstall',
+        label: t('managePlugins.menu.uninstall'),
+        color: 'error',
         action: () => void handleSingleOperation('uninstall')
       });
     }
     if (selectedPlugin.plugin.manifest.homepage) {
       menuItems.push({
-        label: 'Open homepage',
+        label: t('managePlugins.menu.openHomepage'),
         action: () => void openBrowser(selectedPlugin.plugin.manifest.homepage!)
       });
     }
@@ -1406,12 +1415,12 @@ export function ManagePlugins({
         // Generic label — manifest.repository can be GitLab, Bitbucket,
         // Azure DevOps, etc. (gh-31598). pluginDetailsHelpers.tsx:74 keeps
         // 'View on GitHub' because that path has an explicit isGitHub check.
-        label: 'View repository',
+        label: t('managePlugins.menu.viewRepository'),
         action: () => void openBrowser(selectedPlugin.plugin.manifest.repository!)
       });
     }
     menuItems.push({
-      label: 'Back to plugin list',
+      label: t('managePlugins.menu.backToList'),
       action: () => {
         setViewState('plugin-list');
         setSelectedPlugin(null);
@@ -1419,7 +1428,7 @@ export function ManagePlugins({
       }
     });
     return menuItems;
-  }, [viewState, selectedPlugin, selectedPluginHasMcpb, pluginStates]);
+  }, [viewState, selectedPlugin, selectedPluginHasMcpb, pluginStates, t]);
 
   // Plugin-details navigation
   useKeybindings({
@@ -1519,11 +1528,11 @@ export function ManagePlugins({
       });
       if (error_2) {
         setIsProcessing(false);
-        setProcessError(`Failed to write settings: ${error_2.message}`);
+        setProcessError(t('managePlugins.error.failedToWriteSettings', { error: error_2.message }));
         return;
       }
       clearAllCaches();
-      setResult(`✓ Disabled ${selectedPlugin.plugin.name} in .claude/settings.local.json. Run /reload-plugins to apply.`);
+      setResult(t('managePlugins.result.disabledLocally', { name: selectedPlugin.plugin.name }));
       if (onManageComplete) void onManageComplete();
       setParentViewState({
         type: 'menu'
@@ -1560,7 +1569,7 @@ export function ManagePlugins({
         const result_3 = await uninstallPluginOp(pluginId_9, pluginScope_2, deleteDataDir);
         if (!result_3.success) throw new Error(result_3.message);
         clearAllCaches();
-        const suffix = deleteDataDir ? '' : ' · data preserved';
+        const suffix = deleteDataDir ? '' : t('managePlugins.result.dataPreservedSuffix');
         setResult(`${figures.tick} ${result_3.message}${suffix}`);
         if (onManageComplete) void onManageComplete();
         setParentViewState({
@@ -1613,18 +1622,18 @@ export function ManagePlugins({
 
   // Loading state
   if (loading) {
-    return <Text>Loading installed plugins…</Text>;
+    return <Text>{t('managePlugins.loading')}</Text>;
   }
 
   // No plugins or MCPs installed
   if (unifiedItems.length === 0) {
     return <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Manage plugins</Text>
+          <Text bold>{t('managePlugins.header')}</Text>
         </Box>
-        <Text>No plugins or MCP servers installed.</Text>
+        <Text>{t('managePlugins.empty')}</Text>
         <Box marginTop={1}>
-          <Text dimColor>Esc to go back</Text>
+          <Text dimColor>{t('managePlugins.escToGoBack')}</Text>
         </Box>
       </Box>;
   }
@@ -1645,13 +1654,13 @@ export function ManagePlugins({
     return <PluginOptionsFlow plugin={selectedPlugin.plugin} pluginId={pluginId_10} onDone={(outcome, detail) => {
       switch (outcome) {
         case 'configured':
-          finish(`✓ Enabled and configured ${selectedPlugin.plugin.name}. Run /reload-plugins to apply.`);
+          finish(t('managePlugins.result.enabledAndConfigured', { name: selectedPlugin.plugin.name }));
           break;
         case 'skipped':
-          finish(`✓ Enabled ${selectedPlugin.plugin.name}. Run /reload-plugins to apply.`);
+          finish(t('managePlugins.result.enabled', { name: selectedPlugin.plugin.name }));
           break;
         case 'error':
-          finish(`Failed to save configuration: ${detail}`);
+          finish(t('managePlugins.error.failedToSaveConfig', { error: detail }));
           break;
       }
     }} />;
@@ -1660,13 +1669,13 @@ export function ManagePlugins({
   // Configure options (from the Manage menu)
   if (typeof viewState === 'object' && viewState.type === 'configuring-options' && selectedPlugin) {
     const pluginId_11 = `${selectedPlugin.plugin.name}@${selectedPlugin.marketplace}`;
-    return <PluginOptionsDialog title={`Configure ${selectedPlugin.plugin.name}`} subtitle="Plugin options" configSchema={viewState.schema} initialValues={loadPluginOptions(pluginId_11)} onSave={values => {
+    return <PluginOptionsDialog title={t('managePlugins.configureTitle', { name: selectedPlugin.plugin.name })} subtitle={t('managePlugins.optionsDialog.subtitle')} configSchema={viewState.schema} initialValues={loadPluginOptions(pluginId_11)} onSave={values => {
       try {
         savePluginOptions(pluginId_11, values, viewState.schema);
         clearAllCaches();
-        setResult('Configuration saved. Run /reload-plugins for changes to take effect.');
+        setResult(t('managePlugins.result.configSaved'));
       } catch (err_3) {
-        setProcessError(`Failed to save configuration: ${errorMessage(err_3)}`);
+        setProcessError(t('managePlugins.error.failedToSaveConfig', { error: errorMessage(err_3) }));
       }
       setViewState('plugin-details');
     }} onCancel={() => setViewState('plugin-details')} />;
@@ -1692,7 +1701,7 @@ export function ManagePlugins({
           }
         }
         if (!mcpbPath_0) {
-          setProcessError('No MCPB file found');
+          setProcessError(t('managePlugins.error.noMcpbFound'));
           setViewState('plugin-details');
           return;
         }
@@ -1704,10 +1713,10 @@ export function ManagePlugins({
         setProcessError(null);
         setConfigNeeded(null);
         setViewState('plugin-details');
-        setResult('Configuration saved. Run /reload-plugins for changes to take effect.');
+        setResult(t('managePlugins.result.configSaved'));
       } catch (err_4) {
         const errorMsg_0 = errorMessage(err_4);
-        setProcessError(`Failed to save configuration: ${errorMsg_0}`);
+        setProcessError(t('managePlugins.error.failedToSaveConfig', { error: errorMsg_0 }));
         setViewState('plugin-details');
       }
     }
@@ -1715,7 +1724,7 @@ export function ManagePlugins({
       setConfigNeeded(null);
       setViewState('plugin-details');
     }
-    return <PluginOptionsDialog title={`Configure ${configNeeded.manifest.name}`} subtitle={`Plugin: ${selectedPlugin.plugin.name}`} configSchema={configNeeded.configSchema} initialValues={configNeeded.existingConfig} onSave={handleSave} onCancel={handleCancel} />;
+    return <PluginOptionsDialog title={t('managePlugins.configureTitle', { name: configNeeded.manifest.name })} subtitle={t('managePlugins.configureSubtitle', { name: selectedPlugin.plugin.name })} configSchema={configNeeded.configSchema} initialValues={configNeeded.existingConfig} onSave={handleSave} onCancel={handleCancel} />;
   }
 
   // Flagged plugin detail view
@@ -1729,24 +1738,24 @@ export function ManagePlugins({
         </Box>
 
         <Box marginBottom={1}>
-          <Text dimColor>Status: </Text>
-          <Text color="error">Removed</Text>
+          <Text dimColor>{t('mcp.serverMenu.statusLabel')}</Text>
+          <Text color="error">{t('managePlugins.flagged.statusRemoved')}</Text>
         </Box>
 
         <Box marginBottom={1} flexDirection="column">
           <Text color="error">
-            Removed from marketplace · reason: {fp.reason}
+            {t('managePlugins.flagged.removedReason', { reason: fp.reason })}
           </Text>
           <Text>{fp.text}</Text>
           <Text dimColor>
-            Flagged on {new Date(fp.flaggedAt).toLocaleDateString()}
+            {t('managePlugins.flagged.flaggedOn', { date: new Date(fp.flaggedAt).toLocaleDateString() })}
           </Text>
         </Box>
 
         <Box marginTop={1} flexDirection="column">
           <Box>
             <Text>{figures.pointer} </Text>
-            <Text color="suggestion">Dismiss</Text>
+            <Text color="suggestion">{t('managePlugins.flagged.dismiss')}</Text>
           </Box>
         </Box>
 
@@ -1762,21 +1771,19 @@ export function ManagePlugins({
   if (viewState === 'confirm-project-uninstall' && selectedPlugin) {
     return <Box flexDirection="column">
         <Text bold color="warning">
-          {selectedPlugin.plugin.name} is enabled in .claude/settings.json
-          (shared with your team)
+          {t('managePlugins.confirmProjectUninstall.title', { name: selectedPlugin.plugin.name })}
         </Text>
         <Box marginTop={1} flexDirection="column">
-          <Text>Disable it just for you in .claude/settings.local.json?</Text>
+          <Text>{t('managePlugins.confirmProjectUninstall.prompt')}</Text>
           <Text dimColor>
-            This has the same effect as uninstalling, without affecting other
-            contributors.
+            {t('managePlugins.confirmProjectUninstall.explanation')}
           </Text>
         </Box>
         {processError && <Box marginTop={1}>
             <Text color="error">{processError}</Text>
           </Box>}
         <Box marginTop={1}>
-          {isProcessing ? <Text dimColor>Disabling…</Text> : <Byline>
+          {isProcessing ? <Text dimColor>{t('managePlugins.disabling')}</Text> : <Byline>
               <ConfigurableShortcutHint action="confirm:yes" context="Confirmation" fallback="y" description="disable" />
               <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
             </Byline>}
@@ -1788,11 +1795,10 @@ export function ManagePlugins({
   if (typeof viewState === 'object' && viewState.type === 'confirm-data-cleanup' && selectedPlugin) {
     return <Box flexDirection="column">
         <Text bold>
-          {selectedPlugin.plugin.name} has {viewState.size.human} of persistent
-          data
+          {t('managePlugins.confirmDataCleanup.title', { name: selectedPlugin.plugin.name, size: viewState.size.human })}
         </Text>
         <Box marginTop={1} flexDirection="column">
-          <Text>Delete it along with the plugin?</Text>
+          <Text>{t('managePlugins.confirmDataCleanup.prompt')}</Text>
           <Text dimColor>
             {pluginDataDirPath(`${selectedPlugin.plugin.name}@${selectedPlugin.marketplace}`)}
           </Text>
@@ -1801,9 +1807,8 @@ export function ManagePlugins({
             <Text color="error">{processError}</Text>
           </Box>}
         <Box marginTop={1}>
-          {isProcessing ? <Text dimColor>Uninstalling…</Text> : <Text>
-              <Text bold>y</Text> to delete · <Text bold>n</Text> to keep ·{' '}
-              <Text bold>esc</Text> to cancel
+          {isProcessing ? <Text dimColor>{t('managePlugins.uninstalling')}</Text> : <Text>
+              <Text bold>y</Text>{t('managePlugins.confirmDataCleanup.hintToDelete')}<Text bold>n</Text>{t('managePlugins.confirmDataCleanup.hintToKeep')}<Text bold>esc</Text>{t('managePlugins.confirmDataCleanup.hintToCancel')}
             </Text>}
         </Box>
       </Box>;
@@ -1819,8 +1824,7 @@ export function ManagePlugins({
     const filteredPluginErrors = pluginErrors.filter(e_1 => 'plugin' in e_1 && e_1.plugin === selectedPlugin.plugin.name || e_1.source === pluginId_13 || e_1.source.startsWith(`${selectedPlugin.plugin.name}@`));
     const pluginErrorsSection = filteredPluginErrors.length === 0 ? null : <Box flexDirection="column" marginBottom={1}>
           <Text bold color="error">
-            {filteredPluginErrors.length}{' '}
-            {plural(filteredPluginErrors.length, 'error')}:
+            {t('managePlugins.errorsHeader', { count: filteredPluginErrors.length, errorWord: plural(filteredPluginErrors.length, 'error') })}
           </Text>
           {filteredPluginErrors.map((error_3, i_0) => {
         const guidance = getErrorGuidance(error_3);
@@ -1841,13 +1845,13 @@ export function ManagePlugins({
 
         {/* Scope */}
         <Box>
-          <Text dimColor>Scope: </Text>
+          <Text dimColor>{t('managePlugins.scopeLabel')}</Text>
           <Text>{selectedPlugin.scope || 'user'}</Text>
         </Box>
 
         {/* Plugin details */}
         {selectedPlugin.plugin.manifest.version && <Box>
-            <Text dimColor>Version: </Text>
+            <Text dimColor>{t('managePlugins.versionLabel')}</Text>
             <Text>{selectedPlugin.plugin.manifest.version}</Text>
           </Box>}
 
@@ -1856,17 +1860,17 @@ export function ManagePlugins({
           </Box>}
 
         {selectedPlugin.plugin.manifest.author && <Box>
-            <Text dimColor>Author: </Text>
+            <Text dimColor>{t('managePlugins.authorLabel')}</Text>
             <Text>{selectedPlugin.plugin.manifest.author.name}</Text>
           </Box>}
 
         {/* Current status */}
         <Box marginBottom={1}>
-          <Text dimColor>Status: </Text>
+          <Text dimColor>{t('mcp.serverMenu.statusLabel')}</Text>
           <Text color={isEnabled_2 ? 'success' : 'warning'}>
-            {isEnabled_2 ? 'Enabled' : 'Disabled'}
+            {isEnabled_2 ? t('managePlugins.statusEnabled') : t('managePlugins.statusDisabled')}
           </Text>
-          {selectedPlugin.pendingUpdate && <Text color="suggestion"> · Marked for update</Text>}
+          {selectedPlugin.pendingUpdate && <Text color="suggestion">{t('managePlugins.markedForUpdate')}</Text>}
         </Box>
 
         {/* Installed components */}
@@ -1882,7 +1886,7 @@ export function ManagePlugins({
           return <Box key={index_0}>
                 {isSelected && <Text>{figures.pointer} </Text>}
                 {!isSelected && <Text>{'  '}</Text>}
-                <Text bold={isSelected} color={item_9.label.includes('Uninstall') ? 'error' : item_9.label.includes('Update') ? 'suggestion' : undefined}>
+                <Text bold={isSelected} color={item_9.color}>
                   {item_9.label}
                 </Text>
               </Box>;
@@ -1891,7 +1895,7 @@ export function ManagePlugins({
 
         {/* Processing state */}
         {isProcessing && <Box marginTop={1}>
-            <Text>Processing…</Text>
+            <Text>{t('managePlugins.processing')}</Text>
           </Box>}
 
         {/* Error message */}
@@ -1915,7 +1919,7 @@ export function ManagePlugins({
   if (typeof viewState === 'object' && viewState.type === 'failed-plugin-details') {
     const failedPlugin_0 = viewState.plugin;
     const firstError = failedPlugin_0.errors[0];
-    const errorMessage_0 = firstError ? formatErrorMessage(firstError) : 'Failed to load';
+    const errorMessage_0 = firstError ? formatErrorMessage(firstError) : t('managePlugins.error.failedToLoad');
     return <Box flexDirection="column">
         <Text>
           <Text bold>{failedPlugin_0.name}</Text>
@@ -1926,14 +1930,14 @@ export function ManagePlugins({
 
         {failedPlugin_0.scope === 'managed' ? <Box marginTop={1}>
             <Text dimColor>
-              Managed by your organization — contact your admin
+              {t('managePlugins.managedByOrgContact')}
             </Text>
           </Box> : <Box marginTop={1}>
             <Text color="suggestion">{figures.pointer} </Text>
-            <Text bold>Remove</Text>
+            <Text bold>{t('managePlugins.remove')}</Text>
           </Box>}
 
-        {isProcessing && <Text>Processing…</Text>}
+        {isProcessing && <Text>{t('managePlugins.processing')}</Text>}
         {processError && <Text color="error">{processError}</Text>}
 
         <Box marginTop={1}>
@@ -2137,12 +2141,12 @@ export function ManagePlugins({
 
       {/* No search results */}
       {filteredItems.length === 0 && searchQuery && <Box marginBottom={1}>
-          <Text dimColor>No items match &quot;{searchQuery}&quot;</Text>
+          <Text dimColor>{t('managePlugins.noItemsMatch', { query: searchQuery })}</Text>
         </Box>}
 
       {/* Scroll up indicator */}
       {pagination.scrollPosition.canScrollUp && <Box>
-          <Text dimColor> {figures.arrowUp} more above</Text>
+          <Text dimColor> {figures.arrowUp} {t('managePlugins.moreAbove')}</Text>
         </Box>}
 
       {/* Unified list of plugins and MCPs grouped by scope */}
@@ -2158,21 +2162,21 @@ export function ManagePlugins({
       const getScopeLabel = (scope_8: string): string => {
         switch (scope_8) {
           case 'flagged':
-            return 'Flagged';
+            return t('managePlugins.scope.flagged');
           case 'project':
-            return 'Project';
+            return t('managePlugins.scope.project');
           case 'local':
-            return 'Local';
+            return t('managePlugins.scope.local');
           case 'user':
-            return 'User';
+            return t('managePlugins.scope.user');
           case 'enterprise':
-            return 'Enterprise';
+            return t('managePlugins.scope.enterprise');
           case 'managed':
-            return 'Managed';
+            return t('managePlugins.scope.managed');
           case 'builtin':
-            return 'Built-in';
+            return t('managePlugins.scope.builtin');
           case 'dynamic':
-            return 'Built-in';
+            return t('managePlugins.scope.builtin');
           default:
             return scope_8;
         }
@@ -2189,14 +2193,14 @@ export function ManagePlugins({
 
       {/* Scroll down indicator */}
       {pagination.scrollPosition.canScrollDown && <Box>
-          <Text dimColor> {figures.arrowDown} more below</Text>
+          <Text dimColor> {figures.arrowDown} {t('managePlugins.moreBelow')}</Text>
         </Box>}
 
       {/* Help text */}
       <Box marginTop={1} marginLeft={1}>
         <Text dimColor italic>
           <Byline>
-            <Text>type to search</Text>
+            <Text>{t('managePlugins.hint.typeToSearch')}</Text>
             <ConfigurableShortcutHint action="plugin:toggle" context="Plugin" fallback="Space" description="toggle" />
             <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="details" />
             <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="back" />
@@ -2207,7 +2211,7 @@ export function ManagePlugins({
       {/* Reload disclaimer for plugin changes */}
       {pendingToggles.size > 0 && <Box marginLeft={1}>
           <Text dimColor italic>
-            Run /reload-plugins to apply changes
+            {t('managePlugins.reloadDisclaimer')}
           </Text>
         </Box>}
     </Box>;

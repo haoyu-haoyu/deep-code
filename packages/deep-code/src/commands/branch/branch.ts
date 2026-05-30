@@ -1,6 +1,7 @@
 import { randomUUID, type UUID } from 'crypto'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
+import { getMessage } from '../../i18n/index.js'
 import type { LocalJSXCommandContext } from '../../commands.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
@@ -39,7 +40,7 @@ export function deriveFirstPrompt(
   firstUserMessage: Extract<SerializedMessage, { type: 'user' }> | undefined,
 ): string {
   const content = firstUserMessage?.message?.content
-  if (!content) return 'Branched conversation'
+  if (!content) return getMessage('command.branch.defaultTitle')
   const raw =
     typeof content === 'string'
       ? content
@@ -47,9 +48,10 @@ export function deriveFirstPrompt(
           (block): block is { type: 'text'; text: string } =>
             block.type === 'text',
         )?.text
-  if (!raw) return 'Branched conversation'
+  if (!raw) return getMessage('command.branch.defaultTitle')
   return (
-    raw.replace(/\s+/g, ' ').trim().slice(0, 100) || 'Branched conversation'
+    raw.replace(/\s+/g, ' ').trim().slice(0, 100) ||
+    getMessage('command.branch.defaultTitle')
   )
 }
 
@@ -79,11 +81,11 @@ async function createFork(customTitle?: string): Promise<{
   try {
     transcriptContent = await readFile(currentTranscriptPath)
   } catch {
-    throw new Error('No conversation to branch')
+    throw new Error(getMessage('command.branch.error.noConversation'))
   }
 
   if (transcriptContent.length === 0) {
-    throw new Error('No conversation to branch')
+    throw new Error(getMessage('command.branch.error.noConversation'))
   }
 
   // Parse all transcript entries (messages + metadata entries like content-replacement)
@@ -111,7 +113,7 @@ async function createFork(customTitle?: string): Promise<{
     .flatMap(entry => entry.replacements)
 
   if (mainConversationEntries.length === 0) {
-    throw new Error('No messages to branch')
+    throw new Error(getMessage('command.branch.error.noMessages'))
   }
 
   // Build forked entries with new sessionId and preserved metadata
@@ -177,7 +179,7 @@ async function createFork(customTitle?: string): Promise<{
  * If "baseName (Branch)" already exists, tries "baseName (Branch 2)", "baseName (Branch 3)", etc.
  */
 async function getUniqueForkName(baseName: string): Promise<string> {
-  const candidateName = `${baseName} (Branch)`
+  const candidateName = getMessage('command.branch.title', { baseName })
 
   // Check if this exact name already exists
   const existingWithExactName = await searchSessionsByCustomTitle(
@@ -216,7 +218,10 @@ async function getUniqueForkName(baseName: string): Promise<string> {
     nextNumber++
   }
 
-  return `${baseName} (Branch ${nextNumber})`
+  return getMessage('command.branch.titleNumbered', {
+    baseName,
+    number: nextNumber,
+  })
 }
 
 export async function call(
@@ -272,9 +277,16 @@ export async function call(
     }
 
     // Resume into the fork
-    const titleInfo = title ? ` "${title}"` : ''
-    const resumeHint = `\nTo resume the original: claude -r ${originalSessionId}`
-    const successMessage = `Branched conversation${titleInfo}. You are now in the branch.${resumeHint}`
+    const titleInfo = title
+      ? getMessage('command.branch.titleInfo', { title })
+      : ''
+    const resumeHint = getMessage('command.branch.resumeHint', {
+      sessionId: originalSessionId,
+    })
+    const successMessage = getMessage('command.branch.success', {
+      titleInfo,
+      resumeHint,
+    })
 
     if (context.resume) {
       await context.resume(sessionId, forkLog, 'fork')
@@ -282,15 +294,20 @@ export async function call(
     } else {
       // Fallback if resume not available
       onDone(
-        `Branched conversation${titleInfo}. Resume with: /resume ${sessionId}`,
+        getMessage('command.branch.successResumeHint', {
+          titleInfo,
+          sessionId,
+        }),
       )
     }
 
     return null
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : 'Unknown error occurred'
-    onDone(`Failed to branch conversation: ${message}`)
+      error instanceof Error
+        ? error.message
+        : getMessage('command.branch.error.unknown')
+    onDone(getMessage('command.branch.error.failed', { message }))
     return null
   }
 }
