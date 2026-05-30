@@ -27,6 +27,7 @@ import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import { FilePathLink } from '../FilePathLink.js';
 import { feature } from 'bun:bundle';
 import { useSelectedMessageBg } from '../messageActions.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 type Props = {
   addMargin: boolean;
   attachment: Attachment;
@@ -40,6 +41,9 @@ export function AttachmentMessage({
   isTranscriptMode
 }: Props): React.ReactNode {
   const bg = useSelectedMessageBg();
+  const {
+    t
+  } = useTranslation();
   // Hoisted to mount-time — per-message component, re-renders on every scroll.
   const isDemoEnv = feature('EXPERIMENTAL_SKILL_SEARCH') ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
@@ -79,10 +83,10 @@ export function AttachmentMessage({
         if (parsedMsg?.type === 'task_assignment') {
           return <Box key={idx} paddingLeft={2}>
                 <Text>{BLACK_CIRCLE} </Text>
-                <Text>Task assigned: </Text>
+                <Text>{t('attachment.taskAssigned')}</Text>
                 <Text bold>#{parsedMsg.taskId}</Text>
                 <Text> - {parsedMsg.subject}</Text>
-                <Text dimColor> (from {parsedMsg.assignedBy || msg_0.from})</Text>
+                <Text dimColor> {t('attachment.taskAssignedFrom', { from: parsedMsg.assignedBy || msg_0.from })}</Text>
               </Box>;
         }
 
@@ -115,8 +119,10 @@ export function AttachmentMessage({
       const firstId = attachment.skills[0]?.shortId;
       const hint = "external" === 'ant' && !isDemoEnv && firstId ? ` · /skill-feedback ${firstId} 1=wrong 2=noisy 3=good [comment]` : '';
       return <Line>
-          <Text bold>{attachment.skills.length}</Text> relevant{' '}
-          {plural(attachment.skills.length, 'skill')}: {names}
+          <Text bold>{attachment.skills.length}</Text>{t('attachment.relevantSkills', {
+            skillWord: plural(attachment.skills.length, 'skill'),
+            names
+          })}
           {hint && <Text dimColor>{hint}</Text>}
         </Line>;
     }
@@ -126,45 +132,40 @@ export function AttachmentMessage({
   switch (attachment.type) {
     case 'directory':
       return <Line>
-          Listed directory <Text bold>{attachment.displayPath + sep}</Text>
+          {t('attachment.listedDirectory')}<Text bold>{attachment.displayPath + sep}</Text>
         </Line>;
     case 'file':
     case 'already_read_file':
       if (attachment.content.type === 'notebook') {
         return <Line>
-            Read <Text bold>{attachment.displayPath}</Text> (
-            {attachment.content.file.cells.length} cells)
+            {t('attachment.readPrefix')}<Text bold>{attachment.displayPath}</Text>{t('attachment.readNotebookCells', { count: attachment.content.file.cells.length })}
           </Line>;
       }
       if (attachment.content.type === 'file_unchanged') {
         return <Line>
-            Read <Text bold>{attachment.displayPath}</Text> (unchanged)
+            {t('attachment.readPrefix')}<Text bold>{attachment.displayPath}</Text>{t('attachment.readUnchanged')}
           </Line>;
       }
       return <Line>
-          Read <Text bold>{attachment.displayPath}</Text> (
-          {attachment.content.type === 'text' ? `${attachment.content.file.numLines}${attachment.truncated ? '+' : ''} lines` : formatFileSize(attachment.content.file.originalSize)}
-          )
+          {t('attachment.readPrefix')}<Text bold>{attachment.displayPath}</Text>{t('attachment.readDetail', {
+            detail: attachment.content.type === 'text' ? `${attachment.content.file.numLines}${attachment.truncated ? '+' : ''} ${t('attachment.linesWord')}` : formatFileSize(attachment.content.file.originalSize)
+          })}
         </Line>;
     case 'compact_file_reference':
       return <Line>
-          Referenced file <Text bold>{attachment.displayPath}</Text>
+          {t('attachment.referencedFile')}<Text bold>{attachment.displayPath}</Text>
         </Line>;
     case 'pdf_reference':
       return <Line>
-          Referenced PDF <Text bold>{attachment.displayPath}</Text> (
-          {attachment.pageCount} pages)
+          {t('attachment.referencedPdf')}<Text bold>{attachment.displayPath}</Text>{t('attachment.referencedPdfPages', { count: attachment.pageCount })}
         </Line>;
     case 'selected_lines_in_ide':
       return <Line>
-          ⧉ Selected{' '}
-          <Text bold>{attachment.lineEnd - attachment.lineStart + 1}</Text>{' '}
-          lines from <Text bold>{attachment.displayPath}</Text> in{' '}
-          {attachment.ideName}
+          {t('attachment.selectedLinesPrefix')}<Text bold>{attachment.lineEnd - attachment.lineStart + 1}</Text>{t('attachment.selectedLinesFrom')}<Text bold>{attachment.displayPath}</Text>{t('attachment.selectedLinesInIde', { ideName: attachment.ideName })}
         </Line>;
     case 'nested_memory':
       return <Line>
-          Loaded <Text bold>{attachment.displayPath}</Text>
+          {t('attachment.loadedMemory')}<Text bold>{attachment.displayPath}</Text>
         </Line>;
     case 'relevant_memories':
       // Usually absorbed into a CollapsedReadSearchGroup (collapseReadSearch.ts)
@@ -175,8 +176,9 @@ export function AttachmentMessage({
           <Box flexDirection="row">
             <Box minWidth={2} />
             <Text dimColor>
-              Recalled <Text bold>{attachment.memories.length}</Text>{' '}
-              {attachment.memories.length === 1 ? 'memory' : 'memories'}
+              {t('attachment.recalledPrefix')}<Text bold>{attachment.memories.length}</Text>{t('attachment.recalledMemories', {
+                memoryWord: attachment.memories.length === 1 ? t('attachment.memorySingular') : t('attachment.memoryPlural')
+              })}
               {!isTranscriptMode && <>
                   {' '}
                   <CtrlOToExpand />
@@ -202,11 +204,9 @@ export function AttachmentMessage({
       {
         const skillCount = attachment.skillNames.length;
         return <Line>
-          Loaded{' '}
-          <Text bold>
+          {t('attachment.loadedPrefix')}<Text bold>
             {skillCount} {plural(skillCount, 'skill')}
-          </Text>{' '}
-          from <Text bold>{attachment.displayPath}</Text>
+          </Text>{t('attachment.loadedSkillsFrom')}<Text bold>{attachment.displayPath}</Text>
         </Line>;
       }
     case 'skill_listing':
@@ -215,8 +215,7 @@ export function AttachmentMessage({
           return null;
         }
         return <Line>
-          <Text bold>{attachment.skillCount}</Text>{' '}
-          {plural(attachment.skillCount, 'skill')} available
+          <Text bold>{attachment.skillCount}</Text>{t('attachment.skillsAvailable', { skillWord: plural(attachment.skillCount, 'skill') })}
         </Line>;
       }
     case 'agent_listing_delta':
@@ -226,7 +225,7 @@ export function AttachmentMessage({
         }
         const count = attachment.addedTypes.length;
         return <Line>
-          <Text bold>{count}</Text> agent {plural(count, 'type')} available
+          <Text bold>{count}</Text>{t('attachment.agentTypesAvailable', { typeWord: plural(count, 'type') })}
         </Line>;
       }
     case 'queued_command':
@@ -243,7 +242,7 @@ export function AttachmentMessage({
       }
     case 'plan_file_reference':
       return <Line>
-          Plan file referenced ({getDisplayPath(attachment.planFilePath)})
+          {t('attachment.planFileReferenced', { path: getDisplayPath(attachment.planFilePath) })}
         </Line>;
     case 'invoked_skills':
       {
@@ -251,14 +250,13 @@ export function AttachmentMessage({
           return null;
         }
         const skillNames = attachment.skills.map(s_0 => s_0.name).join(', ');
-        return <Line>Skills restored ({skillNames})</Line>;
+        return <Line>{t('attachment.skillsRestored', { skillNames })}</Line>;
       }
     case 'diagnostics':
       return <DiagnosticsDisplay attachment={attachment} verbose={verbose} />;
     case 'mcp_resource':
       return <Line>
-          Read MCP resource <Text bold>{attachment.name}</Text> from{' '}
-          {attachment.server}
+          {t('attachment.readMcpResourcePrefix')}<Text bold>{attachment.name}</Text>{t('attachment.readMcpResourceFrom', { server: attachment.server })}
         </Line>;
     case 'command_permissions':
       // The skill success message is rendered by SkillTool's renderToolResultMessage,
@@ -275,7 +273,7 @@ export function AttachmentMessage({
           return null;
         }
         return <Line>
-          Async hook <Text bold>{attachment.hookEvent}</Text> completed
+          {t('attachment.asyncHookPrefix')}<Text bold>{attachment.hookEvent}</Text>{t('attachment.asyncHookCompleted')}
         </Line>;
       }
     case 'hook_blocking_error':
@@ -288,7 +286,7 @@ export function AttachmentMessage({
         const stderr = attachment.blockingError.blockingError.trim();
         return <>
           <Line color="error">
-            {attachment.hookName} hook returned blocking error
+            {t('attachment.hookBlockingError', { hookName: attachment.hookName })}
           </Line>
           {stderr ? <Line color="error">{stderr}</Line> : null}
         </>;
@@ -300,7 +298,7 @@ export function AttachmentMessage({
           return null;
         }
         // Full hook output is logged to debug log via hookEvents.ts
-        return <Line color="error">{attachment.hookName} hook error</Line>;
+        return <Line color="error">{t('attachment.hookError', { hookName: attachment.hookName })}</Line>;
       }
     case 'hook_error_during_execution':
       // Stop hooks are rendered as a summary in SystemStopHookSummaryMessage
@@ -308,7 +306,7 @@ export function AttachmentMessage({
         return null;
       }
       // Full hook output is logged to debug log via hookEvents.ts
-      return <Line>{attachment.hookName} hook warning</Line>;
+      return <Line>{t('attachment.hookWarning', { hookName: attachment.hookName })}</Line>;
     case 'hook_success':
       // Full hook output is logged to debug log via hookEvents.ts
       return null;
@@ -318,17 +316,17 @@ export function AttachmentMessage({
         return null;
       }
       return <Line color="warning">
-          {attachment.hookName} hook stopped continuation: {attachment.message}
+          {t('attachment.hookStoppedContinuation', { hookName: attachment.hookName, message: attachment.message })}
         </Line>;
     case 'hook_system_message':
       return <Line>
-          {attachment.hookName} says: {attachment.content}
+          {t('attachment.hookSays', { hookName: attachment.hookName, content: attachment.content })}
         </Line>;
     case 'hook_permission_decision':
       {
-        const action = attachment.decision === 'allow' ? 'Allowed' : 'Denied';
+        const action = attachment.decision === 'allow' ? t('attachment.permissionAllowed') : t('attachment.permissionDenied');
         return <Line>
-          {action} by <Text bold>{attachment.hookEvent}</Text> hook
+          {action}{t('attachment.permissionBy')}<Text bold>{attachment.hookEvent}</Text>{t('attachment.permissionHookSuffix')}
         </Line>;
       }
     case 'task_status':
@@ -337,8 +335,7 @@ export function AttachmentMessage({
       return <Box flexDirection="row" width="100%" marginTop={1} backgroundColor={bg}>
           <Text dimColor>{BLACK_CIRCLE} </Text>
           <Text dimColor>
-            {attachment.count} {plural(attachment.count, 'teammate')} shut down
-            gracefully
+            {attachment.count}{t('attachment.teammatesShutdownGracefully', { teammateWord: plural(attachment.count, 'teammate') })}
           </Text>
         </Box>;
     default:
@@ -393,7 +390,10 @@ function GenericTaskStatus(t0) {
     attachment
   } = t0;
   const bg = useSelectedMessageBg();
-  const statusText = attachment.status === "completed" ? "completed in background" : attachment.status === "killed" ? "stopped" : attachment.status === "running" ? "still running in background" : attachment.status;
+  const {
+    t
+  } = useTranslation();
+  const statusText = attachment.status === "completed" ? t('attachment.taskStatusCompleted') : attachment.status === "killed" ? t('attachment.taskStatusStopped') : attachment.status === "running" ? t('attachment.taskStatusRunning') : attachment.status;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = <Text dimColor={true}>{BLACK_CIRCLE} </Text>;
@@ -411,7 +411,7 @@ function GenericTaskStatus(t0) {
   }
   let t3;
   if ($[3] !== statusText || $[4] !== t2) {
-    t3 = <Text dimColor={true}>Task "{t2}" {statusText}</Text>;
+    t3 = <Text dimColor={true}>{t('attachment.taskStatusLine', { statusText }).split('{desc}')[0]}{t2}{t('attachment.taskStatusLine', { statusText }).split('{desc}')[1]}</Text>;
     $[3] = statusText;
     $[4] = t2;
     $[5] = t3;
@@ -435,6 +435,9 @@ function TeammateTaskStatus(t0) {
     attachment
   } = t0;
   const bg = useSelectedMessageBg();
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== attachment.taskId) {
     t1 = s => s.tasks[attachment.taskId];
@@ -464,7 +467,7 @@ function TeammateTaskStatus(t0) {
     t2 = $[5];
   }
   const agentColor = t2;
-  const statusText = attachment.status === "completed" ? "shut down gracefully" : attachment.status;
+  const statusText = attachment.status === "completed" ? t('attachment.teammateShutdownGracefully') : attachment.status;
   let t3;
   if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
     t3 = <Text dimColor={true}>{BLACK_CIRCLE} </Text>;
@@ -483,7 +486,7 @@ function TeammateTaskStatus(t0) {
   }
   let t5;
   if ($[10] !== statusText || $[11] !== t4) {
-    t5 = <Text dimColor={true}>Teammate{" "}{t4}{" "}{statusText}</Text>;
+    t5 = <Text dimColor={true}>{t('attachment.teammateStatusLine', { statusText }).split('{name}')[0]}{t4}{t('attachment.teammateStatusLine', { statusText }).split('{name}')[1]}</Text>;
     $[10] = statusText;
     $[11] = t4;
     $[12] = t5;

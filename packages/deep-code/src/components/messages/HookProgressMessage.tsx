@@ -3,6 +3,7 @@ import * as React from 'react';
 import type { HookEvent } from 'src/entrypoints/agentSdkTypes.js';
 import type { buildMessageLookups } from 'src/utils/messages.js';
 import { Box, Text } from '../../ink.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { MessageResponse } from '../MessageResponse.js';
 type Props = {
   hookEvent: HookEvent;
@@ -19,6 +20,9 @@ export function HookProgressMessage(t0) {
     toolUseID,
     isTranscriptMode
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== hookEvent || $[1] !== lookups.inProgressHookCounts || $[2] !== toolUseID) {
     t1 = lookups.inProgressHookCounts.get(toolUseID)?.get(hookEvent) ?? 0;
@@ -52,10 +56,10 @@ export function HookProgressMessage(t0) {
       } else {
         t3 = $[7];
       }
-      const t4 = inProgressHookCount === 1 ? " hook" : " hooks";
+      const t4 = inProgressHookCount === 1 ? t("messages.hookProgress.hookSingular") : t("messages.hookProgress.hookPlural");
       let t5;
       if ($[8] !== t4) {
-        t5 = <Text dimColor={true}>{t4} ran</Text>;
+        t5 = <Text dimColor={true}>{t("messages.hookProgress.hooksRan", { hookWord: t4 })}</Text>;
         $[8] = t4;
         $[9] = t5;
       } else {
@@ -80,7 +84,7 @@ export function HookProgressMessage(t0) {
   }
   let t2;
   if ($[14] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Text dimColor={true}>Running </Text>;
+    t2 = <Text dimColor={true}>{t("messages.hookProgress.running")}</Text>;
     $[14] = t2;
   } else {
     t2 = $[14];
@@ -93,7 +97,7 @@ export function HookProgressMessage(t0) {
   } else {
     t3 = $[16];
   }
-  const t4 = inProgressHookCount === 1 ? " hook\u2026" : " hooks\u2026";
+  const t4 = inProgressHookCount === 1 ? t("messages.hookProgress.hookRunningSingular") : t("messages.hookProgress.hookRunningPlural");
   let t5;
   if ($[17] !== t4) {
     t5 = <Text dimColor={true}>{t4}</Text>;

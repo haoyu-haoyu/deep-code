@@ -4,6 +4,7 @@ import { useInterval } from 'usehooks-ts';
 import { getIsRemoteMode, getIsScrollDraining } from '../../bootstrap/state.js';
 import { useNotifications } from '../../context/notifications.js';
 import { Text } from '../../ink.js';
+import { getMessage } from '../../i18n/index.js';
 import { getInitializationStatus, getLspServerManager } from '../../services/lsp/manager.js';
 import { useSetAppState } from '../../state/AppState.js';
 import { logForDebugging } from '../../utils/debug.js';
@@ -64,7 +65,9 @@ export function useLspInitializationNotification() {
       const displayName = source.startsWith("plugin:") ? source.split(":")[1] ?? source : source;
       addNotification({
         key: `lsp-error-${source}`,
-        jsx: <><Text color="error">LSP for {displayName} failed</Text><Text dimColor={true}> · /plugin for details</Text></>,
+        jsx: <><Text color="error">{getMessage("notification.lsp.serverFailed", {
+          displayName
+        })}</Text><Text dimColor={true}>{getMessage("notification.lsp.detailsHint")}</Text></>,
         priority: "medium",
         timeoutMs: 8000
       });

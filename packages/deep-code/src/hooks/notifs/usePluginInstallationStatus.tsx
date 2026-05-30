@@ -3,6 +3,7 @@ import * as React from 'react';
 import { useEffect, useMemo } from 'react';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
 import { useNotifications } from '../../context/notifications.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Text } from '../../ink.js';
 import { useAppState } from '../../state/AppState.js';
 import { logForDebugging } from '../../utils/debug.js';
@@ -12,6 +13,9 @@ export function usePluginInstallationStatus() {
   const {
     addNotification
   } = useNotifications();
+  const {
+    t
+  } = useTranslation();
   const installationStatus = useAppState(_temp);
   let t0;
   bb0: {
@@ -90,7 +94,10 @@ export function usePluginInstallationStatus() {
       logForDebugging(`Adding notification for ${totalFailed} failed installations`);
       addNotification({
         key: "plugin-install-failed",
-        jsx: <><Text color="error">{totalFailed} {plural(totalFailed, "plugin")} failed to install</Text><Text dimColor={true}> · /plugin for details</Text></>,
+        jsx: <><Text color="error">{t("notif.pluginInstall.failed", {
+          count: totalFailed,
+          plural: plural(totalFailed, "plugin")
+        })}</Text><Text dimColor={true}>{t("notif.pluginInstall.failedDetails")}</Text></>,
         priority: "medium"
       });
     };

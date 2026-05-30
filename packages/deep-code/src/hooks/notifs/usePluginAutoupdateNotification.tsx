@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getIsRemoteMode } from '../../bootstrap/state.js';
 import { useNotifications } from '../../context/notifications.js';
 import { Text } from '../../ink.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { onPluginsAutoUpdated } from '../../utils/plugins/pluginAutoupdate.js';
 
@@ -16,6 +17,9 @@ export function usePluginAutoupdateNotification() {
   const {
     addNotification
   } = useNotifications();
+  const {
+    t
+  } = useTranslation();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = [];
@@ -56,10 +60,15 @@ export function usePluginAutoupdateNotification() {
         return;
       }
       const pluginNames = updatedPlugins.map(_temp);
-      const displayNames = pluginNames.length <= 2 ? pluginNames.join(" and ") : `${pluginNames.length} plugins`;
+      const displayNames = pluginNames.length <= 2 ? pluginNames.join(t("notification.pluginAutoupdate.joiner")) : t("notification.pluginAutoupdate.pluginsCount", {
+        count: pluginNames.length
+      });
       addNotification({
         key: "plugin-autoupdate-restart",
-        jsx: <><Text color="success">{pluginNames.length === 1 ? "Plugin" : "Plugins"} updated:{" "}{displayNames}</Text><Text dimColor={true}> · Run /reload-plugins to apply</Text></>,
+        jsx: <><Text color="success">{t("notification.pluginAutoupdate.message", {
+          label: pluginNames.length === 1 ? t("notification.pluginAutoupdate.labelSingular") : t("notification.pluginAutoupdate.labelPlural"),
+          names: displayNames
+        })}</Text><Text dimColor={true}>{t("notification.pluginAutoupdate.reloadHint")}</Text></>,
         priority: "low",
         timeoutMs: 10000
       });

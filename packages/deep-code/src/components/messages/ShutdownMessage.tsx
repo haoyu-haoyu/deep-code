@@ -1,6 +1,8 @@
 import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { Box, Text } from '../../ink.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
+import { getMessage } from '../../i18n/index.js';
 import { isShutdownApproved, isShutdownRejected, isShutdownRequest, type ShutdownRejectedMessage, type ShutdownRequestMessage } from '../../utils/teammateMailbox.js';
 type ShutdownRequestProps = {
   request: ShutdownRequestMessage;
@@ -14,9 +16,14 @@ export function ShutdownRequestDisplay(t0) {
   const {
     request
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== request.from) {
-    t1 = <Box marginBottom={1}><Text color="warning" bold={true}>Shutdown request from {request.from}</Text></Box>;
+    t1 = <Box marginBottom={1}><Text color="warning" bold={true}>{t('message.shutdown.requestFrom', {
+      from: request.from
+    })}</Text></Box>;
     $[0] = request.from;
     $[1] = t1;
   } else {
@@ -24,7 +31,9 @@ export function ShutdownRequestDisplay(t0) {
   }
   let t2;
   if ($[2] !== request.reason) {
-    t2 = request.reason && <Box><Text>Reason: {request.reason}</Text></Box>;
+    t2 = request.reason && <Box><Text>{t('message.shutdown.reason', {
+      reason: request.reason
+    })}</Text></Box>;
     $[2] = request.reason;
     $[3] = t2;
   } else {
@@ -53,9 +62,14 @@ export function ShutdownRejectedDisplay(t0) {
   const {
     response
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== response.from) {
-    t1 = <Text color="subtle" bold={true}>Shutdown rejected by {response.from}</Text>;
+    t1 = <Text color="subtle" bold={true}>{t('message.shutdown.rejectedBy', {
+      from: response.from
+    })}</Text>;
     $[0] = response.from;
     $[1] = t1;
   } else {
@@ -63,7 +77,9 @@ export function ShutdownRejectedDisplay(t0) {
   }
   let t2;
   if ($[2] !== response.reason) {
-    t2 = <Box marginTop={1} borderStyle="dashed" borderColor="subtle" borderLeft={false} borderRight={false} paddingX={1}><Text>Reason: {response.reason}</Text></Box>;
+    t2 = <Box marginTop={1} borderStyle="dashed" borderColor="subtle" borderLeft={false} borderRight={false} paddingX={1}><Text>{t('message.shutdown.reason', {
+      reason: response.reason
+    })}</Text></Box>;
     $[2] = response.reason;
     $[3] = t2;
   } else {
@@ -71,7 +87,7 @@ export function ShutdownRejectedDisplay(t0) {
   }
   let t3;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Box marginTop={1}><Text dimColor={true}>Teammate is continuing to work. You may request shutdown again later.</Text></Box>;
+    t3 = <Box marginTop={1}><Text dimColor={true}>{t('message.shutdown.continuingToWork')}</Text></Box>;
     $[4] = t3;
   } else {
     t3 = $[4];
@@ -117,15 +133,22 @@ export function tryRenderShutdownMessage(content: string): React.ReactNode | nul
 export function getShutdownMessageSummary(content: string): string | null {
   const request = isShutdownRequest(content);
   if (request) {
-    return `[Shutdown Request from ${request.from}]${request.reason ? ` ${request.reason}` : ''}`;
+    return `${getMessage('message.shutdown.summary.request', {
+      from: request.from
+    })}${request.reason ? ` ${request.reason}` : ''}`;
   }
   const approved = isShutdownApproved(content);
   if (approved) {
-    return `[Shutdown Approved] ${approved.from} is now exiting`;
+    return getMessage('message.shutdown.summary.approved', {
+      from: approved.from
+    });
   }
   const rejected = isShutdownRejected(content);
   if (rejected) {
-    return `[Shutdown Rejected] ${rejected.from}: ${rejected.reason}`;
+    return getMessage('message.shutdown.summary.rejected', {
+      from: rejected.from,
+      reason: rejected.reason
+    });
   }
   return null;
 }

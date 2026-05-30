@@ -1,6 +1,8 @@
 import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { Box, Text } from '../../ink.js';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { isTaskAssignment, type TaskAssignmentMessage } from '../../utils/teammateMailbox.js';
 type Props = {
   assignment: TaskAssignmentMessage;
@@ -14,9 +16,12 @@ export function TaskAssignmentDisplay(t0) {
   const {
     assignment
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== assignment.assignedBy || $[1] !== assignment.taskId) {
-    t1 = <Box marginBottom={1}><Text color="cyan_FOR_SUBAGENTS_ONLY" bold={true}>Task #{assignment.taskId} assigned by {assignment.assignedBy}</Text></Box>;
+    t1 = <Box marginBottom={1}><Text color="cyan_FOR_SUBAGENTS_ONLY" bold={true}>{t('message.taskAssignment.assignedBy', { taskId: assignment.taskId, assignedBy: assignment.assignedBy })}</Text></Box>;
     $[0] = assignment.assignedBy;
     $[1] = assignment.taskId;
     $[2] = t1;
@@ -69,7 +74,7 @@ export function tryRenderTaskAssignmentMessage(content: string): React.ReactNode
 export function getTaskAssignmentSummary(content: string): string | null {
   const assignment = isTaskAssignment(content);
   if (assignment) {
-    return `[Task Assigned] #${assignment.taskId} - ${assignment.subject}`;
+    return getMessage('message.taskAssignment.summary', { taskId: assignment.taskId, subject: assignment.subject });
   }
   return null;
 }

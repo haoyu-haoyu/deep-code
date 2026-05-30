@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { Text } from '../../ink.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import type { CollapsedReadSearchGroup } from '../../types/message.js';
 
 /**
@@ -24,6 +25,9 @@ export function TeamMemCountParts(t0) {
     isActiveGroup,
     hasPrecedingParts
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const tmReadCount = message.teamMemoryReadCount ?? 0;
   const tmSearchCount = message.teamMemorySearchCount ?? 0;
   const tmWriteCount = message.teamMemoryWriteCount ?? 0;
@@ -35,7 +39,7 @@ export function TeamMemCountParts(t0) {
     const nodes = [];
     let count = hasPrecedingParts ? 1 : 0;
     if (tmReadCount > 0) {
-      const verb = isActiveGroup ? count === 0 ? "Recalling" : "recalling" : count === 0 ? "Recalled" : "recalled";
+      const verb = isActiveGroup ? count === 0 ? t('message.teamMem.recalling.cap') : t('message.teamMem.recalling.lower') : count === 0 ? t('message.teamMem.recalled.cap') : t('message.teamMem.recalled.lower');
       if (count > 0) {
         let t2;
         if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
@@ -54,10 +58,10 @@ export function TeamMemCountParts(t0) {
       } else {
         t2 = $[8];
       }
-      const t3 = tmReadCount === 1 ? "memory" : "memories";
+      const t3 = tmReadCount === 1 ? t('message.teamMem.memory') : t('message.teamMem.memories');
       let t4;
       if ($[9] !== t2 || $[10] !== t3 || $[11] !== verb) {
-        t4 = <Text key="team-mem-read">{verb} {t2} team{" "}{t3}</Text>;
+        t4 = <Text key="team-mem-read">{t('message.teamMem.readPart', { verb, noun: t3 }).split('{count}')[0]}{t2}{t('message.teamMem.readPart', { verb, noun: t3 }).split('{count}')[1]}</Text>;
         $[9] = t2;
         $[10] = t3;
         $[11] = verb;
@@ -69,7 +73,7 @@ export function TeamMemCountParts(t0) {
       count++;
     }
     if (tmSearchCount > 0) {
-      const verb_0 = isActiveGroup ? count === 0 ? "Searching" : "searching" : count === 0 ? "Searched" : "searched";
+      const verb_0 = isActiveGroup ? count === 0 ? t('message.teamMem.searching.cap') : t('message.teamMem.searching.lower') : count === 0 ? t('message.teamMem.searched.cap') : t('message.teamMem.searched.lower');
       if (count > 0) {
         let t2;
         if ($[13] === Symbol.for("react.memo_cache_sentinel")) {
@@ -80,7 +84,7 @@ export function TeamMemCountParts(t0) {
         }
         nodes.push(t2);
       }
-      const t2 = `${verb_0} team memories`;
+      const t2 = t('message.teamMem.searchPart', { verb: verb_0 });
       let t3;
       if ($[14] !== t2) {
         t3 = <Text key="team-mem-search">{t2}</Text>;
@@ -93,7 +97,7 @@ export function TeamMemCountParts(t0) {
       count++;
     }
     if (tmWriteCount > 0) {
-      const verb_1 = isActiveGroup ? count === 0 ? "Writing" : "writing" : count === 0 ? "Wrote" : "wrote";
+      const verb_1 = isActiveGroup ? count === 0 ? t('message.teamMem.writing.cap') : t('message.teamMem.writing.lower') : count === 0 ? t('message.teamMem.wrote.cap') : t('message.teamMem.wrote.lower');
       if (count > 0) {
         let t2;
         if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
@@ -112,10 +116,10 @@ export function TeamMemCountParts(t0) {
       } else {
         t2 = $[18];
       }
-      const t3 = tmWriteCount === 1 ? "memory" : "memories";
+      const t3 = tmWriteCount === 1 ? t('message.teamMem.memory') : t('message.teamMem.memories');
       let t4;
       if ($[19] !== t2 || $[20] !== t3 || $[21] !== verb_1) {
-        t4 = <Text key="team-mem-write">{verb_1} {t2} team{" "}{t3}</Text>;
+        t4 = <Text key="team-mem-write">{t('message.teamMem.writePart', { verb: verb_1, noun: t3 }).split('{count}')[0]}{t2}{t('message.teamMem.writePart', { verb: verb_1, noun: t3 }).split('{count}')[1]}</Text>;
         $[19] = t2;
         $[20] = t3;
         $[21] = verb_1;

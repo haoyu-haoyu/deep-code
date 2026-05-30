@@ -7,6 +7,7 @@ import { Box, Text } from '../../ink.js';
 import { formatBriefTimestamp } from '../../utils/formatBriefTimestamp.js';
 import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
 import { MessageActionsSelectedContext } from '../messageActions.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 type Props = {
   text: string;
   useBriefLayout?: boolean;
@@ -21,6 +22,9 @@ export function HighlightedThinkingText(t0) {
   } = t0;
   const isQueued = useQueuedMessage()?.isQueued ?? false;
   const isSelected = useContext(MessageActionsSelectedContext);
+  const {
+    t
+  } = useTranslation();
   const pointerColor = isSelected ? "suggestion" : "subtle";
   if (useBriefLayout) {
     let t1;
@@ -35,7 +39,7 @@ export function HighlightedThinkingText(t0) {
     const t2 = isQueued ? "subtle" : "briefLabelYou";
     let t3;
     if ($[2] !== t2) {
-      t3 = <Text color={t2}>You</Text>;
+      t3 = <Text color={t2}>{t('message.brief.youLabel')}</Text>;
       $[2] = t2;
       $[3] = t3;
     } else {
