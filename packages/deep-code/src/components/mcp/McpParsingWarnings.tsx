@@ -6,7 +6,7 @@ import { getMcpConfigsByScope } from 'src/services/mcp/config.js';
 import type { ConfigScope } from 'src/services/mcp/types.js';
 import { describeMcpConfigFilePath, getScopeLabel } from 'src/services/mcp/utils.js';
 import type { ValidationError } from 'src/utils/settings/validation.js';
-import { Box, Link, Text } from '../../ink.js';
+import { Box, Text } from '../../ink.js';
 function McpConfigErrorSection(t0) {
   const $ = _c(28);
   const {
@@ -192,8 +192,7 @@ export function McpParsingWarnings() {
   }
   let t5;
   if ($[7] !== t4) {
-    const [helpTextA, helpTextB] = t('mcp.diagnostics.helpText').split('{docsLink}');
-    t5 = <Box flexDirection="column" marginTop={1} marginBottom={1}>{t4}<Box marginTop={1}><Text dimColor={true}>{helpTextA}<Link url="https://code.claude.com/docs/en/mcp">https://code.claude.com/docs/en/mcp</Link>{helpTextB}</Text></Box>{scopes.map(_temp5)}</Box>;
+    t5 = <Box flexDirection="column" marginTop={1} marginBottom={1}>{t4}{scopes.map(_temp5)}</Box>;
     $[7] = t4;
     $[5] = t5;
   } else {
