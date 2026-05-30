@@ -96,6 +96,7 @@ export const JA_MESSAGES = {
   "command.thinkbackPlay.description": "thinkback アニメーションを再生します",
   "command.thinkback.description": "あなたの 2025 年 Deep Code 年間レビュー",
   "command.vim.description": "Vim モードと通常モードを切り替えます",
+  "command.statusline.description": "Deep Code のステータスライン UI を設定します",
   "error.unknown": "不明なエラー",
   "error.timeout": "リクエストがタイムアウトしました",
   "error.network": "ネットワークエラー",

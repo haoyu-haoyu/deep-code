@@ -96,6 +96,7 @@ export const ZH_HANS_MESSAGES = {
   "command.thinkbackPlay.description": "播放 thinkback 动画",
   "command.thinkback.description": "你的 2025 年 Deep Code 年度回顾",
   "command.vim.description": "在 Vim 和普通编辑模式之间切换",
+  "command.statusline.description": "设置 Deep Code 的状态栏 UI",
   "error.unknown": "未知错误",
   "error.timeout": "请求超时",
   "error.network": "网络错误",
