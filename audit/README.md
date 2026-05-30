@@ -34,7 +34,9 @@ read-only references for Phase 1 implementation.
   v0.3.0-feature-parity (2026-05-28). 9/9 priority features adopted
   (auto mode + multi-provider + cache viz + workspace rollback + LSP +
   HTTP serve + session fork + doctor + workspace slash). P2.10 i18n
-  deferred. See TODO.md for milestone list.
+  completed later (2026-05-29/30): full en/zh-Hans/ja TUI localization +
+  /locale switcher, 596 keys × 3 locales (#250–#269). See TODO.md and
+  EXECUTION_LOG.md "Phase 2.10: i18n (Complete)".
 - **Phase 3 (Distribution)**: complete at v0.4.0-distributed (2026-05-28).
   Docker + GitHub Release binaries ready (autonomous channels using
   GITHUB_TOKEN). npm publish (P3.1.c) deferred pending user `@deepcode-ai`
