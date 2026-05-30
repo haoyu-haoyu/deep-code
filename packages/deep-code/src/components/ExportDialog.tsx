@@ -13,6 +13,7 @@ import { Byline } from './design-system/Byline.js';
 import { Dialog } from './design-system/Dialog.js';
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js';
 import TextInput from './TextInput.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 type ExportDialogProps = {
   content: string;
   defaultFilename: string;
@@ -34,6 +35,9 @@ export function ExportDialog({
   const {
     columns
   } = useTerminalSize();
+  const {
+    t
+  } = useTranslation();
 
   // Handle going back from filename input to option selection
   const handleGoBack = useCallback(() => {
@@ -47,7 +51,7 @@ export function ExportDialog({
       if (raw) process.stdout.write(raw);
       onDone({
         success: true,
-        message: 'Conversation copied to clipboard'
+        message: t('export.result.clipboard')
       });
     } else if (value === 'file') {
       setSelectedOption('file');
@@ -64,12 +68,16 @@ export function ExportDialog({
       });
       onDone({
         success: true,
-        message: `Conversation exported to: ${filepath}`
+        message: t('export.result.file', {
+          path: filepath
+        })
       });
     } catch (error) {
       onDone({
         success: false,
-        message: `Failed to export conversation: ${error instanceof Error ? error.message : 'Unknown error'}`
+        message: t('export.result.error', {
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
       });
     }
   };
@@ -82,18 +90,18 @@ export function ExportDialog({
     } else {
       onDone({
         success: false,
-        message: 'Export cancelled'
+        message: t('export.cancelled')
       });
     }
   }, [showFilenameInput, handleGoBack, onDone]);
   const options = [{
-    label: 'Copy to clipboard',
+    label: t('export.option.clipboard.label'),
     value: 'clipboard',
-    description: 'Copy the conversation to your system clipboard'
+    description: t('export.option.clipboard.description')
   }, {
-    label: 'Save to file',
+    label: t('export.option.file.label'),
     value: 'file',
-    description: 'Save the conversation to a file in the current directory'
+    description: t('export.option.file.description')
   }];
 
   // Custom input guide that changes based on dialog state
@@ -105,7 +113,9 @@ export function ExportDialog({
         </Byline>;
     }
     if (exitState.pending) {
-      return <Text>Press {exitState.keyName} again to exit</Text>;
+      return <Text>{t('common.pressKeyAgainToExit', {
+          keyName: exitState.keyName
+        })}</Text>;
     }
     return <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />;
   }
@@ -115,9 +125,9 @@ export function ExportDialog({
     context: 'Settings',
     isActive: showFilenameInput
   });
-  return <Dialog title="Export Conversation" subtitle="Select export method:" color="permission" onCancel={handleCancel} inputGuide={renderInputGuide} isCancelActive={!showFilenameInput}>
+  return <Dialog title={t('export.dialog.title')} subtitle={t('export.dialog.subtitle')} color="permission" onCancel={handleCancel} inputGuide={renderInputGuide} isCancelActive={!showFilenameInput}>
       {!showFilenameInput ? <Select options={options} onChange={handleSelectOption} onCancel={handleCancel} /> : <Box flexDirection="column">
-          <Text>Enter filename:</Text>
+          <Text>{t('export.filenamePrompt')}</Text>
           <Box flexDirection="row" gap={1} marginTop={1}>
             <Text>&gt;</Text>
             <TextInput value={filename} onChange={setFilename} onSubmit={handleFilenameSubmit} focus={true} showCursor={true} columns={columns} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} />

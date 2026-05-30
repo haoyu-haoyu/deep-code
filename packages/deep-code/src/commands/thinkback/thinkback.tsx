@@ -10,6 +10,7 @@ import { Dialog } from '../../components/design-system/Dialog.js';
 import { Spinner } from '../../components/Spinner.js';
 import instances from '../../ink/instances.js';
 import { Box, Text } from '../../ink.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { enablePluginOp } from '../../services/plugins/pluginOperations.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { isENOENT, toError } from '../../utils/errors.js';
@@ -277,28 +278,31 @@ function ThinkbackMenu(t0) {
     hasGenerated
   } = t0;
   const [hasSelected, setHasSelected] = useState(false);
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== hasGenerated) {
     t1 = hasGenerated ? [{
-      label: "Play animation",
+      label: t('thinkback.menu.play.label'),
       value: "play" as const,
-      description: "Watch your year in review"
+      description: t('thinkback.menu.play.description')
     }, {
-      label: "Edit content",
+      label: t('thinkback.menu.edit.label'),
       value: "edit" as const,
-      description: "Modify the animation"
+      description: t('thinkback.menu.edit.description')
     }, {
-      label: "Fix errors",
+      label: t('thinkback.menu.fix.label'),
       value: "fix" as const,
-      description: "Fix validation or rendering issues"
+      description: t('thinkback.menu.fix.description')
     }, {
-      label: "Regenerate",
+      label: t('thinkback.menu.regenerate.label'),
       value: "regenerate" as const,
-      description: "Create a new animation from scratch"
+      description: t('thinkback.menu.regenerate.description')
     }] : [{
-      label: "Let's go!",
+      label: t('thinkback.menu.start.label'),
       value: "regenerate" as const,
-      description: "Generate your personalized animation"
+      description: t('thinkback.menu.start.description')
     }];
     $[0] = hasGenerated;
     $[1] = t1;
@@ -346,7 +350,7 @@ function ThinkbackMenu(t0) {
   }
   let t4;
   if ($[8] !== hasGenerated) {
-    t4 = !hasGenerated && <Box flexDirection="column"><Text>Relive your year of coding with Deep Code.</Text><Text dimColor={true}>{"We'll create a personalized ASCII animation celebrating your journey."}</Text></Box>;
+    t4 = !hasGenerated && <Box flexDirection="column"><Text>{t('thinkback.menu.introTitle')}</Text><Text dimColor={true}>{t('thinkback.menu.introSubtitle')}</Text></Box>;
     $[8] = hasGenerated;
     $[9] = t4;
   } else {
@@ -372,7 +376,7 @@ function ThinkbackMenu(t0) {
   }
   let t7;
   if ($[16] !== handleCancel || $[17] !== t6) {
-    t7 = <Dialog title="Think Back on 2025 with Deep Code" subtitle="Generate your 2025 Deep Code Think Back (takes a few minutes to run)" onCancel={handleCancel} color="claude">{t6}</Dialog>;
+    t7 = <Dialog title={t('thinkback.menu.dialogTitle')} subtitle={t('thinkback.menu.dialogSubtitle')} onCancel={handleCancel} color="claude">{t6}</Dialog>;
     $[16] = handleCancel;
     $[17] = t6;
     $[18] = t7;
