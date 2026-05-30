@@ -204,10 +204,21 @@ features adopted from DeepSeek-TUI competitive analysis.
 - `$ARGUMENTS` placeholder + REPL autocomplete integration
 - 8 test cases
 
-### P2.10 — i18n (deferred)
+### P2.10 — i18n (Complete)
 
-- Lower priority feature; not blocking Phase 2 sign-off
-- Reserved for future polish phase
+Completed 2026-05-29/30. Full TUI localization (English, Simplified Chinese,
+Japanese) on a typed TS catalog (Path A): entire user-facing English surface
+migrated; zh-Hans + ja catalogs (596 keys each, complete + placeholder-parity
+verified); startup-resolved locale switcher (`/locale` + `--locale` +
+`settings.locale` + LC_ALL/LANG/system detection). ~25 residual "Claude"/
+"DeepCode" branding leaks corrected along the way. Catalog 596 keys × 3 locales;
+dist refreshed +161 KB. 20 PRs (#250–#269). Full citation in EXECUTION_LOG.md
+"Phase 2.10: i18n (Complete)".
+
+Deferred (non-blocking) follow-ups:
+- Native review of ~51 flagged zh-Hans/ja technical terms before external sign-off
+- App-wide Claude docs-URL cleanup (code.claude.com etc.) — separate chore PR
+- LocalePicker as a Settings-menu row; live in-session switch; more locales
 
 ## Phase 2 Final Metrics
 

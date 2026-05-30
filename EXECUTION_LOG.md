@@ -7,7 +7,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 
 | Track | Phase | Last completed | Next ready | Blocked? |
 |---|---|---|---|---|
-| A: Pure-DeepSeek | P3.3.fix | Phase 3 done: Docker ready; GitHub Release binary jobs disabled after bun --compile incompatibility discovery; npm publish deferred (user gate) | Future phases user-priority-driven (npm, binary build restructure, Homebrew, Windows, i18n, polish) | no |
+| A: Pure-DeepSeek | P2.10 i18n (Complete) | Phase 3 done (Docker ready; Release binary jobs disabled; npm publish user-gated) + P2.10 i18n complete: full en/zh-Hans/ja TUI localization, /locale switcher, 596 keys × 3 locales (#250–#269) | Future phases user-priority-driven (npm publish, binary build restructure, Homebrew, Windows, multi-arch Docker, docs-URL cleanup, native translation review, polish) | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
 
 ## How to use this file
@@ -169,6 +169,43 @@ P2.11 readiness checklist:
 - CI green throughout P2.9.a and P2.9.Z (CodeRabbit, perf gate, Node 20, Node 22).
 - Multi-provider, auto routing, cache, workspace rollback, LSP, HTTP/SSE, fork, doctor, and workspace slash command surfaces are working and cited above.
 
+### Phase 2.10: i18n (Complete)
+
+Resumed and completed 2026-05-29/30 (originally deferred at P2.11). Full TUI
+localization for English, Simplified Chinese, and Japanese on a typed TS catalog
+runtime (Path A): the entire user-facing English surface migrated to the catalog,
+zh-Hans + ja translations, and a startup-resolved locale switcher. Catalog = 596
+keys × 3 locales. Along the way ~25 user-facing "Claude"/"DeepCode" branding leaks
+that Phase 1 missed were corrected to "Deep Code". Dist stayed frozen at the P2.9.Z
+(#232) baseline for all source-only batches; the single refresh is P2.10.Z below.
+
+| Task | PR | Commit | Notes |
+|---|---|---|---|
+| P2.10.scan design | #250 | `bc40e63` | P2_10_DESIGN.md: Path D phased + Path A runtime. |
+| P2.10.a scaffold + en | #251 | `faf0f41` | src/i18n/{index,types,locales,useTranslation,messages/en}; translate/getMessage/resolveLocale; first 50 keys. |
+| P2.10.b.1 messages/status | #252 | `2036e44` | +30 keys (message/status/diagnostics/tokenWarning/tool-reject). |
+| P2.10.b.2 prompt/settings | #253 | `68db151` | +35 keys; PromptInput + Settings; status branding-guard → catalog. |
+| perf gate root-cause fix | #254 | `645c9c3` | Oversample noisy jsonl probes, keep MEDIAN (min rejected — blind to p99/GC/deopt regressions). Unblocked the b.x perf gate. |
+| P2.10.b.3a/b commands | #255 #256 | `a3ad075` `e25b3ef` | All 49 slash-command descriptions → translate('en',key) (English for model prompts per G6). |
+| permission Claude-leak fix | #257 | `c4df047` | 14 user-facing "Claude" leaks in permission UI → Deep Code. |
+| P2.10.b.4a–e permission UI | #258–#262 | `c5a9566`…`8a634a7` | All 243 permission-UI strings (core/shell/file-edit/plan-mode/rules+ConfigTool); useTranslation + getMessage; bold-split idiom. |
+| dist-refresh revert | #263 | `bf56c53` | #262 accidentally committed dist; reverted to keep dist frozen until Z. |
+| P2.10.b5a–c remaining UI | #264–#266 | `8c1758f`…`2661b1d` | setup/update (45) + MCP (70) + onboarding/trust (43). |
+| P2.10.c zh-Hans | #267 | `669d6d0` | 596-key Simplified Chinese catalog; complete + placeholder-parity verified; 26 terms flagged for native review. |
+| P2.10.d ja | #268 | `2122ae7` | 596-key Japanese catalog; same verification; 25 terms flagged. |
+| P2.10.e locale switcher | #269 | `10ae684` | initActiveLocale startup chain (--locale > config.locale > LC_ALL/LANG > system > en); --locale flag; /locale command + LocalePicker; persisted settings.locale (GlobalConfig). Also carried P2.10.Z (below). |
+
+P2.10.Z (dist refresh): dist/deepcode-full.mjs rebuilt with the full i18n surface,
+14,458,895 → 14,619,935 bytes (+161,040 / ~157 KB: runtime + 3×596-key catalogs,
+CJK text dominating). Landed inadvertently in #269 but is the correct final-source
+build (verified reproducible + CI-green) rather than a standalone Z PR.
+
+Deferred i18n follow-ups (non-blocking):
+- Native review of the ~51 flagged zh-Hans/ja technical terms before external sign-off.
+- App-wide Claude docs-URL cleanup (code.claude.com / claude.ai / platform.claude.com in 7+ user-facing strings) — separate chore PR, target the GitHub repo.
+- LocalePicker also as a Settings-menu row (Config.tsx); /locale covers it for now.
+- Optional: hard-coded-string CI lint for future un-migrated strings; live in-session switch (currently startup/restart due to React-Compiler memo caches); zh-Hant/es/fr/de/ko locales.
+
 ### Phase 3: Distribution
 
 | Task | Status | PR | Commit | Notes |
@@ -185,8 +222,8 @@ P2.11 readiness checklist:
 ### Future phases
 
 No formal Phase 4 is open yet. Next work is user-priority-driven and may
-include P3.1.c npm publish, Homebrew, Windows binaries, multi-arch Docker,
-P2.10 i18n, or polish.
+include P3.1.c npm publish, Homebrew, Windows binaries, multi-arch Docker, or
+polish. (P2.10 i18n is complete — see Phase 2.10 above.)
 
 ## Track B — SANDBOX_FORTRESS_PLAN.md
 
