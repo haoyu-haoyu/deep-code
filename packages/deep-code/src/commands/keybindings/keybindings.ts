@@ -5,6 +5,7 @@ import {
   isKeybindingCustomizationEnabled,
 } from '../../keybindings/loadUserBindings.js'
 import { generateKeybindingsTemplate } from '../../keybindings/template.js'
+import { getMessage } from '../../i18n/index.js'
 import { getErrnoCode } from '../../utils/errors.js'
 import { editFileInEditor } from '../../utils/promptEditor.js'
 
@@ -12,8 +13,7 @@ export async function call(): Promise<{ type: 'text'; value: string }> {
   if (!isKeybindingCustomizationEnabled()) {
     return {
       type: 'text',
-      value:
-        'Keybinding customization is not enabled. This feature is currently in preview.',
+      value: getMessage('command.keybindings.notEnabled'),
     }
   }
 
@@ -39,15 +39,26 @@ export async function call(): Promise<{ type: 'text'; value: string }> {
   // Open in editor
   const result = await editFileInEditor(keybindingsPath)
   if (result.error) {
+    const action = fileExists
+      ? getMessage('command.keybindings.action.opened')
+      : getMessage('command.keybindings.action.created')
     return {
       type: 'text',
-      value: `${fileExists ? 'Opened' : 'Created'} ${keybindingsPath}. Could not open in editor: ${result.error}`,
+      value: getMessage('command.keybindings.editorError', {
+        action,
+        path: keybindingsPath,
+        error: result.error,
+      }),
     }
   }
   return {
     type: 'text',
     value: fileExists
-      ? `Opened ${keybindingsPath} in your editor.`
-      : `Created ${keybindingsPath} with template. Opened in your editor.`,
+      ? getMessage('command.keybindings.openedInEditor', {
+          path: keybindingsPath,
+        })
+      : getMessage('command.keybindings.createdWithTemplate', {
+          path: keybindingsPath,
+        }),
   }
 }

@@ -8,6 +8,7 @@ import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js';
 import { Byline } from '../../components/design-system/Byline.js';
+import { getMessage } from '../../i18n/index.js';
 import { Box, Text } from '../../ink.js';
 import type { PluginMarketplaceEntry } from '../../utils/plugins/schemas.js';
 
@@ -45,29 +46,29 @@ export function extractGitHubRepo(plugin: InstallablePlugin): string | null {
  */
 export function buildPluginDetailsMenuOptions(hasHomepage: string | undefined, githubRepo: string | null): PluginDetailsMenuOption[] {
   const options: PluginDetailsMenuOption[] = [{
-    label: 'Install for you (user scope)',
+    label: getMessage('plugin.details.installUser'),
     action: 'install-user'
   }, {
-    label: 'Install for all collaborators on this repository (project scope)',
+    label: getMessage('plugin.details.installProject'),
     action: 'install-project'
   }, {
-    label: 'Install for you, in this repo only (local scope)',
+    label: getMessage('plugin.details.installLocal'),
     action: 'install-local'
   }];
   if (hasHomepage) {
     options.push({
-      label: 'Open homepage',
+      label: getMessage('plugin.details.openHomepage'),
       action: 'homepage'
     });
   }
   if (githubRepo) {
     options.push({
-      label: 'View on GitHub',
+      label: getMessage('plugin.details.viewOnGitHub'),
       action: 'github'
     });
   }
   options.push({
-    label: 'Back to plugin list',
+    label: getMessage('plugin.details.backToList'),
     action: 'back'
   });
   return options;

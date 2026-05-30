@@ -1,5 +1,5 @@
 import type { Command } from '../commands.js'
-import { translate } from '../i18n/index.js'
+import { getMessage, translate } from '../i18n/index.js'
 import { getAttributionTexts } from '../utils/attribution.js'
 import { executeShellCommandsInPrompt } from '../utils/promptShellExecution.js'
 import { getUndercoverInstructions, isUndercover } from '../utils/undercover.js'
@@ -61,7 +61,7 @@ const command = {
   description: translate('en', 'command.commit.description'),
   allowedTools: ALLOWED_TOOLS,
   contentLength: 0, // Dynamic content
-  progressMessage: 'creating commit',
+  progressMessage: getMessage('command.commit.progressMessage'),
   source: 'builtin',
   async getPromptForCommand(_args, context) {
     const promptContent = getPromptContent()

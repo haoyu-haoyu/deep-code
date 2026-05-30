@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { getKairosActive, setUserMsgOptIn } from '../bootstrap/state.js'
-import { translate } from '../i18n/index.js'
+import { getMessage, translate } from '../i18n/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../utils/featureFlags.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -74,7 +74,7 @@ const brief = {
             source:
               'slash_command' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
-          onDone('Brief tool is not enabled for your account', {
+          onDone(getMessage('command.brief.notEntitled'), {
             display: 'system',
           })
           return null
@@ -120,7 +120,9 @@ const brief = {
             ]
 
         onDone(
-          newState ? 'Brief-only mode enabled' : 'Brief-only mode disabled',
+          newState
+            ? getMessage('command.brief.enabled')
+            : getMessage('command.brief.disabled'),
           { display: 'system', metaMessages },
         )
         return null

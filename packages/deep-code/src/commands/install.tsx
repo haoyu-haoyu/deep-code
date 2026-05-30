@@ -6,6 +6,7 @@ import type { CommandResultDisplay } from 'src/commands.js';
 import { logEvent } from 'src/services/analytics/index.js';
 import { StatusIcon } from '../components/design-system/StatusIcon.js';
 import { translate } from '../i18n/index.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, render, Text } from '../ink.js';
 import { logForDebugging } from '../utils/debug.js';
 import { env } from '../utils/env.js';
@@ -56,12 +57,15 @@ function SetupNotes(t0) {
   const {
     messages
   } = t0;
+  const {
+    t
+  } = useTranslation();
   if (messages.length === 0) {
     return null;
   }
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Box><Text color="warning"><StatusIcon status="warning" withSpace={true} />Setup notes:</Text></Box>;
+    t1 = <Box><Text color="warning"><StatusIcon status="warning" withSpace={true} />{t('command.install.setupNotes')}</Text></Box>;
     $[0] = t1;
   } else {
     t1 = $[0];
@@ -92,6 +96,9 @@ function Install({
   force,
   target
 }: InstallProps): React.ReactNode {
+  const {
+    t
+  } = useTranslation();
   const [state, setState] = useState<InstallState>({
     type: 'checking'
   });
@@ -114,7 +121,7 @@ function Install({
 
         // Check specifically for lock failure
         if (result.lockFailed) {
-          throw new Error('Could not install - another process is currently installing Deep Code. Please try again in a moment.');
+          throw new Error(t('command.install.lockFailed'));
         }
 
         // If we couldn't get the version, there might be an issue
@@ -211,26 +218,28 @@ function Install({
   useEffect(() => {
     if (state.type === 'success') {
       // Give success message time to render before exiting
-      setTimeout(onDone, 2000, 'Deep Code installation completed successfully', {
+      setTimeout(onDone, 2000, t('command.install.result.success'), {
         display: 'system' as const
       });
     } else if (state.type === 'error') {
       // Give error message time to render before exiting
-      setTimeout(onDone, 3000, 'Deep Code installation failed', {
+      setTimeout(onDone, 3000, t('command.install.result.failed'), {
         display: 'system' as const
       });
     }
   }, [state, onDone]);
   return <Box flexDirection="column" marginTop={1}>
-      {state.type === 'checking' && <Text color="claude">Checking installation status...</Text>}
+      {state.type === 'checking' && <Text color="claude">{t('command.install.checking')}</Text>}
 
-      {state.type === 'cleaning-npm' && <Text color="warning">Cleaning up old npm installations...</Text>}
+      {state.type === 'cleaning-npm' && <Text color="warning">{t('command.install.cleaningNpm')}</Text>}
 
       {state.type === 'installing' && <Text color="claude">
-          Installing Deep Code native build {state.version}...
+          {t('command.install.installing', {
+        version: state.version
+      })}
         </Text>}
 
-      {state.type === 'setting-up' && <Text color="claude">Setting up launcher and shell integration...</Text>}
+      {state.type === 'setting-up' && <Text color="claude">{t('command.install.settingUp')}</Text>}
 
       {state.type === 'set-up' && <SetupNotes messages={state.messages} />}
 
@@ -238,26 +247,26 @@ function Install({
           <Box>
             <StatusIcon status="success" withSpace />
             <Text color="success" bold>
-              Deep Code successfully installed!
+              {t('command.install.successHeader')}
             </Text>
           </Box>
           <Box marginLeft={2} flexDirection="column" gap={1}>
             {state.version !== 'current' && <Box>
-                <Text dimColor>Version: </Text>
+                <Text dimColor>{t('command.install.versionLabel')}</Text>
                 <Text color="claude">{state.version}</Text>
               </Box>}
             <Box>
-              <Text dimColor>Location: </Text>
+              <Text dimColor>{t('mcp.diagnostics.locationLabel')}</Text>
               <Text color="text">{getInstallationPath()}</Text>
             </Box>
           </Box>
           <Box marginLeft={2} flexDirection="column" gap={1}>
             <Box marginTop={1}>
-              <Text dimColor>Next: Run </Text>
+              <Text dimColor>{t('command.install.nextRun')}</Text>
               <Text color="claude" bold>
                 deepcode --help
               </Text>
-              <Text dimColor> to get started</Text>
+              <Text dimColor>{t('command.install.nextGetStarted')}</Text>
             </Box>
           </Box>
           {state.setupMessages && <SetupNotes messages={state.setupMessages} />}
@@ -266,11 +275,11 @@ function Install({
       {state.type === 'error' && <Box flexDirection="column" gap={1}>
           <Box>
             <StatusIcon status="error" withSpace />
-            <Text color="error">Installation failed</Text>
+            <Text color="error">{t('it2.installFailed.header')}</Text>
           </Box>
           <Text color="error">{state.message}</Text>
           <Box marginTop={1}>
-            <Text dimColor>Try running with --force to override checks</Text>
+            <Text dimColor>{t('command.install.forceHint')}</Text>
           </Box>
         </Box>}
     </Box>;

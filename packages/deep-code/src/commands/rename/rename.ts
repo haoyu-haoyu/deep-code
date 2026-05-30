@@ -1,5 +1,6 @@
 import type { UUID } from 'crypto'
 import { getSessionId } from '../../bootstrap/state.js'
+import { getMessage } from '../../i18n/index.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type {
   LocalJSXCommandContext,
@@ -21,10 +22,9 @@ export async function call(
 ): Promise<null> {
   // Prevent teammates from renaming - their names are set by team leader
   if (isTeammate()) {
-    onDone(
-      'Cannot rename: This session is a swarm teammate. Teammate names are set by the team leader.',
-      { display: 'system' },
-    )
+    onDone(getMessage('command.rename.error.teammate'), {
+      display: 'system',
+    })
     return null
   }
 
@@ -35,10 +35,9 @@ export async function call(
       context.abortController.signal,
     )
     if (!generated) {
-      onDone(
-        'Could not generate a name: no conversation context yet. Usage: /rename <name>',
-        { display: 'system' },
-      )
+      onDone(getMessage('command.rename.error.noContext'), {
+        display: 'system',
+      })
       return null
     }
     newName = generated
@@ -62,6 +61,8 @@ export async function call(
     },
   }))
 
-  onDone(`Session renamed to: ${newName}`, { display: 'system' })
+  onDone(getMessage('command.rename.success', { name: newName }), {
+    display: 'system',
+  })
   return null
 }

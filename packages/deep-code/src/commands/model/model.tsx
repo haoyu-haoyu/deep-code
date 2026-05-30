@@ -3,6 +3,8 @@ import chalk from 'chalk';
 import * as React from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
 import { ModelPicker } from '../../components/ModelPicker.js';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
@@ -19,6 +21,9 @@ function ModelPickerWrapper(t0) {
   const {
     onDone
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const mainLoopModel = useAppState(_temp);
   const mainLoopModelForSession = useAppState(_temp2);
   const isFastMode = useAppState(_temp3);
@@ -30,7 +35,9 @@ function ModelPickerWrapper(t0) {
         action: "cancel" as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
       const displayModel = renderModelLabel(mainLoopModel);
-      onDone(`Kept model as ${chalk.bold(displayModel)}`, {
+      onDone(t("command.model.keptModel", {
+        model: chalk.bold(displayModel)
+      }), {
         display: "system"
       });
     };
@@ -54,9 +61,13 @@ function ModelPickerWrapper(t0) {
         mainLoopModel: model,
         mainLoopModelForSession: null
       }));
-      let message = isAutoModelSetting(model) ? `Auto routing enabled` : `Set model to ${chalk.bold(renderModelLabel(model))}`;
+      let message = isAutoModelSetting(model) ? t("command.model.autoRoutingEnabled") : t("command.model.setModelTo", {
+        model: chalk.bold(renderModelLabel(model))
+      });
       if (effort !== undefined) {
-        message = message + ` with ${chalk.bold(effort)} effort`;
+        message = message + t("command.model.withEffortSuffix", {
+          effort: chalk.bold(effort)
+        });
       }
       let wasFastModeToggledOn = undefined;
       if (isFastModeEnabled()) {
@@ -66,16 +77,16 @@ function ModelPickerWrapper(t0) {
           wasFastModeToggledOn = false;
         } else {
           if (isFastModeSupportedByModel(model) && isFastModeAvailable() && isFastMode) {
-            message = message + " \xB7 Fast mode ON";
+            message = message + t("command.model.fastModeOnSuffix");
             wasFastModeToggledOn = true;
           }
         }
       }
       if (isBilledAsExtraUsage(model, wasFastModeToggledOn === true, isOpus1mMergeEnabled())) {
-        message = message + " \xB7 Billed as extra usage";
+        message = message + t("command.model.billedAsExtraUsageSuffix");
       }
       if (wasFastModeToggledOn === false) {
-        message = message + " \xB7 Fast mode OFF";
+        message = message + t("command.model.fastModeOffSuffix");
       }
       onDone(message);
     };
@@ -135,13 +146,14 @@ function SetModelAndClose({
     display?: CommandResultDisplay;
   }) => void;
 }): React.ReactNode {
+  const { t } = useTranslation();
   const isFastMode = useAppState(s => s.fastMode);
   const setAppState = useSetAppState();
   const model = args === 'default' ? null : args;
   React.useEffect(() => {
     async function handleModelChange(): Promise<void> {
       if (model && !isModelAllowed(model)) {
-        onDone(`Model '${model}' is not available. Your organization restricts model selection.`, {
+        onDone(t('command.model.notAvailableOrgRestricted', { model }), {
           display: 'system'
         });
         return;
@@ -176,12 +188,12 @@ function SetModelAndClose({
         if (valid) {
           setModel(model);
         } else {
-          onDone(error_0 || `Model '${model}' not found`, {
+          onDone(error_0 || t('command.model.notFound', { model }), {
             display: 'system'
           });
         }
       } catch (error) {
-        onDone(`Failed to validate model: ${(error as Error).message}`, {
+        onDone(t('command.model.validationFailed', { message: (error as Error).message }), {
           display: 'system'
         });
       }
@@ -192,7 +204,7 @@ function SetModelAndClose({
         mainLoopModel: modelValue,
         mainLoopModelForSession: null
       }));
-      let message = isAutoModelSetting(modelValue) ? `Auto routing enabled` : `Set model to ${chalk.bold(renderModelLabel(modelValue))}`;
+      let message = isAutoModelSetting(modelValue) ? t('command.model.autoRoutingEnabled') : t('command.model.setModelTo', { model: chalk.bold(renderModelLabel(modelValue)) });
       let wasFastModeToggledOn = undefined;
       if (isFastModeEnabled()) {
         clearFastModeCooldown();
@@ -204,21 +216,21 @@ function SetModelAndClose({
           wasFastModeToggledOn = false;
           // Do not update fast mode in settings since this is an automatic downgrade
         } else if (isFastModeSupportedByModel(modelValue) && isFastMode) {
-          message += ` · Fast mode ON`;
+          message += t('command.model.fastModeOnSuffix');
           wasFastModeToggledOn = true;
         }
       }
       if (isBilledAsExtraUsage(modelValue, wasFastModeToggledOn === true, isOpus1mMergeEnabled())) {
-        message += ` · Billed as extra usage`;
+        message += t('command.model.billedAsExtraUsageSuffix');
       }
       if (wasFastModeToggledOn === false) {
         // Fast mode was toggled off, show suffix after extra usage billing
-        message += ` · Fast mode OFF`;
+        message += t('command.model.fastModeOffSuffix');
       }
       onDone(message);
     }
     void handleModelChange();
-  }, [model, onDone, setAppState]);
+  }, [model, onDone, setAppState, t]);
   return null;
 }
 function isKnownAlias(model: string): boolean {
@@ -228,15 +240,27 @@ function ShowModelAndClose(t0) {
   const {
     onDone
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const mainLoopModel = useAppState(_temp7);
   const mainLoopModelForSession = useAppState(_temp8);
   const effortValue = useAppState(_temp9);
   const displayModel = renderModelLabel(mainLoopModel);
-  const effortInfo = effortValue !== undefined ? ` (effort: ${effortValue})` : "";
+  const effortInfo = effortValue !== undefined ? t("command.model.effortInfoSuffix", {
+    effort: effortValue
+  }) : "";
   if (mainLoopModelForSession) {
-    onDone(`Current model: ${chalk.bold(renderModelLabel(mainLoopModelForSession))} (session override from plan mode)\nBase model: ${displayModel}${effortInfo}`);
+    onDone(t("command.model.currentModelSessionOverride", {
+      sessionModel: chalk.bold(renderModelLabel(mainLoopModelForSession)),
+      baseModel: displayModel,
+      effortInfo
+    }));
   } else {
-    onDone(`Current model: ${displayModel}${effortInfo}`);
+    onDone(t("command.model.currentModel", {
+      model: displayModel,
+      effortInfo
+    }));
   }
   return null;
 }
@@ -258,7 +282,7 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     return <ShowModelAndClose onDone={onDone} />;
   }
   if (COMMON_HELP_ARGS.includes(args)) {
-    onDone('Run /model to open the model selection menu, or /model [modelName] to set the model.', {
+    onDone(getMessage('command.model.help'), {
       display: 'system'
     });
     return;

@@ -7,6 +7,7 @@ import { Byline } from '../../components/design-system/Byline.js';
 import { SearchBox } from '../../components/SearchBox.js';
 import { useSearchInput } from '../../hooks/useSearchInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- useInput needed for raw search mode text input
 import { Box, Text, useInput, useTerminalFocus } from '../../ink.js';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
@@ -55,6 +56,9 @@ export function DiscoverPlugins({
   onSearchModeChange,
   targetPlugin
 }: Props): React.ReactNode {
+  const {
+    t
+  } = useTranslation();
   // View state
   const [viewState, setViewState] = useState<ViewState>('plugin-list');
   const [selectedPlugin, setSelectedPlugin] = useState<InstallablePlugin | null>(null);
@@ -194,7 +198,7 @@ export function DiscoverPlugins({
         const errorResult = formatMarketplaceLoadingErrors(failures, successCount);
         if (errorResult) {
           if (errorResult.type === 'warning') {
-            setWarning(errorResult.message + '. Showing available plugins.');
+            setWarning(errorResult.message + t('plugin.discover.warning.showingAvailable'));
           } else {
             throw new Error(errorResult.message);
           }
@@ -206,17 +210,21 @@ export function DiscoverPlugins({
           const foundPlugin = allPlugins.find(p_0 => p_0.entry.name === targetPlugin);
           if (foundPlugin) {
             if (foundPlugin.isInstalled) {
-              setError(`Plugin '${foundPlugin.pluginId}' is already installed. Use '/plugin' to manage existing plugins.`);
+              setError(t('plugin.discover.alreadyInstalled', {
+                pluginId: foundPlugin.pluginId
+              }));
             } else {
               setSelectedPlugin(foundPlugin);
               setViewState('plugin-details');
             }
           } else {
-            setError(`Plugin "${targetPlugin}" not found in any marketplace`);
+            setError(t('plugin.discover.notFound', {
+              targetPlugin
+            }));
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load plugins');
+        setError(err instanceof Error ? err.message : t('plugin.discover.loadFailed'));
       } finally {
         setLoading(false);
       }
@@ -258,12 +266,21 @@ export function DiscoverPlugins({
 
     // Handle installation results
     if (failureCount === 0) {
-      const message = `✓ Installed ${successCount_0} ${plural(successCount_0, 'plugin')}. ` + `Run /reload-plugins to activate.`;
+      const message = t('plugin.discover.install.allSucceeded', {
+        count: successCount_0,
+        pluginLabel: plural(successCount_0, 'plugin')
+      });
       setResult(message);
     } else if (successCount_0 === 0) {
-      setError(`Failed to install: ${formatFailureDetails(newFailedPlugins, true)}`);
+      setError(t('plugin.discover.install.allFailed', {
+        details: formatFailureDetails(newFailedPlugins, true)
+      }));
     } else {
-      const message_0 = `✓ Installed ${successCount_0} of ${successCount_0 + failureCount} plugins. ` + `Failed: ${formatFailureDetails(newFailedPlugins, false)}. ` + `Run /reload-plugins to activate successfully installed plugins.`;
+      const message_0 = t('plugin.discover.install.partial', {
+        successCount: successCount_0,
+        totalCount: successCount_0 + failureCount,
+        details: formatFailureDetails(newFailedPlugins, false)
+      });
       setResult(message_0);
     }
     if (successCount_0 > 0) {
@@ -478,13 +495,19 @@ export function DiscoverPlugins({
     return <PluginOptionsFlow plugin={plugin_4} pluginId={pluginId_0} onDone={(outcome, detail) => {
       switch (outcome) {
         case 'configured':
-          finish(`✓ Installed and configured ${plugin_4.name}. Run /reload-plugins to apply.`);
+          finish(t('plugin.discover.options.configured', {
+            name: plugin_4.name
+          }));
           break;
         case 'skipped':
-          finish(`✓ Installed ${plugin_4.name}. Run /reload-plugins to apply.`);
+          finish(t('plugin.discover.options.skipped', {
+            name: plugin_4.name
+          }));
           break;
         case 'error':
-          finish(`Installed but failed to save config: ${detail}`);
+          finish(t('plugin.discover.options.error', {
+            detail
+          }));
           break;
       }
     }} />;
@@ -492,7 +515,7 @@ export function DiscoverPlugins({
 
   // Loading state
   if (loading) {
-    return <Text>Loading…</Text>;
+    return <Text>{t('plugin.discover.loading')}</Text>;
   }
 
   // Error state
@@ -507,20 +530,25 @@ export function DiscoverPlugins({
     const menuOptions = buildPluginDetailsMenuOptions(hasHomepage_1, githubRepo_1);
     return <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Plugin details</Text>
+          <Text bold>{t('plugin.discover.details.title')}</Text>
         </Box>
 
         <Box flexDirection="column" marginBottom={1}>
           <Text bold>{selectedPlugin.entry.name}</Text>
-          <Text dimColor>from {selectedPlugin.marketplaceName}</Text>
-          {selectedPlugin.entry.version && <Text dimColor>Version: {selectedPlugin.entry.version}</Text>}
+          <Text dimColor>{t('plugin.discover.details.from', {
+            marketplaceName: selectedPlugin.marketplaceName
+          })}</Text>
+          {selectedPlugin.entry.version && <Text dimColor>{t('plugin.discover.details.version', {
+            version: selectedPlugin.entry.version
+          })}</Text>}
           {selectedPlugin.entry.description && <Box marginTop={1}>
               <Text>{selectedPlugin.entry.description}</Text>
             </Box>}
           {selectedPlugin.entry.author && <Box marginTop={1}>
               <Text dimColor>
-                By:{' '}
-                {typeof selectedPlugin.entry.author === 'string' ? selectedPlugin.entry.author : selectedPlugin.entry.author.name}
+                {t('plugin.discover.details.author', {
+            author: typeof selectedPlugin.entry.author === 'string' ? selectedPlugin.entry.author : selectedPlugin.entry.author.name
+          })}
               </Text>
             </Box>}
         </Box>
@@ -528,7 +556,9 @@ export function DiscoverPlugins({
         <PluginTrustWarning />
 
         {installError && <Box marginBottom={1}>
-            <Text color="error">Error: {installError}</Text>
+            <Text color="error">{t('plugin.discover.details.installError', {
+            installError
+          })}</Text>
           </Box>}
 
         <Box flexDirection="column">
@@ -536,7 +566,7 @@ export function DiscoverPlugins({
               {detailsMenuIndex === index && <Text>{'> '}</Text>}
               {detailsMenuIndex !== index && <Text>{'  '}</Text>}
               <Text bold={detailsMenuIndex === index}>
-                {isInstalling && option.action.startsWith('install-') ? 'Installing…' : option.label}
+                {isInstalling && option.action.startsWith('install-') ? t('plugin.discover.details.installing') : option.label}
               </Text>
             </Box>)}
         </Box>
@@ -556,12 +586,12 @@ export function DiscoverPlugins({
   if (availablePlugins.length === 0) {
     return <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Discover plugins</Text>
+          <Text bold>{t('plugin.discover.title')}</Text>
         </Box>
         <EmptyStateMessage reason={emptyReason} />
         <Box marginTop={1}>
           <Text dimColor italic>
-            Esc to go back
+            {t('plugin.discover.escToGoBack')}
           </Text>
         </Box>
       </Box>;
@@ -571,7 +601,7 @@ export function DiscoverPlugins({
   const visiblePlugins = pagination.getVisibleItems(filteredPlugins);
   return <Box flexDirection="column">
       <Box>
-        <Text bold>Discover plugins</Text>
+        <Text bold>{t('plugin.discover.title')}</Text>
         {pagination.needsPagination && <Text dimColor>
             {' '}
             ({pagination.scrollPosition.current}/
@@ -593,12 +623,14 @@ export function DiscoverPlugins({
 
       {/* No search results */}
       {filteredPlugins.length === 0 && searchQuery && <Box marginBottom={1}>
-          <Text dimColor>No plugins match &quot;{searchQuery}&quot;</Text>
+          <Text dimColor>{t('plugin.discover.noMatch', {
+            searchQuery
+          })}</Text>
         </Box>}
 
       {/* Scroll up indicator */}
       {pagination.scrollPosition.canScrollUp && <Box>
-          <Text dimColor> {figures.arrowUp} more above</Text>
+          <Text dimColor> {figures.arrowUp}{t('plugin.discover.scroll.moreAbove')}</Text>
         </Box>}
 
       {/* Plugin list - use startIndex in key to force re-render on scroll */}
@@ -617,11 +649,11 @@ export function DiscoverPlugins({
                 {isInstallingThis ? figures.ellipsis : isSelectedForInstall ? figures.radioOn : figures.radioOff}{' '}
                 {plugin_5.entry.name}
                 <Text dimColor> · {plugin_5.marketplaceName}</Text>
-                {plugin_5.entry.tags?.includes('community-managed') && <Text dimColor> [Community Managed]</Text>}
+                {plugin_5.entry.tags?.includes('community-managed') && <Text dimColor>{t('plugin.discover.communityManaged')}</Text>}
                 {installCounts && plugin_5.marketplaceName === OFFICIAL_MARKETPLACE_NAME && <Text dimColor>
                       {' · '}
                       {formatInstallCount(installCounts.get(plugin_5.pluginId) ?? 0)}{' '}
-                      installs
+                      {t('plugin.discover.installs')}
                     </Text>}
               </Text>
             </Box>
@@ -635,7 +667,7 @@ export function DiscoverPlugins({
 
       {/* Scroll down indicator */}
       {pagination.scrollPosition.canScrollDown && <Box>
-          <Text dimColor> {figures.arrowDown} more below</Text>
+          <Text dimColor> {figures.arrowDown}{t('plugin.discover.scroll.moreBelow')}</Text>
         </Box>}
 
       {/* Error messages */}
@@ -654,6 +686,9 @@ function DiscoverPluginsKeyHint(t0) {
     hasSelection,
     canToggle
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== hasSelection) {
     t1 = hasSelection && <ConfigurableShortcutHint action="plugin:install" context="Plugin" fallback="i" description="install" bold={true} />;
@@ -664,7 +699,7 @@ function DiscoverPluginsKeyHint(t0) {
   }
   let t2;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Text>type to search</Text>;
+    t2 = <Text>{t('plugin.discover.typeToSearch')}</Text>;
     $[2] = t2;
   } else {
     t2 = $[2];
@@ -708,12 +743,15 @@ function EmptyStateMessage(t0) {
   const {
     reason
   } = t0;
+  const {
+    t
+  } = useTranslation();
   switch (reason) {
     case "git-not-installed":
       {
         let t1;
         if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-          t1 = <><Text dimColor={true}>Git is required to install marketplaces.</Text><Text dimColor={true}>Please install git and restart Deep Code.</Text></>;
+          t1 = <><Text dimColor={true}>{t('plugin.discover.empty.gitNotInstalled.title')}</Text><Text dimColor={true}>{t('plugin.discover.empty.gitNotInstalled.hint')}</Text></>;
           $[0] = t1;
         } else {
           t1 = $[0];
@@ -724,7 +762,7 @@ function EmptyStateMessage(t0) {
       {
         let t1;
         if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-          t1 = <><Text dimColor={true}>Your organization policy does not allow any external marketplaces.</Text><Text dimColor={true}>Contact your administrator.</Text></>;
+          t1 = <><Text dimColor={true}>{t('plugin.discover.empty.allBlockedByPolicy.title')}</Text><Text dimColor={true}>{t('plugin.discover.empty.allBlockedByPolicy.hint')}</Text></>;
           $[1] = t1;
         } else {
           t1 = $[1];
@@ -735,7 +773,7 @@ function EmptyStateMessage(t0) {
       {
         let t1;
         if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-          t1 = <><Text dimColor={true}>Your organization restricts which marketplaces can be added.</Text><Text dimColor={true}>Switch to the Marketplaces tab to view allowed sources.</Text></>;
+          t1 = <><Text dimColor={true}>{t('plugin.discover.empty.policyRestrictsSources.title')}</Text><Text dimColor={true}>{t('plugin.discover.empty.policyRestrictsSources.hint')}</Text></>;
           $[2] = t1;
         } else {
           t1 = $[2];
@@ -746,7 +784,7 @@ function EmptyStateMessage(t0) {
       {
         let t1;
         if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-          t1 = <><Text dimColor={true}>Failed to load marketplace data.</Text><Text dimColor={true}>Check your network connection.</Text></>;
+          t1 = <><Text dimColor={true}>{t('plugin.discover.empty.allMarketplacesFailed.title')}</Text><Text dimColor={true}>{t('plugin.discover.empty.allMarketplacesFailed.hint')}</Text></>;
           $[3] = t1;
         } else {
           t1 = $[3];
@@ -757,7 +795,7 @@ function EmptyStateMessage(t0) {
       {
         let t1;
         if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-          t1 = <><Text dimColor={true}>All available plugins are already installed.</Text><Text dimColor={true}>Check for new plugins later or add more marketplaces.</Text></>;
+          t1 = <><Text dimColor={true}>{t('plugin.discover.empty.allPluginsInstalled.title')}</Text><Text dimColor={true}>{t('plugin.discover.empty.allPluginsInstalled.hint')}</Text></>;
           $[4] = t1;
         } else {
           t1 = $[4];
@@ -769,7 +807,7 @@ function EmptyStateMessage(t0) {
       {
         let t1;
         if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-          t1 = <><Text dimColor={true}>No plugins available.</Text><Text dimColor={true}>Add a marketplace first using the Marketplaces tab.</Text></>;
+          t1 = <><Text dimColor={true}>{t('plugin.discover.empty.noMarketplacesConfigured.title')}</Text><Text dimColor={true}>{t('plugin.discover.empty.noMarketplacesConfigured.hint')}</Text></>;
           $[5] = t1;
         } else {
           t1 = $[5];

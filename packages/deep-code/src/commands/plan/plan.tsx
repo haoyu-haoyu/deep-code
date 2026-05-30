@@ -11,6 +11,8 @@ import { prepareContextForPlanMode } from '../../utils/permissions/permissionSet
 import { getPlan, getPlanFilePath } from '../../utils/plans.js';
 import { editFileInEditor } from '../../utils/promptEditor.js';
 import { renderToString } from '../../utils/staticRender.js';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 function PlanDisplay(t0) {
   const $ = _c(11);
   const {
@@ -18,9 +20,12 @@ function PlanDisplay(t0) {
     planPath,
     editorName
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Text bold={true}>Current Plan</Text>;
+    t1 = <Text bold={true}>{t('command.plan.currentPlanHeading')}</Text>;
     $[0] = t1;
   } else {
     t1 = $[0];
@@ -43,7 +48,7 @@ function PlanDisplay(t0) {
   }
   let t4;
   if ($[5] !== editorName) {
-    t4 = editorName && <Box marginTop={1}><Text dimColor={true}>"/plan open"</Text><Text dimColor={true}> to edit this plan in </Text><Text bold={true} dimColor={true}>{editorName}</Text></Box>;
+    t4 = editorName && <Box marginTop={1}><Text dimColor={true}>"/plan open"</Text><Text dimColor={true}>{t('command.plan.editHint')}</Text><Text bold={true} dimColor={true}>{editorName}</Text></Box>;
     $[5] = editorName;
     $[6] = t4;
   } else {
@@ -82,11 +87,11 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
     }));
     const description = args.trim();
     if (description && description !== 'open') {
-      onDone('Enabled plan mode', {
+      onDone(getMessage('command.plan.enabled'), {
         shouldQuery: true
       });
     } else {
-      onDone('Enabled plan mode');
+      onDone(getMessage('command.plan.enabled'));
     }
     return null;
   }
@@ -95,7 +100,7 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
   const planContent = getPlan();
   const planPath = getPlanFilePath();
   if (!planContent) {
-    onDone('Already in plan mode. No plan written yet.');
+    onDone(getMessage('command.plan.alreadyNoPlan'));
     return null;
   }
 
@@ -104,9 +109,9 @@ export async function call(onDone: LocalJSXCommandOnDone, context: LocalJSXComma
   if (argList[0] === 'open') {
     const result = await editFileInEditor(planPath);
     if (result.error) {
-      onDone(`Failed to open plan in editor: ${result.error}`);
+      onDone(getMessage('command.plan.openFailed', { error: result.error }));
     } else {
-      onDone(`Opened plan in editor: ${planPath}`);
+      onDone(getMessage('command.plan.opened', { planPath }));
     }
     return null;
   }

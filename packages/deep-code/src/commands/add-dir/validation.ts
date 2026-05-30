@@ -2,6 +2,7 @@ import chalk from 'chalk'
 import { stat } from 'fs/promises'
 import { dirname, resolve } from 'path'
 import type { ToolPermissionContext } from '../../Tool.js'
+import { getMessage } from '../../i18n/index.js'
 import { getErrnoCode } from '../../utils/errors.js'
 import { expandPath } from '../../utils/path.js'
 import {
@@ -95,16 +96,26 @@ export async function validateDirectoryForWorkspace(
 export function addDirHelpMessage(result: AddDirectoryResult): string {
   switch (result.resultType) {
     case 'emptyPath':
-      return 'Please provide a directory path.'
+      return getMessage('command.addDir.emptyPath')
     case 'pathNotFound':
-      return `Path ${chalk.bold(result.absolutePath)} was not found.`
+      return getMessage('command.addDir.pathNotFound', {
+        absolutePath: chalk.bold(result.absolutePath),
+      })
     case 'notADirectory': {
       const parentDir = dirname(result.absolutePath)
-      return `${chalk.bold(result.directoryPath)} is not a directory. Did you mean to add the parent directory ${chalk.bold(parentDir)}?`
+      return getMessage('command.addDir.notADirectory', {
+        directoryPath: chalk.bold(result.directoryPath),
+        parentDir: chalk.bold(parentDir),
+      })
     }
     case 'alreadyInWorkingDirectory':
-      return `${chalk.bold(result.directoryPath)} is already accessible within the existing working directory ${chalk.bold(result.workingDir)}.`
+      return getMessage('command.addDir.alreadyInWorkingDirectory', {
+        directoryPath: chalk.bold(result.directoryPath),
+        workingDir: chalk.bold(result.workingDir),
+      })
     case 'success':
-      return `Added ${chalk.bold(result.absolutePath)} as a working directory.`
+      return getMessage('command.addDir.success', {
+        absolutePath: chalk.bold(result.absolutePath),
+      })
   }
 }

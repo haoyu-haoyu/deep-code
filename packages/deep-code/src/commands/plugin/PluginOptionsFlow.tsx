@@ -14,6 +14,7 @@ import { loadMcpServerUserConfig, saveMcpServerUserConfig } from '../../utils/pl
 import { getUnconfiguredChannels, type UnconfiguredChannel } from '../../utils/plugins/mcpPluginIntegration.js';
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js';
 import { getUnconfiguredOptions, loadPluginOptions, type PluginOptionSchema, type PluginOptionValues, savePluginOptions } from '../../utils/plugins/pluginOptionsStorage.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { PluginOptionsDialog } from './PluginOptionsDialog.js';
 
 /**
@@ -61,6 +62,9 @@ export function PluginOptionsFlow({
   pluginId,
   onDone
 }: Props): React.ReactNode {
+  const {
+    t
+  } = useTranslation();
   // Build the step list once at mount. Re-calling after a save would drop the
   // item we just configured.
   const [steps] = React.useState<ConfigStep[]>(() => {
@@ -71,8 +75,10 @@ export function PluginOptionsFlow({
     if (Object.keys(unconfigured).length > 0) {
       result.push({
         key: 'top-level',
-        title: `Configure ${plugin.name}`,
-        subtitle: 'Plugin options',
+        title: t('plugin.options.configureTitle', {
+          name: plugin.name
+        }),
+        subtitle: t('plugin.options.subtitle'),
         schema: unconfigured,
         load: () => loadPluginOptions(pluginId),
         save: values => savePluginOptions(pluginId, values, plugin.manifest.userConfig!)
@@ -84,8 +90,12 @@ export function PluginOptionsFlow({
     for (const channel of channels) {
       result.push({
         key: `channel:${channel.server}`,
-        title: `Configure ${channel.displayName}`,
-        subtitle: `Plugin: ${plugin.name}`,
+        title: t('plugin.options.configureTitle', {
+          name: channel.displayName
+        }),
+        subtitle: t('plugin.options.channelSubtitle', {
+          name: plugin.name
+        }),
         schema: channel.configSchema,
         load: () => loadMcpServerUserConfig(pluginId, channel.server) ?? undefined,
         save: values_0 => saveMcpServerUserConfig(pluginId, channel.server, values_0, channel.configSchema)

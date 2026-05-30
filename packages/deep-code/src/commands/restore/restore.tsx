@@ -64,15 +64,15 @@ function RestoreDialog({
   }
 
   if (error) {
-    return <RestoreMessageDialog title="Restore unavailable" message={error} onDone={onDone} />
+    return <RestoreMessageDialog title={t('restore.unavailableTitle')} message={error} onDone={onDone} />
   }
 
   if (items === null) {
-    return <RestoreMessageDialog title="Restore snapshots" message={t('restore.loading')} onDone={onDone} />
+    return <RestoreMessageDialog title={t('restore.snapshotsTitle')} message={t('restore.loading')} onDone={onDone} />
   }
 
   if (items.length === 0) {
-    return <RestoreMessageDialog title="Restore snapshots" message={t('restore.empty')} onDone={onDone} />
+    return <RestoreMessageDialog title={t('restore.snapshotsTitle')} message={t('restore.empty')} onDone={onDone} />
   }
 
   if (selected) {
@@ -80,7 +80,7 @@ function RestoreDialog({
     return (
       <Dialog
         title={t('restore.confirmTitle')}
-        subtitle="Workspace files may be overwritten"
+        subtitle={t('restore.confirmSubtitle')}
         color="warning"
         onCancel={() => setSelected(undefined)}
       >
@@ -114,7 +114,7 @@ function RestoreDialog({
   return (
     <Dialog
       title={t('restore.title')}
-      subtitle="Select one of the last 10 side-git snapshots"
+      subtitle={t('restore.subtitle')}
       onCancel={() => onDone(undefined, { display: 'skip' })}
     >
       <Select<string>

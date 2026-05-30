@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import * as React from 'react';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, color, Text, useTheme } from '../../ink.js';
 import { plural } from '../../utils/stringUtils.js';
 import type { UnifiedInstalledItem } from './unifiedTypes.js';
@@ -15,6 +16,9 @@ export function UnifiedInstalledCell(t0) {
     isSelected
   } = t0;
   const [theme] = useTheme();
+  const {
+    t
+  } = useTranslation();
   if (item.type === "plugin") {
     let statusIcon;
     let statusText;
@@ -28,7 +32,7 @@ export function UnifiedInstalledCell(t0) {
         t1 = $[1];
       }
       statusIcon = t1;
-      statusText = item.pendingToggle === "will-enable" ? "will enable" : "will disable";
+      statusText = item.pendingToggle === "will-enable" ? t('plugin.installedCell.status.willEnable') : t('plugin.installedCell.status.willDisable');
     } else {
       if (item.errorCount > 0) {
         let t1;
@@ -49,7 +53,7 @@ export function UnifiedInstalledCell(t0) {
         } else {
           t3 = $[5];
         }
-        statusText = `${t2} ${t3}`;
+        statusText = t('plugin.installedCell.status.errorCount', { count: t2, errorWord: t3 });
       } else {
         if (!item.isEnabled) {
           let t1;
@@ -61,7 +65,7 @@ export function UnifiedInstalledCell(t0) {
             t1 = $[7];
           }
           statusIcon = t1;
-          statusText = "disabled";
+          statusText = t('plugin.installedCell.status.disabled');
         } else {
           let t1;
           if ($[8] !== theme) {
@@ -72,7 +76,7 @@ export function UnifiedInstalledCell(t0) {
             t1 = $[9];
           }
           statusIcon = t1;
-          statusText = "enabled";
+          statusText = t('plugin.installedCell.status.enabled');
         }
       }
     }
@@ -100,7 +104,7 @@ export function UnifiedInstalledCell(t0) {
     const t6 = !isSelected;
     let t7;
     if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
-      t7 = <Text backgroundColor="userMessageBackground">Plugin</Text>;
+      t7 = <Text backgroundColor="userMessageBackground">{t('plugin.installedCell.badge.plugin')}</Text>;
       $[16] = t7;
     } else {
       t7 = $[16];
@@ -190,7 +194,7 @@ export function UnifiedInstalledCell(t0) {
     const t7 = !isSelected;
     let t8;
     if ($[42] === Symbol.for("react.memo_cache_sentinel")) {
-      t8 = <Text backgroundColor="userMessageBackground">Plugin</Text>;
+      t8 = <Text backgroundColor="userMessageBackground">{t('plugin.installedCell.badge.plugin')}</Text>;
       $[42] = t8;
     } else {
       t8 = $[42];
@@ -224,7 +228,7 @@ export function UnifiedInstalledCell(t0) {
     const t13 = !isSelected;
     let t14;
     if ($[50] !== t13) {
-      t14 = <Text dimColor={t13}>removed</Text>;
+      t14 = <Text dimColor={t13}>{t('plugin.installedCell.status.removed')}</Text>;
       $[50] = t13;
       $[51] = t14;
     } else {
@@ -264,7 +268,7 @@ export function UnifiedInstalledCell(t0) {
     } else {
       t3 = $[62];
     }
-    const statusText_0 = `failed to load · ${t2} ${t3}`;
+    const statusText_0 = t('plugin.installedCell.status.failedToLoad', { count: t2, errorWord: t3 });
     const t4 = isSelected ? "suggestion" : undefined;
     const t5 = isSelected ? `${figures.pointer} ` : "  ";
     let t6;
@@ -289,7 +293,7 @@ export function UnifiedInstalledCell(t0) {
     const t9 = !isSelected;
     let t10;
     if ($[69] === Symbol.for("react.memo_cache_sentinel")) {
-      t10 = <Text backgroundColor="userMessageBackground">Plugin</Text>;
+      t10 = <Text backgroundColor="userMessageBackground">{t('plugin.installedCell.badge.plugin')}</Text>;
       $[69] = t10;
     } else {
       t10 = $[69];
@@ -357,7 +361,7 @@ export function UnifiedInstalledCell(t0) {
       t1 = $[88];
     }
     statusIcon_2 = t1;
-    statusText_1 = "connected";
+    statusText_1 = t('plugin.installedCell.status.connected');
   } else {
     if (item.status === "disabled") {
       let t1;
@@ -369,7 +373,7 @@ export function UnifiedInstalledCell(t0) {
         t1 = $[90];
       }
       statusIcon_2 = t1;
-      statusText_1 = "disabled";
+      statusText_1 = t('plugin.installedCell.status.disabled');
     } else {
       if (item.status === "pending") {
         let t1;
@@ -381,7 +385,7 @@ export function UnifiedInstalledCell(t0) {
           t1 = $[92];
         }
         statusIcon_2 = t1;
-        statusText_1 = "connecting\u2026";
+        statusText_1 = t('plugin.installedCell.status.connecting');
       } else {
         if (item.status === "needs-auth") {
           let t1;
@@ -393,7 +397,7 @@ export function UnifiedInstalledCell(t0) {
             t1 = $[94];
           }
           statusIcon_2 = t1;
-          statusText_1 = "Enter to auth";
+          statusText_1 = t('plugin.installedCell.status.enterToAuth');
         } else {
           let t1;
           if ($[95] !== theme) {
@@ -404,7 +408,7 @@ export function UnifiedInstalledCell(t0) {
             t1 = $[96];
           }
           statusIcon_2 = t1;
-          statusText_1 = "failed";
+          statusText_1 = t('plugin.installedCell.status.failed');
         }
       }
     }

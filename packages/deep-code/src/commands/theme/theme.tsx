@@ -3,6 +3,7 @@ import * as React from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
 import { Pane } from '../../components/design-system/Pane.js';
 import { ThemePicker } from '../../components/ThemePicker.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { useTheme } from '../../ink.js';
 import type { LocalJSXCommandCall } from '../../types/command.js';
 type Props = {
@@ -15,12 +16,17 @@ function ThemePickerCommand(t0) {
   const {
     onDone
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const [, setTheme] = useTheme();
   let t1;
   if ($[0] !== onDone || $[1] !== setTheme) {
     t1 = setting => {
       setTheme(setting);
-      onDone(`Theme set to ${setting}`);
+      onDone(t('command.theme.themeSet', {
+        setting
+      }));
     };
     $[0] = onDone;
     $[1] = setTheme;
@@ -31,7 +37,7 @@ function ThemePickerCommand(t0) {
   let t2;
   if ($[3] !== onDone) {
     t2 = () => {
-      onDone("Theme picker dismissed", {
+      onDone(t('command.theme.dismissed'), {
         display: "system"
       });
     };

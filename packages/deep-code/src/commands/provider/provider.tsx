@@ -7,6 +7,7 @@ import {
   normalizeModelProviderName,
 } from '../../services/providers/registry.mjs'
 import { mergeProviderConfigPartial } from '../../services/providers/deepseek-config-store.mjs'
+import { getMessage } from '../../i18n/index.js'
 
 const COMMON_HELP_ARGS = new Set(['help', '-h', '--help'])
 const PROVIDER_USAGE_LABEL = 'deepseek/ollama/vllm/openai-compatible'
@@ -24,14 +25,20 @@ export function executeProviderCommand(
   if (!raw || raw === 'current' || raw === 'status') {
     return {
       type: 'text',
-      value: `Current provider: ${current}\nValid providers: ${validProviders}`,
+      value: getMessage('command.provider.current', {
+        current,
+        validProviders,
+      }),
     }
   }
 
   if (COMMON_HELP_ARGS.has(raw)) {
     return {
       type: 'text',
-      value: `Usage: /provider [${PROVIDER_USAGE_LABEL}]\n\nValid providers: ${validProviders}`,
+      value: getMessage('command.provider.usage', {
+        usageLabel: PROVIDER_USAGE_LABEL,
+        validProviders,
+      }),
     }
   }
 
@@ -40,14 +47,20 @@ export function executeProviderCommand(
   if (provider === 'anthropic' || provider === 'claude') {
     return {
       type: 'text',
-      value: `${provider} is legacy-only, not supported. Valid providers: ${validProviders}`,
+      value: getMessage('command.provider.legacyOnly', {
+        provider,
+        validProviders,
+      }),
     }
   }
 
   if (!isModelProviderName(provider)) {
     return {
       type: 'text',
-      value: `Invalid provider: ${raw}. Valid providers: ${validProviders}`,
+      value: getMessage('command.provider.invalid', {
+        raw,
+        validProviders,
+      }),
     }
   }
 
@@ -60,8 +73,8 @@ export function executeProviderCommand(
   return {
     type: 'text',
     value: baseUrl
-      ? `Provider set to ${provider} (base URL saved)`
-      : `Provider set to ${provider}`,
+      ? getMessage('command.provider.setWithBaseUrl', { provider })
+      : getMessage('command.provider.set', { provider }),
   }
 }
 

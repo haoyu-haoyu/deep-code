@@ -1,5 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useEffect, useRef } from 'react';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { MCPSettings } from '../../components/mcp/index.js';
 import { MCPReconnect } from '../../components/mcp/MCPReconnect.js';
 import { useMcpToggleEnabled } from '../../services/mcp/MCPConnectionManager.js';
@@ -19,6 +20,9 @@ function MCPToggle(t0) {
   const mcpClients = useAppState(_temp);
   const toggleMcpServer = useMcpToggleEnabled();
   const didRun = useRef(false);
+  const {
+    t
+  } = useTranslation();
   let t1;
   let t2;
   if ($[0] !== action || $[1] !== mcpClients || $[2] !== onComplete || $[3] !== target || $[4] !== toggleMcpServer) {
@@ -31,13 +35,23 @@ function MCPToggle(t0) {
       const clients = mcpClients.filter(_temp2);
       const toToggle = target === "all" ? clients.filter(c_0 => isEnabling ? c_0.type === "disabled" : c_0.type !== "disabled") : clients.filter(c_1 => c_1.name === target);
       if (toToggle.length === 0) {
-        onComplete(target === "all" ? `All MCP servers are already ${isEnabling ? "enabled" : "disabled"}` : `MCP server "${target}" not found`);
+        onComplete(target === "all" ? t("mcp.toggle.allAlready", {
+          status: isEnabling ? t("mcp.toggle.statusEnabled") : t("mcp.toggle.statusDisabled")
+        }) : t("mcp.reconnect.notFound", {
+          serverName: target
+        }));
         return;
       }
       for (const s_0 of toToggle) {
         toggleMcpServer(s_0.name);
       }
-      onComplete(target === "all" ? `${isEnabling ? "Enabled" : "Disabled"} ${toToggle.length} MCP server(s)` : `MCP server "${target}" ${isEnabling ? "enabled" : "disabled"}`);
+      onComplete(target === "all" ? t("mcp.toggle.bulkResult", {
+        status: isEnabling ? t("mcp.toggle.statusEnabledTitle") : t("mcp.toggle.statusDisabledTitle"),
+        count: toToggle.length
+      }) : t("mcp.toggle.serverStatus", {
+        serverName: target,
+        status: isEnabling ? t("mcp.toggle.statusEnabled") : t("mcp.toggle.statusDisabled")
+      }));
     };
     t2 = [action, target, mcpClients, toggleMcpServer, onComplete];
     $[0] = action;

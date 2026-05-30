@@ -10,6 +10,7 @@ import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js';
 import { getSecureStorage } from '../../utils/secureStorage/index.js';
 import { clearToolSchemaCache } from '../../utils/toolSchemaCache.js';
 import { resetUserCache } from '../../utils/user.js';
+import { getMessage } from '../../i18n/index.js';
 
 // Local no-op stub — trusted-device bridge module removed in P1.1.C.
 // P1.3 will rewrite logout for DeepSeek API-key clear.
@@ -70,7 +71,7 @@ export async function call(): Promise<React.ReactNode> {
     deleteDeepSeekConfigFile();
   } catch (error) {
     // Best-effort: surface the error to the user but still proceed with OAuth cleanup.
-    return <Text>Failed to clear DeepSeek config: {(error as Error).message}</Text>;
+    return <Text>{getMessage('command.logout.clearConfigError', { message: (error as Error).message })}</Text>;
   }
 
   // Clear residual OAuth state (legacy; this branch goes away in P1.3.E
@@ -79,7 +80,7 @@ export async function call(): Promise<React.ReactNode> {
     clearOnboarding: true
   });
 
-  const message = <Text>Successfully cleared DeepSeek credentials. Restart Deep Code to configure a new key.</Text>;
+  const message = <Text>{getMessage('command.logout.success')}</Text>;
   setTimeout(() => {
     gracefulShutdownSync(0, 'logout');
   }, 200);

@@ -10,6 +10,7 @@ import { Dialog } from '../../components/design-system/Dialog.js';
 import { Spinner } from '../../components/Spinner.js';
 import instances from '../../ink/instances.js';
 import { Box, Text } from '../../ink.js';
+import { getMessage } from '../../i18n/index.js';
 import { useTranslation } from '../../i18n/useTranslation.js';
 import { enablePluginOp } from '../../services/plugins/pluginOperations.js';
 import { logForDebugging } from '../../utils/debug.js';
@@ -78,13 +79,13 @@ export async function playAnimation(skillDir: string): Promise<{
     if (isENOENT(e)) {
       return {
         success: false,
-        message: 'No animation found. Run /think-back first to generate one.'
+        message: getMessage('thinkback.play.noAnimation')
       };
     }
     logError(e);
     return {
       success: false,
-      message: `Could not access animation data: ${toError(e).message}`
+      message: getMessage('thinkback.play.dataAccessError', { message: toError(e).message })
     };
   }
   try {
@@ -93,13 +94,13 @@ export async function playAnimation(skillDir: string): Promise<{
     if (isENOENT(e)) {
       return {
         success: false,
-        message: 'Player script not found. The player.js file is missing from the thinkback skill.'
+        message: getMessage('thinkback.play.playerNotFound')
       };
     }
     logError(e);
     return {
       success: false,
-      message: `Could not access player script: ${toError(e).message}`
+      message: getMessage('thinkback.play.playerAccessError', { message: toError(e).message })
     };
   }
 
@@ -108,7 +109,7 @@ export async function playAnimation(skillDir: string): Promise<{
   if (!inkInstance) {
     return {
       success: false,
-      message: 'Failed to access terminal instance'
+      message: getMessage('thinkback.play.terminalAccessError')
     };
   }
   inkInstance.enterAlternateScreen();
@@ -133,7 +134,7 @@ export async function playAnimation(skillDir: string): Promise<{
   }
   return {
     success: true,
-    message: 'Year in review animation complete!'
+    message: getMessage('thinkback.play.complete')
   };
 }
 type InstallState = {
@@ -161,6 +162,7 @@ function ThinkbackInstaller({
     phase: 'checking'
   });
   const [progressMessage, setProgressMessage] = useState('');
+  const { t } = useTranslation();
   useEffect(() => {
     async function checkAndInstall(): Promise<void> {
       try {
@@ -193,7 +195,7 @@ function ThinkbackInstaller({
           setState({
             phase: 'installing-marketplace'
           });
-          setProgressMessage('Updating marketplace…');
+          setProgressMessage(t('thinkback.install.updatingMarketplace'));
           logForDebugging(`Refreshing marketplace ${marketplaceName}`);
           await refreshMarketplace(marketplaceName, message_0 => {
             setProgressMessage(message_0);
@@ -211,7 +213,7 @@ function ThinkbackInstaller({
           const result = await installSelectedPlugins([pluginId]);
           if (result.failed.length > 0) {
             const errorMsg = result.failed.map(f => `${f.name}: ${f.error}`).join(', ');
-            throw new Error(`Failed to install plugin: ${errorMsg}`);
+            throw new Error(t('thinkback.install.pluginInstallFailed', { error: errorMsg }));
           }
           clearAllCaches();
           logForDebugging(`Plugin ${pluginId} installed`);
@@ -229,7 +231,7 @@ function ThinkbackInstaller({
             logForDebugging(`Enabling plugin ${pluginId}`);
             const enableResult = await enablePluginOp(pluginId);
             if (!enableResult.success) {
-              throw new Error(`Failed to enable plugin: ${enableResult.message}`);
+              throw new Error(t('thinkback.install.pluginEnableFailed', { message: enableResult.message }));
             }
             clearAllCaches();
             logForDebugging(`Plugin ${pluginId} enabled`);
@@ -253,13 +255,13 @@ function ThinkbackInstaller({
   }, [onReady, onError]);
   if (state.phase === 'error') {
     return <Box flexDirection="column">
-        <Text color="error">Error: {state.message}</Text>
+        <Text color="error">{t('thinkback.install.error', { message: state.message })}</Text>
       </Box>;
   }
   if (state.phase === 'ready') {
     return null;
   }
-  const statusMessage = state.phase === 'checking' ? 'Checking thinkback installation…' : state.phase === 'installing-marketplace' ? 'Installing marketplace…' : state.phase === 'enabling-plugin' ? 'Enabling thinkback plugin…' : 'Installing thinkback plugin…';
+  const statusMessage = state.phase === 'checking' ? t('thinkback.install.checking') : state.phase === 'installing-marketplace' ? t('thinkback.install.installingMarketplace') : state.phase === 'enabling-plugin' ? t('thinkback.install.enablingPlugin') : t('thinkback.install.installingPlugin');
   return <Box flexDirection="column">
       <Box>
         <Spinner />
@@ -397,6 +399,9 @@ function ThinkbackFlow(t0) {
   const [installError, setInstallError] = useState(null);
   const [skillDir, setSkillDir] = useState(null);
   const [hasGenerated, setHasGenerated] = useState(null);
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = function handleReady() {
@@ -411,7 +416,7 @@ function ThinkbackFlow(t0) {
   if ($[1] !== onDone) {
     t2 = message => {
       setInstallError(message);
-      onDone(`Error with thinkback: ${message}. Try running /plugin to manually install the think-back plugin.`, {
+      onDone(t('thinkback.flow.installError', { message }), {
         display: "system"
       });
     };
@@ -431,7 +436,7 @@ function ThinkbackFlow(t0) {
             logForDebugging(`Thinkback skill directory: ${dir}`);
             setSkillDir(dir);
           } else {
-            handleError("Could not find thinkback skill directory");
+            handleError(t('thinkback.flow.skillDirNotFound'));
           }
         });
       }
@@ -492,7 +497,7 @@ function ThinkbackFlow(t0) {
   if (installError) {
     let t8;
     if ($[14] !== installError) {
-      t8 = <Text color="error">Error: {installError}</Text>;
+      t8 = <Text color="error">{t('thinkback.install.error', { message: installError })}</Text>;
       $[14] = installError;
       $[15] = t8;
     } else {
@@ -500,7 +505,7 @@ function ThinkbackFlow(t0) {
     }
     let t9;
     if ($[16] === Symbol.for("react.memo_cache_sentinel")) {
-      t9 = <Text dimColor={true}>Try running /plugin to manually install the think-back plugin.</Text>;
+      t9 = <Text dimColor={true}>{t('thinkback.flow.manualInstallHint')}</Text>;
       $[16] = t9;
     } else {
       t9 = $[16];
@@ -529,7 +534,7 @@ function ThinkbackFlow(t0) {
   if (!skillDir || hasGenerated === null) {
     let t8;
     if ($[21] === Symbol.for("react.memo_cache_sentinel")) {
-      t8 = <Box><Spinner /><Text>Loading thinkback skill…</Text></Box>;
+      t8 = <Box><Spinner /><Text>{t('thinkback.flow.loadingSkill')}</Text></Box>;
       $[21] = t8;
     } else {
       t8 = $[21];

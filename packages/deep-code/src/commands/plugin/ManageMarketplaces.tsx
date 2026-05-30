@@ -6,6 +6,7 @@ import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEve
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js';
 import { Byline } from '../../components/design-system/Byline.js';
 import { KeyboardShortcutHint } from '../../components/design-system/KeyboardShortcutHint.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- useInput needed for marketplace-specific u/r shortcuts and y/n confirmation not in keybinding schema
 import { Box, Text, useInput } from '../../ink.js';
 import { useKeybinding, useKeybindings } from '../../keybindings/useKeybinding.js';
@@ -56,6 +57,7 @@ export function ManageMarketplaces({
   targetMarketplace,
   action
 }: Props): React.ReactNode {
+  const { t } = useTranslation();
   const [marketplaceStates, setMarketplaceStates] = useState<MarketplaceState[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -148,14 +150,14 @@ export function ManageMarketplaces({
               setInternalView('details');
             }
           } else if (setError) {
-            setError(`Marketplace not found: ${targetMarketplace}`);
+            setError(t('command.plugin.marketplaces.error.notFound', { name: targetMarketplace }));
           }
         }
       } catch (err) {
         if (setError) {
-          setError(err instanceof Error ? err.message : 'Failed to load marketplaces');
+          setError(err instanceof Error ? err.message : t('command.plugin.marketplaces.error.loadFailed'));
         }
-        setProcessError(err instanceof Error ? err.message : 'Failed to load marketplaces');
+        setProcessError(err instanceof Error ? err.message : t('command.plugin.marketplaces.error.loadFailed'));
       } finally {
         setLoading(false);
       }
@@ -305,11 +307,21 @@ export function ManageMarketplaces({
       // Build success message
       const actions: string[] = [];
       if (updatedCount > 0) {
-        const pluginPart = updatedPluginCount > 0 ? ` (${updatedPluginCount} ${plural(updatedPluginCount, 'plugin')} bumped)` : '';
-        actions.push(`Updated ${updatedCount} ${plural(updatedCount, 'marketplace')}${pluginPart}`);
+        const pluginPart = updatedPluginCount > 0 ? t('command.plugin.marketplaces.result.pluginsBumped', {
+          count: updatedPluginCount,
+          plugin: plural(updatedPluginCount, 'plugin')
+        }) : '';
+        actions.push(t('command.plugin.marketplaces.result.updated', {
+          count: updatedCount,
+          marketplace: plural(updatedCount, 'marketplace'),
+          pluginPart
+        }));
       }
       if (removedCount > 0) {
-        actions.push(`Removed ${removedCount} ${plural(removedCount, 'marketplace')}`);
+        actions.push(t('command.plugin.marketplaces.result.removed', {
+          count: removedCount,
+          marketplace: plural(removedCount, 'marketplace')
+        }));
       }
       if (actions.length > 0) {
         const successMsg = `${figures.tick} ${actions.join(', ')}`;
@@ -365,23 +377,27 @@ export function ManageMarketplaces({
       secondaryLabel?: string;
       value: string;
     }> = [{
-      label: `Browse plugins (${marketplace.pluginCount ?? 0})`,
+      label: t('command.plugin.marketplaces.option.browsePlugins', {
+        count: marketplace.pluginCount ?? 0
+      }),
       value: 'browse'
     }, {
-      label: 'Update marketplace',
-      secondaryLabel: marketplace.lastUpdated ? `(last updated ${new Date(marketplace.lastUpdated).toLocaleDateString()})` : undefined,
+      label: t('command.plugin.marketplaces.option.update'),
+      secondaryLabel: marketplace.lastUpdated ? t('command.plugin.marketplaces.option.lastUpdated', {
+        date: new Date(marketplace.lastUpdated).toLocaleDateString()
+      }) : undefined,
       value: 'update'
     }];
 
     // Only show auto-update toggle if auto-updater is not globally disabled
     if (!shouldSkipPluginAutoupdate()) {
       options.push({
-        label: marketplace.autoUpdate ? 'Disable auto-update' : 'Enable auto-update',
+        label: marketplace.autoUpdate ? t('command.plugin.marketplaces.option.disableAutoUpdate') : t('command.plugin.marketplaces.option.enableAutoUpdate'),
         value: 'toggle-auto-update'
       });
     }
     options.push({
-      label: 'Remove marketplace',
+      label: t('command.plugin.marketplaces.option.remove'),
       value: 'remove'
     });
     return options;
@@ -405,7 +421,7 @@ export function ManageMarketplaces({
         autoUpdate: newAutoUpdate
       } : prev);
     } catch (err) {
-      setProcessError(err instanceof Error ? err.message : 'Failed to update setting');
+      setProcessError(err instanceof Error ? err.message : t('command.plugin.marketplaces.error.updateSettingFailed'));
     }
   };
 
@@ -536,25 +552,25 @@ export function ManageMarketplaces({
     isActive: !isProcessing && internalView === 'confirm-remove'
   });
   if (loading) {
-    return <Text>Loading marketplaces…</Text>;
+    return <Text>{t('command.plugin.marketplaces.loading')}</Text>;
   }
   if (marketplaceStates.length === 0) {
     return <Box flexDirection="column">
         <Box marginBottom={1}>
-          <Text bold>Manage marketplaces</Text>
+          <Text bold>{t('command.plugin.marketplaces.title')}</Text>
         </Box>
 
         {/* Add Marketplace option */}
         <Box flexDirection="row" gap={1}>
           <Text color="suggestion">{figures.pointer} +</Text>
           <Text bold color="suggestion">
-            Add Marketplace
+            {t('command.plugin.marketplaces.addMarketplace')}
           </Text>
         </Box>
 
         <Box marginLeft={3}>
           <Text dimColor italic>
-            {exitState.pending ? <>Press {exitState.keyName} again to go back</> : <Byline>
+            {exitState.pending ? <>{t('command.plugin.marketplaces.pressAgainToGoBack', { keyName: exitState.keyName })}</> : <Byline>
                 <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="select" />
                 <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
               </Byline>}
@@ -568,13 +584,15 @@ export function ManageMarketplaces({
     const pluginCount = selectedMarketplace.installedPlugins?.length || 0;
     return <Box flexDirection="column">
         <Text bold color="warning">
-          Remove marketplace <Text italic>{selectedMarketplace.name}</Text>?
+          {t('command.plugin.marketplaces.confirmRemove.titlePrefix')} <Text italic>{selectedMarketplace.name}</Text>{t('command.plugin.marketplaces.confirmRemove.titleSuffix')}
         </Text>
         <Box flexDirection="column">
           {pluginCount > 0 && <Box marginTop={1}>
               <Text color="warning">
-                This will also uninstall {pluginCount}{' '}
-                {plural(pluginCount, 'plugin')} from this marketplace:
+                {t('command.plugin.marketplaces.confirmRemove.uninstallNotice', {
+              count: pluginCount,
+              plugin: plural(pluginCount, 'plugin')
+            })}
               </Text>
             </Box>}
           {selectedMarketplace.installedPlugins && selectedMarketplace.installedPlugins.length > 0 && <Box flexDirection="column" marginTop={1} marginLeft={2}>
@@ -584,8 +602,7 @@ export function ManageMarketplaces({
               </Box>}
           <Box marginTop={1}>
             <Text>
-              Press <Text bold>y</Text> to confirm or <Text bold>n</Text> to
-              cancel
+              {t('command.plugin.marketplaces.confirmRemove.prompt.before')}<Text bold>y</Text>{t('command.plugin.marketplaces.confirmRemove.prompt.middle')}<Text bold>n</Text>{t('command.plugin.marketplaces.confirmRemove.prompt.after')}
             </Text>
           </Box>
         </Box>
@@ -603,16 +620,19 @@ export function ManageMarketplaces({
         <Text dimColor>{selectedMarketplace.source}</Text>
         <Box marginTop={1}>
           <Text>
-            {selectedMarketplace.pluginCount || 0} available{' '}
-            {plural(selectedMarketplace.pluginCount || 0, 'plugin')}
+            {t('command.plugin.marketplaces.details.availablePlugins', {
+            count: selectedMarketplace.pluginCount || 0,
+            plugin: plural(selectedMarketplace.pluginCount || 0, 'plugin')
+          })}
           </Text>
         </Box>
 
         {/* Installed plugins section */}
         {selectedMarketplace.installedPlugins && selectedMarketplace.installedPlugins.length > 0 && <Box flexDirection="column" marginTop={1}>
               <Text bold>
-                Installed plugins ({selectedMarketplace.installedPlugins.length}
-                ):
+                {t('command.plugin.marketplaces.details.installedPlugins', {
+              count: selectedMarketplace.installedPlugins.length
+            })}
               </Text>
               <Box flexDirection="column" marginLeft={1}>
                 {selectedMarketplace.installedPlugins.map(plugin => <Box key={plugin.name} flexDirection="row" gap={1}>
@@ -627,7 +647,7 @@ export function ManageMarketplaces({
 
         {/* Processing indicator */}
         {isUpdating && <Box marginTop={1} flexDirection="column">
-            <Text color="claude">Updating marketplace…</Text>
+            <Text color="claude">{t('command.plugin.marketplaces.status.updating')}</Text>
             {progressMessage && <Text dimColor>{progressMessage}</Text>}
           </Box>}
 
@@ -658,14 +678,13 @@ export function ManageMarketplaces({
         {/* Show explanatory text at the bottom when auto-update is enabled */}
         {!isUpdating && !shouldSkipPluginAutoupdate() && selectedMarketplace.autoUpdate && <Box marginTop={1}>
               <Text dimColor>
-                Auto-update enabled. Deep Code will automatically update this
-                marketplace and its installed plugins.
+                {t('command.plugin.marketplaces.details.autoUpdateEnabled')}
               </Text>
             </Box>}
 
         <Box marginLeft={3}>
           <Text dimColor italic>
-            {isUpdating ? <>Please wait…</> : <Byline>
+            {isUpdating ? <>{t('command.plugin.marketplaces.pleaseWait')}</> : <Byline>
                 <ConfigurableShortcutHint action="select:accept" context="Select" fallback="Enter" description="select" />
                 <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="go back" />
               </Byline>}
@@ -681,7 +700,7 @@ export function ManageMarketplaces({
   } = getPendingCounts();
   return <Box flexDirection="column">
       <Box marginBottom={1}>
-        <Text bold>Manage marketplaces</Text>
+        <Text bold>{t('command.plugin.marketplaces.title')}</Text>
       </Box>
 
       {/* Add Marketplace option */}
@@ -690,7 +709,7 @@ export function ManageMarketplaces({
           {selectedIndex === 0 ? figures.pointer : ' '} +
         </Text>
         <Text bold color={selectedIndex === 0 ? 'suggestion' : undefined}>
-          Add Marketplace
+          {t('command.plugin.marketplaces.addMarketplace')}
         </Text>
       </Box>
 
@@ -701,8 +720,8 @@ export function ManageMarketplaces({
 
         // Build status indicators
         const indicators: string[] = [];
-        if (state.pendingUpdate) indicators.push('UPDATE');
-        if (state.pendingRemove) indicators.push('REMOVE');
+        if (state.pendingUpdate) indicators.push(t('command.plugin.marketplaces.indicator.update'));
+        if (state.pendingRemove) indicators.push(t('command.plugin.marketplaces.indicator.remove'));
         return <Box key={state.name} flexDirection="row" gap={1} marginBottom={1}>
               <Text color={isSelected ? 'suggestion' : undefined}>
                 {isSelected ? figures.pointer : ' '}{' '}
@@ -719,12 +738,10 @@ export function ManageMarketplaces({
                 </Box>
                 <Text dimColor>{state.source}</Text>
                 <Text dimColor>
-                  {state.pluginCount !== undefined && <>{state.pluginCount} available</>}
-                  {state.installedPlugins && state.installedPlugins.length > 0 && <> • {state.installedPlugins.length} installed</>}
+                  {state.pluginCount !== undefined && <>{t('command.plugin.marketplaces.list.available', { count: state.pluginCount })}</>}
+                  {state.installedPlugins && state.installedPlugins.length > 0 && <>{t('command.plugin.marketplaces.list.installed', { count: state.installedPlugins.length })}</>}
                   {state.lastUpdated && <>
-                      {' '}
-                      • Updated{' '}
-                      {new Date(state.lastUpdated).toLocaleDateString()}
+                      {t('command.plugin.marketplaces.list.updated', { date: new Date(state.lastUpdated).toLocaleDateString() })}
                     </>}
                 </Text>
               </Box>
@@ -735,20 +752,20 @@ export function ManageMarketplaces({
       {/* Pending changes summary */}
       {hasPendingChanges() && <Box marginTop={1} flexDirection="column">
           <Text>
-            <Text bold>Pending changes:</Text>{' '}
-            <Text dimColor>Enter to apply</Text>
+            <Text bold>{t('command.plugin.marketplaces.pendingChanges.label')}</Text>{' '}
+            <Text dimColor>{t('command.plugin.marketplaces.pendingChanges.applyHint')}</Text>
           </Text>
           {updateCount > 0 && <Text>
-              • Update {updateCount} {plural(updateCount, 'marketplace')}
+              {t('command.plugin.marketplaces.pendingChanges.update', { count: updateCount, marketplace: plural(updateCount, 'marketplace') })}
             </Text>}
           {removeCount > 0 && <Text color="warning">
-              • Remove {removeCount} {plural(removeCount, 'marketplace')}
+              {t('command.plugin.marketplaces.pendingChanges.remove', { count: removeCount, marketplace: plural(removeCount, 'marketplace') })}
             </Text>}
         </Box>}
 
       {/* Processing indicator */}
       {isProcessing && <Box marginTop={1}>
-          <Text color="claude">Processing changes…</Text>
+          <Text color="claude">{t('command.plugin.marketplaces.status.processing')}</Text>
         </Box>}
 
       {/* Error display */}
@@ -765,6 +782,7 @@ type ManageMarketplacesKeyHintsProps = {
 };
 function ManageMarketplacesKeyHints(t0) {
   const $ = _c(18);
+  const { t } = useTranslation();
   const {
     exitState,
     hasPendingActions
@@ -772,7 +790,7 @@ function ManageMarketplacesKeyHints(t0) {
   if (exitState.pending) {
     let t1;
     if ($[0] !== exitState.keyName) {
-      t1 = <Box marginTop={1}><Text dimColor={true} italic={true}>Press {exitState.keyName} again to go back</Text></Box>;
+      t1 = <Box marginTop={1}><Text dimColor={true} italic={true}>{t('command.plugin.marketplaces.pressAgainToGoBack', { keyName: exitState.keyName })}</Text></Box>;
       $[0] = exitState.keyName;
       $[1] = t1;
     } else {

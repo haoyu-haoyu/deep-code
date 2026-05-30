@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import type { Command } from '../commands.js'
+import { getMessage } from '../i18n/index.js'
 import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 
@@ -234,7 +235,7 @@ const command = {
       : 'Initialize a new DEEPCODE.md file with codebase documentation'
   },
   contentLength: 0, // Dynamic content
-  progressMessage: 'analyzing your codebase',
+  progressMessage: getMessage('command.init.progressMessage'),
   source: 'builtin',
   async getPromptForCommand() {
     maybeMarkProjectOnboardingComplete()

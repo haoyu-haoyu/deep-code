@@ -426,7 +426,17 @@ test('/model auto is accepted without remote validation', async () => {
   const source = await readFile(modelCommandSource, 'utf8')
 
   assert.match(source, /isAutoModelSetting\(model\)/)
-  assert.match(source, /Auto routing enabled/)
+  // "Auto routing enabled" migrated to the i18n catalog
+  // (command.model.autoRoutingEnabled); model.tsx now renders the key.
+  assert.match(source, /command\.model\.autoRoutingEnabled/)
+  const enCatalog = await readFile(
+    join(packageRoot, 'src/i18n/messages/en.ts'),
+    'utf8',
+  )
+  assert.match(
+    enCatalog,
+    /'command\.model\.autoRoutingEnabled':\s*'Auto routing enabled'/,
+  )
 })
 
 test('DeepSeek provider exposes a lightweight router request helper', async () => {
