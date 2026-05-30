@@ -85,3 +85,47 @@ test('the command-description catalog keys exist for catalog-backed commands', (
   }
   assert.deepEqual(missing, [], `Command translate keys missing from en.ts:\n${missing.join('\n')}`)
 })
+
+test('migrated picker/dialog components stay catalog-backed (P2.10.f)', () => {
+  // The P2.10.f batch migrated four self-contained picker/dialog surfaces
+  // (thinkback menu, copy picker, export dialog, thinking toggle) to the i18n
+  // catalog — including de-branding ThinkingToggle's "Claude will think…" copy.
+  // Guard against a future edit silently reverting any of them.
+  const srcRoot = resolve(commandsDir, '..')
+  const files = [
+    'commands/thinkback/thinkback.tsx',
+    'commands/copy/copy.tsx',
+    'components/ExportDialog.tsx',
+    'components/ThinkingToggle.tsx',
+  ]
+  // Raw English literals that now live only in the catalog. Their reappearance
+  // as a source literal means the t()/getMessage() wiring was reverted.
+  const forbidden = [
+    'Watch your year in review',
+    'Generate your personalized animation',
+    'Always copy full response',
+    'Select content to copy:',
+    'Copy the conversation to your system clipboard',
+    'Claude will think before responding',
+    'Toggle thinking mode',
+  ]
+  const offenders = []
+  for (const rel of files) {
+    const raw = readFileSync(join(srcRoot, rel), 'utf8')
+    // Drop the trailing inline base64 sourcemap so pre-migration literals
+    // encoded inside it don't trigger false positives (base64 wouldn't match
+    // the plain-text checks anyway, but strip it to be explicit).
+    const code = raw.replace(/\/\/# sourceMappingURL=.*$/s, '')
+    for (const lit of forbidden) {
+      if (code.includes(lit)) offenders.push(`${rel}: reverted literal "${lit}"`)
+    }
+    if (!/i18n\/(useTranslation|index)\.js/.test(code)) {
+      offenders.push(`${rel}: missing i18n catalog import`)
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `Picker/dialog i18n regression (P2.10.f):\n${offenders.join('\n')}`,
+  )
+})

@@ -8,6 +8,8 @@ import type { CommandResultDisplay } from '../../commands.js';
 import type { OptionWithDescription } from '../../components/CustomSelect/select.js';
 import { Select } from '../../components/CustomSelect/select.js';
 import { Byline } from '../../components/design-system/Byline.js';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { KeyboardShortcutHint } from '../../components/design-system/KeyboardShortcutHint.js';
 import { Pane } from '../../components/design-system/Pane.js';
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
@@ -126,11 +128,17 @@ function CopyPicker(t0) {
     onDone
   } = t0;
   const focusedRef = useRef("full");
-  const t1 = `${fullText.length} chars, ${countCharInString(fullText, "\n") + 1} lines`;
+  const {
+    t
+  } = useTranslation();
+  const t1 = t('copy.picker.fullResponse.description', {
+    chars: fullText.length,
+    lines: countCharInString(fullText, "\n") + 1
+  });
   let t2;
   if ($[0] !== t1) {
     t2 = {
-      label: "Full response",
+      label: t('copy.picker.fullResponse.label'),
       value: "full" as const,
       description: t1
     };
@@ -144,9 +152,9 @@ function CopyPicker(t0) {
     let t4;
     if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
       t4 = {
-        label: "Always copy full response",
+        label: t('copy.picker.always.label'),
         value: "always" as const,
-        description: "Skip this picker in the future (revert via /config)"
+        description: t('copy.picker.always.description')
       };
       $[5] = t4;
     } else {
@@ -253,7 +261,7 @@ function CopyPicker(t0) {
   const handleKeyDown = t6;
   let t7;
   if ($[19] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Text dimColor={true}>Select content to copy:</Text>;
+    t7 = <Text dimColor={true}>{t('copy.picker.header')}</Text>;
     $[19] = t7;
   } else {
     t7 = $[19];
@@ -280,7 +288,7 @@ function CopyPicker(t0) {
   let t10;
   if ($[23] !== onDone) {
     t10 = () => {
-      onDone("Copy cancelled", {
+      onDone(t('copy.cancelled'), {
         display: "system"
       });
     };
@@ -328,7 +336,9 @@ function _temp(block, index) {
   return {
     label: truncateLine(block.code, 60),
     value: index,
-    description: [block.lang, blockLines > 1 ? `${blockLines} lines` : undefined].filter(Boolean).join(", ") || undefined
+    description: [block.lang, blockLines > 1 ? getMessage('copy.picker.codeBlock.lines', {
+      count: blockLines
+    }) : undefined].filter(Boolean).join(", ") || undefined
   };
 }
 export const call: LocalJSXCommandCall = async (onDone, context, args) => {
