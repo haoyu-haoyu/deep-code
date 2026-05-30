@@ -111,8 +111,7 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
         <Text color="ide">{figures.arrowUp}</Text>
         <Text>
           Install the <Text color="ide">{ideName}</Text> plugin from the
-          JetBrains Marketplace:{' '}
-          <Text bold>https://docs.claude.com/s/claude-code-jetbrains</Text>
+          JetBrains Marketplace.
         </Text>
       </Box>;
   }

@@ -6,7 +6,7 @@ import { setSessionTrustAccepted } from '../../bootstrap/state.js';
 import type { Command } from '../../commands.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useTranslation } from '../../i18n/useTranslation.js';
-import { Box, Link, Text } from '../../ink.js';
+import { Box, Text } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import { getMcpConfigsByScope } from '../../services/mcp/config.js';
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js';
@@ -220,14 +220,6 @@ export function TrustDialog(t0) {
     t17 = $[21];
     t18 = $[22];
   }
-  let t19;
-  if ($[34] !== t) {
-    t19 = <Text dimColor={true}><Link url="https://code.claude.com/docs/en/security">{t('trust.securityGuideLink')}</Link></Text>;
-    $[34] = t;
-    $[23] = t19;
-  } else {
-    t19 = $[23];
-  }
   let t20;
   if ($[35] !== t) {
     t20 = [{
@@ -264,7 +256,7 @@ export function TrustDialog(t0) {
   }
   let t23;
   if ($[30] !== t21 || $[31] !== t22 || $[37] !== t) {
-    t23 = <PermissionDialog color="warning" titleColor="warning" title={t('trust.title')}><Box flexDirection="column" gap={1} paddingTop={1}>{t16}{t17}{t18}{t19}{t21}{t22}</Box></PermissionDialog>;
+    t23 = <PermissionDialog color="warning" titleColor="warning" title={t('trust.title')}><Box flexDirection="column" gap={1} paddingTop={1}>{t16}{t17}{t18}{t21}{t22}</Box></PermissionDialog>;
     $[30] = t21;
     $[31] = t22;
     $[37] = t;

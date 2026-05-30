@@ -55,13 +55,6 @@ export function TranscriptSharePrompt(t0) {
   } else {
     t3 = $[6];
   }
-  let t4;
-  if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = <Box marginLeft={2}><Text dimColor={true}>Learn more: https://code.claude.com/docs/en/data-usage#session-quality-surveys</Text></Box>;
-    $[7] = t4;
-  } else {
-    t4 = $[7];
-  }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
     t5 = <Box width={10}><Text><Text color="ansi:cyan">1</Text>: Yes</Text></Box>;
@@ -78,7 +71,7 @@ export function TranscriptSharePrompt(t0) {
   }
   let t7;
   if ($[10] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Box flexDirection="column" marginTop={1}>{t3}{t4}<Box marginLeft={2}>{t5}{t6}<Box><Text><Text color="ansi:cyan">3</Text>: Don't ask again</Text></Box></Box></Box>;
+    t7 = <Box flexDirection="column" marginTop={1}>{t3}<Box marginLeft={2}>{t5}{t6}<Box><Text><Text color="ansi:cyan">3</Text>: Don't ask again</Text></Box></Box></Box>;
     $[10] = t7;
   } else {
     t7 = $[10];
