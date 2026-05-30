@@ -48,6 +48,7 @@ const agentsPlatform =
 /* eslint-enable @typescript-eslint/no-require-imports */
 import securityReview from './commands/security-review.js'
 import bughunter from './commands/bughunter/index.js'
+import locale from './commands/locale/index.js'
 import terminalSetup from './commands/terminalSetup/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
@@ -275,6 +276,7 @@ const COMMANDS = memoize((): Command[] => [
   status,
   statusline,
   tag,
+  locale,
   theme,
   review,
   rewind,
@@ -591,6 +593,7 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   clear, // Clear screen
   help, // Show help
   theme, // Change terminal theme
+  locale, // Change UI language
   color, // Change agent color
   vim, // Toggle vim mode
   cost, // Show session cost (local cost tracking)
