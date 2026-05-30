@@ -26,6 +26,7 @@ import { Dialog } from '../design-system/Dialog.js';
 import { Select } from '../CustomSelect/index.js';
 import { OutputStylePicker } from '../OutputStylePicker.js';
 import { LanguagePicker } from '../LanguagePicker.js';
+import { setActiveLocale } from '../../i18n/index.js';
 import { getExternalClaudeMdIncludes, getMemoryFiles, hasExternalClaudeMdIncludes } from 'src/utils/claudemd.js';
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
@@ -655,6 +656,25 @@ export function Config({
     value: themeSetting,
     type: 'managedEnum',
     onChange: setTheme
+  }, {
+    id: 'locale',
+    label: 'UI language',
+    value: globalConfig.locale ?? 'en',
+    options: ['en', 'zh-Hans', 'ja'],
+    type: 'enum' as const,
+    onChange(localeValue: string) {
+      // Persist + apply the UI locale. Distinct from the response-language
+      // setting; fully takes effect on the next start (P2.10.e).
+      saveGlobalConfig(current_locale => ({
+        ...current_locale,
+        locale: localeValue
+      }));
+      setGlobalConfig({
+        ...getGlobalConfig(),
+        locale: localeValue
+      });
+      setActiveLocale(localeValue);
+    }
   }, {
     id: 'notifChannel',
     label: feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION') ? 'Local notifications' : 'Notifications',
