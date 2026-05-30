@@ -1,9 +1,10 @@
 import type { ContentBlockParam } from '../types/sdk-shim.js';
 import type { Command } from '../commands.js';
 import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js';
+import { translate } from '../i18n/index.js';
 const statusline = {
   type: 'prompt',
-  description: "Set up Deep Code's status line UI",
+  description: translate('en', 'command.statusline.description'),
   contentLength: 0,
   // Dynamic content
   aliases: [],

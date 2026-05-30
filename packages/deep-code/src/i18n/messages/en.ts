@@ -91,6 +91,7 @@ export const EN_MESSAGES = {
   'command.thinkbackPlay.description': 'Play the thinkback animation',
   'command.thinkback.description': 'Your 2025 Deep Code Year in Review',
   'command.vim.description': 'Toggle between Vim and Normal editing modes',
+  'command.statusline.description': 'Set up Deep Code\'s status line UI',
   'error.unknown': 'Unknown error',
   'error.timeout': 'Request timed out',
   'error.network': 'Network error',
