@@ -11,6 +11,11 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
+import {
+  getDeepSeekModelCatalog,
+  sanitizeModelCatalogEntries,
+} from './model-catalog.mjs'
+
 const CONFIG_FILENAME = 'deepseek-config.json'
 
 export function resolveDeepSeekConfigPath({ env = process.env } = {}) {
@@ -64,6 +69,7 @@ export function saveDeepSeekConfigFile(config, { env = process.env } = {}) {
       typeof config.reasoningReplay === 'boolean'
         ? config.reasoningReplay
         : undefined,
+    models: normalizeCatalogModels(config.models),
     completedAt: new Date().toISOString(),
   }
   for (const key of Object.keys(persisted)) {
@@ -254,9 +260,30 @@ function sanitizeProviderConfigSection(config) {
       typeof config.reasoningReplay === 'boolean'
         ? config.reasoningReplay
         : undefined,
+    models: normalizeCatalogModels(config.models),
   }
   for (const key of Object.keys(sanitized)) {
     if (sanitized[key] === undefined) delete sanitized[key]
   }
   return sanitized
+}
+
+// Validate the config `models` array into a clean catalog list, omitting the
+// key entirely when there is nothing usable (so it never persists as `[]`).
+function normalizeCatalogModels(value) {
+  const models = sanitizeModelCatalogEntries(value)
+  return models.length > 0 ? models : undefined
+}
+
+/**
+ * Load the persisted DeepSeek config and merge its `models` with the built-in
+ * model catalog. Returns the ordered, deduplicated catalog the model picker
+ * renders. Reads disk; the pure merge lives in model-catalog.mjs.
+ *
+ * @param {{ env?: NodeJS.ProcessEnv }} [options]
+ * @returns {Array<{ id: string, label?: string, description?: string }>}
+ */
+export function getResolvedDeepSeekModelCatalog({ env = process.env } = {}) {
+  const fileConfig = loadDeepSeekConfigFile({ env })
+  return getDeepSeekModelCatalog({ fileConfig })
 }

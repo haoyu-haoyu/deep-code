@@ -65,6 +65,7 @@ jobs:
             test/p2-10-e-locale.test.mjs \
             test/p2-10-i18n-guard.test.mjs \
             test/p2-14-plan-todos.test.mjs \
+            test/p2-15-model-catalog.test.mjs \
             test/p3-1-release.test.mjs \
             test/p3-2-docker.test.mjs \
             test/p3-3-binaries.test.mjs \
