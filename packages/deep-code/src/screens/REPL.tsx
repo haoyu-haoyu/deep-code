@@ -2445,10 +2445,10 @@ export function REPL({
           case 'hooks_start':
             setSpinnerColor('claudeBlue_FOR_SYSTEM_SPINNER');
             setSpinnerShimmerColor('claudeBlueShimmer_FOR_SYSTEM_SPINNER');
-            setSpinnerMessage(event.hookType === 'pre_compact' ? 'Running PreCompact hooks\u2026' : event.hookType === 'post_compact' ? 'Running PostCompact hooks\u2026' : 'Running SessionStart hooks\u2026');
+            setSpinnerMessage(event.hookType === 'pre_compact' ? t('spinner.compact.runningPreCompactHooks') : event.hookType === 'post_compact' ? t('spinner.compact.runningPostCompactHooks') : t('spinner.compact.runningSessionStartHooks'));
             break;
           case 'compact_start':
-            setSpinnerMessage('Compacting conversation');
+            setSpinnerMessage(t('spinner.compact.compactingConversation'));
             break;
           case 'compact_end':
             setSpinnerMessage(null);

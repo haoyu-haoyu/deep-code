@@ -16,7 +16,6 @@ import type { Theme } from 'src/utils/theme.js';
 import { UserImageMessage } from './UserImageMessage.js';
 import { toInkColor } from '../../utils/ink.js';
 import { jsonParse } from '../../utils/slowOperations.js';
-import { plural } from '../../utils/stringUtils.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js';
 import { tryRenderPlanApprovalMessage, formatTeammateMessageContent } from './PlanApprovalMessage.js';
@@ -120,7 +119,7 @@ export function AttachmentMessage({
       const hint = "external" === 'ant' && !isDemoEnv && firstId ? ` · /skill-feedback ${firstId} 1=wrong 2=noisy 3=good [comment]` : '';
       return <Line>
           <Text bold>{attachment.skills.length}</Text>{t('attachment.relevantSkills', {
-            skillWord: plural(attachment.skills.length, 'skill'),
+            skillWord: attachment.skills.length === 1 ? t('attachment.unit.skill') : t('attachment.unit.skills'),
             names
           })}
           {hint && <Text dimColor>{hint}</Text>}
@@ -205,7 +204,7 @@ export function AttachmentMessage({
         const skillCount = attachment.skillNames.length;
         return <Line>
           {t('attachment.loadedPrefix')}<Text bold>
-            {skillCount} {plural(skillCount, 'skill')}
+            {skillCount} {skillCount === 1 ? t('attachment.unit.skill') : t('attachment.unit.skills')}
           </Text>{t('attachment.loadedSkillsFrom')}<Text bold>{attachment.displayPath}</Text>
         </Line>;
       }
@@ -215,7 +214,7 @@ export function AttachmentMessage({
           return null;
         }
         return <Line>
-          <Text bold>{attachment.skillCount}</Text>{t('attachment.skillsAvailable', { skillWord: plural(attachment.skillCount, 'skill') })}
+          <Text bold>{attachment.skillCount}</Text>{t('attachment.skillsAvailable', { skillWord: attachment.skillCount === 1 ? t('attachment.unit.skill') : t('attachment.unit.skills') })}
         </Line>;
       }
     case 'agent_listing_delta':
@@ -225,7 +224,7 @@ export function AttachmentMessage({
         }
         const count = attachment.addedTypes.length;
         return <Line>
-          <Text bold>{count}</Text>{t('attachment.agentTypesAvailable', { typeWord: plural(count, 'type') })}
+          <Text bold>{count}</Text>{t('attachment.agentTypesAvailable', { typeWord: count === 1 ? t('attachment.unit.type') : t('attachment.unit.types') })}
         </Line>;
       }
     case 'queued_command':
@@ -335,7 +334,7 @@ export function AttachmentMessage({
       return <Box flexDirection="row" width="100%" marginTop={1} backgroundColor={bg}>
           <Text dimColor>{BLACK_CIRCLE} </Text>
           <Text dimColor>
-            {attachment.count}{t('attachment.teammatesShutdownGracefully', { teammateWord: plural(attachment.count, 'teammate') })}
+            {attachment.count}{t('attachment.teammatesShutdownGracefully', { teammateWord: attachment.count === 1 ? t('attachment.unit.teammate') : t('attachment.unit.teammates') })}
           </Text>
         </Box>;
     default:

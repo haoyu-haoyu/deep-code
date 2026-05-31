@@ -5,6 +5,7 @@ import { type ReactNode, useEffect } from 'react';
 import { type Notification, useNotifications } from 'src/context/notifications.js';
 import { logEvent } from 'src/services/analytics/index.js';
 import { useAppState } from 'src/state/AppState.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
 import { useIdeConnectionStatus } from '../../hooks/useIdeConnectionStatus.js';
 import type { IDESelection } from '../../hooks/useIdeSelection.js';
@@ -241,6 +242,7 @@ function NotificationContent({
   onAutoUpdaterResult: (result: AutoUpdaterResult) => void;
   onChangeIsUpdating: (isUpdating: boolean) => void;
 }): ReactNode {
+  const { t } = useTranslation();
   const apiKeyHelperSlow = null;
 
   const isBriefOnly = feature('KAIROS') || feature('KAIROS_BRIEF') ?
@@ -255,7 +257,7 @@ function NotificationContent({
           </Text>)}
       {isInOverageMode && !isTeamOrEnterprise && <Box>
           <Text dimColor wrap="truncate">
-            Now using extra usage
+            {t('promptInput.footer.extraUsage')}
           </Text>
         </Box>}
       {apiKeyHelperSlow && <Box>
@@ -268,17 +270,17 @@ function NotificationContent({
         </Box>}
       {(apiKeyStatus === 'invalid' || apiKeyStatus === 'missing') && <Box>
           <Text color="error" wrap="truncate">
-            {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ? 'Authentication error · Try again' : 'Not logged in · Run /login'}
+            {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ? t('promptInput.footer.authError') : t('promptInput.footer.notLoggedIn')}
           </Text>
         </Box>}
       {debug && <Box>
           <Text color="warning" wrap="truncate">
-            Debug mode
+            {t('promptInput.footer.debugMode')}
           </Text>
         </Box>}
       {apiKeyStatus !== 'invalid' && apiKeyStatus !== 'missing' && verbose && <Box>
           <Text dimColor wrap="truncate">
-            {tokenUsage} tokens
+            {t('notification.idleReturnHint.tokens', { tokens: tokenUsage })}
           </Text>
         </Box>}
       {!isBriefOnly && <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />}

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { MessageResponse } from '../../components/MessageResponse.js';
 import { Text } from '../../ink.js';
+import { getMessage } from '../../i18n/index.js';
 import { truncateToWidth } from '../format.js';
 import type { MCPToolResult } from '../mcpValidation.js';
 type CuToolInput = Record<string, unknown> & {
@@ -18,21 +19,21 @@ type CuToolInput = Record<string, unknown> & {
 function fmtCoord(c: [number, number] | undefined): string {
   return c ? `(${c[0]}, ${c[1]})` : '';
 }
-const RESULT_SUMMARY: Readonly<Partial<Record<string, string>>> = {
-  screenshot: 'Captured',
-  zoom: 'Captured',
-  request_access: 'Access updated',
-  left_click: 'Clicked',
-  right_click: 'Clicked',
-  middle_click: 'Clicked',
-  double_click: 'Clicked',
-  triple_click: 'Clicked',
-  type: 'Typed',
-  key: 'Pressed',
-  hold_key: 'Pressed',
-  scroll: 'Scrolled',
-  left_click_drag: 'Dragged',
-  open_application: 'Opened'
+const RESULT_SUMMARY_KEY: Readonly<Partial<Record<string, string>>> = {
+  screenshot: 'computerUse.result.captured',
+  zoom: 'computerUse.result.captured',
+  request_access: 'computerUse.result.accessUpdated',
+  left_click: 'computerUse.result.clicked',
+  right_click: 'computerUse.result.clicked',
+  middle_click: 'computerUse.result.clicked',
+  double_click: 'computerUse.result.clicked',
+  triple_click: 'computerUse.result.clicked',
+  type: 'computerUse.result.typed',
+  key: 'computerUse.result.pressed',
+  hold_key: 'computerUse.result.pressed',
+  scroll: 'computerUse.result.scrolled',
+  left_click_drag: 'computerUse.result.dragged',
+  open_application: 'computerUse.result.opened'
 };
 
 /**
@@ -114,10 +115,10 @@ export function getComputerUseMCPRenderingOverrides(toolName: string): {
       if (verbose || typeof output !== 'object' || output === null) return null;
 
       // Non-verbose: one-line dim summary, like Chrome's pattern.
-      const summary = RESULT_SUMMARY[toolName];
-      if (!summary) return null;
+      const summaryKey = RESULT_SUMMARY_KEY[toolName];
+      if (!summaryKey) return null;
       return <MessageResponse height={1}>
-          <Text dimColor>{summary}</Text>
+          <Text dimColor>{getMessage(summaryKey)}</Text>
         </MessageResponse>;
     }
   };

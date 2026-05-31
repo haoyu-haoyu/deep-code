@@ -1314,7 +1314,7 @@ export function LogSelector(t0) {
   }
   let t65;
   if ($[185] !== agenticSearchState.status) {
-    t65 = agenticSearchState.status === "searching" && <Box paddingLeft={1} flexShrink={0}><Spinner /><Text> Searching…</Text></Box>;
+    t65 = agenticSearchState.status === "searching" && <Box paddingLeft={1} flexShrink={0}><Spinner /><Text>{' '}{t('globalSearch.empty.searching')}</Text></Box>;
     $[185] = agenticSearchState.status;
     $[186] = t65;
   } else {
@@ -1322,7 +1322,7 @@ export function LogSelector(t0) {
   }
   let t66;
   if ($[187] !== agenticSearchState.results || $[188] !== agenticSearchState.status) {
-    t66 = agenticSearchState.status === "results" && agenticSearchState.results.length > 0 && <Box paddingLeft={1} marginBottom={1} flexShrink={0}><Text dimColor={true} italic={true}>Deep Code found these results:</Text></Box>;
+    t66 = agenticSearchState.status === "results" && agenticSearchState.results.length > 0 && <Box paddingLeft={1} marginBottom={1} flexShrink={0}><Text dimColor={true} italic={true}>{t('logSelector.agentic.resultsHeader')}</Text></Box>;
     $[187] = agenticSearchState.results;
     $[188] = agenticSearchState.status;
     $[189] = t66;
@@ -1331,7 +1331,7 @@ export function LogSelector(t0) {
   }
   let t67;
   if ($[190] !== agenticSearchState.results || $[191] !== agenticSearchState.status || $[192] !== filteredLogs) {
-    t67 = agenticSearchState.status === "results" && agenticSearchState.results.length === 0 && filteredLogs.length === 0 && <Box paddingLeft={1} marginBottom={1} flexShrink={0}><Text dimColor={true} italic={true}>No matching sessions found.</Text></Box>;
+    t67 = agenticSearchState.status === "results" && agenticSearchState.results.length === 0 && filteredLogs.length === 0 && <Box paddingLeft={1} marginBottom={1} flexShrink={0}><Text dimColor={true} italic={true}>{t('logSelector.agentic.noMatches')}</Text></Box>;
     $[190] = agenticSearchState.results;
     $[191] = agenticSearchState.status;
     $[192] = filteredLogs;
@@ -1341,7 +1341,7 @@ export function LogSelector(t0) {
   }
   let t68;
   if ($[194] !== agenticSearchState.status || $[195] !== filteredLogs) {
-    t68 = agenticSearchState.status === "error" && filteredLogs.length === 0 && <Box paddingLeft={1} marginBottom={1} flexShrink={0}><Text dimColor={true} italic={true}>No matching sessions found.</Text></Box>;
+    t68 = agenticSearchState.status === "error" && filteredLogs.length === 0 && <Box paddingLeft={1} marginBottom={1} flexShrink={0}><Text dimColor={true} italic={true}>{t('logSelector.agentic.noMatches')}</Text></Box>;
     $[194] = agenticSearchState.status;
     $[195] = filteredLogs;
     $[196] = t68;
@@ -1350,7 +1350,7 @@ export function LogSelector(t0) {
   }
   let t69;
   if ($[197] !== agenticSearchState.status || $[198] !== isAgenticSearchOptionFocused || $[199] !== onAgenticSearch || $[200] !== searchQuery) {
-    t69 = Boolean(searchQuery.trim()) && onAgenticSearch && false && agenticSearchState.status !== "searching" && agenticSearchState.status !== "results" && agenticSearchState.status !== "error" && <Box flexShrink={0} flexDirection="column"><Box flexDirection="row" gap={1}><Text color={isAgenticSearchOptionFocused ? "suggestion" : undefined}>{isAgenticSearchOptionFocused ? figures.pointer : " "}</Text><Text color={isAgenticSearchOptionFocused ? "suggestion" : undefined} bold={isAgenticSearchOptionFocused}>Search deeply with Deep Code →</Text></Box><Box height={1} /></Box>;
+    t69 = Boolean(searchQuery.trim()) && onAgenticSearch && false && agenticSearchState.status !== "searching" && agenticSearchState.status !== "results" && agenticSearchState.status !== "error" && <Box flexShrink={0} flexDirection="column"><Box flexDirection="row" gap={1}><Text color={isAgenticSearchOptionFocused ? "suggestion" : undefined}>{isAgenticSearchOptionFocused ? figures.pointer : " "}</Text><Text color={isAgenticSearchOptionFocused ? "suggestion" : undefined} bold={isAgenticSearchOptionFocused}>{t('logSelector.agentic.searchDeeply')}</Text></Box><Box height={1} /></Box>;
     $[197] = agenticSearchState.status;
     $[198] = isAgenticSearchOptionFocused;
     $[199] = onAgenticSearch;
@@ -1418,7 +1418,7 @@ export function LogSelector(t0) {
   if ($[222] !== agenticSearchState.status || $[223] !== currentBranch || $[224] !== exitState.keyName || $[225] !== exitState.pending || $[226] !== getExpandCollapseHint || $[227] !== hasMultipleWorktrees || $[228] !== isAgenticSearchOptionFocused || $[229] !== isSearching || $[230] !== onToggleAllProjects || $[231] !== showAllProjects || $[232] !== showAllWorktrees || $[233] !== viewMode) {
     t71 = <Box paddingLeft={2}>{exitState.pending ? <Text dimColor={true}>{t('common.pressKeyAgainToExit', {
         keyName: exitState.keyName
-      })}</Text> : viewMode === "rename" ? <Text dimColor={true}><Byline><KeyboardShortcutHint shortcut="Enter" action={t('logSelector.footer.save')} /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('logSelector.footer.cancel')} /></Byline></Text> : agenticSearchState.status === "searching" ? <Text dimColor={true}><Byline><Text>Searching with Deep Code…</Text><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" /></Byline></Text> : isAgenticSearchOptionFocused ? <Text dimColor={true}><Byline><KeyboardShortcutHint shortcut="Enter" action="search" /><KeyboardShortcutHint shortcut={"\u2193"} action="skip" /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" /></Byline></Text> : viewMode === "search" ? <Text dimColor={true}><Byline><Text>{isSearching && false ? "Searching\u2026" : t('logSelector.footer.typeToSearchCap')}</Text><KeyboardShortcutHint shortcut="Enter" action={t('logSelector.footer.select')} /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('logSelector.footer.clear')} /></Byline></Text> : <Text dimColor={true}><Byline>{onToggleAllProjects && <KeyboardShortcutHint shortcut="Ctrl+A" action={showAllProjects ? t('logSelector.footer.showCurrentDir') : t('logSelector.footer.showAllProjects')} />}{currentBranch && <KeyboardShortcutHint shortcut="Ctrl+B" action={t('logSelector.footer.toggleBranch')} />}{hasMultipleWorktrees && <KeyboardShortcutHint shortcut="Ctrl+W" action={showAllWorktrees ? t('logSelector.footer.showCurrentWorktree') : t('logSelector.footer.showAllWorktrees')} />}<KeyboardShortcutHint shortcut="Ctrl+V" action={t('logSelector.footer.preview')} /><KeyboardShortcutHint shortcut="Ctrl+R" action={t('logSelector.footer.rename')} /><Text>{t('logSelector.footer.typeToSearch')}</Text><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('logSelector.footer.cancel')} />{getExpandCollapseHint() && <Text>{getExpandCollapseHint()}</Text>}</Byline></Text>}</Box>;
+      })}</Text> : viewMode === "rename" ? <Text dimColor={true}><Byline><KeyboardShortcutHint shortcut="Enter" action={t('logSelector.footer.save')} /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('logSelector.footer.cancel')} /></Byline></Text> : agenticSearchState.status === "searching" ? <Text dimColor={true}><Byline><Text>{t('logSelector.footer.searchingWithDeepCode')}</Text><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('logSelector.footer.cancel')} /></Byline></Text> : isAgenticSearchOptionFocused ? <Text dimColor={true}><Byline><KeyboardShortcutHint shortcut="Enter" action={t('logSelector.footer.search')} /><KeyboardShortcutHint shortcut={"\u2193"} action={t('logSelector.footer.skip')} /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('logSelector.footer.cancel')} /></Byline></Text> : viewMode === "search" ? <Text dimColor={true}><Byline><Text>{isSearching && false ? t('globalSearch.empty.searching') : t('logSelector.footer.typeToSearchCap')}</Text><KeyboardShortcutHint shortcut="Enter" action={t('logSelector.footer.select')} /><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('logSelector.footer.clear')} /></Byline></Text> : <Text dimColor={true}><Byline>{onToggleAllProjects && <KeyboardShortcutHint shortcut="Ctrl+A" action={showAllProjects ? t('logSelector.footer.showCurrentDir') : t('logSelector.footer.showAllProjects')} />}{currentBranch && <KeyboardShortcutHint shortcut="Ctrl+B" action={t('logSelector.footer.toggleBranch')} />}{hasMultipleWorktrees && <KeyboardShortcutHint shortcut="Ctrl+W" action={showAllWorktrees ? t('logSelector.footer.showCurrentWorktree') : t('logSelector.footer.showAllWorktrees')} />}<KeyboardShortcutHint shortcut="Ctrl+V" action={t('logSelector.footer.preview')} /><KeyboardShortcutHint shortcut="Ctrl+R" action={t('logSelector.footer.rename')} /><Text>{t('logSelector.footer.typeToSearch')}</Text><ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description={t('logSelector.footer.cancel')} />{getExpandCollapseHint() && <Text>{getExpandCollapseHint()}</Text>}</Byline></Text>}</Box>;
     $[222] = agenticSearchState.status;
     $[223] = currentBranch;
     $[224] = exitState.keyName;

@@ -1,10 +1,10 @@
-import { translate } from '../../i18n/index.js'
+import { getMessage, translate } from '../../i18n/index.js'
 import { createMovedToPluginCommand } from '../createMovedToPluginCommand.js'
 
 export default createMovedToPluginCommand({
   name: 'pr-comments',
   description: translate('en', 'command.prComments.description'),
-  progressMessage: 'fetching PR comments',
+  progressMessage: getMessage('command.prComments.progressMessage'),
   pluginName: 'pr-comments',
   pluginCommand: 'pr-comments',
   async getPromptWhileMarketplaceIsPrivate(args) {

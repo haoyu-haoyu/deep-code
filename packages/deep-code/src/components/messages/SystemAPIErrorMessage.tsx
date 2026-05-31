@@ -104,14 +104,16 @@ export function SystemAPIErrorMessage(t0) {
   } else {
     t8 = $[18];
   }
-  const t9 = retryInSecondsLive === 1 ? "second" : "seconds";
+  const t9 = retryInSecondsLive === 1 ? t('stats.unit.second') : t('stats.unit.seconds');
   const retryMessage = t('message.apiRetry', {
     seconds: retryInSecondsLive,
     unit: t9,
     attempt: retryAttempt,
     maxRetries
   });
-  const retryTimeoutHint = process.env.API_TIMEOUT_MS ? ` · API_TIMEOUT_MS=${process.env.API_TIMEOUT_MS}ms, try increasing it` : "";
+  const retryTimeoutHint = process.env.API_TIMEOUT_MS ? ` ${t('messages.assistant.apiTimeoutEnvHint', {
+    ms: process.env.API_TIMEOUT_MS
+  })}` : "";
   let t10;
   if ($[19] !== retryMessage || $[20] !== retryTimeoutHint) {
     t10 = <Text dimColor={true}>{retryMessage}{retryTimeoutHint}</Text>;

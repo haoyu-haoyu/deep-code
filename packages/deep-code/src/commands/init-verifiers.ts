@@ -1,4 +1,5 @@
 import type { Command } from '../commands.js'
+import { getMessage } from '../i18n/index.js'
 
 const command = {
   type: 'prompt',
@@ -6,7 +7,7 @@ const command = {
   description:
     'Create verifier skill(s) for automated verification of code changes',
   contentLength: 0, // Dynamic content
-  progressMessage: 'analyzing your project and creating verifier skills',
+  progressMessage: getMessage('command.initVerifiers.progressMessage'),
   source: 'builtin',
   async getPromptForCommand() {
     return [

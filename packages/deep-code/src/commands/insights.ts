@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'os'
 import { extname, join } from 'path'
 import type { Command } from '../commands.js'
-import { translate } from '../i18n/index.js'
+import { getMessage, translate } from '../i18n/index.js'
 import { queryRuntimeWithModelNonStreaming } from '../services/runtime/messageSend.js'
 import {
   AGENT_TOOL_NAME,
@@ -3042,7 +3042,7 @@ const usageReport: Command = {
   name: 'insights',
   description: translate('en', 'command.insights.description'),
   contentLength: 0, // Dynamic content
-  progressMessage: 'analyzing your sessions',
+  progressMessage: getMessage('command.insights.progressMessage'),
   source: 'builtin',
   async getPromptForCommand(args) {
     let collectRemote = false
