@@ -1,0 +1,1252 @@
+{
+ "generated": "2026-05-31",
+ "runId": "wf_d1a14f4f-8f3",
+ "report": {
+  "verdict": "major-fixes-needed",
+  "confidence": "high",
+  "remainingGaps": 9,
+  "correctnessIssuesHigh": 2,
+  "translationFlags": 93,
+  "summary": "The \"complete\" claim does NOT hold up. Catalog parity is good (en/zh-Hans/ja each at 2,623 key lines, confirmed equal), but I verified multiple genuine, user-facing defects in live code paths — this is not noise.\n\nTWO real HIGH de-brand bugs in migrated catalog values, both rendered to users in all 3 locales: (1) cli.error.headlessNotSupportedWithSsh (en.ts:2162) tells users to use \"claude ssh\" — a command that does not exist; package.json bin is deepcode/deep-code and the runtime usage string says \"deepcode ssh\". Rendered to stderr at main.tsx:684. (2) error.ssl.certHint (en.ts:703) tells users to allowlist *.anthropic.com — wrong host for a DeepSeek product and leftover Anthropic branding; rendered via errors.ts:296. Both mirrored verbatim in zh-Hans.ts:2167/708 and ja.ts:2167/708.\n\nEight-plus real migration GAPS (raw literals in live components, several with catalog keys that already exist but were never wired): ShowInIDEPrompt.tsx has ZERO i18n yet is rendered by FilePermissionDialog.tsx:163 (4 of its 5 raw strings duplicate existing permission.* keys); LogSelector.tsx agentic-search strings (1317/1325/1334/1344/1421) sit beside migrated t() calls; SystemAPIErrorMessage.tsx leaks a raw timeout suffix (key exists, used by sibling) plus English \"second\"/\"seconds\" into the translated message.apiRetry; AttachmentMessage.tsx leaks English plural() nouns into translated templates; HistorySearchInput.tsx:18 ignores existing historySearch.noMatches; main.tsx:3306 raw SSH usage; Config.tsx:682 raw notifications label; errors.ts:430-455 raw PDF/image/request-size errors.\n\nThe Config.tsx terminalBell React-Compiler sentinel-guard issue is real but low practical impact (locale switch takes effect on next start). Translation QA flags (term drift for provider/agent/effort/marketplace, fullwidth-colon outliers) are mostly low priority machine-translation polish for the planned native review — EXCEPT the untranslated \"leader\" English leak in zh/ja permission.worker.sandboxWaitingDescription, which is a genuine wrong/English-leak bug.\n\nBottom line: complete on key COUNT, not on correctness or coverage. The 2 HIGH de-brand bugs and the never-wired live-component gaps (especially ShowInIDEPrompt) must be fixed before this can be called done.",
+  "mustFix": [
+   "HIGH de-brand: en.ts:2162 + zh-Hans.ts:2167 + ja.ts:2167 cli.error.headlessNotSupportedWithSsh — change 'claude ssh' to 'deepcode ssh' (rendered to stderr at main.tsx:684; current text names a nonexistent command).",
+   "HIGH de-brand: en.ts:703 + zh-Hans.ts:708 + ja.ts:708 error.ssl.certHint — replace '*.anthropic.com' with the DeepSeek API domain (e.g. *.deepseek.com); leftover Anthropic branding + wrong operational guidance, rendered via errors.ts:296.",
+   "Wire ShowInIDEPrompt.tsx (currently zero i18n, live via FilePermissionDialog.tsx:163): use existing keys permission.fileEdit.question, permission.fileDialog.symlinkOutsideCwdWarning/symlinkTarget/escToCancel/tabToAmend; add new keys for 'Opened changes in {ideName} ⧉' and 'Save file to continue…' (neither exists in catalog).",
+   "LogSelector.tsx agentic-search strings (lines 1317/1325/1334/1344/1421) — add catalog keys and wire 'Searching…', 'Deep Code found these results:', 'No matching sessions found.', 'Searching with Deep Code…' (currently raw beside migrated t('logSelector.footer.*')).",
+   "SystemAPIErrorMessage.tsx — line 114 use existing messages.assistant.apiTimeoutEnvHint instead of raw '· API_TIMEOUT_MS=...' suffix; line 107 replace English 'second'/'seconds' with locale unit keys (follow stats.unit.* convention) so the translated message.apiRetry isn't mixed-language.",
+   "AttachmentMessage.tsx (lines 123/208/218/228/338) — English plural() nouns ('skill'/'type'/'teammate') leak into translated templates; add localizable unit keys so non-English locales aren't mixed-language.",
+   "HistorySearchInput.tsx:18 — wire existing historySearch.noMatches and add a key for 'search prompts:' instead of the two raw label branches.",
+   "main.tsx:3306 — migrate the raw multi-line 'Usage: deepcode ssh ...' stderr message (de-branded but unmigrated, same class as sibling migrated CLI errors); not in catalog.",
+   "Config.tsx:682 raw notifications label and errors.ts:430-455 raw PDF/image/request-size error literals — migrate to catalog keys (both are user-facing literals left raw alongside migrated siblings).",
+   "Translation leak (not awkwardness): zh-Hans/ja permission.worker.sandboxWaitingDescription leaves English 'leader' untranslated and inconsistent with permission.worker.waitingForApproval (团队负责人 / チームリーダー) — translate it."
+  ]
+ },
+ "gaps": [
+  {
+   "region": "components-core",
+   "file": "src/components/ShowInIDEPrompt.tsx",
+   "line": 44,
+   "literal": "Opened changes in {ideName} ⧉",
+   "surface": "JSX <Text bold color=\"permission\"> in the IDE file-permission prompt header. ShowInIDEPrompt.tsx has NO i18n import at all (zero t()/getMessage); it is a live component rendered by permissions/FilePermissionDialog/FilePermissionDialog.tsx. No catalog key exists for this string yet."
+  },
+  {
+   "region": "components-core",
+   "file": "src/components/ShowInIDEPrompt.tsx",
+   "line": 52,
+   "literal": "This will modify ${symlinkTarget} (outside working directory) via a symlink / Symlink target: ${symlinkTarget}",
+   "surface": "Raw template literals in <Text color=\"warning\">. The catalog ALREADY has matching keys permission.fileDialog.symlinkOutsideCwdWarning ('This will modify {target} (outside working directory) via a symlink') and permission.fileDialog.symlinkTarget ('Symlink target: {target}') at en.ts:267-268, but this component was never wired to use them."
+  },
+  {
+   "region": "components-core",
+   "file": "src/components/ShowInIDEPrompt.tsx",
+   "line": 60,
+   "literal": "Save file to continue…",
+   "surface": "JSX text in <Text dimColor> shown when running in a supported VSCode terminal. User-facing instruction; no catalog key exists."
+  },
+  {
+   "region": "components-core",
+   "file": "src/components/ShowInIDEPrompt.tsx",
+   "line": 75,
+   "literal": "Do you want to make this edit to {basename(filePath)}?",
+   "surface": "JSX text in <Text> (the edit-confirmation question). Catalog already has the exact key permission.fileEdit.question = 'Do you want to make this edit to {fileName}?' (en.ts:260) but this component renders it raw."
+  },
+  {
+   "region": "components-core",
+   "file": "src/components/ShowInIDEPrompt.tsx",
+   "line": 151,
+   "literal": "Esc to cancel · Tab to amend",
+   "surface": "JSX footer hint: raw 'Esc to cancel' (line 151) plus ' · Tab to amend' (line 148 const t11). Catalog already has permission.fileDialog.escToCancel ('Esc to cancel', en.ts:269) and permission.fileDialog.tabToAmend (' · Tab to amend', en.ts:270); component not wired to them."
+  },
+  {
+   "region": "components-core",
+   "file": "src/components/LogSelector.tsx",
+   "line": 1317,
+   "literal": "Searching…",
+   "surface": "JSX <Text> Searching…</Text> next to a <Spinner/>, shown when agenticSearchState.status === 'searching' (live). The LogSelector footer is otherwise fully migrated via t('logSelector.footer.*'), but the agentic-search status strings were missed; no logSelector.* key exists for them."
+  },
+  {
+   "region": "components-core",
+   "file": "src/components/LogSelector.tsx",
+   "line": 1325,
+   "literal": "Deep Code found these results:",
+   "surface": "JSX text in <Text dimColor italic> shown when agenticSearchState.status === 'results' with hits. User-facing results header (the leading 'Deep Code' is brand but the whole sentence is a translatable label). No catalog key exists."
+  },
+  {
+   "region": "components-core",
+   "file": "src/components/LogSelector.tsx",
+   "line": 1334,
+   "literal": "No matching sessions found.",
+   "surface": "JSX text in <Text dimColor italic> for the empty agentic-search results state (status === 'results', no matches). No catalog key exists. (Same literal also at line 1344 for the status === 'error' empty state.)"
+  },
+  {
+   "region": "components-core",
+   "file": "src/components/LogSelector.tsx",
+   "line": 1421,
+   "literal": "Searching with Deep Code…",
+   "surface": "JSX <Text> inside the footer Byline rendered when agenticSearchState.status === 'searching' (live). Sits directly beside already-migrated t('logSelector.footer.*') calls in the same expression, so it was clearly part of the migration scope but left raw."
+  },
+  {
+   "region": "components-messages",
+   "file": "src/components/messages/SystemAPIErrorMessage.tsx",
+   "line": 114,
+   "literal": " · API_TIMEOUT_MS=${process.env.API_TIMEOUT_MS}ms, try increasing it",
+   "surface": "Raw English suffix appended to the API-retry error line shown in the TUI. The sibling file AssistantTextMessage.tsx:152-153 renders the SAME hint via the EXISTING catalog key t('messages.assistant.apiTimeoutEnvHint', { ms }) (en.ts:1116, also present in zh-Hans.ts/ja.ts). This file builds it raw instead (note the ' · ...' prefix vs the catalog's '(...)' wrapping), so the migration missed it. Clear-cut gap: a translated key already exists and is used elsewhere."
+  },
+  {
+   "region": "components-messages",
+   "file": "src/components/messages/SystemAPIErrorMessage.tsx",
+   "line": 107,
+   "literal": "retryInSecondsLive === 1 ? \"second\" : \"seconds\"",
+   "surface": "Raw English unit word interpolated as {unit} into the translated template t('message.apiRetry') = 'Retrying in {seconds} {unit}… (attempt {attempt}/{maxRetries})' (en.ts:106). Because the surrounding sentence is translated but the unit word stays English, non-English locales render mixed-language text. The catalog already establishes a unit-key convention (stats.unit.day / stats.unit.days at en.ts:1264-1265), which 'second'/'seconds' should follow."
+  },
+  {
+   "region": "components-messages",
+   "file": "src/components/messages/AttachmentMessage.tsx",
+   "line": 123,
+   "literal": "plural(attachment.skills.length, 'skill')",
+   "surface": "Raw English noun fed via the English-only plural() helper (utils/stringUtils.ts:32, returns 'skill'/'skills') into the translated template t('attachment.relevantSkills') = ' relevant {skillWord}: {names}' (en.ts:920). Same mixed-language category as the seconds case: the sentence is translated but the interpolated noun stays English. Same pattern also at lines 208, 218 ('skill'), 228 ('type' → attachment.agentTypesAvailable), and 338 ('teammate' → attachment.teammatesShutdownGracefully)."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/PromptInput/HistorySearchInput.tsx",
+   "line": 18,
+   "literal": "search prompts:",
+   "surface": "Prompt label rendered (dimmed) at the left of the history-search input row: historyFailedMatch ? 'no matching prompt:' : 'search prompts:'. Both branch strings are raw. Notably the catalog ALREADY has 'historySearch.noMatches': 'No matching prompts' but this component was never wired to it, so both 'search prompts:' and 'no matching prompt:' still render as raw English."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/PromptInput/HistorySearchInput.tsx",
+   "line": 18,
+   "literal": "no matching prompt:",
+   "surface": "Other branch of the same ternary on line 18; shown in the history-search input row when the typed query matches no prior prompt. Raw English, not wrapped in t()."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/PromptInput/Notifications.tsx",
+   "line": 258,
+   "literal": "Now using extra usage",
+   "surface": "User-facing status indicator rendered in the prompt-input footer (live TUI, not the --status panel) when isInOverageMode && !isTeamOrEnterprise. Raw JSX text inside <Text dimColor wrap=\"truncate\">."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/PromptInput/Notifications.tsx",
+   "line": 271,
+   "literal": "Authentication error · Try again",
+   "surface": "Error-state footer indicator shown when apiKeyStatus is 'invalid'/'missing' and CLAUDE_CODE_REMOTE is truthy. Raw string in a ternary inside <Text color=\"error\">. The other branch 'Not logged in · Run /login' on the same line is also raw (catalog has a different string 'provider.loginGuidance', not this one)."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/PromptInput/Notifications.tsx",
+   "line": 271,
+   "literal": "Not logged in · Run /login",
+   "surface": "Non-remote branch of the same line-271 ternary; footer error indicator shown when not authenticated. Raw English, not in catalog (the related 'provider.loginGuidance' key is a different sentence)."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/PromptInput/Notifications.tsx",
+   "line": 281,
+   "literal": "tokens",
+   "surface": "Verbose-mode footer token count rendered as '{tokenUsage} tokens' inside <Text dimColor wrap=\"truncate\">. The literal ' tokens' label is raw; the catalog already has 'context.usage.tokensLabel': 'tokens' and many '{tokens} tokens' templates, but this render path uses raw English."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/Settings/Config.tsx",
+   "line": 371,
+   "literal": "Fast mode",
+   "surface": "Change-tracking key 'Fast mode' (with value 'ON'/'OFF' on lines 371/380) added to the `changes` state object. On dialog close (lines 1000-1009) every changes entry is rendered to the user via t('settings.config.summary.setKeyToValue', {key, value}) => 'Set Fast mode to ON'. The key AND the 'ON'/'OFF' values are raw English that appear verbatim in the user-facing confirmation summary, while every adjacent settings label/summary uses t()."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/Settings/Config.tsx",
+   "line": 577,
+   "literal": "Use auto mode during plan",
+   "surface": "Change-tracking key added to `changes` state object; rendered verbatim to the user as 'Set Use auto mode during plan to <value>' via t('settings.config.summary.setKeyToValue') on dialog close (line 1005). Human-readable display string left raw."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/Settings/Config.tsx",
+   "line": 780,
+   "literal": "Default view",
+   "surface": "Change-tracking key added to `changes` state object; rendered to the user as 'Set Default view to <value>' via t('settings.config.summary.setKeyToValue') on dialog close. Raw display string."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/Settings/Config.tsx",
+   "line": 682,
+   "literal": "Notifications",
+   "surface": "Settings-row label: feature(...) ? 'Local notifications' : 'Notifications'. This `label:` field is rendered as the row title in the config panel; every neighboring row uses label: t('settings.config.*'). Both branch strings ('Local notifications' and 'Notifications') are raw English."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/Settings/Config.tsx",
+   "line": 902,
+   "literal": "Teammate mode",
+   "surface": "Settings-row label for the teammate-mode enum row: const label = cliOverride ? `Teammate mode [overridden: ${cliOverride}]` : 'Teammate mode'. Rendered as the row title in the config panel. Both the base 'Teammate mode' string and the 'Teammate mode [overridden: ...]' template are raw English; surrounding rows use t()."
+  },
+  {
+   "region": "components-settings-mcp-agents",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/Settings/Config.tsx",
+   "line": 1416,
+   "literal": "Default model for newly spawned teammates. The leader can override via the tool call's model parameter.",
+   "surface": "headerText prop passed to <ModelPicker> for the TeammateModel submenu; rendered as the picker's header/description text in the UI. Raw English sentence, not wrapped in t()."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/exit/exit.tsx",
+   "line": 10,
+   "literal": "['Goodbye!', 'See ya!', 'Bye!', 'Catch you later!']",
+   "surface": "GOODBYE_MESSAGES array randomly sampled and passed to onDone() (also the fallback 'Goodbye!' on line 12). The /exit and /quit commands display this string to the user as a local-command notification/transcript stdout (REPL.tsx onDone -> addNotification + <local-command-stdout>). Raw user-facing TUI text; not in catalog; not a description:/model-prompt field."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/login/login.tsx",
+   "line": 28,
+   "literal": "onDone(saved ? 'DeepSeek credentials configured' : 'Login cancelled')",
+   "surface": "Result message of the /login local-jsx command, rendered to the user via onDone (addNotification + transcript stdout). Both literals are raw user-facing strings absent from the catalog. Sibling locale.tsx and other migrated commands route onDone results through t()/getMessage()."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/harness/harness.ts",
+   "line": 18,
+   "literal": "'Auto mode evaluates each user turn and injects runtime Harness guidance only for complex work.'",
+   "surface": "Inline value joined into the /harness local command's { type: 'text', value } result, rendered to the user as <local-command-stdout>. Also line 21 fallback 'Harness runtime: unavailable'. No harness.* keys exist in the catalog; these are user-facing TUI output (the harness-config.mjs/harness-runtime.mjs they call are the ESM-loader exception, but these inline TS strings are not)."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/harness/harness.ts",
+   "line": 21,
+   "literal": "'Harness runtime: unavailable'",
+   "surface": "Fallback value in the same /harness local command text result shown to the user when no runtime decision exists. Raw, not in catalog."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/security-review.ts",
+   "line": 202,
+   "literal": "progressMessage: 'analyzing code changes for security risks'",
+   "surface": "progressMessage on a prompt command. The i18n migration converted progressMessage to getMessage() in commit.ts/init.ts/review.ts (with matching command.commit.progressMessage / command.init.progressMessage keys translated into ja & zh-Hans), proving progressMessage is a user-facing translatable field. This value is still raw and absent from the catalog -> partial-migration miss."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/insights.ts",
+   "line": 3045,
+   "literal": "progressMessage: 'analyzing your sessions'",
+   "surface": "progressMessage on the /insights prompt command (shown in the agent progress UI while the command runs). Raw and not in catalog; same field that commit.ts/init.ts/review.ts migrated to getMessage(). (Note: the HTML-report chart labels at lines 1908-1911/2430-2433 are NOT reported — they belong to a generated standalone HTML artifact whose entire text is raw/out of TUI i18n scope.)"
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/init-verifiers.ts",
+   "line": 8,
+   "literal": "progressMessage: 'analyzing your project and creating verifier skills'",
+   "surface": "progressMessage on the /init-verifiers prompt command, shown to the user in the progress UI. Raw, not in catalog. (The getPromptForCommand() body strings on lines 71/143/160 are intentionally excluded — model-facing prompt template content. Only the user-facing progressMessage is a gap.)"
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/commit-push-pr.ts",
+   "line": 118,
+   "literal": "progressMessage: 'creating commit and PR'",
+   "surface": "progressMessage on the /commit-push-pr prompt command (user-facing progress UI). This file already uses getMessage()/i18n for other strings, so the raw progressMessage is a partial-migration miss; not in catalog."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/pr_comments/index.ts",
+   "line": 7,
+   "literal": "progressMessage: 'fetching PR comments'",
+   "surface": "progressMessage on the /pr-comments prompt command (user-facing progress UI). Raw, not in catalog; same translatable field migrated elsewhere via getMessage()."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/statusline.tsx",
+   "line": 12,
+   "literal": "progressMessage: 'setting up statusLine'",
+   "surface": "progressMessage on the /statusline prompt command (user-facing progress UI). Raw, not in catalog; same field migrated to getMessage() in commit.ts/init.ts/review.ts."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/plugin/PluginErrors.tsx",
+   "line": 2,
+   "literal": "formatErrorMessage(): ~30 raw error strings, e.g. `${error.component} path not found: ${error.path}`, `Git ${...} authentication failed for ${error.gitUrl}`, `Plugin \"${error.pluginId}\" not found in marketplace \"${error.marketplace}\"`, `MCP server \"${error.serverName}\" skipped — same command/URL as ${dup}`",
+   "surface": "Centralized plugin error formatter. Output is user-facing: rendered as <Text color=\"error\">{formatErrorMessage(error)}</Text> in ManagePlugins.tsx and as dialog message/guidance in PluginSettings.tsx. The whole switch (lines 4-57) is raw English with no t()/getMessage(); none of these strings exist in the catalog. The /plugin command region was otherwise migrated (extensive plugin.* keys; call sites already use getMessage('plugin.errors.managedByOrg')), so this file is a notable un-migrated island. Needs catalog keys with {param} interpolation."
+  },
+  {
+   "region": "commands",
+   "file": "src/commands/plugin/PluginErrors.tsx",
+   "line": 61,
+   "literal": "getErrorGuidance(): ~20 raw guidance strings, e.g. 'Check that the path in your manifest or marketplace config is correct', 'Configure SSH keys or use HTTPS URL instead', 'Check your internet connection and try again', 'Run /plugins to refresh the plugin cache'",
+   "surface": "Companion guidance formatter to formatErrorMessage; its return value is shown to the user as the dialog 'guidance' line in PluginSettings.tsx/ManagePlugins.tsx. The entire switch (lines 62-120) is raw English, not in catalog. Same migration gap as formatErrorMessage above."
+  },
+  {
+   "region": "screens",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/screens/REPL.tsx",
+   "line": 2451,
+   "literal": "Compacting conversation",
+   "surface": "Spinner verb shown in the REPL during /compact. setSpinnerMessage('Compacting conversation') in the onCompactProgress 'compact_start' case; spinnerMessage is passed as overrideMessage to <SpinnerWithVerb> (line 4524) and rendered directly in the TUI. Raw, not wrapped in t(); no catalog key (catalog has only 'compact.error.compactingConversation' which is unrelated)."
+  },
+  {
+   "region": "screens",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/screens/REPL.tsx",
+   "line": 2448,
+   "literal": "Running PreCompact hooks…",
+   "surface": "Spinner verb shown in the REPL during /compact (onCompactProgress 'hooks_start', hookType === 'pre_compact'). setSpinnerMessage(... 'Running PreCompact hooks…' ...) flows to overrideMessage on <SpinnerWithVerb> (line 4524). User-facing prose ('Running … hooks…') raw, not in t()/catalog (related key 'messages.hookProgress.hookRunningPlural' is translated). 'PreCompact' is a hook event name/tech term but the framing text is user-facing."
+  },
+  {
+   "region": "screens",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/screens/REPL.tsx",
+   "line": 2448,
+   "literal": "Running PostCompact hooks…",
+   "surface": "Same line 2448 ternary, hookType === 'post_compact' branch: setSpinnerMessage('Running PostCompact hooks…'). Rendered as the REPL spinner verb via overrideMessage on <SpinnerWithVerb>. Raw English, not wrapped in t(), no catalog key."
+  },
+  {
+   "region": "screens",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/screens/REPL.tsx",
+   "line": 2448,
+   "literal": "Running SessionStart hooks…",
+   "surface": "Same line 2448 ternary, else branch: setSpinnerMessage('Running SessionStart hooks…'). Rendered as the REPL spinner verb via overrideMessage on <SpinnerWithVerb>. Raw English, not wrapped in t(), no catalog key."
+  },
+  {
+   "region": "utils",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/utils/computerUse/wrapper.tsx",
+   "line": 222,
+   "literal": "Claude is using your computer · press Esc to stop",
+   "surface": "OS notification shown when Computer Use begins, sent via tuc().sendOSNotification({ message, notificationType: 'computer_use_enter' }). The escRegistered ternary has two raw variants ('...press Esc to stop' / '...press Ctrl+C to stop'). Confirmed gap: the paired EXIT notification at computerUse/cleanup.ts:83 was already migrated to getMessage('computerUse.notification.exit') ('Deep Code is done using your computer'), so this enter notification was simply missed. The raw string also inconsistently uses 'Claude' instead of the project's 'Deep Code' branding used by the migrated sibling. Both ternary branches need catalog keys."
+  },
+  {
+   "region": "utils",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/utils/computerUse/toolRendering.tsx",
+   "line": 22,
+   "literal": "Captured / Clicked / Typed / Pressed / Scrolled / Dragged / Opened / Access updated",
+   "surface": "RESULT_SUMMARY map (lines 21-36) of Computer Use tool-result verb labels. Rendered to the user in the tool-result row via <Text dimColor>{summary}</Text> at line 120 (renderToolResultMessage, non-verbose path). All values are raw English. The Computer Use feature's other UI text was migrated (approval dialog t('permission.computerUse.*'), exit notification getMessage('computerUse.notification.exit')), so this module is in i18n scope and these result-summary labels were missed. Needs per-action catalog keys (e.g. computerUse.result.captured / clicked / typed / pressed / scrolled / dragged / opened / accessUpdated)."
+  },
+  {
+   "region": "services-hooks-context",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/services/runtime/errors.ts",
+   "line": 430,
+   "literal": "PDF too large (${limits}). Try reading the file a different way (e.g., extract text with pdftotext).",
+   "surface": "getPdfTooLargeErrorMessage() — returned as the user-facing synthetic API-error message body shown in the transcript when an attached PDF exceeds the size limit. The sibling helpers in this file (formatRuntimeErrorForUser, formatAPIError, getSSLErrorHint) were migrated to getMessage(), but this function and its interactive/non-interactive prose branches were left raw. Includes the client-side TUI instruction 'Double press esc to go back and try again, or use pdftotext to convert to text first.'"
+  },
+  {
+   "region": "services-hooks-context",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/services/runtime/errors.ts",
+   "line": 435,
+   "literal": "PDF is password protected. Try using a CLI tool to extract or convert the PDF.",
+   "surface": "getPdfPasswordProtectedErrorMessage() — user-facing synthetic error message; non-interactive and interactive ('PDF is password protected. Please double press esc to edit your message and try again.') variants both raw English, not wrapped in getMessage()."
+  },
+  {
+   "region": "services-hooks-context",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/services/runtime/errors.ts",
+   "line": 441,
+   "literal": "The PDF file was not valid. Try converting it to text first (e.g., pdftotext).",
+   "surface": "getPdfInvalidErrorMessage() — user-facing synthetic error message; both the non-interactive variant and the interactive variant ('The PDF file was not valid. Double press esc to go back and try again with a different file.') are raw English literals not routed through the catalog."
+  },
+  {
+   "region": "services-hooks-context",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/services/runtime/errors.ts",
+   "line": 447,
+   "literal": "Image was too large. Try resizing the image or using a different approach.",
+   "surface": "getImageTooLargeErrorMessage() — user-facing synthetic error message; interactive variant 'Image was too large. Double press esc to go back and try again with a smaller image.' Both raw English; the lowercased form is also string-matched in services/PromptSuggestion/promptSuggestion.ts:387, so any catalog migration must keep the matcher in sync."
+  },
+  {
+   "region": "services-hooks-context",
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/services/runtime/errors.ts",
+   "line": 453,
+   "literal": "Request too large (${limits}). Try with a smaller file.",
+   "surface": "getRequestTooLargeErrorMessage() — user-facing synthetic error message; interactive variant 'Request too large (${limits}). Double press esc to go back and try with a smaller file.' Both raw English, not wrapped in getMessage()."
+  }
+ ],
+ "correctnessHigh": [
+  {
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/main.tsx",
+   "severity": "high",
+   "key": "cli.error.headlessNotSupportedWithSsh",
+   "detail": "De-branding miss in a MIGRATED catalog value. en.ts:2162 = 'Error: headless (-p/--print) mode is not supported with claude ssh'. This is rendered to stderr via getMessage('cli.error.headlessNotSupportedWithSsh') at main.tsx:684 (genuine user-facing error path, not a comment). The actual command in this product is `deepcode ssh` — confirmed by package.json bin ('deepcode'/'deep-code', no 'claude') and the runtime usage string at main.tsx:3306 ('Usage: deepcode ssh ...'). The user-facing string tells users to use a command name ('claude ssh') that does not exist in this CLI, so it is both a de-brand failure and functionally misleading. The same miss is mirrored in zh-Hans.ts:2167 and ja.ts:2167 (both keep 'claude ssh'), so it is a consistent error across all three locales. Fix: change 'claude ssh' -> 'deepcode ssh' in en.ts/zh-Hans.ts/ja.ts."
+  },
+  {
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/services/runtime/errors.ts",
+   "severity": "high",
+   "key": "error.ssl.certHint",
+   "detail": "De-brand miss in a user-facing catalog value. en.ts line 703 reads: 'SSL certificate error ({code}). ... or ask IT to allowlist *.anthropic.com. Run /doctor for details.' The hint is rendered to the user via getSSLErrorHint() -> getMessage('error.ssl.certHint', { code }) at errors.ts:296. For a DeepSeek-based product this is both leftover Anthropic branding AND incorrect operational guidance (the host to allowlist should be the DeepSeek API domain, e.g. *.deepseek.com, not *.anthropic.com). The same literal '*.anthropic.com' is propagated verbatim into zh-Hans.ts:708 and ja.ts:708, so the de-brand defect exists in all three locales. The {code} placeholder itself matches the call site correctly; the problem is the prose content."
+  }
+ ],
+ "correctnessMed": [
+  {
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/main.tsx",
+   "severity": "medium",
+   "key": "(raw literal, not migrated) main.tsx:3306",
+   "detail": "A genuine user-facing prose literal was left raw alongside the migrated getMessage() calls. main.tsx:3306 prints to stderr on the wrong-usage SSH path: 'Usage: deepcode ssh <user@host | ssh-config-alias> [dir]\\n\\nRuns Deep Code on a remote Linux host. You don't need to install...'. This string is NOT present in en.ts (grep for 'remote Linux host'/'ssh-config-alias'/'auth login' -> not in catalog) and is not wrapped in getMessage(), while sibling CLI error/warning strings in the same file are all migrated. It is correctly de-branded ('Deep Code', 'deepcode ssh', 'deepcode auth login'), so this is a migration-completeness gap, not a branding error. Note: the inline commander .description(...) strings at main.tsx:3302 are similarly raw, but those are commander --help descriptions (a different category — there is no command.ssh.description catalog key) and may be intentionally out of scope; flagging 3306 specifically because it is a runtime stderr message in the same class as the migrated ones."
+  },
+  {
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/Settings/Config.tsx",
+   "severity": "medium",
+   "key": "settings.config.notifChannel.terminalBell",
+   "detail": "React-Compiler memoization defect in NotifChannelLabel (lines 1713-1723). The 'terminal_bell' case memoizes JSX containing {t('settings.config.notifChannel.terminalBell')} inside a compile-time-constant guard: `if ($[1] === Symbol.for(\"react.memo_cache_sentinel\")) { t1 = <Text>{t(...)} ...</Text>; $[1] = t1; }`. The original code memoized a literal constant ('Terminal Bell'), so a no-dependency sentinel guard was correct. The migration (commit 43d201b, stated policy 'in-place t() ... no _c()/guard changes') substituted a t()-derived value into that constant slot without converting it to a t-dependency guard. Result: the translated string is baked in on first render and never re-translates if the UI locale changes at runtime (the same Config panel has a uiLanguage row at lines 663-684 that calls setActiveLocale). Sibling cases auto/iterm2WithBell/disabled use `return t(...)` directly and DO update, creating an inconsistent stale branch. Not a crash (t identity is stable if memoized by the provider) and the project documents full locale switch as 'takes effect on next start', which limits practical impact — hence medium, not high. Correct fix: let the compiler regenerate the guard (e.g. `if ($[0] !== t)`), or move this case to a direct `return <Text>{t(...)} ...</Text>` like the other t()-based cases."
+  },
+  {
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/Settings/Config.tsx",
+   "severity": "medium",
+   "key": "notifChannel.label (raw literal)",
+   "detail": "Genuine user-facing literal left raw alongside migrated ones (criterion #5). Line 682: `label: feature('KAIROS') || feature('KAIROS_PUSH_NOTIFICATION') ? 'Local notifications' : 'Notifications',`. Both branches are user-facing English strings with no t()/getMessage() wrapping — verified to be the ONLY raw label in the file (all other 50+ labels use t()). The migration commit 43d201b explicitly claims it handled 'Settings/Config.tsx (the ~33 raw labels the prior partial migration missed)', so this row is a miss within the migration's own declared scope, not merely pre-existing/out-of-scope (git confirms this commit did not touch line 682). It renders English even under zh-Hans/ja locales while neighboring rows localize. Fix: add keys settings.config.notifications and settings.config.localNotifications to en/zh-Hans/ja and wrap with t()."
+  },
+  {
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/services/runtime/errors.ts",
+   "severity": "medium",
+   "key": "<raw literals: PDF/image/request size errors>",
+   "detail": "Genuine user-facing literals left raw alongside migrated ones in the SAME file. The i18n commit 43d201b migrated 16 runtime/api/ssl error strings to getMessage(), but left 6 user-facing English prose strings un-migrated at errors.ts:427-457: getPdfTooLargeErrorMessage ('PDF too large (...). Double press esc to go back ...'), getPdfPasswordProtectedErrorMessage ('PDF is password protected. ...'), getPdfInvalidErrorMessage ('The PDF file was not valid. ...'), getImageTooLargeErrorMessage ('Image was too large. ...'), getRequestTooLargeErrorMessage ('Request too large (...). ...'). No catalog keys exist for any of these (grep of en.ts for error.pdf/error.image/error.request and the literal text returns nothing). These are clearly end-user messages (esp. the interactive 'Double press esc' variants) and were skipped by the migration, so non-English users will see English here while neighboring runtime errors are localized. Inconsistent/incomplete migration."
+  },
+  {
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/agents/new-agent-creation/wizard-steps/ConfirmStep.tsx",
+   "severity": "medium",
+   "key": "agents.confirm (footer Byline, line 128)",
+   "detail": "The footer Byline at line 128 leaves three genuine user-facing strings RAW (unmigrated) while the rest of the file is migrated: <KeyboardShortcutHint shortcut=\"s/Enter\" action=\"save\" />, <KeyboardShortcutHint shortcut=\"e\" action=\"edit in your editor\" />, and <ConfigurableShortcutHint ... description=\"cancel\" />. These props ARE rendered verbatim as user-facing text (KeyboardShortcutHint renders `action` directly e.g. 'Enter to confirm'; ConfigurableShortcutHint passes `description` straight into KeyboardShortcutHint's `action`). The components fully support translation — other migrated files pass t()/getMessage() into them: DeepSeekSetupDialog.tsx (action={t('setup.deepseek.hint.continue')}, description={t('setup.deepseek.hint.cancel')}), LogSelector.tsx, SessionPreview.tsx, SessionBackgroundHint.tsx, permissions/rules/AddWorkspaceDirectory.tsx (description={getMessage('permission.addWorkspaceDir.footer.cancel')}). So the rendered footer 's/Enter to save · e to edit in your editor · Esc to cancel' stays English in zh-Hans/ja. Mitigating: ALL sibling wizard-steps in the same new-agent-creation directory (MemoryStep, ToolsStep, TypeStep, MethodStep, ColorStep, ModelStep, PromptStep, GenerateStep, LocationStep, DescriptionStep) also leave these footer hints raw, so this is a systemic scoping gap of the wizard-footer layer, not a defect unique to this file. Scored medium (criterion 5: genuine user-facing literals left raw alongside migrated ones), not high, because the migrated keys themselves are all correct and the omission is consistent across the whole subtree."
+  },
+  {
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/components/mcp/MCPListPanel.tsx",
+   "severity": "medium",
+   "key": "(raw literal) claude.ai heading",
+   "detail": "Line 409: `<Text bold={true}>claude.ai</Text>` is a raw, un-migrated user-facing section heading rendered directly alongside fully migrated sibling scope headings (e.g. `{t('mcp.list.scope.agent')}` on line 418, `{dynamicHeading.label}` on line 427, and all `getScopeHeading()` labels which use `getMessage('mcp.list.scope.*')`). This violates criterion 5 (genuine user-facing literal left raw alongside migrated ones). It is also a brand name surfacing in an otherwise de-branded ('Deep Code'/'DeepSeek') UI. The label corresponds to the `claudeai-proxy` config type (see _temp2/_temp at lines 502/505). Either it should have been migrated to a catalog key (e.g. `mcp.list.scope.claudeAi`) like every other group heading, or intentionally kept as a provider identifier — but as-is it is an inconsistent, non-localizable, branded literal. Note: this is a literal in the .tsx, NOT a catalog value; no `mcp.list.*` catalog value contains 'Claude'/'Anthropic'."
+  },
+  {
+   "file": "/Users/wanghaoyu/Downloads/deepcode源码/packages/deep-code/src/services/tips/tipRegistry.ts",
+   "severity": "medium",
+   "key": "vscode-command-install (line 254)",
+   "detail": "Genuine user-facing English literal left raw alongside migrated siblings. The 'vscode-command-install' tip returns a hardcoded template literal: `Open the Command Palette (Cmd+Shift+P) and run \"Shell Command: Install '${...}' command in PATH\" to enable IDE integration`. There is NO tip.vscode-command-install.content key in en.ts (or zh-Hans.ts/ja.ts) — confirmed absent in all three catalogs. Every other user-facing tip in the same externalTips array WAS migrated to getMessage('tip.*.content'), including the adjacent IDE tip 'ide-upsell-external-terminal' (line 281). This is an incomplete/inconsistent migration: this tip will always render in English regardless of locale. The dynamic env.terminal segment could be passed as a {terminal} placeholder param. This is the only user-facing literal left un-migrated."
+  }
+ ],
+ "qaFlags": [
+  {
+   "group": "command",
+   "key": "command.provider.description",
+   "lang": "zh",
+   "issue": "(c) Inconsistent terminology for \"provider\". This entry (and command.doctor.description) renders provider as 服务商, but all seven /provider runtime messages (command.provider.current/invalid/legacyOnly/set/setWithBaseUrl/usage) use 提供商. Same group must pick one term.",
+   "en": "Switch model provider (deepseek/ollama/vllm/openai-compatible)",
+   "translated": "切换模型服务商（deepseek/ollama/vllm/openai-compatible）",
+   "suggestion": "Standardize on one term across the group. Recommend 服务商 everywhere (more idiomatic), i.e. change the command.provider.* messages from 提供商 to 服务商; or, if keeping 提供商 in messages, change this to 切换模型提供商（…）."
+  },
+  {
+   "group": "command",
+   "key": "command.agents.description",
+   "lang": "zh",
+   "issue": "(c) Inconsistent terminology for \"agent\". Here \"agent\" is left in English (管理 agent 配置) but command.reloadPlugins.result.count.agent translates it as 代理. JA is consistent (both エージェント); only ZH disagrees. 代理 also reads as proxy, a poor fit for AI agents.",
+   "en": "Manage agent configurations",
+   "translated": "管理 agent 配置",
+   "suggestion": "Use one term across the group. Recommend keeping English \"agent\" (or 智能体) in both: change command.reloadPlugins.result.count.agent from 代理 to agent (or 智能体) to match. Avoid 代理 for AI agents."
+  },
+  {
+   "group": "command",
+   "key": "command.effort.description",
+   "lang": "zh",
+   "issue": "(c) Inconsistent + awkward terminology for \"effort\". This renders effort as 投入等级 (投入 = investment/input, awkward for AI effort), while command.effort.* messages keep the English word \"effort\" (e.g. \"effort 级别\") and command.model.effortInfoSuffix/withEffortSuffix render it as 推理强度. Three different renderings for one term.",
+   "en": "Set effort level for model usage",
+   "translated": "设置模型使用的投入等级",
+   "suggestion": "Pick one rendering across the group. Recommend 推理强度 (already used in command.model.*) — e.g. 设置模型的推理强度 — and align the command.effort.* messages, instead of the awkward 投入等级."
+  },
+  {
+   "group": "command",
+   "key": "command.effort.description",
+   "lang": "ja",
+   "issue": "(b)/(c) Awkward + inconsistent rendering of \"effort\". 労力 (manual toil/labor) is an unnatural word for model reasoning effort. Also inconsistent with the group: command.effort.* messages keep English \"effort\" (e.g. \"effort レベル\") and command.model.effortInfoSuffix/withEffortSuffix use 推論強度.",
+   "en": "Set effort level for model usage",
+   "translated": "モデル使用時の労力レベルを設定します",
+   "suggestion": "Use a consistent, natural term. Recommend 推論強度 (already used in command.model.*): モデルの推論強度を設定します, and align the command.effort.* entries. Avoid 労力."
+  },
+  {
+   "group": "command",
+   "key": "command.brief.enabled",
+   "lang": "zh",
+   "issue": "(c) Inconsistent rendering of \"brief mode\". command.brief.description translates it as 精简模式, but command.brief.enabled/disabled render it as 仅 Brief 模式 (keeping English \"Brief\") and command.brief.notEntitled uses Brief 工具. Same feature, three different names.",
+   "en": "Brief-only mode enabled",
+   "translated": "已启用仅 Brief 模式",
+   "suggestion": "Unify with the description's 精简模式: 已启用仅精简模式 / 已禁用仅精简模式, and update command.brief.notEntitled accordingly (e.g. 精简工具) — or align the description to whatever single term is chosen."
+  },
+  {
+   "group": "command",
+   "key": "command.review.progress",
+   "lang": "zh",
+   "issue": "(c) Inconsistent rendering of \"pull request\". This translates it as 拉取请求, but command.review.description and command.prComments.description keep English \"pull request\" and command.commitPushPr.description uses PR. 拉取请求 is also uncommon in Chinese dev UIs (PR / pull request is standard).",
+   "en": "reviewing pull request",
+   "translated": "正在审查拉取请求",
+   "suggestion": "Match the rest of the group: 正在审查 pull request (or 正在审查 PR). Avoid the lone 拉取请求."
+  },
+  {
+   "group": "command",
+   "key": "command.heapdump.failed",
+   "lang": "ja",
+   "issue": "(b)/(c) Punctuation inconsistency. This (and command.keybindings.editorError, command.logout.clearConfigError, command.model.validationFailed, command.color.set) uses a fullwidth colon \"：\" before the value, but ~59 sibling JA messages use halfwidth colon + space \": \" before {error}/{message} (e.g. command.advisor.invalidModel, command.effort.failedToSet). The fullwidth-colon entries are the outliers.",
+   "en": "Failed to create heap dump: {error}",
+   "translated": "ヒープダンプの作成に失敗しました：{error}",
+   "suggestion": "Use halfwidth colon + space to match the group: ヒープダンプの作成に失敗しました: {error}. Apply the same fix to the other fullwidth-colon failure messages listed."
+  },
+  {
+   "group": "command",
+   "key": "command.advisor.alreadyUnset",
+   "lang": "ja",
+   "issue": "(c) Inconsistent term casing for \"advisor\" within the advisor.* cluster. Here and in several messages the English word \"Advisor\" is kept (Advisor はすでに未設定です), while command.advisor.description, command.advisor.cannotUse, command.advisor.invalidModel, and command.advisor.setUnsupported use the translated アドバイザー. Mixing English \"Advisor\" and アドバイザー in body text is inconsistent.",
+   "en": "Advisor already unset.",
+   "translated": "Advisor はすでに未設定です。",
+   "suggestion": "Standardize body-text references to アドバイザー (アドバイザーはすでに未設定です。). Keeping \"Advisor:\" only as a fixed label prefix (command.advisor.current/notSet/set) is acceptable, but non-label sentences should use アドバイザー consistently."
+  },
+  {
+   "group": "permission",
+   "key": "permission.worker.sandboxWaitingDescription",
+   "lang": "zh",
+   "issue": "\"leader\" left untranslated, and inconsistent with the same role rendered as \"团队负责人\" in permission.worker.waitingForApproval (\"等待团队负责人批准\"). \"leader\" should be Chinese.",
+   "en": "Waiting for leader to approve network access to {host}",
+   "translated": "正在等待 leader 批准对 {host} 的网络访问",
+   "suggestion": "正在等待团队负责人批准对 {host} 的网络访问"
+  },
+  {
+   "group": "permission",
+   "key": "permission.worker.sandboxWaitingDescription",
+   "lang": "ja",
+   "issue": "\"leader\" left untranslated and inconsistent with permission.worker.waitingForApproval which uses \"チームリーダー\" (\"チームリーダーの承認待ち\"). Should be translated.",
+   "en": "Waiting for leader to approve network access to {host}",
+   "translated": "{host} へのネットワークアクセスを leader が承認するのを待っています",
+   "suggestion": "{host} へのネットワークアクセスをチームリーダーが承認するのを待っています"
+  },
+  {
+   "group": "permission",
+   "key": "permission.shell.noFeedbackPlaceholder",
+   "lang": "zh",
+   "issue": "Awkward/unnatural rendering of \"what to do differently\" as \"改为如何处理\". Word order is off for a native speaker; also inconsistent with the parallel permission.prompt.rejectFeedbackPlaceholder (\"应如何改进\") and permission.computerUse.optionDeny (\"该如何调整\"). The phrase \"改为如何处理\" recurs in sandbox.noTellDifferently and webFetch.optionNo too — recommend unifying.",
+   "en": "and tell Deep Code what to do differently",
+   "translated": "并告诉 Deep Code 改为如何处理",
+   "suggestion": "并告诉 Deep Code 该如何调整"
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.tab.discover",
+   "lang": "zh",
+   "issue": "(b) awkward as a tab label. EN 'Discover' is the name of a tab where users explore/find new plugins. '发现' reads like a passive 'found/discovered' notification rather than an action tab; the matching status string plugin.discover.title uses '发现插件' (verb) but the bare tab '发现' is weak/awkward.",
+   "en": "Discover",
+   "translated": "发现",
+   "suggestion": "探索"
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.tab.marketplaces",
+   "lang": "zh",
+   "issue": "(c) terminology inconsistency. This tab is left fully English 'Marketplaces' while elsewhere the same concept is translated as '应用市场' (plugin.browse.*) and '市场' (plugin.discover.*/plugin.op.*). The zh file uses three different renderings of 'marketplace' (English 'marketplace', '应用市场', '市场') plus English 'Marketplaces' — pick one consistent term.",
+   "en": "Marketplaces",
+   "translated": "Marketplaces",
+   "suggestion": "统一术语：建议全部用 '市场'（或全部保留英文 'Marketplace'），此处改为 '市场'。当前 plugin.* 命名空间内 marketplace 被译成 'marketplace'/'应用市场'/'市场'/'Marketplaces' 四种写法，需统一。"
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.browse.addMarketplaceFirst",
+   "lang": "zh",
+   "issue": "(c) terminology inconsistency within a single string. EN: 'Add a marketplace first using \\'Add marketplace\\'.' The translation renders marketplace twice with two different words: '请先使用 \\'Add marketplace\\' 添加应用市场。' — the noun uses '应用市场' but other browse keys and discover keys use '市场'. Inconsistent with the rest of the namespace.",
+   "en": "Add a marketplace first using 'Add marketplace'.",
+   "translated": "请先使用 'Add marketplace' 添加应用市场。",
+   "suggestion": "请先使用 'Add marketplace' 添加市场。（统一为 '市场'）"
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.help.marketplacesHeader",
+   "lang": "zh",
+   "issue": "(d/c) header left as English 'Marketplaces：' while the sibling section headers are translated: installationHeader='安装：', managementHeader='管理：', validationHeader='校验：', otherHeader='其他：'. A section header in a help list should be translated to match the others.",
+   "en": "Marketplaces:",
+   "translated": "Marketplaces：",
+   "suggestion": "市场："
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.help.title",
+   "lang": "zh",
+   "issue": "(e) left partially English. EN 'Plugin Command Usage:' → 'Plugin 命令用法：' keeps 'Plugin' in English even though 'plugin' is consistently translated as '插件' everywhere else in the file (e.g. plugin.tab.paneTitle='插件'). The leading word should be translated.",
+   "en": "Plugin Command Usage:",
+   "translated": "Plugin 命令用法：",
+   "suggestion": "插件命令用法："
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.tab.discover",
+   "lang": "ja",
+   "issue": "(b) awkward as a tab label. EN 'Discover' is a noun-like tab name. '見つける' (a plain verb 'to find') is unnatural for a tab; product UIs use '見つける' rarely. The matching screen title plugin.discover.title='プラグインを探す' uses 探す, so the tab is also inconsistent with it.",
+   "en": "Discover",
+   "translated": "見つける",
+   "suggestion": "探す（または『見つける』を『探す』に統一）"
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.discover.details.author",
+   "lang": "ja",
+   "issue": "(c) terminology + punctuation inconsistency. EN 'By: {author}'. Here translated '作成者：{author}' (full-width colon) but the parallel key plugin.browse.details.author renders the same EN as '作者: {author}' (different word '作者' AND half-width colon). The whole ja plugin.discover.* block uses full-width colons while plugin.browse.* uses half-width — and 作者 vs 作成者 differ for identical source text.",
+   "en": "By: {author}",
+   "translated": "作成者：{author}",
+   "suggestion": "作者: {author}（plugin.browse.details.author と用語・コロン幅を統一）"
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.help.marketplacesHeader",
+   "lang": "ja",
+   "issue": "(d/c) header left as English 'Marketplaces:' while sibling headers are translated: installationHeader='インストール:', managementHeader='管理:', validationHeader='検証:', otherHeader='その他:'. Should be translated for consistency.",
+   "en": "Marketplaces:",
+   "translated": "Marketplaces:",
+   "suggestion": "マーケットプレイス:"
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.help.title",
+   "lang": "ja",
+   "issue": "(e) left partially English. EN 'Plugin Command Usage:' → 'Plugin コマンドの使い方:' keeps 'Plugin' in English even though plugin is translated 'プラグイン' everywhere else (e.g. plugin.tab.paneTitle='プラグイン'). The leading word should be translated.",
+   "en": "Plugin Command Usage:",
+   "translated": "Plugin コマンドの使い方:",
+   "suggestion": "プラグイン コマンドの使い方:"
+  },
+  {
+   "group": "plugin",
+   "key": "plugin.addMarketplace.prompt",
+   "lang": "ja",
+   "issue": "(c) terminology inconsistency for 'marketplace'. The ja file splits 'marketplace' two ways with no rule: kept English in plugin.addMarketplace.*, plugin.help.*, plugin.marketplaceList.*, plugin.errors.removedMarketplace, plugin.validate.usage; but translated 'マーケットプレイス' in plugin.browse.*, plugin.discover.*, plugin.op.*, plugin.marketplace.loadError.*. Same concept, same screens — should be one term. Flagging this representative key; the fix applies file-wide.",
+   "en": "Enter marketplace source:",
+   "translated": "marketplace のソースを入力：",
+   "suggestion": "マーケットプレイスのソースを入力:（namespace 全体で 'marketplace' を 'マーケットプレイス' に統一。なお末尾コロンも全角／半角が混在）"
+  },
+  {
+   "group": "plugin",
+   "key": "managePlugins.errorsHeader",
+   "lang": "zh",
+   "issue": "(b) produces broken mixed output. The {errorWord} placeholder is filled by the English plural() helper, so it interpolates 'error'/'errors' (English). '{count} 个{errorWord}：' renders as e.g. '3 个errors：' — the Chinese measure word '个' directly precedes the English noun 'errors', which reads broken. (This is partly a code-architecture issue: plural() is not localized, so the translator cannot fully fix it here, but the '个' measure word makes it worse than a neutral phrasing.)",
+   "en": "{count} {errorWord}:",
+   "translated": "{count} 个{errorWord}：",
+   "suggestion": "{count} 个错误：（去掉 {errorWord} 占位符改为固定 '错误'，因为该占位符仅会注入英文 error/errors，与中文混排不自然；或在代码侧本地化 plural()）"
+  },
+  {
+   "group": "mcp",
+   "key": "mcp.toggle.serverStatus",
+   "lang": "ja",
+   "issue": "Composition bug producing ungrammatical Japanese. This template (\"MCP サーバー \\\"{serverName}\\\" を{status}しました\") is fed status = statusEnabled/statusDisabled, which are \"有効\"/\"無効\" (na-adjective/noun forms). The rendered string becomes \"…を有効しました\" / \"…を無効しました\", which is grammatically wrong — 有効/無効 cannot take する directly. (Note the sibling key bulkResult is correct because it is fed the -化 Title forms.)",
+   "en": "MCP server \"{serverName}\" {status}  (status = enabled/disabled)",
+   "translated": "MCP サーバー \"{serverName}\" を{status}しました",
+   "suggestion": "Either change the template to \"MCP サーバー \\\"{serverName}\\\" を{status}に設定しました\" so \"有効/無効\" reads as \"有効に設定しました\", OR (root-cause fix) make this template consume the -化 Title forms like bulkResult does, yielding \"…を有効化しました\" / \"…を無効化しました\"."
+  },
+  {
+   "group": "mcp",
+   "key": "mcp.remoteMenu.pressEnterAfterAuthB",
+   "lang": "ja",
+   "issue": "Broken word order. The UI renders A + bold(Enter) + B as \"押してください Enter ブラウザで認証した後に。\". Japanese is verb-final, so placing the verb 押してください first and a trailing adverbial clause after the key is clearly ungrammatical to a native reader.",
+   "en": "Press [Enter] after authenticating in your browser.",
+   "translated": "A=\"押してください \"  B=\" ブラウザで認証した後に。\"",
+   "suggestion": "Move the context into the A fragment and the verb into B: A=\"ブラウザで認証した後に \", B=\" を押してください。\" → renders \"ブラウザで認証した後に Enter を押してください。\" (The B fragment for pressEnterAfterAuthB should become \" を押してください。\".)"
+  },
+  {
+   "group": "mcp",
+   "key": "mcp.remoteMenu.pressEnterWhenDoneB",
+   "lang": "ja",
+   "issue": "Broken word order. Renders \"押してください Enter 完了したら。\" — verb-first with a trailing 完了したら clause is ungrammatical Japanese.",
+   "en": "Press [Enter] when done.",
+   "translated": "A=\"押してください \"  B=\" 完了したら。\"",
+   "suggestion": "Restructure so the verb is last: A=\"完了したら \", B=\" を押してください。\" → \"完了したら Enter を押してください。\"."
+  },
+  {
+   "group": "mcp",
+   "key": "mcp.remoteMenu.pressEnterToOpenBrowserB",
+   "lang": "ja",
+   "issue": "Broken word order. Renders \"押してください Enter ブラウザを開くには。\" — the verb 押してください comes before the key and the purpose clause dangles at the end. Ungrammatical / unnatural Japanese.",
+   "en": "Press [Enter] to open the browser.",
+   "translated": "A=\"押してください \"  B=\" ブラウザを開くには。\"",
+   "suggestion": "Restructure: A=\"ブラウザを開くには \", B=\" を押してください。\" → \"ブラウザを開くには Enter を押してください。\"."
+  },
+  {
+   "group": "mcp",
+   "key": "mcp.remoteMenu.pressEnterAfterAuthB",
+   "lang": "zh",
+   "issue": "Broken / dangling word order. The UI renders A + bold(Enter) + B as \"按 Enter 在浏览器中完成认证后。\". The temporal clause \"…后\" trails after the verb+object, which reads as ungrammatical Chinese (the time clause must precede the verb).",
+   "en": "Press [Enter] after authenticating in your browser.",
+   "translated": "A=\"按 \"  B=\" 在浏览器中完成认证后。\"",
+   "suggestion": "Move the time clause into A and keep the verb in B: A=\"在浏览器中完成认证后，按 \", B=\" 即可。\" (or B=\"。\") → \"在浏览器中完成认证后，按 Enter 即可。\"."
+  },
+  {
+   "group": "mcp",
+   "key": "mcp.remoteMenu.pressEnterWhenDoneB",
+   "lang": "zh",
+   "issue": "Broken / dangling word order. Renders \"按 Enter 完成后。\" — the \"完成后\" (when done) clause must precede the action, not follow it. Ungrammatical Chinese.",
+   "en": "Press [Enter] when done.",
+   "translated": "A=\"按 \"  B=\" 完成后。\"",
+   "suggestion": "Move the clause into A: A=\"完成后，按 \", B=\" 即可。\" → \"完成后，按 Enter 即可。\"."
+  },
+  {
+   "group": "mcp",
+   "key": "mcp.elicitation.notify.needsInput",
+   "lang": "zh",
+   "issue": "Dropped brand name. English is \"DeepCode needs your input\" (a system notification title where the brand provides essential context for which app is asking). The translation \"需要您的输入\" omits DeepCode entirely, so the notification no longer identifies the source app.",
+   "en": "DeepCode needs your input",
+   "translated": "需要您的输入",
+   "suggestion": "DeepCode 需要您的输入"
+  },
+  {
+   "group": "mcp",
+   "key": "mcp.elicitation.notify.needsInput",
+   "lang": "ja",
+   "issue": "Dropped brand name. English is \"DeepCode needs your input\" (a notification title that should name the app). The translation \"入力が必要です\" drops DeepCode, losing the source-app context in the notification.",
+   "en": "DeepCode needs your input",
+   "translated": "入力が必要です",
+   "suggestion": "DeepCode が入力を必要としています  (or 「DeepCode：入力が必要です」)"
+  },
+  {
+   "group": "mcp",
+   "key": "mcp.agentMenu.authenticating",
+   "lang": "zh",
+   "issue": "Slight mistranslation of the preposition. English \"Authenticating with {serverName}…\" means authenticating against/with the server. \"正在通过 {serverName} 认证\" reads as authenticating *via/through* {serverName}, framing the server as an identity provider rather than the target being authenticated to.",
+   "en": "Authenticating with {serverName}…",
+   "translated": "正在通过 {serverName} 认证…",
+   "suggestion": "正在向 {serverName} 进行身份验证…  (或 \"正在与 {serverName} 进行认证…\")"
+  },
+  {
+   "group": "settings-cli",
+   "key": "settings.config.moreAbove",
+   "lang": "zh",
+   "en": "more above",
+   "translated": "在上方",
+   "issue": "Awkward/ungrammatical. Rendered as `↑ {scrollOffset} {moreAbove}`, so the UI shows e.g. “↑ 5 在上方” (“5 above”), which drops the “more” meaning and lacks a measure word — reads as broken Chinese. The ja counterpart “件が上にあります” reads naturally; zh should match that fullness.",
+   "suggestion": "项在上方  (giving “↑ 5 项在上方”), or 还有更多"
+  },
+  {
+   "group": "settings-cli",
+   "key": "settings.config.moreBelow",
+   "lang": "zh",
+   "en": "more below",
+   "translated": "在下方",
+   "issue": "Same problem as moreAbove. Rendered as “↑ 5 在下方” — missing measure word and the “more” notion; ungrammatical fragment.",
+   "suggestion": "项在下方  (giving “... 5 项在下方”)"
+  },
+  {
+   "group": "settings-cli",
+   "key": "settings.validationTip.cleanupPeriodDays",
+   "lang": "zh",
+   "en": "...days to retain transcripts (default is 30)... no transcripts are written...",
+   "translated": "...保留转录记录的天数...不写入任何转录记录...",
+   "issue": "Terminology inconsistency. “transcript” is rendered “转录记录” here but “会话记录” in cli.error.unableToLoadTranscript (“无法从文件加载会话记录”). Same concept (session transcript) should use one term. “转录” (transcription, as in audio) also reads slightly off for a chat log.",
+   "suggestion": "Use 会话记录 consistently (replace 转录记录 here)"
+  },
+  {
+   "group": "settings-cli",
+   "key": "settings.config.summary.toggleCopyFullResponse",
+   "lang": "ja",
+   "en": "{state} always copy full response",
+   "translated": "常に完全な応答をコピーを{state}",
+   "issue": "Wrong/awkward grammar: double を (「…をコピーを有効」). The base label phrase already ends in 「…をコピー」, so appending 「を{state}」 yields an ungrammatical double-object string.",
+   "suggestion": "常に完全な応答をコピーする設定を{state}にしました  (or drop the trailing を and use コピー機能を{state}化)"
+  },
+  {
+   "group": "settings-cli",
+   "key": "settings.config.summary.toggleAutoInstallIdeExtension",
+   "lang": "zh",
+   "en": "{state} auto-install IDE extension",
+   "translated": "{state} IDE 扩展自动安装",
+   "issue": "Awkward / inconsistent word order. Other toggle summaries follow “{state}+动词短语” (e.g. “{state}自动连接到 IDE”), but this reorders to a noun phrase “IDE 扩展自动安装” and adds a stray space after {state}, not matching its own label “自动安装 IDE 扩展”.",
+   "suggestion": "{state}自动安装 IDE 扩展  (no space, verb-phrase order matching the label)"
+  },
+  {
+   "group": "doctor-status",
+   "key": "diagnostics.issue.singular",
+   "lang": "zh",
+   "issue": "WRONG/structural. The measure word 个 is baked into the word ('个问题'), but every consuming template already supplies count + a preceding noun, so it renders doubled measure words. In notifs.settingsErrors.found ('发现 {count} 个设置{issueLabel}') this produces '发现 5 个设置个问题', and in diagnostics.summary it produces '...3 个新诊断个问题' — '个设置个问题' / '诊断个问题' are ungrammatical.",
+   "en": "issue",
+   "translated": "个问题",
+   "suggestion": "Use the bare noun '问题' (no embedded 个). Then '发现 5 个设置问题' / '...3 个新诊断问题' read correctly."
+  },
+  {
+   "group": "doctor-status",
+   "key": "diagnostics.issue.plural",
+   "lang": "zh",
+   "issue": "WRONG/structural, same root cause as the singular. '个问题' as the plural label doubles the measure word in its consuming templates (e.g. '发现 5 个设置个问题').",
+   "en": "issues",
+   "translated": "个问题",
+   "suggestion": "Use bare '问题'."
+  },
+  {
+   "group": "doctor-status",
+   "key": "diagnostics.issue.singular",
+   "lang": "ja",
+   "issue": "WRONG/structural. The counter 件の is baked into the word ('件の問題'), but consuming templates already provide count + counter + a preceding noun, producing doubled counters: notifs.settingsErrors.found renders '5 件の設定件の問題が見つかりました' and diagnostics.summary renders '...3 件の新しい診断件の問題...'. '設定件の問題' / '診断件の問題' are ungrammatical.",
+   "en": "issue",
+   "translated": "件の問題",
+   "suggestion": "Use the bare noun '問題' (drop 件の). Then '5 件の設定問題' / '...3 件の新しい診断問題' read correctly."
+  },
+  {
+   "group": "doctor-status",
+   "key": "diagnostics.issue.plural",
+   "lang": "ja",
+   "issue": "WRONG/structural, same root cause as the singular. '件の問題' doubles the counter inside its consuming templates.",
+   "en": "issues",
+   "translated": "件の問題",
+   "suggestion": "Use bare '問題'."
+  },
+  {
+   "group": "doctor-status",
+   "key": "diagnostics.summary",
+   "lang": "zh",
+   "issue": "Awkward/broken once composed. Template '在 {fileCount} {fileWord} 中发现 {count} 个新诊断{issueWord}' renders '在 5 个文件 中发现 3 个新诊断个问题': (a) stray space in '个文件 中' (Chinese needs no space before 中), and (b) '个新诊断个问题' is ungrammatical once {issueWord} carries its own 个.",
+   "en": "Found {count} new diagnostic {issueWord} in {fileCount} {fileWord}",
+   "translated": "在 {fileCount} {fileWord} 中发现 {count} 个新诊断{issueWord}",
+   "suggestion": "Drop the embedded 个 from the issue word (see diagnostics.issue.*) and remove the space before 中: '在 {fileCount} {fileWord}中发现 {count} 个新诊断{issueWord}' → '在 5 个文件中发现 3 个新诊断问题'."
+  },
+  {
+   "group": "doctor-status",
+   "key": "diagnostics.summary",
+   "lang": "ja",
+   "issue": "Awkward/broken once composed. Renders '5 件のファイル に 3 件の新しい診断件の問題が見つかりました': '診断件の問題' is ungrammatical because {issueWord} carries its own 件の (also a stray space before に).",
+   "en": "Found {count} new diagnostic {issueWord} in {fileCount} {fileWord}",
+   "translated": "{fileCount} {fileWord} に {count} 件の新しい診断{issueWord}が見つかりました",
+   "suggestion": "Drop the embedded 件の from the issue word (see diagnostics.issue.*): '{fileCount} {fileWord}に {count} 件の新しい診断{issueWord}が見つかりました' → '5 件のファイルに 3 件の新しい診断問題が見つかりました'."
+  },
+  {
+   "group": "doctor-status",
+   "key": "doctor.contextWarnings.topContributors",
+   "lang": "zh",
+   "issue": "Mistranslation in context. This labels the agents/files that consume the most context tokens, but '主要贡献者' reads as human 'main contributors' (people who contributed to the project). The Japanese (主な要因 = main factors) got the intent right.",
+   "en": "└ Top contributors:",
+   "translated": "└ 主要贡献者：",
+   "suggestion": "Use '└ 主要来源：' or '└ 占用最多：' (top sources / biggest consumers) to convey token contributors, not people."
+  },
+  {
+   "group": "doctor-status",
+   "key": "doctor.search.notWorking",
+   "lang": "zh",
+   "issue": "Awkward/wrong. This is the status of the search (ripgrep) subsystem ('Search: Not working'). '无法工作' reads as a person being unable to work; it is not idiomatic for a feature/subsystem being down.",
+   "en": "Not working",
+   "translated": "无法工作",
+   "suggestion": "Use '不可用' or '无法使用' (or '工作异常'). 'Search: 不可用' reads naturally."
+  },
+  {
+   "group": "doctor-status",
+   "key": "status.notice.largeAgentDescriptions.warning",
+   "lang": "zh",
+   "issue": "Inconsistent terminology. Uses '智能体' for agent and '个 token' for the unit, whereas the directly parallel doctor key doctor.contextWarnings.agents.message keeps English 'agent' and '{tokens} tokens'. Same drift in largeMemoryFiles.warning ('{chars} 个字符' vs doctor's '{chars} 字符').",
+   "en": "Large cumulative agent descriptions will impact performance (~{tokens} tokens > {threshold})",
+   "translated": "累计的智能体描述过大将影响性能（约 {tokens} 个 token > {threshold}）",
+   "suggestion": "Align with the doctor block: use 'agent' (not 智能体) and '{tokens} tokens' (not '个 token'): '累计的 agent 描述过大将影响性能（约 {tokens} tokens > {threshold}）'."
+  },
+  {
+   "group": "doctor-status",
+   "key": "status.notice.largeAgentDescriptions.warning",
+   "lang": "ja",
+   "issue": "Minor terminology inconsistency. Uses 'エージェント' and 'トークン', while the near-identical doctor key doctor.contextWarnings.agents.message keeps English 'agent' and 'tokens'. Within the doctor/status group the two warnings disagree on the term.",
+   "en": "Large cumulative agent descriptions will impact performance (~{tokens} tokens > {threshold})",
+   "translated": "累積されたエージェントの説明が大きいとパフォーマンスに影響します（約 {tokens} トークン > {threshold}）",
+   "suggestion": "For consistency with the parallel doctor warning, use 'agent' and 'tokens': '累積された agent の説明が大きいとパフォーマンスに影響します（約 {tokens} tokens > {threshold}）' (or normalize the doctor block to エージェント/トークン instead — pick one)."
+  },
+  {
+   "group": "agents",
+   "key": "agents.confirm.saveHint.before",
+   "lang": "ja",
+   "issue": "EN 'Press ' is the start of a string assembled as 'Press [key] to save'. The ja value '押す ' uses the plain dictionary verb form placed BEFORE the key, producing broken word order like '押す [Enter] で保存'. Japanese requires the verb after the object. (zh '按 ' is fine because Chinese is verb-first.)",
+   "en": "Press ",
+   "translated": "押す ",
+   "suggestion": "Restructure with the matching saveHint.toSave fragment so it reads naturally, e.g. set before to an empty/leading particle and use '[key] を押して保存' ordering. Practical fix for this fragment alone: change toSave to ' を押して保存、' and leave before empty, or set before to '' so the assembled sentence is '[Enter] を押して保存'."
+  },
+  {
+   "group": "agents",
+   "key": "agents.menu.deleteConfirmPromptSuffix",
+   "lang": "ja",
+   "issue": "EN '?' (question-mark suffix for 'Are you sure you want to delete the agent [name]?'). The ja value is '：' (full-width colon), so the assembled prompt ends '…削除しますか：' which is grammatically wrong — a yes/no question must not end with a colon. (zh correctly uses ' 吗？'.)",
+   "en": "?",
+   "translated": "：",
+   "suggestion": "？"
+  },
+  {
+   "group": "agents",
+   "key": "agent.validation.toolsAll / agents.list.count / agents.confirm.created",
+   "lang": "zh",
+   "issue": "Inconsistent terminology for 'agent' across this one namespace group: agent.validation.* renders it '智能体' (e.g. '智能体可以访问所有工具'), agents.list.*/agents.menu.* render it '代理' (e.g. '{count} 个代理', '创建新代理'), and many agents.confirm.*/agents.description.* leave it English 'agent' (e.g. '已创建 agent'). Three different terms (智能体 / 代理 / agent) for the same concept confuses users.",
+   "en": "agent / Agent",
+   "translated": "智能体 / 代理 / agent",
+   "suggestion": "Pick one canonical term and apply it consistently across all agent.* and agents.* keys (recommend keeping English 'agent' since the menu/wizard already mixes it and the product term is 'agent', or standardize on '智能体'). At minimum, do not use both '代理' and '智能体' in the same feature."
+  },
+  {
+   "group": "agents",
+   "key": "agent.editor.error.saveFailed / agents.confirm.created (vs agent.validation.*)",
+   "lang": "ja",
+   "issue": "Inconsistent terminology for 'agent': agent.validation.* and most agents.* use 'エージェント', but agent.editor.* and agents.confirm.* leave it English 'agent' (e.g. 'agent の保存に失敗しました', 'agent を作成しました'). Mixing 'エージェント' and 'agent' within the same namespace is inconsistent.",
+   "en": "agent",
+   "translated": "agent / エージェント",
+   "suggestion": "Standardize on 'エージェント' throughout (change 'agent の保存に失敗しました' → 'エージェントの保存に失敗しました', 'agent を作成しました' → 'エージェントを作成しました', etc.) to match the rest of the namespace."
+  },
+  {
+   "group": "tool-attachment",
+   "key": "collapsedTool.memSearch.line",
+   "lang": "ja",
+   "en": "{verb} memories",
+   "translated": "{verb}メモリ",
+   "issue": "Awkward/ungrammatical when assembled. The {verb} placeholder is filled with finite polite verb forms from the sibling keys — memSearch.searched/searchedCap = '検索しました' and memSearch.searching = '検索中' (verified in CollapsedReadSearchContent.tsx line 437-441, which passes verb_3 directly into this string). That yields '検索しましたメモリ' (a finite past-polite verb glued directly onto a noun, which is broken Japanese) and the marginal '検索中メモリ'. Unlike the memRead/memWrite lines, here the verb sits with NO separator before the noun.",
+   "suggestion": "Restructure so the noun precedes the verb: 'メモリを{verb}' → renders '메모리を検索しました' / 'メモリを検索中'. (zh '{verb}记忆' is fine because Chinese verbs attach to nouns freely, so only ja needs changing.)"
+  },
+  {
+   "group": "tool-attachment",
+   "key": "collapsedTool.git.pushedTo",
+   "lang": "ja",
+   "en": "pushed to",
+   "translated": "プッシュ先",
+   "issue": "Register inconsistency within the same rendered line. The git summary line concatenates these verbs (CollapsedReadSearchContent.tsx pushPart, e.g. 'コミットしました abc, プッシュ先 main'). Siblings committed='コミットしました', merged='マージしました', amendedCommit='コミットを修正しました' are all finite verb-past forms, but pushedTo='プッシュ先' and rebasedOnto='リベース先' switch to noun-label ('push destination'/'rebase destination') style. Mixing verb-past and noun-label in one line reads inconsistently. (en is uniformly verb-phrase: pushed to / rebased onto; zh is uniformly verb: 已推送到 / 已变基到.)",
+   "suggestion": "Use verb-past forms to match siblings: pushedTo → 'プッシュしました', collapsedTool.git.rebasedOnto → 'リベースしました'."
+  },
+  {
+   "group": "messages",
+   "key": "message.teamMem.memories",
+   "lang": "zh",
+   "en": "memories",
+   "translated": "条记忆",
+   "issue": "Broken composition (measure word duplicated). This value is injected as {noun} into 'message.teamMem.readPart' = \"{verb} {count} 条团队{noun}\" and writePart. Because readPart already contains a measure word \"条\" before the noun, the rendered output becomes \"已回忆 3 条团队条记忆\" — a duplicated \"条...条\" with awkward \"团队条记忆\". The English {noun} is the bare word \"memories\" with no measure word, which is why the EN template \"{verb} {count} team {noun}\" works.",
+   "suggestion": "Drop the measure word from this value so it is a bare noun: set memories=\"记忆\" (and 'message.teamMem.memory' likewise \"记忆\"). Then readPart renders \"已回忆 3 条团队记忆\" correctly. Alternatively rework readPart/writePart to not pre-include \"条\". Same fix needed for 'message.teamMem.memory'."
+  },
+  {
+   "group": "messages",
+   "key": "message.teamMem.memories",
+   "lang": "ja",
+   "en": "memories",
+   "translated": "件のメモリ",
+   "issue": "Redundant/awkward composition. This value is injected as {noun} into 'message.teamMem.readPart' = \"{count} {noun}のチームメモリを{verb}\" (and writePart). Rendered output becomes \"3 件のメモリのチームメモリを想起済み\" — \"件のメモリのチームメモリ\" repeats メモリ and is unnatural. The EN {noun} is the bare word \"memories\" so the EN template \"{verb} {count} team {noun}\" reads cleanly.",
+   "suggestion": "Make this a bare noun without the counter: set memories=\"メモリ\" (and 'message.teamMem.memory' likewise \"メモリ\"), yielding \"3 メモリのチームメモリを想起済み\" — still slightly redundant. Better: rework readPart/writePart to \"チームメモリを{count} 件{verb}\" and make memory/memories empty or unused. At minimum eliminate the doubled メモリ. Same fix needed for 'message.teamMem.memory'."
+  },
+  {
+   "group": "messages",
+   "key": "systemMessage.memorySaved.memories",
+   "lang": "zh",
+   "en": "memories",
+   "translated": "memories",
+   "issue": "Left fully in English — user-facing leakage. This value is interpolated as {memoryWord} into 'systemMessage.memorySaved.count' = \"{count} 条 {memoryWord}\", producing visible output like \"已保存 3 条 memories\". Inconsistent with 'message.teamMem.memories' which WAS translated to Chinese.",
+   "suggestion": "Translate to \"记忆\" (so it renders \"已保存 3 条记忆\"). Also fix 'systemMessage.memorySaved.memory' (currently English \"memory\") to \"记忆\". Note the count template's stray space \"条 {memoryWord}\" may want tightening to \"条{memoryWord}\"."
+  },
+  {
+   "group": "messages",
+   "key": "systemMessage.memorySaved.memory",
+   "lang": "zh",
+   "en": "memory",
+   "translated": "memory",
+   "issue": "Left fully in English — user-facing leakage. Interpolated as {memoryWord} into 'systemMessage.memorySaved.count' = \"{count} 条 {memoryWord}\", rendering \"已保存 1 条 memory\". Inconsistent with the already-translated 'message.teamMem.memory'.",
+   "suggestion": "Translate to \"记忆\"."
+  },
+  {
+   "group": "messages",
+   "key": "systemMessage.memorySaved.memories",
+   "lang": "ja",
+   "en": "memories",
+   "translated": "memories",
+   "issue": "Left fully in English — user-facing leakage. Interpolated as {memoryWord} into 'systemMessage.memorySaved.count' = \"{count} 件の {memoryWord}\", rendering visible \"保存しました 3 件の memories\". Inconsistent with 'message.teamMem.memories' which was translated to Japanese.",
+   "suggestion": "Translate to \"メモリ\" (renders \"3 件のメモリ\"). Also fix 'systemMessage.memorySaved.memory' (currently English \"memory\") to \"メモリ\"."
+  },
+  {
+   "group": "messages",
+   "key": "systemMessage.memorySaved.memory",
+   "lang": "ja",
+   "en": "memory",
+   "translated": "memory",
+   "issue": "Left fully in English — user-facing leakage. Interpolated as {memoryWord} into 'systemMessage.memorySaved.count' = \"{count} 件の {memoryWord}\", rendering \"保存しました 1 件の memory\". Inconsistent with the already-translated 'message.teamMem.memory'.",
+   "suggestion": "Translate to \"メモリ\"."
+  },
+  {
+   "group": "stats-context",
+   "key": "stats.timeComparison.fullNightSleep",
+   "lang": "ja",
+   "issue": "(b) Unnatural wasei-English: \"フルな睡眠\" uses \"full\" as a na-adjective, which a native speaker would not say. \"フル\" reads as borrowed slang here.",
+   "en": "a full night of sleep",
+   "translated": "一晩のフルな睡眠",
+   "suggestion": "丸一晩の睡眠 (or ぐっすり一晩の睡眠)"
+  },
+  {
+   "group": "stats-context",
+   "key": "stats.timeComparison.abbeyRoad",
+   "lang": "ja",
+   "issue": "(b) Awkward in its only consumer. This value is interpolated into stats.factoid.sessionLongerThan = \"{comparison} の約 {n} 倍の長さです\", producing \"Abbey Road を聴く の約N倍の長さ\" — a verb (聴く) directly followed by の reads ungrammatically (and there is a stray space). Should be a noun phrase. Note other entries here are nouns (ハーフマラソン etc.), so this is also a form inconsistency.",
+   "en": "listening to Abbey Road",
+   "translated": "Abbey Road を聴く",
+   "suggestion": "Abbey Road の再生時間 (or アルバム Abbey Road を聴く時間)"
+  },
+  {
+   "group": "stats-context",
+   "key": "stats.timeComparison.titanic",
+   "lang": "ja",
+   "issue": "(b) Same verb-form problem as abbeyRoad: interpolated into \"{comparison} の約 {n} 倍の長さです\" it yields \"Titanic を観る の約N倍の長さ\", where verb 観る + の is awkward. Needs a noun phrase to match the surrounding entries.",
+   "en": "watching Titanic",
+   "translated": "Titanic を観る",
+   "suggestion": "映画 Titanic の上映時間 (or Titanic を観る時間)"
+  },
+  {
+   "group": "stats-context",
+   "key": "context.usage.tokensLabel",
+   "lang": "ja",
+   "issue": "(c) Inconsistent terminology: left as English \"tokens\" while the parallel label stats.ansi.summary.tokens is translated \"トークン\". Within ja, token is otherwise localized (合計トークン数, {tokens} トークン, etc.), so this bare English label stands out.",
+   "en": "tokens",
+   "translated": "tokens",
+   "suggestion": "トークン"
+  },
+  {
+   "group": "stats-context",
+   "key": "stats.value.notAvailable",
+   "lang": "ja",
+   "issue": "(a) Wrong sense. \"N/A\" here is a stats value meaning data is unavailable, not \"not applicable\". \"該当なし\" means \"no matching item / not applicable\", which misframes a missing metric.",
+   "en": "N/A",
+   "translated": "該当なし",
+   "suggestion": "なし (or keep \"N/A\", or 不明)"
+  },
+  {
+   "group": "stats-context",
+   "key": "stats.value.notAvailable",
+   "lang": "zh",
+   "issue": "(a) Wrong sense. \"N/A\" as a stats value means the metric is unavailable / no data, but \"不适用\" means \"not applicable\", which misframes a missing value.",
+   "en": "N/A",
+   "translated": "不适用",
+   "suggestion": "暂无 (or keep \"N/A\", or 无数据)"
+  },
+  {
+   "group": "stats-context",
+   "key": "stats.label.speculationSaved",
+   "lang": "zh",
+   "issue": "(b) Awkward/ambiguous. \"推测节省\" reads as \"guesswork savings\" and is unclear; the source refers to speculative (decoding/execution) token savings. The companion setting settings.config.speculativeExecution already uses \"推测执行\", so a noun-phrase tying the two together is clearer.",
+   "en": "Speculation saved:",
+   "translated": "推测节省：",
+   "suggestion": "推测执行节省： (or 推测节省的 token：)"
+  },
+  {
+   "group": "promptInput-worktree",
+   "key": "worktree.exit.removedCommits",
+   "lang": "ja",
+   "issue": "Redundant/garbled output. The ja template appends \"（{wasWord}）\" and wasWord=\"破棄\", so it renders as \"...が破棄されました（破棄）。\" — the word \"破棄\" appears twice in a row, which reads as a nonsensical duplication. English has no such parenthetical; {wasWord}/{wereWord} only exist to satisfy EN singular/plural verb agreement, which Japanese does not need.",
+   "en": "Worktree removed. {count} {commitWord} on {branch} {wasWord} discarded.{tmuxNote}",
+   "translated": "worktree を削除しました。{branch} の {count} 件の {commitWord} が破棄されました（{wasWord}）。{tmuxNote}",
+   "suggestion": "Drop the trailing \"（{wasWord}）\" entirely: \"worktree を削除しました。{branch} の {count} 件の {commitWord} を破棄しました。{tmuxNote}\". The {wasWord}/{wereWord} placeholders are an English grammar artifact and should not be surfaced in Japanese."
+  },
+  {
+   "group": "promptInput-worktree",
+   "key": "worktree.exit.wasWord",
+   "lang": "ja",
+   "issue": "wasWord=\"破棄\" and wereWord=\"破棄\" are only consumed by worktree.exit.removedCommits, where they create the redundant \"破棄されました（破棄）\" duplication described above. As standalone values they are meaningless verb fragments in Japanese.",
+   "en": "was",
+   "translated": "破棄",
+   "suggestion": "If the removedCommits template is fixed to not append them, set both to an empty string \"\" (or leave them unused). They should not render as \"破棄\" next to the already-present \"破棄されました\"."
+  },
+  {
+   "group": "promptInput-worktree",
+   "key": "teleportStash.error.pressLabel",
+   "lang": "ja",
+   "issue": "Broken word order when concatenated. The UI joins pressLabel + key + toCancel = \"押してください \" + \"Escape\" + \" でキャンセル\" → \"押してください Escape でキャンセル\", which is ungrammatical Japanese (verb \"押してください\" precedes its object). Japanese particle order requires the key before the verb.",
+   "en": "Press ",
+   "translated": "押してください ",
+   "suggestion": "Make pressLabel empty/minimal and put the verb in toCancel so it renders naturally, e.g. pressLabel=\"\" and toCancel=\" を押すとキャンセルします\" → \"Escape を押すとキャンセルします\". (zh handles this correctly: \"按 \" + Escape + \" 取消\".)"
+  },
+  {
+   "group": "promptInput-worktree",
+   "key": "teleportStash.body.confirmStashPrompt",
+   "lang": "zh",
+   "issue": "Inconsistent terminology: \"teleport\" is left in English here (\"继续 teleport\"), but the same feature is translated as \"传送\" in teleportRepoMismatch.title (\"传送到代码仓库\"). Mixing the raw English word with the Chinese term within the same UI flow is inconsistent.",
+   "en": "Would you like to stash these changes and continue with teleport?",
+   "translated": "是否要暂存这些更改并继续 teleport？",
+   "suggestion": "Use the consistent Chinese term: \"是否要暂存这些更改并继续传送？\" (and likewise normalize \"Teleport\" in teleportStash.body.willSwitchBranches to \"传送\")."
+  },
+  {
+   "group": "promptInput-worktree",
+   "key": "teleportStash.body.willSwitchBranches",
+   "lang": "zh",
+   "issue": "Same inconsistency as confirmStashPrompt: \"Teleport\" left as capitalized English while teleportRepoMismatch.title uses \"传送\". Inconsistent terminology across the teleport flow.",
+   "en": "Teleport will switch git branches. The following changes were found:",
+   "translated": "Teleport 将切换 git 分支。发现以下更改：",
+   "suggestion": "\"传送将切换 git 分支。发现以下更改：\" — align with the \"传送\" term used elsewhere."
+  },
+  {
+   "group": "promptInput-worktree",
+   "key": "worktree.tmux.iterm2Tip.line1",
+   "lang": "zh",
+   "issue": "Left fully in English (\"To open as a tab instead of a new window:\") while it is user-facing tip text that should be translated. (line2 is an iTerm2 menu path and top is the box border, which legitimately stay English; but line1 is a translatable sentence.)",
+   "en": " To open as a tab instead of a new window:                           ",
+   "translated": " To open as a tab instead of a new window:                           ",
+   "suggestion": "Translate the sentence while preserving the fixed box width (pad/trim trailing spaces to keep alignment), e.g. \" 若要以标签页而非新窗口打开：\" padded to the same column width."
+  },
+  {
+   "group": "promptInput-worktree",
+   "key": "worktree.tmux.iterm2Tip.line1",
+   "lang": "ja",
+   "issue": "Left fully in English (\"To open as a tab instead of a new window:\"); this is a translatable tip sentence that should be localized (line2 menu path and top border may stay English).",
+   "en": " To open as a tab instead of a new window:                           ",
+   "translated": " To open as a tab instead of a new window:                           ",
+   "suggestion": "Translate while keeping the fixed-width box alignment, e.g. \" 新しいウィンドウではなくタブとして開くには：\" padded with trailing spaces to match the original column width."
+  },
+  {
+   "group": "tips-notif-onboarding",
+   "key": "setup.deepseek.effort.maxLabel",
+   "lang": "zh",
+   "issue": "(b) Awkward/ungrammatical. en='Max — full reasoning, deepest quality'. zh='最高 — 完整推理，最深质量'. '最深质量' is ungrammatical Chinese — 质量 (quality) cannot be modified by 深 (deep). A native reader would find '最深质量' jarring.",
+   "translated": "最高 — 完整推理，最深质量",
+   "en": "Max — full reasoning, deepest quality",
+   "suggestion": "最高 — 完整推理，质量最佳 (or 最高 — 完整推理，最高质量)"
+  },
+  {
+   "group": "tips-notif-onboarding",
+   "key": "setup.deepseek.subtitleEffort",
+   "lang": "ja",
+   "issue": "(b) Awkward + (c) inconsistent-prone term. en='Step 4 of 4 — Reasoning effort'. ja uses '推論の労力' for 'Reasoning effort'. '労力' means physical labor/toil and is an unnatural literal rendering for a model reasoning-depth setting; it reads oddly to a native speaker. The same odd term recurs in setup.deepseek.review.effortLabel.",
+   "translated": "ステップ 4/4 — 推論の労力",
+   "en": "Step 4 of 4 — Reasoning effort",
+   "suggestion": "ステップ 4/4 — 推論レベル (or 推論の強度) — and apply the same term consistently to review.effortLabel"
+  },
+  {
+   "group": "tips-notif-onboarding",
+   "key": "setup.deepseek.review.effortLabel",
+   "lang": "ja",
+   "issue": "(b)/(c) Same '推論の労力' awkward term as subtitleEffort. en='Reasoning effort:'. '労力' is an unnatural rendering; keep consistent with whatever natural term is chosen for the subtitle.",
+   "translated": "推論の労力:",
+   "en": "Reasoning effort:",
+   "suggestion": "推論レベル: (or 推論の強度:)"
+  },
+  {
+   "group": "tips-notif-onboarding",
+   "key": "spinner.status.workedFor",
+   "lang": "ja",
+   "issue": "(b) Slightly unnatural for a duration phrase. en='Worked for {duration}'. ja='{duration} 作業しました'. When {duration} is e.g. '5分', it renders '5分 作業しました' with no time-span particle, which reads awkwardly. A label form is more natural in a status line.",
+   "translated": "{duration} 作業しました",
+   "en": "Worked for {duration}",
+   "suggestion": "作業時間: {duration} (or {duration} 作業中)"
+  },
+  {
+   "group": "misc-features",
+   "key": "fastMode.notification.cooldownExpired",
+   "lang": "ja",
+   "issue": "(c) Terminology inconsistency. 'Fast mode' is rendered 「ファストモード」 and 'fast limit' as 「ファスト制限」, but the ENTIRE rest of the catalog (command.fast.*, settings.config.fastMode, modelPicker.notice.fastMode*, ~17 occurrences) consistently uses 「高速モード」. The parallel key command.fast.picker.cooldownLimit even uses 「高速モードの上限に達しました」. The 5 fastMode.notification.* keys are the only ones using ファストモード/ファスト制限.",
+   "en": "Fast limit reset · now using fast mode",
+   "translated": "ファスト制限がリセットされました · ファストモードを使用中",
+   "suggestion": "高速モードの制限がリセットされました · 高速モードを使用中"
+  },
+  {
+   "group": "misc-features",
+   "key": "fastMode.notification.cooldownOverloaded",
+   "lang": "ja",
+   "issue": "(c) Same terminology inconsistency: uses 「ファストモード」 instead of the catalog-standard 「高速モード」.",
+   "en": "Fast mode overloaded and is temporarily unavailable · resets in {resetIn}",
+   "translated": "ファストモードが過負荷のため一時的に利用できません · {resetIn} 後にリセットされます",
+   "suggestion": "高速モードが過負荷のため一時的に利用できません · {resetIn} 後にリセットされます"
+  },
+  {
+   "group": "misc-features",
+   "key": "fastMode.notification.cooldownRateLimit",
+   "lang": "ja",
+   "issue": "(c) Same terminology inconsistency: 「ファスト制限」/「ファストモード」 instead of catalog-standard 「高速モード」.",
+   "en": "Fast limit reached and temporarily disabled · resets in {resetIn}",
+   "translated": "ファスト制限に達したため一時的に無効化されました · {resetIn} 後にリセットされます",
+   "suggestion": "高速モードの制限に達したため一時的に無効化されました · {resetIn} 後にリセットされます"
+  },
+  {
+   "group": "misc-features",
+   "key": "fastMode.notification.orgDisabled",
+   "lang": "ja",
+   "issue": "(c) Same terminology inconsistency: uses 「ファストモード」 instead of catalog-standard 「高速モード」.",
+   "en": "Fast mode has been disabled by your organization",
+   "translated": "ファストモードは組織によって無効化されました",
+   "suggestion": "高速モードは組織によって無効化されました"
+  },
+  {
+   "group": "misc-features",
+   "key": "fastMode.notification.orgEnabled",
+   "lang": "ja",
+   "issue": "(c) Same terminology inconsistency: uses 「ファストモード」 instead of catalog-standard 「高速モード」.",
+   "en": "Fast mode is now available · /fast to turn on",
+   "translated": "ファストモードが利用可能になりました · /fast で有効化",
+   "suggestion": "高速モードが利用可能になりました · /fast で有効化"
+  },
+  {
+   "group": "misc-features",
+   "key": "command.ide.targetWorktree",
+   "lang": "ja",
+   "issue": "(c) Terminology inconsistency. 'worktree' is translated 「ワークツリー」 here, but this is the ONLY occurrence — the rest of the catalog keeps 'worktree' in English (83 occurrences, e.g. logSelector.footer.showAllWorktrees = 'すべての worktree を表示'). This target word is interpolated into command.ide.openManually/opened ({ide} で{target}を…), so it should match the catalog convention.",
+   "en": "worktree",
+   "translated": "ワークツリー",
+   "suggestion": "worktree"
+  },
+  {
+   "group": "misc-features",
+   "key": "command.ide.targetWorktree",
+   "lang": "zh",
+   "issue": "(c) Terminology inconsistency. 'worktree' is translated 「工作树」 here, but this is the ONLY occurrence — the rest of the catalog keeps 'worktree' in English (83 occurrences, e.g. logSelector.footer.showAllWorktrees = '显示所有 worktree'). 「工作树」 is also an unidiomatic/literal rendering of a git term. This is interpolated into command.ide.openManually/opened, so it must match the convention.",
+   "en": "worktree",
+   "translated": "工作树",
+   "suggestion": "worktree"
+  },
+  {
+   "group": "misc-features",
+   "key": "ide.notif.hint",
+   "lang": "zh",
+   "issue": "(b) Awkward/unnatural. EN '/ide for {ideName}' is a status hint meaning 'run /ide to (re)connect to {ideName}'. 「/ide 用于 {ideName}」 reads like '/ide is used-for {ideName}', which is unnatural in a notification context. The JA rendering 「{ideName} には /ide」 conveys the intent better.",
+   "en": "/ide for {ideName}",
+   "translated": "/ide 用于 {ideName}",
+   "suggestion": "{ideName}：使用 /ide  (or 「连接 {ideName} 请用 /ide」)"
+  },
+  {
+   "group": "dialogs-misc",
+   "key": "idleReturn.title",
+   "lang": "zh",
+   "issue": "Register inconsistency: uses formal 您 (\"您已离开 {idle}…\") while the dominant register in this group is informal 你 (used in languagePicker.prompt, trust.safetyCheck, channel.*, bypassPermissions.*, costThreshold.title, ideAutoConnect.*). Mixed 你/您 within the same UI feels unpolished.",
+   "en": "You've been away {idle} and this conversation is {tokens} tokens.",
+   "translated": "您已离开 {idle}，此对话当前为 {tokens} 个 token。",
+   "suggestion": "你已离开 {idle}，此对话当前为 {tokens} 个 token。"
+  },
+  {
+   "group": "dialogs-misc",
+   "key": "themePicker.instruction",
+   "lang": "zh",
+   "issue": "Register inconsistency: uses formal 您 while the group dominantly uses informal 你.",
+   "en": "Choose the text style that looks best with your terminal",
+   "translated": "选择最适合您终端的文本样式",
+   "suggestion": "选择最适合你终端的文本样式"
+  },
+  {
+   "group": "dialogs-misc",
+   "key": "claudeMdExternalIncludes.securityWarning",
+   "lang": "zh",
+   "issue": "Register inconsistency: uses formal 您 while sibling claudeMdExternalIncludes.* entries and the group as a whole use informal 你.",
+   "en": "Important: Only use Deep Code with files you trust. Accessing untrusted files may pose security risks.",
+   "translated": "重要提示：仅在您信任的文件上使用 Deep Code。访问不受信任的文件可能会带来安全风险。",
+   "suggestion": "重要提示：仅在你信任的文件上使用 Deep Code。访问不受信任的文件可能会带来安全风险。（另：\"在…文件上使用\"略生硬，可改为\"仅对你信任的文件使用 Deep Code\"）"
+  },
+  {
+   "group": "dialogs-misc",
+   "key": "error.api.requestTimedOut",
+   "lang": "zh",
+   "issue": "Register inconsistency: the entire error.* cluster (requestTimedOut, sslSelfSigned, sslVerificationFailed, unableToConnect, ssl.certHint) uses formal 您, while the rest of the dialogs-misc group uses informal 你. Pick one register for the whole catalog.",
+   "en": "Request timed out. Check your internet connection and proxy settings",
+   "translated": "请求超时。请检查您的网络连接和代理设置",
+   "suggestion": "请求超时。请检查你的网络连接和代理设置（同样统一 error.api.sslSelfSigned / sslVerificationFailed / unableToConnect / error.ssl.certHint 的 您→你）"
+  },
+  {
+   "group": "dialogs-misc",
+   "key": "quickOpen.preview.loadingInline",
+   "lang": "zh",
+   "issue": "Terminology inconsistency for \"Loading…\": this group renders it three different ways — quickOpen.preview.loading=\"正在加载预览…\", quickOpen.preview.loadingInline=\"加载中…\", globalSearch.preview.loading=\"正在加载…\", historySearch.loading=\"加载中…\". Mixed 正在加载/加载中 should be unified.",
+   "en": " · loading…",
+   "translated": " · 加载中…",
+   "suggestion": "Pick one form (e.g. 加载中…) and apply it consistently across quickOpen.preview.loading, globalSearch.preview.loading, historySearch.loading, and this inline entry."
+  },
+  {
+   "group": "dialogs-misc",
+   "key": "themePicker.option.darkDaltonized",
+   "lang": "zh",
+   "issue": "Dated/blunt terminology: \"色盲\" (color blindness) is clinical; modern accessibility-oriented Chinese UI prefers \"色觉\". The ja catalog uses the modern \"色覚サポート\". Applies to both darkDaltonized and lightDaltonized.",
+   "en": "Dark mode (colorblind-friendly)",
+   "translated": "深色模式（色盲友好）",
+   "suggestion": "深色模式（色觉友好） — and lightDaltonized → 浅色模式（色觉友好）"
+  },
+  {
+   "group": "dialogs-misc",
+   "key": "idleReturn.option.never",
+   "lang": "zh",
+   "issue": "Slightly awkward: the trailing 我 in \"不再询问我\" is a literal calque of \"ask me\"; natural Chinese UI drops it.",
+   "en": "Don't ask me again",
+   "translated": "不再询问我",
+   "suggestion": "不再询问 (or 不再提醒我)"
+  },
+  {
+   "group": "dialogs-misc",
+   "key": "channel.downgrade.prompt",
+   "lang": "ja",
+   "issue": "Punctuation inconsistency: uses half-width \"?\" while the sibling question dialogs in this group use full-width \"？\" (thinkingToggle.warning.proceed, autoMode.optIn.title, claudeMdExternalIncludes.title, ideAutoConnect.disable.title, ideAutoConnect.enable.title). Low severity (the file is mixed overall) but within this dialog group it stands out.",
+   "en": "How would you like to handle this?",
+   "translated": "どのように対応しますか?",
+   "suggestion": "どのように対応しますか？"
+  },
+  {
+   "group": "dialogs-misc",
+   "key": "historySearch.placeholder",
+   "lang": "ja",
+   "issue": "Slightly unnatural: \"フィルター\" as a verb (\"履歴をフィルター…\") is katakana-English; native Japanese UI more commonly says 絞り込む for filtering a list.",
+   "en": "Filter history…",
+   "translated": "履歴をフィルター…",
+   "suggestion": "履歴を絞り込む…"
+  }
+ ]
+}
