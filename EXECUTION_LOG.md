@@ -200,11 +200,41 @@ P2.10.Z (dist refresh): dist/deepcode-full.mjs rebuilt with the full i18n surfac
 CJK text dominating). Landed inadvertently in #269 but is the correct final-source
 build (verified reproducible + CI-green) rather than a standalone Z PR.
 
+**P2.10.g — i18n COMPLETION (2026-05-31).** A multi-agent coverage audit (read-only
+sweep of all `packages/deep-code/src`, results in `audit/i18n-coverage-2026-05-30.json`)
+revealed the "complete" status above was WRONG — only ~55% of the user-facing surface
+was migrated; ~620 distinct raw strings remained across ~150 files (incl. a live
+"Claude Code" leak in BypassPermissionsModeDialog). Completed in four batches + a
+consolidated dist refresh:
+
+| Batch | PR | Notes |
+|---|---|---|
+| g.1 dialogs + Settings/Config + runtime errors | #276 | 214 keys; de-branded BypassPermissions title. |
+| g.2 messages + notifications | #277 | 424 keys; messages/* + hooks/notifs/*. |
+| g.3a slash-command result/UI strings | #278 | 607 keys; 56 command files. |
+| g.3b agents UI | #279 | 146 keys; agent menus + creation wizard. |
+| g.3c MCP + PromptInput | #280 | 113 keys; incl. ElicitationDialog. |
+| g.4 main.tsx + diagnostics/tips + edge | #281 | 476 keys. |
+| P2.10.Z2 dist refresh | (this PR) | dist 14,619,935 → 15,168,594 bytes (+549 KB) over the full surface. |
+
+Catalog grew 596 → **2,582 keys × 3 locales**. Full-codebase check: every wired key
+resolves (0 missing). Each batch validated against the FULL CI node-test list (p2-1..p2-9
+source-scan migrated literals). Produced via a two-stage migrate→recover multi-agent
+workflow (edit files, then recover catalog entries from git diffs to disk).
+
+**i18n EXCEPTIONS (intentionally English):** `utils/status.tsx` (the `--status`
+diagnostic panel — env-var-tied provider/account labels like Anthropic/Bedrock/Vertex/
+Foundry base URL, mTLS, GCP project; coupled to a structural guard); the model-picker
+registry (`utils/model/modelOptions.ts`, `agent.ts` — pricing/model-name/marketing copy);
+`src/commands/**/*.mjs` loaders (runtime ESM can't import the TS catalog); slash-command
+`description:` metadata (English by design G6 — feeds model prompts).
+
 Deferred i18n follow-ups (non-blocking):
-- Native review of the ~51 flagged zh-Hans/ja technical terms before external sign-off.
-- App-wide Claude docs-URL cleanup (code.claude.com / claude.ai / platform.claude.com in 7+ user-facing strings) — separate chore PR, target the GitHub repo.
-- LocalePicker also as a Settings-menu row (Config.tsx); /locale covers it for now.
-- Optional: hard-coded-string CI lint for future un-migrated strings; live in-session switch (currently startup/restart due to React-Compiler memo caches); zh-Hant/es/fr/de/ko locales.
+- Native review of the flagged zh-Hans/ja technical terms before external sign-off (now a much larger set after g.1–g.4 machine translation — ~2,000 keys pending native review).
+- ~~App-wide Claude docs-URL cleanup~~ — DONE (#271).
+- ~~LocalePicker as a Settings-menu row (Config.tsx)~~ — DONE (#272); regression guard added (#273).
+- Optional surgical migration of `utils/status.tsx`'s genuinely user-facing strings (its provider/account labels stay English — see EXCEPTIONS above).
+- Optional: live in-session switch (currently startup/restart due to React-Compiler memo caches); zh-Hant/es/fr/de/ko locales.
 
 ### Phase 3: Distribution
 
