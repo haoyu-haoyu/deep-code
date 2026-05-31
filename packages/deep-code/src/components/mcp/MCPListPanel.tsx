@@ -4,10 +4,11 @@ import React, { useCallback, useState } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
 import { Box, color, Text, useTheme } from '../../ink.js';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
+import { getMessage } from '../../i18n/index.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import type { ConfigScope } from '../../services/mcp/types.js';
 import { describeMcpConfigFilePath } from '../../services/mcp/utils.js';
 import { isDebugMode } from '../../utils/debug.js';
-import { plural } from '../../utils/stringUtils.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { Byline } from '../design-system/Byline.js';
 import { Dialog } from '../design-system/Dialog.js';
@@ -44,27 +45,27 @@ function getScopeHeading(scope: ConfigScope): {
   switch (scope) {
     case 'project':
       return {
-        label: 'Project MCPs',
+        label: getMessage('mcp.list.scope.project'),
         path: describeMcpConfigFilePath(scope)
       };
     case 'user':
       return {
-        label: 'User MCPs',
+        label: getMessage('mcp.list.scope.user'),
         path: describeMcpConfigFilePath(scope)
       };
     case 'local':
       return {
-        label: 'Local MCPs',
+        label: getMessage('mcp.list.scope.local'),
         path: describeMcpConfigFilePath(scope)
       };
     case 'enterprise':
       return {
-        label: 'Enterprise MCPs'
+        label: getMessage('mcp.list.scope.enterprise')
       };
     case 'dynamic':
       return {
-        label: 'Built-in MCPs',
-        path: 'always available'
+        label: getMessage('mcp.list.scope.builtin'),
+        path: getMessage('mcp.list.scope.builtinPath')
       };
     default:
       return {
@@ -98,6 +99,9 @@ export function MCPListPanel(t0) {
     onSelectAgentServer,
     onComplete
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t2;
   if ($[0] !== t1) {
     t2 = t1 === undefined ? [] : t1;
@@ -187,7 +191,7 @@ export function MCPListPanel(t0) {
   let t7;
   if ($[14] !== onComplete) {
     t7 = () => {
-      onComplete("MCP dialog dismissed", {
+      onComplete(t('mcp.list.dialogDismissed'), {
         display: "system"
       });
     };
@@ -306,11 +310,11 @@ export function MCPListPanel(t0) {
       let statusText;
       if (server_3.client.type === "disabled") {
         statusIcon = color("inactive", theme)(figures.radioOff);
-        statusText = "disabled";
+        statusText = t('mcp.list.status.disabled');
       } else {
         if (server_3.client.type === "connected") {
           statusIcon = color("success", theme)(figures.tick);
-          statusText = "connected";
+          statusText = t('mcp.list.status.connected');
         } else {
           if (server_3.client.type === "pending") {
             statusIcon = color("inactive", theme)(figures.radioOff);
@@ -319,17 +323,20 @@ export function MCPListPanel(t0) {
               maxReconnectAttempts
             } = server_3.client;
             if (reconnectAttempt && maxReconnectAttempts) {
-              statusText = `reconnecting (${reconnectAttempt}/${maxReconnectAttempts})…`;
+              statusText = t('mcp.list.status.reconnecting', {
+                attempt: reconnectAttempt,
+                max: maxReconnectAttempts
+              });
             } else {
-              statusText = "connecting\u2026";
+              statusText = t('mcp.list.status.connecting');
             }
           } else {
             if (server_3.client.type === "needs-auth") {
               statusIcon = color("warning", theme)(figures.triangleUpOutline);
-              statusText = "needs authentication";
+              statusText = t('mcp.list.status.needsAuth');
             } else {
               statusIcon = color("error", theme)(figures.cross);
-              statusText = "failed";
+              statusText = t('mcp.list.status.failed');
             }
           }
         }
@@ -350,7 +357,7 @@ export function MCPListPanel(t0) {
       const index_0 = getAgentServerIndex(agentServer_1);
       const isSelected_0 = selectedIndex === index_0;
       const statusIcon_0 = agentServer_1.needsAuth ? color("warning", theme)(figures.triangleUpOutline) : color("inactive", theme)(figures.radioOff);
-      const statusText_0 = agentServer_1.needsAuth ? "may need auth" : "agent-only";
+      const statusText_0 = agentServer_1.needsAuth ? t('mcp.list.status.mayNeedAuth') : t('mcp.list.status.agentOnly');
       return <Box key={`agent-${agentServer_1.name}-${index_0}`}><Text color={isSelected_0 ? "suggestion" : undefined}>{isSelected_0 ? `${figures.pointer} ` : "  "}</Text><Text color={isSelected_0 ? "suggestion" : undefined}>{agentServer_1.name}</Text><Text dimColor={!isSelected_0}> · {statusIcon_0} </Text><Text dimColor={!isSelected_0}>{statusText_0}</Text></Box>;
     };
     $[41] = getAgentServerIndex;
@@ -371,13 +378,16 @@ export function MCPListPanel(t0) {
   }
   let t20;
   if ($[46] !== totalServers) {
-    t20 = plural(totalServers, "server");
+    t20 = totalServers === 1 ? t('mcp.list.serverLabel.singular') : t('mcp.list.serverLabel.plural');
     $[46] = totalServers;
     $[47] = t20;
   } else {
     t20 = $[47];
   }
-  const t21 = `${totalServers} ${t20}`;
+  const t21 = t('mcp.list.subtitle', {
+    count: totalServers,
+    serverLabel: t20
+  });
   let t22;
   if ($[48] !== renderServerItem || $[49] !== serversByScope) {
     t22 = SCOPE_ORDER.map(scope_0 => {
@@ -405,7 +415,7 @@ export function MCPListPanel(t0) {
   }
   let t24;
   if ($[54] !== agentServers || $[55] !== renderAgentServerItem) {
-    t24 = agentServers.length > 0 && <Box flexDirection="column" marginBottom={1}><Box paddingLeft={2}><Text bold={true}>Agent MCPs</Text></Box>{[...new Set(agentServers.flatMap(_temp6))].map(agentName => <Box key={agentName} flexDirection="column" marginTop={1}><Box paddingLeft={2}><Text dimColor={true}>@{agentName}</Text></Box>{agentServers.filter(s_3 => s_3.sourceAgents.includes(agentName)).map(agentServer_2 => renderAgentServerItem(agentServer_2))}</Box>)}</Box>;
+    t24 = agentServers.length > 0 && <Box flexDirection="column" marginBottom={1}><Box paddingLeft={2}><Text bold={true}>{t('mcp.list.scope.agent')}</Text></Box>{[...new Set(agentServers.flatMap(_temp6))].map(agentName => <Box key={agentName} flexDirection="column" marginTop={1}><Box paddingLeft={2}><Text dimColor={true}>@{agentName}</Text></Box>{agentServers.filter(s_3 => s_3.sourceAgents.includes(agentName)).map(agentServer_2 => renderAgentServerItem(agentServer_2))}</Box>)}</Box>;
     $[54] = agentServers;
     $[55] = renderAgentServerItem;
     $[56] = t24;
@@ -423,7 +433,7 @@ export function MCPListPanel(t0) {
   }
   let t26;
   if ($[60] !== hasFailedClients) {
-    t26 = hasFailedClients && <Text dimColor={true}>{debugMode ? "\u203B Error logs shown inline with --debug" : "\u203B Run claude --debug to see error logs"}</Text>;
+    t26 = hasFailedClients && <Text dimColor={true}>{debugMode ? t('mcp.list.debugHint.enabled') : t('mcp.list.debugHint.disabled')}</Text>;
     $[60] = hasFailedClients;
     $[61] = t26;
   } else {
@@ -451,7 +461,7 @@ export function MCPListPanel(t0) {
   }
   let t30;
   if ($[71] !== handleCancel || $[72] !== t21 || $[73] !== t29) {
-    t30 = <Dialog title="Manage MCP servers" subtitle={t21} onCancel={handleCancel} hideInputGuide={true}>{t29}</Dialog>;
+    t30 = <Dialog title={t('mcp.list.dialogTitle')} subtitle={t21} onCancel={handleCancel} hideInputGuide={true}>{t29}</Dialog>;
     $[71] = handleCancel;
     $[72] = t21;
     $[73] = t29;

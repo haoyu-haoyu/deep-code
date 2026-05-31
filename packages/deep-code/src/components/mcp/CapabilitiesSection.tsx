@@ -1,5 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Text } from '../../ink.js';
 import { Byline } from '../design-system/Byline.js';
 type Props = {
@@ -14,6 +15,9 @@ export function CapabilitiesSection(t0) {
     serverPromptsCount,
     serverResourcesCount
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let capabilities;
   if ($[0] !== serverPromptsCount || $[1] !== serverResourcesCount || $[2] !== serverToolsCount) {
     capabilities = [];
@@ -35,14 +39,14 @@ export function CapabilitiesSection(t0) {
   }
   let t1;
   if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Text bold={true}>Capabilities: </Text>;
+    t1 = <Text bold={true}>{t('mcp.capabilities.label')}</Text>;
     $[4] = t1;
   } else {
     t1 = $[4];
   }
   let t2;
   if ($[5] !== capabilities) {
-    t2 = capabilities.length > 0 ? <Byline>{capabilities}</Byline> : "none";
+    t2 = capabilities.length > 0 ? <Byline>{capabilities}</Byline> : t('mcp.capabilities.none');
     $[5] = capabilities;
     $[6] = t2;
   } else {

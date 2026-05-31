@@ -404,7 +404,19 @@ test('TUI footer displays auto route metadata only for auto sessions', async () 
   const source = await readFile(footerLeftSource, 'utf8')
 
   assert.match(source, /activeModelSetting === 'auto'/)
-  assert.match(source, /auto \{'->'\} \{autoRouteDecision\.model\}\/\{autoRouteDecision\.thinking\}/)
+  // The footer auto-route label migrated to the catalog
+  // (promptInput.footer.autoRoute); the footer now renders the key with the
+  // model/thinking params.
+  assert.match(source, /promptInput\.footer\.autoRoute/)
+  assert.match(source, /autoRouteDecision\.model/)
+  const enCatalog = await readFile(
+    join(packageRoot, 'src/i18n/messages/en.ts'),
+    'utf8',
+  )
+  assert.match(
+    enCatalog,
+    /'promptInput\.footer\.autoRoute':\s*'auto -> \{model\}\/\{thinking\}'/,
+  )
 })
 
 test('CLI help advertises --model auto', async () => {

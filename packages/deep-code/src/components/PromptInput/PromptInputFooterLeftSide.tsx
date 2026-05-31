@@ -74,6 +74,9 @@ type Props = {
 };
 function ProactiveCountdown() {
   const $ = _c(7);
+  const {
+    t
+  } = useTranslation();
   const nextTickAt = useSyncExternalStore(proactiveModule?.subscribeToProactiveChanges ?? NO_OP_SUBSCRIBE, proactiveModule?.getNextTickAt ?? NULL, NULL);
   const [remainingSeconds, setRemainingSeconds] = useState(null);
   let t0;
@@ -117,7 +120,7 @@ function ProactiveCountdown() {
   }
   let t4;
   if ($[5] !== t3) {
-    t4 = <Text dimColor={true}>waiting{" "}{t3}</Text>;
+    t4 = <Text dimColor={true}>{t('promptInput.footer.proactiveWaiting', { duration: t3 })}</Text>;
     $[5] = t3;
     $[6] = t4;
   } else {
@@ -147,10 +150,13 @@ export function PromptInputFooterLeftSide(t0) {
     autoRouteDecision,
     onOpenTasksDialog
   } = t0;
+  const {
+    t
+  } = useTranslation();
   if (exitMessage.show) {
     let t1;
     if ($[0] !== exitMessage.key) {
-      t1 = <Text dimColor={true} key="exit-message">Press {exitMessage.key} again to exit</Text>;
+      t1 = <Text dimColor={true} key="exit-message">{t('common.pressKeyAgainToExit', { keyName: exitMessage.key })}</Text>;
       $[0] = exitMessage.key;
       $[1] = t1;
     } else {
@@ -161,7 +167,7 @@ export function PromptInputFooterLeftSide(t0) {
   if (isPasting) {
     let t1;
     if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-      t1 = <Text dimColor={true} key="pasting-message">Pasting text…</Text>;
+      t1 = <Text dimColor={true} key="pasting-message">{t('promptInput.footer.pastingText')}</Text>;
       $[2] = t1;
     } else {
       t1 = $[2];
@@ -191,7 +197,7 @@ export function PromptInputFooterLeftSide(t0) {
   }
   let t3;
   if ($[11] !== showVim) {
-    t3 = showVim ? <Text dimColor={true} key="vim-insert">-- INSERT --</Text> : null;
+    t3 = showVim ? <Text dimColor={true} key="vim-insert">{t('promptInput.footer.vimInsertMode')}</Text> : null;
     $[11] = showVim;
     $[12] = t3;
   } else {
@@ -327,7 +333,7 @@ function ModeIndicator({
   // doesn't push the mode indicator off-screen.
   const modePart = currentMode && hasActiveMode && !getIsRemoteMode() ? <Text color={getModeColor(currentMode)} key="mode">
         {permissionModeSymbol(currentMode)}{' '}
-        {permissionModeTitle(currentMode).toLowerCase()} on
+        {t('promptInput.footer.modeOn', { mode: permissionModeTitle(currentMode).toLowerCase() })}
         {shouldShowModeHint && <Text dimColor>
             {' '}
             <KeyboardShortcutHint shortcut={modeCycleShortcut} action="cycle" parens />
@@ -339,13 +345,13 @@ function ModeIndicator({
   const parts = [
   // Remote session indicator
   ...(remoteSessionUrl ? [<Link url={remoteSessionUrl} key="remote">
-            <Text color="ide">{figures.circleDouble} remote</Text>
+            <Text color="ide">{figures.circleDouble} {t('promptInput.footer.remoteSession')}</Text>
           </Link>] : []),
   // BackgroundTaskStatus is NOT in parts — it renders as a Box sibling so
   // its click-target Box isn't nested inside the <Text wrap="truncate">
   // wrapper (reconciler throws on Box-in-Text).
   // Tmux pill (ant-only) — appears right after tasks in nav order
-  ...("external" === 'ant' && hasTmuxSession ? [<TungstenPill key="tmux" selected={tmuxSelected} />] : []), ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), ...(showAutoRoute ? [<Text dimColor key="auto-route">auto {'->'} {autoRouteDecision.model}/{autoRouteDecision.thinking}</Text>] : []), <CacheStatusChip key={`cache-status-${cacheStatusVersion ?? 0}`} />, ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
+  ...("external" === 'ant' && hasTmuxSession ? [<TungstenPill key="tmux" selected={tmuxSelected} />] : []), ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), ...(showAutoRoute ? [<Text dimColor key="auto-route">{t('promptInput.footer.autoRoute', { model: autoRouteDecision.model, thinking: autoRouteDecision.thinking })}</Text>] : []), <CacheStatusChip key={`cache-status-${cacheStatusVersion ?? 0}`} />, ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
 
   // Check if any in-process teammates exist (for hint text cycling)
   const hasAnyInProcessTeammates = Object.values(tasks).some(t_2 => t_2.type === 'in_process_teammate' && t_2.status === 'running');
@@ -388,7 +394,7 @@ function ModeIndicator({
   const tasksPart = hasBackgroundTasks && !hasTeammatePills && !shouldHideTasksFooter(tasks, showSpinnerTree) ? <BackgroundTaskStatus tasksSelected={tasksSelected} isViewingTeammate={isViewingTeammate} teammateFooterIndex={teammateFooterIndex} isLeaderIdle={!isLoading} onOpenDialog={onOpenTasksDialog} /> : null;
   if (parts.length === 0 && !tasksPart && !modePart && showHint) {
     parts.push(<Text dimColor key="shortcuts-hint">
-        ? for shortcuts
+        {t('promptInput.footer.shortcutsHint')}
       </Text>);
   }
 
@@ -415,7 +421,7 @@ function ModeIndicator({
     parts.push(<Text dimColor key="selection-copy">
         <Byline>
           {!copyOnSelect && <KeyboardShortcutHint shortcut="ctrl+c" action="copy" />}
-          {isXtermJs() && (altClickFailed ? <Text>set macOptionClickForcesSelection in VS Code settings</Text> : <KeyboardShortcutHint shortcut={isMac ? 'option+click' : 'shift+click'} action="native select" />)}
+          {isXtermJs() && (altClickFailed ? <Text>{t('promptInput.footer.macOptionClickHint', { setting: 'macOptionClickForcesSelection' })}</Text> : <KeyboardShortcutHint shortcut={isMac ? 'option+click' : 'shift+click'} action="native select" />)}
         </Byline>
       </Text>);
   }

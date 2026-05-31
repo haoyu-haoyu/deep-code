@@ -19,6 +19,7 @@ import { getNativeCSIuTerminalDisplayName } from '../../commands/terminalSetup/t
 import { type Command, hasCommand } from '../../commands.js';
 import { useIsModalOverlayActive } from '../../context/overlayContext.js';
 import { useSetPromptOverlayDialog } from '../../context/promptOverlayContext.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { formatImageRef, formatPastedTextRef, getPastedTextRefNumLines, parseReferences } from '../../history.js';
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js';
 import { type HistoryMode, useArrowKeyHistory } from '../../hooks/useArrowKeyHistory.js';
@@ -220,6 +221,7 @@ function PromptInput({
   hasSuppressedDialogs,
   isLocalJSXCommandActive = false
 }: Props): React.ReactNode {
+  const { t } = useTranslation();
   const mainLoopModel = useMainLoopModel();
   // A local-jsx command (e.g., /mcp while agent is running) renders a full-
   // screen dialog on top of PromptInput via the immediate-command path with
@@ -659,14 +661,14 @@ function PromptInput({
     if (thinkTriggers.length && isUltrathinkEnabled()) {
       addNotification({
         key: 'ultrathink-active',
-        text: 'Effort set to high for this turn',
+        text: t('promptInput.notification.effortHigh'),
         priority: 'immediate',
         timeoutMs: 5000
       });
     } else {
       removeNotification('ultrathink-active');
     }
-  }, [addNotification, removeNotification, thinkTriggers.length]);
+  }, [addNotification, removeNotification, thinkTriggers.length, t]);
 
   // Track input length for stash hint
   const prevInputLengthRef = useRef(input.length);
@@ -706,7 +708,7 @@ function PromptInput({
         addNotification({
           key: 'stash-hint',
           jsx: <Text dimColor>
-              Tip:{' '}
+              {t('promptInput.stashHint.tip')}{' '}
               <ConfigurableShortcutHint action="chat:stash" context="Chat" fallback="ctrl+s" description="stash" />
             </Text>,
           priority: 'immediate',
@@ -715,7 +717,7 @@ function PromptInput({
       }
       peakInputLengthRef.current = currentLength;
     }
-  }, [input.length, addNotification]);
+  }, [input.length, addNotification, t]);
 
   // Initialize input buffer for undo functionality
   const {
@@ -933,7 +935,7 @@ function PromptInput({
         if (result.success) {
           addNotification({
             key: 'direct-message-sent',
-            text: `Sent to @${result.recipientName}`,
+            text: t('promptInput.notification.sentToMember', { name: result.recipientName }),
             priority: 'immediate',
             timeoutMs: 3000
           });
@@ -990,7 +992,7 @@ function PromptInput({
       clearBuffer,
       resetHistory
     });
-  }, [promptSuggestionState, speculation, speculationSessionTimeSavedMs, teamContext, store, footerItems, suggestionsState.suggestions, onSubmitProp, onAgentSubmit, clearBuffer, resetHistory, logOutcomeAtSubmission, setAppState, markAccepted, pastedContents, removeNotification]);
+  }, [promptSuggestionState, speculation, speculationSessionTimeSavedMs, teamContext, store, footerItems, suggestionsState.suggestions, onSubmitProp, onAgentSubmit, clearBuffer, resetHistory, logOutcomeAtSubmission, setAppState, markAccepted, pastedContents, removeNotification, t]);
   const {
     suggestions,
     selectedSuggestion,
@@ -1232,14 +1234,14 @@ function PromptInput({
       }
       addNotification({
         key: 'external-editor-error',
-        text: `External editor failed: ${errorMessage(err)}`,
+        text: t('promptInput.notification.externalEditorFailed', { error: errorMessage(err) }),
         color: 'warning',
         priority: 'high'
       });
     } finally {
       setIsExternalEditorActive(false);
     }
-  }, [input, cursorOffset, pastedContents, pushToBuffer, trackAndSetInput, addNotification]);
+  }, [input, cursorOffset, pastedContents, pushToBuffer, trackAndSetInput, addNotification, t]);
 
   // Handler for chat:stash - stash/unstash prompt
   const handleStash = useCallback(() => {
@@ -1511,7 +1513,7 @@ function PromptInput({
         onImagePaste(imageData.base64, imageData.mediaType);
       } else {
         const shortcutDisplay = getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v');
-        const message = env.isSSH() ? "No image found in clipboard. You're SSH'd; try scp?" : `No image found in clipboard. Use ${shortcutDisplay} to paste images.`;
+        const message = env.isSSH() ? t('promptInput.notification.noImageSsh') : t('promptInput.notification.noImagePaste', { shortcut: shortcutDisplay });
         addNotification({
           key: 'no-image-in-clipboard',
           text: message,
@@ -1520,7 +1522,7 @@ function PromptInput({
         });
       }
     });
-  }, [addNotification, onImagePaste]);
+  }, [addNotification, onImagePaste, t]);
 
   // Register chat:submit handler directly in the handler registry (not via
   // useKeybindings) so that only the ChordInterceptor can invoke it for chord
@@ -1758,10 +1760,13 @@ function PromptInput({
     if (getPlatform() === 'macos' && isMacosOptionChar(char)) {
       const shortcut = MACOS_OPTION_SPECIAL_CHARS[char];
       const terminalName = getNativeCSIuTerminalDisplayName();
+      const [optionMetaBefore, optionMetaAfter] = t('promptInput.notification.optionAsMetaHint', {
+        shortcut,
+        terminal: terminalName
+      }).split('{optionAsMeta}');
       const jsx = terminalName ? <Text dimColor>
-          To enable {shortcut}, set <Text bold>Option as Meta</Text> in{' '}
-          {terminalName} preferences (⌘,)
-        </Text> : <Text dimColor>To enable {shortcut}, run /terminal-setup</Text>;
+          {optionMetaBefore}<Text bold>{t('promptInput.notification.optionAsMetaLabel')}</Text>{optionMetaAfter}
+        </Text> : <Text dimColor>{t('promptInput.notification.runTerminalSetupHint', { shortcut })}</Text>;
       addNotification({
         key: 'option-meta-hint',
         jsx,
@@ -1921,12 +1926,12 @@ function PromptInput({
     });
     setShowModelPicker(false);
     const effectiveFastMode = (isFastMode ?? false) && !wasFastModeDisabled;
-    let message = `Model set to ${modelDisplayString(model)}`;
+    let message = t('promptInput.notification.modelSetTo', { model: modelDisplayString(model) });
     if (isBilledAsExtraUsage(model, effectiveFastMode, isOpus1mMergeEnabled())) {
-      message += ' · Billed as extra usage';
+      message += t('command.model.billedAsExtraUsageSuffix');
     }
     if (wasFastModeDisabled) {
-      message += ' · Fast mode OFF';
+      message += t('command.model.fastModeOffSuffix');
     }
     addNotification({
       key: 'model-switched',
@@ -1937,7 +1942,7 @@ function PromptInput({
     logEvent('tengu_model_picker_hotkey', {
       model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
     });
-  }, [setAppState, addNotification, isFastMode]);
+  }, [setAppState, addNotification, isFastMode, t]);
   const handleModelCancel = useCallback(() => {
     setShowModelPicker(false);
   }, []);
@@ -1983,12 +1988,12 @@ function PromptInput({
     addNotification({
       key: 'thinking-toggled-hotkey',
       jsx: <Text color={enabled ? 'suggestion' : undefined} dimColor={!enabled}>
-            Thinking {enabled ? 'on' : 'off'}
+            {enabled ? t('promptInput.notification.thinkingOn') : t('promptInput.notification.thinkingOff')}
           </Text>,
       priority: 'immediate',
       timeoutMs: 3000
     });
-  }, [setAppState, addNotification]);
+  }, [setAppState, addNotification, t]);
   const handleThinkingCancel = useCallback(() => {
     setShowThinkingToggle(false);
   }, []);
@@ -2116,7 +2121,7 @@ function PromptInput({
   if (isExternalEditorActive) {
     return <Box flexDirection="row" alignItems="center" justifyContent="center" borderColor={getBorderColor()} borderStyle="round" borderLeft={false} borderRight={false} borderBottom width="100%">
         <Text dimColor italic>
-          Save and close editor to continue...
+          {t('promptInput.externalEditor.saveAndClose')}
         </Text>
       </Box>;
   }
@@ -2124,7 +2129,7 @@ function PromptInput({
   return <Box flexDirection="column" marginTop={briefOwnsGap ? 0 : 1}>
       {!isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
       {hasSuppressedDialogs && <Box marginTop={1} marginLeft={2}>
-          <Text dimColor>Waiting for permission…</Text>
+          <Text dimColor>{t('tool.status.waitingForPermission')}</Text>
         </Box>}
       <PromptInputStashNotice hasStash={stashedPrompt !== undefined} />
       {swarmBanner ? <>
