@@ -1468,10 +1468,19 @@ test('DeepSeek Harness prompt pack defines native reasoning, tool and cache rule
   assert.match(deepSeekHarnessPromptsSource, /Tools are function calls/)
   assert.match(deepSeekHarnessPromptsSource, /stable cache prefix/)
   assert.match(deepSeekHarnessPromptsSource, /harness-coordinator/)
+  // P2.14: a static response-language policy (reply in the user's language,
+  // decoupled from the UI --locale setting) belongs in the cacheable prefix.
+  assert.match(deepSeekHarnessPromptsSource, /getDeepSeekLanguagePolicySection/)
+  assert.match(
+    deepSeekHarnessPromptsSource,
+    /Reply in the language of the user's most recent message/,
+  )
+  assert.match(deepSeekHarnessPromptsSource, /independent of the UI locale/)
 
   assert.match(promptsSource, /getDeepSeekHarnessIdentitySection/)
   assert.match(promptsSource, /getDeepSeekReasoningSection/)
   assert.match(promptsSource, /getDeepSeekToolHarnessSection/)
+  assert.match(promptsSource, /getDeepSeekLanguagePolicySection/)
   assert.match(promptsSource, /getDeepSeekCacheDisciplineSection/)
   assert.doesNotMatch(promptsSource, /The most recent Claude model family/)
   assert.doesNotMatch(promptsSource, /Claude Code is available as a CLI/)
