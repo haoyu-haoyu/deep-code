@@ -43,6 +43,7 @@
     "test:deepcode": "node --test test/deepcode-native.test.mjs test/deepcode-package.test.mjs",
     "test:tui-deepseek": "bun test test/tui-deepseek.test.mjs",
     "test:real-cache-e2e": "node scripts/deepseek-cache-e2e.mjs",
+    "test:reasoning-cost": "node scripts/deepseek-reasoning-cost-probe.mjs",
     "perf:fixture": "node scripts/perf/generate-fixture.mjs --count=1000",
     "perf:baseline": "bun scripts/perf-baseline.mjs",
     "perf:compare": "node scripts/perf-compare.mjs",
