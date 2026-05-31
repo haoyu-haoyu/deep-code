@@ -133,7 +133,9 @@ export function PromptInputHelpMenu(props) {
   const imagePasteShortcut = t19;
   let t20;
   if ($[20] !== dimColor || $[21] !== terminalShortcut) {
-    t20 = feature("TERMINAL_PANEL") ? getFeatureValue_CACHED_MAY_BE_STALE("tengu_terminal_panel", false) ? <Box><Text dimColor={dimColor}>{terminalShortcut} for terminal</Text></Box> : null : null;
+    t20 = feature("TERMINAL_PANEL") ? getFeatureValue_CACHED_MAY_BE_STALE("tengu_terminal_panel", false) ? <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.terminal', {
+      shortcut: terminalShortcut
+    })}</Text></Box> : null : null;
     $[20] = dimColor;
     $[21] = terminalShortcut;
     $[22] = t20;
@@ -199,7 +201,7 @@ export function PromptInputHelpMenu(props) {
   }
   let t30;
   if ($[42] !== cycleModeShortcut || $[43] !== dimColor) {
-    t30 = <Box><Text dimColor={dimColor}>{cycleModeShortcut}{" "}{false ? "to cycle modes" : "to auto-accept edits"}</Text></Box>;
+    t30 = <Box><Text dimColor={dimColor}>{cycleModeShortcut}{" "}{false ? t('promptInput.helpMenu.cycleModes') : t('promptInput.helpMenu.autoAcceptEdits')}</Text></Box>;
     $[42] = cycleModeShortcut;
     $[43] = dimColor;
     $[44] = t30;
@@ -208,7 +210,9 @@ export function PromptInputHelpMenu(props) {
   }
   let t31;
   if ($[45] !== dimColor || $[46] !== transcriptShortcut) {
-    t31 = <Box><Text dimColor={dimColor}>{transcriptShortcut} for verbose output</Text></Box>;
+    t31 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.verboseOutput', {
+      shortcut: transcriptShortcut
+    })}</Text></Box>;
     $[45] = dimColor;
     $[46] = transcriptShortcut;
     $[47] = t31;
@@ -217,7 +221,9 @@ export function PromptInputHelpMenu(props) {
   }
   let t32;
   if ($[48] !== dimColor || $[49] !== todosShortcut) {
-    t32 = <Box><Text dimColor={dimColor}>{todosShortcut} to toggle tasks</Text></Box>;
+    t32 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.toggleTasks', {
+      shortcut: todosShortcut
+    })}</Text></Box>;
     $[48] = dimColor;
     $[49] = todosShortcut;
     $[50] = t32;
@@ -266,7 +272,7 @@ export function PromptInputHelpMenu(props) {
   }
   let t37;
   if ($[65] !== dimColor) {
-    t37 = getPlatform() !== "windows" && <Box><Text dimColor={dimColor}>ctrl + z to suspend</Text></Box>;
+    t37 = getPlatform() !== "windows" && <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.suspend')}</Text></Box>;
     $[65] = dimColor;
     $[66] = t37;
   } else {
@@ -296,7 +302,9 @@ export function PromptInputHelpMenu(props) {
   }
   let t40;
   if ($[73] !== dimColor || $[74] !== fastModeShortcut) {
-    t40 = isFastModeEnabled() && isFastModeAvailable() && <Box><Text dimColor={dimColor}>{fastModeShortcut} to toggle fast mode</Text></Box>;
+    t40 = isFastModeEnabled() && isFastModeAvailable() && <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.toggleFastMode', {
+      shortcut: fastModeShortcut
+    })}</Text></Box>;
     $[73] = dimColor;
     $[74] = fastModeShortcut;
     $[75] = t40;
@@ -316,7 +324,9 @@ export function PromptInputHelpMenu(props) {
   }
   let t42;
   if ($[79] !== dimColor || $[80] !== externalEditorShortcut) {
-    t42 = <Box><Text dimColor={dimColor}>{externalEditorShortcut} to edit in $EDITOR</Text></Box>;
+    t42 = <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.editInEditor', {
+      shortcut: externalEditorShortcut
+    })}</Text></Box>;
     $[79] = dimColor;
     $[80] = externalEditorShortcut;
     $[81] = t42;
@@ -325,7 +335,7 @@ export function PromptInputHelpMenu(props) {
   }
   let t43;
   if ($[82] !== dimColor) {
-    t43 = isKeybindingCustomizationEnabled() && <Box><Text dimColor={dimColor}>/keybindings to customize</Text></Box>;
+    t43 = isKeybindingCustomizationEnabled() && <Box><Text dimColor={dimColor}>{t('promptInput.helpMenu.customizeKeybindings')}</Text></Box>;
     $[82] = dimColor;
     $[83] = t43;
   } else {

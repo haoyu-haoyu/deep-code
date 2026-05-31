@@ -10,6 +10,7 @@ import {
   type AgentColorName,
   getAgentColor,
 } from '../../tools/AgentTool/agentColorManager.js'
+import { getMessage } from '../../i18n/index.js'
 import { getStandaloneAgentName } from '../../utils/standaloneAgent.js'
 import { isInsideTmux } from '../../utils/swarm/backends/detection.js'
 import {
@@ -85,7 +86,9 @@ export function useSwarmBanner(): SwarmBannerInfo {
 
     if (insideTmux === false && !inProcessMode && !nativePanes) {
       return {
-        text: `View teammates: \`tmux -L ${getSwarmSocketName()} a\``,
+        text: getMessage('swarmBanner.viewTeammates', {
+          socket: getSwarmSocketName(),
+        }),
         bgColor: viewedColor,
       }
     }

@@ -10,6 +10,7 @@ import { Box, Text, useInput } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
 import type { ElicitationRequestEvent } from '../../services/mcp/elicitationHandler.js';
 import { openBrowser } from '../../utils/browser.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { getEnumLabel, getEnumValues, getMultiSelectLabel, getMultiSelectValues, isDateTimeSchema, isEnumSchema, isMultiSelectEnumSchema, validateElicitationInput, validateElicitationInputAsync } from '../../utils/mcp/elicitationValidation.js';
 import { plural } from '../../utils/stringUtils.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
@@ -147,6 +148,7 @@ function ElicitationFormDialog({
   event: ElicitationRequestEvent;
   onResponse: Props['onResponse'];
 }): React.ReactNode {
+  const { t } = useTranslation();
   const {
     serverName,
     signal
@@ -254,7 +256,7 @@ function ElicitationFormDialog({
   // Text fields are always in edit mode when focused — no Enter-to-edit step.
   const isEditingTextField = currentFieldIsText && !focusedButton;
   useRegisterOverlay('elicitation');
-  useNotifyAfterTimeout('DeepCode needs your input', 'elicitation_dialog');
+  useNotifyAfterTimeout(t('mcp.elicitation.notify.needsInput'), 'elicitation_dialog');
 
   // Sync textInputValue when the focused field changes
   const syncTextInput = useCallback((fieldIndex: number | undefined) => {
@@ -279,9 +281,15 @@ function ElicitationFormDialog({
     const max = schema_0.maxItems;
     // Skip minItems check when field is optional and unset
     if (min !== undefined && selected.length < min && (selected.length > 0 || fieldRequired)) {
-      updateValidationError(fieldName, `Select at least ${min} ${plural(min, 'item')}`);
+      updateValidationError(fieldName, t('mcp.elicitation.validation.selectAtLeast', {
+        count: min,
+        items: plural(min, 'item')
+      }));
     } else if (max !== undefined && selected.length > max) {
-      updateValidationError(fieldName, `Select at most ${max} ${plural(max, 'item')}`);
+      updateValidationError(fieldName, t('mcp.elicitation.validation.selectAtMost', {
+        count: max,
+        items: plural(max, 'item')
+      }));
     } else {
       updateValidationError(fieldName);
     }
@@ -338,7 +346,7 @@ function ElicitationFormDialog({
       return next;
     });
     // Clear "required" error when a value is provided
-    if (value !== undefined && validationErrors[fieldName_0] === 'This field is required') {
+    if (value !== undefined && validationErrors[fieldName_0] === t('mcp.elicitation.validation.fieldRequired')) {
       updateValidationError(fieldName_0);
     }
   }
@@ -524,9 +532,15 @@ function ElicitationFormDialog({
           const min_0 = msSchema.minItems;
           const max_0 = msSchema.maxItems;
           if (min_0 !== undefined && newSelected.length < min_0 && (newSelected.length > 0 || currentField.isRequired)) {
-            updateValidationError(currentField.name, `Select at least ${min_0} ${plural(min_0, 'item')}`);
+            updateValidationError(currentField.name, t('mcp.elicitation.validation.selectAtLeast', {
+              count: min_0,
+              items: plural(min_0, 'item')
+            }));
           } else if (max_0 !== undefined && newSelected.length > max_0) {
-            updateValidationError(currentField.name, `Select at most ${max_0} ${plural(max_0, 'item')}`);
+            updateValidationError(currentField.name, t('mcp.elicitation.validation.selectAtMost', {
+              count: max_0,
+              items: plural(max_0, 'item')
+            }));
           } else {
             updateValidationError(currentField.name);
           }
@@ -612,7 +626,7 @@ function ElicitationFormDialog({
         const requiredFields_0 = requestedSchema.required || [];
         for (const fieldName_7 of requiredFields_0) {
           if (formValues[fieldName_7] === undefined) {
-            updateValidationError(fieldName_7, 'This field is required');
+            updateValidationError(fieldName_7, t('mcp.elicitation.validation.fieldRequired'));
           }
         }
         const firstBadIndex = schemaFields.findIndex(f_0 => requiredFields_0.includes(f_0.name) && formValues[f_0.name] === undefined || validationErrors[f_0.name] !== undefined);
@@ -780,7 +794,9 @@ function ElicitationFormDialog({
     return <Box flexDirection="column">
         {hasFieldsAbove && <Box marginLeft={2}>
             <Text dimColor>
-              {figures.arrowUp} {scrollWindow.start} more above
+              {figures.arrowUp} {t('mcp.elicitation.moreAbove', {
+              count: scrollWindow.start
+            })}
             </Text>
           </Box>}
         {schemaFields.slice(scrollWindow.start, scrollWindow.end).map((field_0, visibleIdx) => {
@@ -850,7 +866,7 @@ function ElicitationFormDialog({
               valueContent = <Text>
                       {arrow}
                       <Text dimColor italic>
-                        not set
+                        {t('mcp.elicitation.notSet')}
                       </Text>
                     </Text>;
             }
@@ -892,7 +908,7 @@ function ElicitationFormDialog({
               valueContent = <Text>
                       {arrow_0}
                       <Text dimColor italic>
-                        not set
+                        {t('mcp.elicitation.notSet')}
                       </Text>
                     </Text>;
             }
@@ -906,21 +922,21 @@ function ElicitationFormDialog({
             valueContent = hasValue ? <Text>
                     {value_3 ? figures.checkboxOn : figures.checkboxOff}
                   </Text> : <Text dimColor italic>
-                    not set
+                    {t('mcp.elicitation.notSet')}
                   </Text>;
           }
         } else if (isTextField(schema_6)) {
           if (isActive) {
-            valueContent = <TextInput value={textInputValue} onChange={handleTextInputChange} onSubmit={handleTextInputSubmit} placeholder={`Type something\u{2026}`} columns={Math.min(columns - 20, 60)} cursorOffset={textInputCursorOffset} onChangeCursorOffset={setTextInputCursorOffset} focus showCursor />;
+            valueContent = <TextInput value={textInputValue} onChange={handleTextInputChange} onSubmit={handleTextInputSubmit} placeholder={t('mcp.elicitation.typeSomething')} columns={Math.min(columns - 20, 60)} cursorOffset={textInputCursorOffset} onChangeCursorOffset={setTextInputCursorOffset} focus showCursor />;
           } else {
             const displayValue = hasValue && isDateTimeSchema(schema_6) ? formatDateDisplay(String(value_3), schema_6) : String(value_3);
             valueContent = hasValue ? <Text>{displayValue}</Text> : <Text dimColor italic>
-                    not set
+                    {t('mcp.elicitation.notSet')}
                   </Text>;
           }
         } else {
           valueContent = hasValue ? <Text>{String(value_3)}</Text> : <Text dimColor italic>
-                  not set
+                  {t('mcp.elicitation.notSet')}
                 </Text>;
         }
         return <Box key={name_1} flexDirection="column">
@@ -948,13 +964,18 @@ function ElicitationFormDialog({
       })}
         {hasFieldsBelow && <Box marginLeft={2}>
             <Text dimColor>
-              {figures.arrowDown} {schemaFields.length - scrollWindow.end} more
-              below
+              {figures.arrowDown} {t('mcp.elicitation.moreBelow', {
+              count: schemaFields.length - scrollWindow.end
+            })}
             </Text>
           </Box>}
       </Box>;
   }
-  return <Dialog title={`MCP server \u201c${serverName}\u201d requests your input`} subtitle={`\n${message}`} color="permission" onCancel={() => onResponse('cancel')} isCancelActive={(!currentField || !!focusedButton) && !expandedAccordion} inputGuide={exitState => exitState.pending ? <Text>Press {exitState.keyName} again to exit</Text> : <Byline>
+  return <Dialog title={t('mcp.elicitation.form.title', {
+    serverName
+  })} subtitle={`\n${message}`} color="permission" onCancel={() => onResponse('cancel')} isCancelActive={(!currentField || !!focusedButton) && !expandedAccordion} inputGuide={exitState => exitState.pending ? <Text>{t('common.pressKeyAgainToExit', {
+    keyName: exitState.keyName
+  })}</Text> : <Byline>
             <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
             <KeyboardShortcutHint shortcut="↑↓" action="navigate" />
             {currentField && <KeyboardShortcutHint shortcut="Backspace" action="unset" />}
@@ -969,13 +990,13 @@ function ElicitationFormDialog({
             {focusedButton === 'accept' ? figures.pointer : ' '}
           </Text>
           <Text bold={focusedButton === 'accept'} color={focusedButton === 'accept' ? 'success' : undefined} dimColor={focusedButton !== 'accept'}>
-            {' Accept  '}
+            {t('mcp.elicitation.acceptButton')}
           </Text>
           <Text color="error">
             {focusedButton === 'decline' ? figures.pointer : ' '}
           </Text>
           <Text bold={focusedButton === 'decline'} color={focusedButton === 'decline' ? 'error' : undefined} dimColor={focusedButton !== 'decline'}>
-            {' Decline'}
+            {t('mcp.elicitation.declineButton')}
           </Text>
         </Box>
       </Box>
@@ -990,6 +1011,7 @@ function ElicitationURLDialog({
   onResponse: Props['onResponse'];
   onWaitingDismiss: Props['onWaitingDismiss'];
 }): React.ReactNode {
+  const { t } = useTranslation();
   const {
     serverName,
     signal,
@@ -1004,7 +1026,7 @@ function ElicitationURLDialog({
   const phaseRef = useRef<'prompt' | 'waiting'>('prompt');
   const [focusedButton, setFocusedButton] = useState<'accept' | 'decline' | 'open' | 'action' | 'cancel'>('accept');
   const showCancel = waitingState?.showCancel ?? false;
-  useNotifyAfterTimeout('DeepCode needs your input', 'elicitation_url_dialog');
+  useNotifyAfterTimeout(t('mcp.elicitation.notify.needsInput'), 'elicitation_url_dialog');
   useRegisterOverlay('elicitation-url');
 
   // Keep refs in sync for use in abort handler (avoids re-registering listener)
@@ -1093,8 +1115,12 @@ function ElicitationURLDialog({
     }
   });
   if (phase === 'waiting') {
-    const actionLabel = waitingState?.actionLabel ?? 'Continue without waiting';
-    return <Dialog title={`MCP server \u201c${serverName}\u201d \u2014 waiting for completion`} subtitle={`\n${message}`} color="permission" onCancel={() => onWaitingDismiss?.('cancel')} isCancelActive inputGuide={exitState => exitState.pending ? <Text>Press {exitState.keyName} again to exit</Text> : <Byline>
+    const actionLabel = waitingState?.actionLabel ?? t('mcp.elicitation.waiting.continueWithoutWaiting');
+    return <Dialog title={t('mcp.elicitation.waiting.title', {
+      serverName
+    })} subtitle={`\n${message}`} color="permission" onCancel={() => onWaitingDismiss?.('cancel')} isCancelActive inputGuide={exitState => exitState.pending ? <Text>{t('common.pressKeyAgainToExit', {
+      keyName: exitState.keyName
+    })}</Text> : <Byline>
               <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
               <KeyboardShortcutHint shortcut="\u2190\u2192" action="switch" />
             </Byline>}>
@@ -1108,7 +1134,7 @@ function ElicitationURLDialog({
           </Box>
           <Box marginBottom={1}>
             <Text dimColor italic>
-              Waiting for the server to confirm completion…
+              {t('mcp.elicitation.waiting.confirmingCompletion')}
             </Text>
           </Box>
           <Box>
@@ -1116,7 +1142,7 @@ function ElicitationURLDialog({
               {focusedButton === 'open' ? figures.pointer : ' '}
             </Text>
             <Text bold={focusedButton === 'open'} color={focusedButton === 'open' ? 'success' : undefined} dimColor={focusedButton !== 'open'}>
-              {' Reopen URL  '}
+              {t('mcp.elicitation.waiting.reopenUrl')}
             </Text>
             <Text color="success">
               {focusedButton === 'action' ? figures.pointer : ' '}
@@ -1130,14 +1156,18 @@ function ElicitationURLDialog({
                   {focusedButton === 'cancel' ? figures.pointer : ' '}
                 </Text>
                 <Text bold={focusedButton === 'cancel'} color={focusedButton === 'cancel' ? 'error' : undefined} dimColor={focusedButton !== 'cancel'}>
-                  {' Cancel'}
+                  {t('mcp.elicitation.waiting.cancelButton')}
                 </Text>
               </>}
           </Box>
         </Box>
       </Dialog>;
   }
-  return <Dialog title={`MCP server \u201c${serverName}\u201d wants to open a URL`} subtitle={`\n${message}`} color="permission" onCancel={() => onResponse('cancel')} isCancelActive inputGuide={exitState_0 => exitState_0.pending ? <Text>Press {exitState_0.keyName} again to exit</Text> : <Byline>
+  return <Dialog title={t('mcp.elicitation.url.title', {
+    serverName
+  })} subtitle={`\n${message}`} color="permission" onCancel={() => onResponse('cancel')} isCancelActive inputGuide={exitState_0 => exitState_0.pending ? <Text>{t('common.pressKeyAgainToExit', {
+    keyName: exitState_0.keyName
+  })}</Text> : <Byline>
             <ConfigurableShortcutHint action="confirm:no" context="Confirmation" fallback="Esc" description="cancel" />
             <KeyboardShortcutHint shortcut="\u2190\u2192" action="switch" />
           </Byline>}>
@@ -1154,13 +1184,13 @@ function ElicitationURLDialog({
             {focusedButton === 'accept' ? figures.pointer : ' '}
           </Text>
           <Text bold={focusedButton === 'accept'} color={focusedButton === 'accept' ? 'success' : undefined} dimColor={focusedButton !== 'accept'}>
-            {' Accept  '}
+            {t('mcp.elicitation.acceptButton')}
           </Text>
           <Text color="error">
             {focusedButton === 'decline' ? figures.pointer : ' '}
           </Text>
           <Text bold={focusedButton === 'decline'} color={focusedButton === 'decline' ? 'error' : undefined} dimColor={focusedButton !== 'decline'}>
-            {' Decline'}
+            {t('mcp.elicitation.declineButton')}
           </Text>
         </Box>
       </Box>
