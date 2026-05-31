@@ -5,6 +5,7 @@ import {
   findTeammateTaskByAgentId,
   injectUserMessageToTeammate,
 } from '../tasks/InProcessTeammateTask/InProcessTeammateTask.js'
+import { getMessage } from '../i18n/index.js'
 import { isKairosCronEnabled } from '../tools/ScheduleCronTool/prompt.js'
 import type { Message } from '../types/message.js'
 import { getCronJitterConfig } from '../utils/cronJitterConfig.js'
@@ -108,7 +109,9 @@ export function useScheduledTasks({
           return
         }
         const msg = createScheduledTaskFireMessage(
-          `Running scheduled task (${formatCronFireTime(new Date())})`,
+          getMessage('scheduledTasks.runningScheduledTask', {
+            time: formatCronFireTime(new Date()),
+          }),
         )
         setMessages(prev => [...prev, msg])
         enqueueForLead(task.prompt)

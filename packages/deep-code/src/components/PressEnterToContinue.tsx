@@ -1,11 +1,16 @@
 import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Text } from '../ink.js';
 export function PressEnterToContinue() {
   const $ = _c(1);
+  const {
+    t
+  } = useTranslation();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t0 = <Text color="permission">Press <Text bold={true}>Enter</Text> to continue…</Text>;
+    const [continuePrefix, continueSuffix] = t('common.pressEnterToContinueHint').split('{key}');
+    t0 = <Text color="permission">{continuePrefix}<Text bold={true}>{t('common.pressEnterToContinueHint.key')}</Text>{continueSuffix}</Text>;
     $[0] = t0;
   } else {
     t0 = $[0];

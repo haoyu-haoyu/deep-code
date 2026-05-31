@@ -5,6 +5,7 @@ import { logEvent } from 'src/services/analytics/index.js';
 import { Spinner } from '../components/Spinner.js';
 import { getOauthConfig } from '../constants/oauth.js';
 import { useTimeout } from '../hooks/useTimeout.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Text } from '../ink.js';
 import { getSSLErrorHint } from '../services/runtime/errors.js';
 import { getUserAgent } from './http.js';
@@ -80,6 +81,9 @@ export function PreflightStep(t0) {
   const {
     onSuccess
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const [result, setResult] = useState(null);
   const [isChecking, setIsChecking] = useState(true);
   const showSpinner = useTimeout(1000) && isChecking;
@@ -127,7 +131,7 @@ export function PreflightStep(t0) {
   useEffect(t3, t4);
   let t5;
   if ($[6] !== isChecking || $[7] !== result || $[8] !== showSpinner) {
-    t5 = isChecking && showSpinner ? <Box paddingLeft={1}><Spinner /><Text>Checking connectivity...</Text></Box> : !result?.success && !isChecking && <Box flexDirection="column" gap={1}><Text color="error">Unable to connect to the DeepSeek API</Text><Text color="error">{result?.error}</Text>{result?.sslHint ? <Text>{result.sslHint}</Text> : <Text>Please check your internet connection and network settings.</Text>}</Box>;
+    t5 = isChecking && showSpinner ? <Box paddingLeft={1}><Spinner /><Text>{t('preflight.checkingConnectivity')}</Text></Box> : !result?.success && !isChecking && <Box flexDirection="column" gap={1}><Text color="error">{t('preflight.unableToConnect')}</Text><Text color="error">{result?.error}</Text>{result?.sslHint ? <Text>{result.sslHint}</Text> : <Text>{t('preflight.checkNetworkSettings')}</Text>}</Box>;
     $[6] = isChecking;
     $[7] = result;
     $[8] = showSpinner;

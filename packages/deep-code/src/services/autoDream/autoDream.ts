@@ -50,6 +50,7 @@ import {
 } from '../../tasks/DreamTask/DreamTask.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
 import { FILE_WRITE_TOOL_NAME } from '../../tools/FileWriteTool/prompt.js'
+import { getMessage } from '../../i18n/index.js'
 
 // Scan throttle: when time-gate passes but session-gate doesn't, the lock
 // mtime doesn't advance, so the time-gate keeps passing every turn.
@@ -243,7 +244,7 @@ ${sessionIds.map(id => `- ${id}`).join('\n')}`
       ) {
         appendSystemMessage({
           ...createMemorySavedMessage(dreamState.filesTouched),
-          verb: 'Improved',
+          verb: getMessage('systemMessage.memorySaved.verb.improved'),
         })
       }
       logForDebugging(

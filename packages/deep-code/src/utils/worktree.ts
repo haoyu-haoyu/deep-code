@@ -17,6 +17,7 @@ import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage, getErrnoCode } from './errors.js'
 import { execFileNoThrow, execFileNoThrowWithCwd } from './execFileNoThrow.js'
+import { getMessage } from '../i18n/index.js'
 import { parseGitConfigValue } from './git/gitConfigParser.js'
 import {
   getCommonDir,
@@ -659,14 +660,14 @@ export function getTmuxInstallInstructions(): string {
   const platform = getPlatform()
   switch (platform) {
     case 'macos':
-      return 'Install tmux with: brew install tmux'
+      return getMessage('worktree.tmux.install.macos')
     case 'linux':
     case 'wsl':
-      return 'Install tmux with: sudo apt install tmux (Debian/Ubuntu) or sudo dnf install tmux (Fedora/RHEL)'
+      return getMessage('worktree.tmux.install.linux')
     case 'windows':
-      return 'tmux is not natively available on Windows. Consider using WSL or Cygwin.'
+      return getMessage('worktree.tmux.install.windows')
     default:
-      return 'Install tmux using your system package manager.'
+      return getMessage('worktree.tmux.install.default')
   }
 }
 
@@ -1185,7 +1186,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
   if (process.platform === 'win32') {
     return {
       handled: false,
-      error: 'Error: --tmux is not supported on Windows',
+      error: getMessage('worktree.tmux.error.notSupportedOnWindows'),
     }
   }
 
@@ -1194,11 +1195,11 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
   if (tmuxCheck.status !== 0) {
     const installHint =
       process.platform === 'darwin'
-        ? 'Install tmux with: brew install tmux'
-        : 'Install tmux with: sudo apt install tmux'
+        ? getMessage('worktree.tmux.installHint.brew')
+        : getMessage('worktree.tmux.installHint.apt')
     return {
       handled: false,
-      error: `Error: tmux is not installed. ${installHint}`,
+      error: getMessage('worktree.tmux.error.notInstalled', { installHint }),
     }
   }
 
@@ -1269,14 +1270,14 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
     }
     repoName = basename(findCanonicalGitRoot(getCwd()) ?? getCwd())
     // biome-ignore lint/suspicious/noConsole: intentional console output
-    console.log(`Using worktree via hook: ${worktreeDir}`)
+    console.log(getMessage('worktree.status.usingViaHook', { path: worktreeDir }))
   } else {
     // Get main git repo root (resolves through worktrees)
     const repoRoot = findCanonicalGitRoot(getCwd())
     if (!repoRoot) {
       return {
         handled: false,
-        error: 'Error: --worktree requires a git repository',
+        error: getMessage('worktree.error.requiresGitRepository'),
       }
     }
 
@@ -1293,7 +1294,10 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
       if (!result.existed) {
         // biome-ignore lint/suspicious/noConsole: intentional console output
         console.log(
-          `Created worktree: ${worktreeDir} (based on ${result.baseBranch})`,
+          getMessage('worktree.status.created', {
+            path: worktreeDir,
+            baseBranch: result.baseBranch,
+          }),
         )
         await performPostCreationSetup(repoRoot, worktreeDir)
       }
@@ -1385,9 +1389,9 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
     const y = chalk.yellow
     // biome-ignore lint/suspicious/noConsole: intentional user guidance
     console.log(
-      `\n${y('╭─ iTerm2 Tip ────────────────────────────────────────────────────────╮')}\n` +
-        `${y('│')} To open as a tab instead of a new window:                           ${y('│')}\n` +
-        `${y('│')} iTerm2 > Settings > General > tmux > "Tabs in attaching window"     ${y('│')}\n` +
+      `\n${y(getMessage('worktree.tmux.iterm2Tip.top'))}\n` +
+        `${y('│')}${getMessage('worktree.tmux.iterm2Tip.line1')}${y('│')}\n` +
+        `${y('│')}${getMessage('worktree.tmux.iterm2Tip.line2')}${y('│')}\n` +
         `${y('╰─────────────────────────────────────────────────────────────────────╯')}\n`,
     )
   }

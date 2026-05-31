@@ -7,6 +7,7 @@
  * For the core operations (without CLI side effects), see pluginOperations.ts
  */
 import figures from 'figures'
+import { getMessage } from '../../i18n/index.js'
 import { errorMessage } from '../../utils/errors.js'
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js'
 import { logError } from '../../utils/log.js'
@@ -59,11 +60,14 @@ function handlePluginCommandError(
   const operation = plugin
     ? `${command} plugin "${plugin}"`
     : command === 'disable-all'
-      ? 'disable all plugins'
+      ? getMessage('plugin.cli.operation.disableAll')
       : `${command} plugins`
   // biome-ignore lint/suspicious/noConsole:: intentional console output
   console.error(
-    `${figures.cross} Failed to ${operation}: ${errorMessage(error)}`,
+    `${figures.cross} ${getMessage('plugin.cli.commandFailed', {
+      operation,
+      error: errorMessage(error),
+    })}`,
   )
   const telemetryFields = plugin
     ? (() => {
@@ -106,7 +110,7 @@ export async function installPlugin(
 ): Promise<void> {
   try {
     // biome-ignore lint/suspicious/noConsole:: intentional console output
-    console.log(`Installing plugin "${plugin}"...`)
+    console.log(getMessage('plugin.cli.installing', { plugin }))
 
     const result = await installPluginOp(plugin, scope)
 
@@ -303,7 +307,7 @@ export async function updatePluginCli(
 ): Promise<void> {
   try {
     writeToStdout(
-      `Checking for updates for plugin "${plugin}" at ${scope} scope…\n`,
+      `${getMessage('plugin.cli.checkingForUpdates', { plugin, scope })}\n`,
     )
 
     const result = await updatePluginOp(plugin, scope)

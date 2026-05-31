@@ -1,4 +1,5 @@
 import { homedir } from 'os'
+import { getMessage } from '../../../i18n/index.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../../utils/config.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import {
@@ -127,7 +128,7 @@ export async function installIt2(
   }
 
   if (result.code !== 0) {
-    const error = result.stderr || 'Unknown installation error'
+    const error = result.stderr || getMessage('it2.error.unknownInstall')
     logError(new Error(`[it2Setup] Failed to install it2: ${error}`))
     return {
       success: false,
@@ -157,7 +158,7 @@ export async function verifyIt2Setup(): Promise<It2VerifyResult> {
   if (!installed) {
     return {
       success: false,
-      error: 'it2 CLI is not installed or not in PATH',
+      error: getMessage('it2.error.cliNotInstalled'),
     }
   }
 
@@ -177,14 +178,14 @@ export async function verifyIt2Setup(): Promise<It2VerifyResult> {
       logForDebugging('[it2Setup] Python API not enabled in iTerm2')
       return {
         success: false,
-        error: 'Python API not enabled in iTerm2 preferences',
+        error: getMessage('it2.error.pythonApiNotEnabled'),
         needsPythonApiEnabled: true,
       }
     }
 
     return {
       success: false,
-      error: result.stderr || 'Failed to communicate with iTerm2',
+      error: result.stderr || getMessage('it2.error.communicationFailed'),
     }
   }
 
@@ -199,11 +200,11 @@ export async function verifyIt2Setup(): Promise<It2VerifyResult> {
  */
 export function getPythonApiInstructions(): string[] {
   return [
-    'Almost done! Enable the Python API in iTerm2:',
+    getMessage('it2.apiInstructions.enablePython'),
     '',
     '  iTerm2 → Settings → General → Magic → Enable Python API',
     '',
-    'After enabling, you may need to restart iTerm2.',
+    getMessage('it2.apiInstructions.restartHint'),
   ]
 }
 

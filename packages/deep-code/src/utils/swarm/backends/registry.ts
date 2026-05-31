@@ -1,4 +1,5 @@
 import { getIsNonInteractiveSession } from '../../../bootstrap/state.js'
+import { getMessage } from '../../../i18n/index.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import { getPlatform } from '../../../utils/platform.js'
 import {
@@ -225,9 +226,7 @@ export async function detectAndGetBackend(): Promise<BackendDetectionResult> {
     logForDebugging(
       '[BackendRegistry] ERROR: iTerm2 detected but no it2 CLI and no tmux',
     )
-    throw new Error(
-      'iTerm2 detected but it2 CLI not installed. Install it2 with: pip install it2',
-    )
+    throw new Error(getMessage('swarm.it2NotInstalled'))
   }
 
   // Priority 3: Fall back to tmux external session
@@ -261,26 +260,17 @@ function getTmuxInstallInstructions(): string {
 
   switch (platform) {
     case 'macos':
-      return `To use agent swarms, install tmux:
-  brew install tmux
-Then start a tmux session with: tmux new-session -s claude`
+      return getMessage('swarm.tmuxInstall.macos')
 
     case 'linux':
     case 'wsl':
-      return `To use agent swarms, install tmux:
-  sudo apt install tmux    # Ubuntu/Debian
-  sudo dnf install tmux    # Fedora/RHEL
-Then start a tmux session with: tmux new-session -s claude`
+      return getMessage('swarm.tmuxInstall.linux')
 
     case 'windows':
-      return `To use agent swarms, you need tmux which requires WSL (Windows Subsystem for Linux).
-Install WSL first, then inside WSL run:
-  sudo apt install tmux
-Then start a tmux session with: tmux new-session -s claude`
+      return getMessage('swarm.tmuxInstall.windows')
 
     default:
-      return `To use agent swarms, install tmux using your system's package manager.
-Then start a tmux session with: tmux new-session -s claude`
+      return getMessage('swarm.tmuxInstall.default')
   }
 }
 

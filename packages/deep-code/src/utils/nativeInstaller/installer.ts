@@ -34,6 +34,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
+import { getMessage } from '../../i18n/index.js'
 import { getMaxVersion, shouldSkipVersion } from '../autoUpdater.js'
 import { registerCleanup } from '../cleanupRegistry.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
@@ -839,7 +840,7 @@ export async function checkInstall(
     await access(localBinDir)
   } catch {
     messages.push({
-      message: `installMethod is native, but directory ${localBinDir} does not exist`,
+      message: getMessage('install.check.binDirMissing', { localBinDir }),
       userActionRequired: true,
       type: 'error',
     })
@@ -856,7 +857,9 @@ export async function checkInstall(
     // On Windows it's a copied executable, not a symlink
     if (!(await isPossibleClaudeBinary(dirs.executable))) {
       messages.push({
-        message: `installMethod is native, but claude command is missing or invalid at ${dirs.executable}`,
+        message: getMessage('install.check.commandMissingOrInvalid', {
+          executable: dirs.executable,
+        }),
         userActionRequired: true,
         type: 'error',
       })
@@ -867,7 +870,9 @@ export async function checkInstall(
       const absoluteTarget = resolve(dirname(dirs.executable), target)
       if (!(await isPossibleClaudeBinary(absoluteTarget))) {
         messages.push({
-          message: `Claude symlink points to missing or invalid binary: ${target}`,
+          message: getMessage('install.check.symlinkInvalidTarget', {
+            target,
+          }),
           userActionRequired: true,
           type: 'error',
         })
@@ -875,7 +880,9 @@ export async function checkInstall(
     } catch (e) {
       if (isENOENT(e)) {
         messages.push({
-          message: `installMethod is native, but claude command not found at ${dirs.executable}`,
+          message: getMessage('install.check.commandNotFound', {
+            executable: dirs.executable,
+          }),
           userActionRequired: true,
           type: 'error',
         })
@@ -883,7 +890,9 @@ export async function checkInstall(
         // EINVAL (not a symlink) or other — check as regular binary
         if (!(await isPossibleClaudeBinary(dirs.executable))) {
           messages.push({
-            message: `${dirs.executable} exists but is not a valid Claude binary`,
+            message: getMessage('install.check.invalidBinary', {
+              executable: dirs.executable,
+            }),
             userActionRequired: true,
             type: 'error',
           })
@@ -915,7 +924,9 @@ export async function checkInstall(
       // Windows-specific PATH instructions
       const windowsBinPath = localBinDir.replace(/\//g, '\\')
       messages.push({
-        message: `Native installation exists but ${windowsBinPath} is not in your PATH. Add it by opening: System Properties → Environment Variables → Edit User PATH → New → Add the path above. Then restart your terminal.`,
+        message: getMessage('install.path.windowsNotInPath', {
+          windowsBinPath,
+        }),
         userActionRequired: true,
         type: 'path',
       })
@@ -929,7 +940,7 @@ export async function checkInstall(
         : 'your shell config file'
 
       messages.push({
-        message: `Native installation exists but ~/.local/bin is not in your PATH. Run:\n\necho 'export PATH="$HOME/.local/bin:$PATH"' >> ${displayPath} && source ${displayPath}`,
+        message: getMessage('install.path.unixNotInPath', { displayPath }),
         userActionRequired: true,
         type: 'path',
       })
@@ -1503,7 +1514,7 @@ export async function cleanupShellAliases(): Promise<SetupMessage[]> {
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
         messages.push({
-          message: `Removed claude alias from ${configFile}. Run: unalias claude`,
+          message: getMessage('install.alias.removed', { configFile }),
           userActionRequired: true,
           type: 'alias',
         })
@@ -1512,7 +1523,10 @@ export async function cleanupShellAliases(): Promise<SetupMessage[]> {
     } catch (error) {
       logError(error)
       messages.push({
-        message: `Failed to clean up ${configFile}: ${error}`,
+        message: getMessage('install.alias.cleanupFailed', {
+          configFile,
+          error: String(error),
+        }),
         userActionRequired: false,
         type: 'error',
       })
@@ -1590,7 +1604,10 @@ async function manualRemoveNpmPackage(
 
       return {
         success: true,
-        warning: `${packageName} executables removed, but node_modules directory was left intact for safety. You may manually delete it later at: ${nodeModulesPath}`,
+        warning: getMessage('install.npm.nodeModulesLeftIntact', {
+          packageName,
+          nodeModulesPath,
+        }),
       }
     } else {
       return { success: false }

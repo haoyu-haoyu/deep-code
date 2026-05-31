@@ -4,6 +4,7 @@ import { Box, Text } from '../ink.js';
 import { useAppState } from '../state/AppState.js';
 import { getViewedTeammateTask } from '../state/selectors.js';
 import { toInkColor } from '../utils/ink.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js';
 import { OffscreenFreeze } from './OffscreenFreeze.js';
 
@@ -14,6 +15,9 @@ import { OffscreenFreeze } from './OffscreenFreeze.js';
 export function TeammateViewHeader() {
   const $ = _c(14);
   const viewedTeammate = useAppState(_temp);
+  const {
+    t
+  } = useTranslation();
   if (!viewedTeammate) {
     return null;
   }
@@ -28,7 +32,7 @@ export function TeammateViewHeader() {
   const nameColor = t0;
   let t1;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Text>Viewing </Text>;
+    t1 = <Text>{t('teammateView.header.viewing')}</Text>;
     $[2] = t1;
   } else {
     t1 = $[2];

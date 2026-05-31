@@ -14,6 +14,7 @@ import { getCwd } from './cwd.js'
 import { isEnvTruthy } from './envUtils.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
+import { getMessage } from '../i18n/index.js'
 import {
   getShellType,
   isRunningFromLocalInstallation,
@@ -341,8 +342,12 @@ async function detectConfigurationIssues(
         // of managed settings survive — but the admin typed something
         // wrong (an object, a string, etc.).
         warnings.push({
-          issue: `managed-settings.json: strictPluginOnlyCustomization has an invalid value (expected true or an array, got ${typeof field})`,
-          fix: `The field is silently ignored (schema .catch rescues it). Set it to true, or an array of: ${CUSTOMIZATION_SURFACES.join(', ')}.`,
+          issue: getMessage('doctor.warning.managedSettings.invalidType.issue', {
+            type: typeof field,
+          }),
+          fix: getMessage('doctor.warning.managedSettings.invalidType.fix', {
+            surfaces: CUSTOMIZATION_SURFACES.join(', '),
+          }),
         })
       } else {
         const unknown = field.filter(
@@ -352,8 +357,16 @@ async function detectConfigurationIssues(
         )
         if (unknown.length > 0) {
           warnings.push({
-            issue: `managed-settings.json: strictPluginOnlyCustomization has ${unknown.length} value(s) this client doesn't recognize: ${unknown.map(String).join(', ')}`,
-            fix: `These are silently ignored (forwards-compat). Known surfaces for this version: ${CUSTOMIZATION_SURFACES.join(', ')}. Either remove them, or this client is older than the managed-settings intended.`,
+            issue: getMessage(
+              'doctor.warning.managedSettings.unknownSurfaces.issue',
+              {
+                count: unknown.length,
+                values: unknown.map(String).join(', '),
+              },
+            ),
+            fix: getMessage('doctor.warning.managedSettings.unknownSurfaces.fix', {
+              surfaces: CUSTOMIZATION_SURFACES.join(', '),
+            }),
           })
         }
       }
@@ -408,8 +421,10 @@ async function detectConfigurationIssues(
           .split(posix.sep)
           .join(win32.sep)
         warnings.push({
-          issue: `Native installation exists but ${windowsLocalBinPath} is not in your PATH`,
-          fix: `Add it by opening: System Properties → Environment Variables → Edit User PATH → New → Add the path above. Then restart your terminal.`,
+          issue: getMessage('doctor.warning.nativeNotInPath.windows.issue', {
+            path: windowsLocalBinPath,
+          }),
+          fix: getMessage('doctor.warning.nativeNotInPath.windows.fix'),
         })
       } else {
         // Unix-style PATH instructions
@@ -421,9 +436,10 @@ async function detectConfigurationIssues(
           : 'your shell config file'
 
         warnings.push({
-          issue:
-            'Native installation exists but ~/.local/bin is not in your PATH',
-          fix: `Run: echo 'export PATH="$HOME/.local/bin:$PATH"' >> ${displayPath} then open a new terminal or run: source ${displayPath}`,
+          issue: getMessage('doctor.warning.nativeNotInPath.unix.issue'),
+          fix: getMessage('doctor.warning.nativeNotInPath.unix.fix', {
+            displayPath,
+          }),
         })
       }
     }
@@ -434,23 +450,27 @@ async function detectConfigurationIssues(
   if (!isEnvTruthy(process.env.DISABLE_INSTALLATION_CHECKS)) {
     if (type === 'npm-local' && config.installMethod !== 'local') {
       warnings.push({
-        issue: `Running from local installation but config install method is '${config.installMethod}'`,
-        fix: 'Consider using native installation: claude install',
+        issue: getMessage('doctor.warning.localInstallMismatch.issue', {
+          method: config.installMethod,
+        }),
+        fix: getMessage('doctor.warning.localInstallMismatch.fix'),
       })
     }
 
     if (type === 'native' && config.installMethod !== 'native') {
       warnings.push({
-        issue: `Running native installation but config install method is '${config.installMethod}'`,
-        fix: 'Run claude install to update configuration',
+        issue: getMessage('doctor.warning.nativeInstallMismatch.issue', {
+          method: config.installMethod,
+        }),
+        fix: getMessage('doctor.warning.nativeInstallMismatch.fix'),
       })
     }
   }
 
   if (type === 'npm-global' && (await localInstallationExists())) {
     warnings.push({
-      issue: 'Local installation exists but not being used',
-      fix: 'Consider using native installation: claude install',
+      issue: getMessage('doctor.warning.localNotUsed.issue'),
+      fix: getMessage('doctor.warning.localNotUsed.fix'),
     })
   }
 
@@ -468,14 +488,16 @@ async function detectConfigurationIssues(
       if (existingAlias) {
         // Alias exists but points to invalid target
         warnings.push({
-          issue: 'Local installation not accessible',
-          fix: `Alias exists but points to invalid target: ${existingAlias}. Update alias: alias claude="~/.claude/local/claude"`,
+          issue: getMessage('doctor.warning.localNotAccessible.issue'),
+          fix: getMessage('doctor.warning.localNotAccessible.invalidAlias.fix', {
+            alias: existingAlias,
+          }),
         })
       } else {
         // No alias exists and not in PATH
         warnings.push({
-          issue: 'Local installation not accessible',
-          fix: 'Create alias: alias claude="~/.claude/local/claude"',
+          issue: getMessage('doctor.warning.localNotAccessible.issue'),
+          fix: getMessage('doctor.warning.localNotAccessible.noAlias.fix'),
         })
       }
     }
@@ -503,8 +525,11 @@ export function detectLinuxGlobPatternWarnings(): Array<{
       remaining > 0 ? `${displayPatterns} (${remaining} more)` : displayPatterns
 
     warnings.push({
-      issue: `Glob patterns in sandbox permission rules are not fully supported on Linux`,
-      fix: `Found ${globPatterns.length} pattern(s): ${patternList}. On Linux, glob patterns in Edit/Read rules will be ignored.`,
+      issue: getMessage('doctor.warning.linuxGlob.issue'),
+      fix: getMessage('doctor.warning.linuxGlob.fix', {
+        count: globPatterns.length,
+        patternList,
+      }),
     })
   }
 
@@ -544,22 +569,38 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
           uninstallCmd += ` && npm -g uninstall ${MACRO.PACKAGE_URL}`
         }
         warnings.push({
-          issue: `Leftover npm global installation at ${install.path}`,
-          fix: `Run: ${uninstallCmd}`,
+          issue: getMessage('doctor.warning.leftoverNpm.global.issue', {
+            path: install.path,
+          }),
+          fix: getMessage('doctor.warning.leftoverNpm.global.fix', {
+            command: uninstallCmd,
+          }),
         })
       } else if (install.type === 'npm-global-orphan') {
         warnings.push({
-          issue: `Orphaned npm global package at ${install.path}`,
+          issue: getMessage('doctor.warning.leftoverNpm.orphan.issue', {
+            path: install.path,
+          }),
           fix: isWindows
-            ? `Run: rmdir /s /q "${install.path}"`
-            : `Run: rm -rf ${install.path}`,
+            ? getMessage('doctor.warning.leftoverNpm.removeDir.windows.fix', {
+                path: install.path,
+              })
+            : getMessage('doctor.warning.leftoverNpm.removeDir.unix.fix', {
+                path: install.path,
+              }),
         })
       } else if (install.type === 'npm-local') {
         warnings.push({
-          issue: `Leftover npm local installation at ${install.path}`,
+          issue: getMessage('doctor.warning.leftoverNpm.local.issue', {
+            path: install.path,
+          }),
           fix: isWindows
-            ? `Run: rmdir /s /q "${install.path}"`
-            : `Run: rm -rf ${install.path}`,
+            ? getMessage('doctor.warning.leftoverNpm.removeDir.windows.fix', {
+                path: install.path,
+              })
+            : getMessage('doctor.warning.leftoverNpm.removeDir.unix.fix', {
+                path: install.path,
+              }),
         })
       }
     }
@@ -579,8 +620,8 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     // Add warning if no permissions
     if (!hasUpdatePermissions && !getAutoUpdaterDisabledReason()) {
       warnings.push({
-        issue: 'Insufficient permissions for auto-updates',
-        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `claude install` for native installation',
+        issue: getMessage('doctor.warning.insufficientUpdatePerms.issue'),
+        fix: getMessage('doctor.warning.insufficientUpdatePerms.fix'),
       })
     }
   }

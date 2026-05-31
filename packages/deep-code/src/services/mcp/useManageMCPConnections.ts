@@ -54,6 +54,7 @@ import type { PluginError } from 'src/types/plugin.js'
 import { logForDebugging } from 'src/utils/debug.js'
 import { getAllowedChannels } from '../../bootstrap/state.js'
 import { useNotifications } from '../../context/notifications.js'
+import { getMessage } from '../../i18n/index.js'
 import {
   useAppState,
   useAppStateStore,
@@ -595,11 +596,11 @@ export function useManageMCPConnections(
                   // since it already names the mismatch.
                   const text =
                     gate.kind === 'disabled'
-                      ? 'Channels are not currently available'
+                      ? getMessage('mcp.channels.blocked.disabled')
                       : gate.kind === 'auth'
-                        ? 'Channels require claude.ai authentication · run /login'
+                        ? getMessage('mcp.channels.blocked.auth')
                         : gate.kind === 'policy'
-                          ? 'Channels are not enabled for your org · have an administrator set channelsEnabled: true in managed settings'
+                          ? getMessage('mcp.channels.blocked.policy')
                           : gate.reason
                   addNotification({
                     key: `channels-blocked-${gate.kind}`,

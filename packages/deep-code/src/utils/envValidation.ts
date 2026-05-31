@@ -1,3 +1,4 @@
+import { getMessage } from '../i18n/index.js'
 import { logForDebugging } from './debug.js'
 
 export type EnvVarValidationResult = {
@@ -20,7 +21,7 @@ export function validateBoundedIntEnvVar(
     const result: EnvVarValidationResult = {
       effective: defaultValue,
       status: 'invalid',
-      message: `Invalid value "${value}" (using default: ${defaultValue})`,
+      message: getMessage('envValidation.invalidValue', { value, defaultValue }),
     }
     logForDebugging(`${name} ${result.message}`)
     return result
@@ -29,7 +30,7 @@ export function validateBoundedIntEnvVar(
     const result: EnvVarValidationResult = {
       effective: upperLimit,
       status: 'capped',
-      message: `Capped from ${parsed} to ${upperLimit}`,
+      message: getMessage('envValidation.cappedFrom', { parsed, upperLimit }),
     }
     logForDebugging(`${name} ${result.message}`)
     return result

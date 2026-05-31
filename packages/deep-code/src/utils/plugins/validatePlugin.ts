@@ -2,6 +2,7 @@ import type { Dirent, Stats } from 'fs'
 import { readdir, readFile, stat } from 'fs/promises'
 import * as path from 'path'
 import { z } from 'zod/v4'
+import { getMessage } from '../../i18n/index.js'
 import { errorMessage, getErrnoCode, isENOENT } from '../errors.js'
 import { FRONTMATTER_REGEX } from '../frontmatterParser.js'
 import { jsonParse } from '../slowOperations.js'
@@ -99,8 +100,8 @@ function checkPathTraversal(
     errors.push({
       path: field,
       message: hint
-        ? `Path contains "..": ${p}. ${hint}`
-        : `Path contains ".." which could be a path traversal attempt: ${p}`,
+        ? getMessage('pluginValidate.pathTraversalWithHint', { p, hint })
+        : getMessage('pluginValidate.pathTraversal', { p }),
     })
   }
 }
@@ -116,11 +117,7 @@ function marketplaceSourceHint(p: string): string {
   // If '..' appears mid-path (rare), fall back to a generic example.
   const stripped = p.replace(/^(\.\.\/)+/, '')
   const corrected = stripped !== p ? `./${stripped}` : './plugins/my-plugin'
-  return (
-    'Plugin source paths are resolved relative to the marketplace root (the directory ' +
-    'containing .claude-plugin/), not relative to marketplace.json. ' +
-    `Use "${corrected}" instead of "${p}".`
-  )
+  return getMessage('pluginValidate.marketplaceSourceHint', { corrected, p })
 }
 
 /**
@@ -141,11 +138,17 @@ export async function validatePluginManifest(
     const code = getErrnoCode(error)
     let message: string
     if (code === 'ENOENT') {
-      message = `File not found: ${absolutePath}`
+      message = getMessage('pluginValidate.fileNotFound', {
+        path: absolutePath,
+      })
     } else if (code === 'EISDIR') {
-      message = `Path is not a file: ${absolutePath}`
+      message = getMessage('pluginValidate.pathNotAFile', {
+        path: absolutePath,
+      })
     } else {
-      message = `Failed to read file: ${errorMessage(error)}`
+      message = getMessage('pluginValidate.failedToReadFile', {
+        error: errorMessage(error),
+      })
     }
     return {
       success: false,
@@ -165,7 +168,9 @@ export async function validatePluginManifest(
       errors: [
         {
           path: 'json',
-          message: `Invalid JSON syntax: ${errorMessage(error)}`,
+          message: getMessage('pluginValidate.invalidJsonSyntax', {
+            error: errorMessage(error),
+          }),
         },
       ],
       warnings: [],
@@ -230,10 +235,9 @@ export async function validatePluginManifest(
         delete stripped[key]
         warnings.push({
           path: key,
-          message:
-            `Field '${key}' belongs in the marketplace entry (marketplace.json), ` +
-            `not plugin.json. It's harmless here but unused — Claude Code ` +
-            `ignores it at load time.`,
+          message: getMessage('pluginValidate.plugin.marketplaceOnlyField', {
+            key,
+          }),
         })
       }
       toValidate = stripped
@@ -260,10 +264,9 @@ export async function validatePluginManifest(
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(manifest.name)) {
       warnings.push({
         path: 'name',
-        message:
-          `Plugin name "${manifest.name}" is not kebab-case. Claude Code accepts ` +
-          `it, but the Claude.ai marketplace sync requires kebab-case ` +
-          `(lowercase letters, digits, and hyphens only, e.g., "my-plugin").`,
+        message: getMessage('pluginValidate.plugin.nameNotKebabCase', {
+          name: manifest.name,
+        }),
       })
     }
 
@@ -271,8 +274,7 @@ export async function validatePluginManifest(
     if (!manifest.version) {
       warnings.push({
         path: 'version',
-        message:
-          'No version specified. Consider adding a version following semver (e.g., "1.0.0")',
+        message: getMessage('pluginValidate.plugin.noVersion'),
       })
     }
 
@@ -280,8 +282,7 @@ export async function validatePluginManifest(
     if (!manifest.description) {
       warnings.push({
         path: 'description',
-        message:
-          'No description provided. Adding a description helps users understand what your plugin does',
+        message: getMessage('pluginValidate.plugin.noDescription'),
       })
     }
 
@@ -289,8 +290,7 @@ export async function validatePluginManifest(
     if (!manifest.author) {
       warnings.push({
         path: 'author',
-        message:
-          'No author information provided. Consider adding author details for plugin attribution',
+        message: getMessage('pluginValidate.plugin.noAuthor'),
       })
     }
   }
@@ -322,11 +322,17 @@ export async function validateMarketplaceManifest(
     const code = getErrnoCode(error)
     let message: string
     if (code === 'ENOENT') {
-      message = `File not found: ${absolutePath}`
+      message = getMessage('pluginValidate.fileNotFound', {
+        path: absolutePath,
+      })
     } else if (code === 'EISDIR') {
-      message = `Path is not a file: ${absolutePath}`
+      message = getMessage('pluginValidate.pathNotAFile', {
+        path: absolutePath,
+      })
     } else {
-      message = `Failed to read file: ${errorMessage(error)}`
+      message = getMessage('pluginValidate.failedToReadFile', {
+        error: errorMessage(error),
+      })
     }
     return {
       success: false,
@@ -346,7 +352,9 @@ export async function validateMarketplaceManifest(
       errors: [
         {
           path: 'json',
-          message: `Invalid JSON syntax: ${errorMessage(error)}`,
+          message: getMessage('pluginValidate.invalidJsonSyntax', {
+            error: errorMessage(error),
+          }),
         },
       ],
       warnings: [],
@@ -419,7 +427,7 @@ export async function validateMarketplaceManifest(
     if (!marketplace.plugins || marketplace.plugins.length === 0) {
       warnings.push({
         path: 'plugins',
-        message: 'Marketplace has no plugins defined',
+        message: getMessage('pluginValidate.marketplace.noPlugins'),
       })
     }
 
@@ -433,7 +441,9 @@ export async function validateMarketplaceManifest(
         if (duplicates.length > 1) {
           errors.push({
             path: `plugins[${i}].name`,
-            message: `Duplicate plugin name "${plugin.name}" found in marketplace`,
+            message: getMessage('pluginValidate.marketplace.duplicateName', {
+              name: plugin.name,
+            }),
           })
         }
       })
@@ -478,10 +488,11 @@ export async function validateMarketplaceManifest(
         if (manifestVersion && manifestVersion !== entry.version) {
           warnings.push({
             path: `plugins[${i}].version`,
-            message:
-              `Entry declares version "${entry.version}" but ${entry.source}/.claude-plugin/plugin.json says "${manifestVersion}". ` +
-              `At install time, plugin.json wins (calculatePluginVersion precedence) — the entry version is silently ignored. ` +
-              `Update this entry to "${manifestVersion}" to match.`,
+            message: getMessage('pluginValidate.marketplace.versionMismatch', {
+              entryVersion: entry.version,
+              source: entry.source,
+              manifestVersion,
+            }),
           })
         }
       }
@@ -491,8 +502,7 @@ export async function validateMarketplaceManifest(
     if (!marketplace.metadata?.description) {
       warnings.push({
         path: 'metadata.description',
-        message:
-          'No marketplace description provided. Adding a description helps users understand what this marketplace offers',
+        message: getMessage('pluginValidate.marketplace.noDescription'),
       })
     }
   }
@@ -526,9 +536,7 @@ function validateComponentFile(
   if (!match) {
     warnings.push({
       path: 'frontmatter',
-      message:
-        'No frontmatter block found. Add YAML frontmatter between --- delimiters ' +
-        'at the top of the file to set description and other metadata.',
+      message: getMessage('pluginValidate.component.noFrontmatter'),
     })
     return { success: true, errors, warnings, filePath, fileType }
   }
@@ -540,20 +548,25 @@ function validateComponentFile(
   } catch (e) {
     errors.push({
       path: 'frontmatter',
-      message:
-        `YAML frontmatter failed to parse: ${errorMessage(e)}. ` +
-        `At runtime this ${fileType} loads with empty metadata (all frontmatter ` +
-        `fields silently dropped).`,
+      message: getMessage('pluginValidate.component.frontmatterParseFailed', {
+        error: errorMessage(e),
+        fileType,
+      }),
     })
     return { success: false, errors, warnings, filePath, fileType }
   }
 
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    const type = Array.isArray(parsed)
+      ? 'an array'
+      : parsed === null
+        ? 'null'
+        : typeof parsed
     errors.push({
       path: 'frontmatter',
-      message:
-        'Frontmatter must be a YAML mapping (key: value pairs), got ' +
-        `${Array.isArray(parsed) ? 'an array' : parsed === null ? 'null' : typeof parsed}.`,
+      message: getMessage('pluginValidate.component.frontmatterNotMapping', {
+        type,
+      }),
     })
     return { success: false, errors, warnings, filePath, fileType }
   }
@@ -571,17 +584,18 @@ function validateComponentFile(
     ) {
       errors.push({
         path: 'description',
-        message:
-          `description must be a string, got ${Array.isArray(d) ? 'array' : typeof d}. ` +
-          `At runtime this value is dropped.`,
+        message: getMessage(
+          'pluginValidate.component.descriptionNotString',
+          { type: Array.isArray(d) ? 'array' : typeof d },
+        ),
       })
     }
   } else {
     warnings.push({
       path: 'description',
-      message:
-        `No description in frontmatter. A description helps users and Claude ` +
-        `understand when to use this ${fileType}.`,
+      message: getMessage('pluginValidate.component.noDescription', {
+        fileType,
+      }),
     })
   }
 
@@ -594,7 +608,9 @@ function validateComponentFile(
   ) {
     errors.push({
       path: 'name',
-      message: `name must be a string, got ${typeof fm.name}.`,
+      message: getMessage('pluginValidate.component.nameNotString', {
+        type: typeof fm.name,
+      }),
     })
   }
 
@@ -604,12 +620,14 @@ function validateComponentFile(
     if (typeof at !== 'string' && !Array.isArray(at)) {
       errors.push({
         path: 'allowed-tools',
-        message: `allowed-tools must be a string or array of strings, got ${typeof at}.`,
+        message: getMessage('pluginValidate.component.allowedToolsNotStringOrArray', {
+          type: typeof at,
+        }),
       })
     } else if (Array.isArray(at) && at.some(t => typeof t !== 'string')) {
       errors.push({
         path: 'allowed-tools',
-        message: 'allowed-tools array must contain only strings.',
+        message: getMessage('pluginValidate.component.allowedToolsNotStrings'),
       })
     }
   }
@@ -620,7 +638,9 @@ function validateComponentFile(
     if (typeof sh !== 'string') {
       errors.push({
         path: 'shell',
-        message: `shell must be a string, got ${typeof sh}.`,
+        message: getMessage('pluginValidate.component.shellNotString', {
+          type: typeof sh,
+        }),
       })
     } else {
       // Normalize to match parseShellFrontmatter() runtime behavior —
@@ -629,7 +649,9 @@ function validateComponentFile(
       if (normalized !== 'bash' && normalized !== 'powershell') {
         errors.push({
           path: 'shell',
-          message: `shell must be 'bash' or 'powershell', got '${sh}'.`,
+          message: getMessage('pluginValidate.component.shellInvalidValue', {
+            shell: sh,
+          }),
         })
       }
     }
@@ -662,7 +684,12 @@ async function validateHooksJson(filePath: string): Promise<ValidationResult> {
     return {
       success: false,
       errors: [
-        { path: 'file', message: `Failed to read file: ${errorMessage(e)}` },
+        {
+          path: 'file',
+          message: getMessage('pluginValidate.failedToReadFile', {
+            error: errorMessage(e),
+          }),
+        },
       ],
       warnings: [],
       filePath,
@@ -679,9 +706,9 @@ async function validateHooksJson(filePath: string): Promise<ValidationResult> {
       errors: [
         {
           path: 'json',
-          message:
-            `Invalid JSON syntax: ${errorMessage(e)}. ` +
-            `At runtime this breaks the entire plugin load.`,
+          message: getMessage('pluginValidate.hooks.invalidJsonSyntax', {
+            error: errorMessage(e),
+          }),
         },
       ],
       warnings: [],
@@ -783,7 +810,12 @@ export async function validatePluginContents(
         results.push({
           success: false,
           errors: [
-            { path: 'file', message: `Failed to read: ${errorMessage(e)}` },
+            {
+              path: 'file',
+              message: getMessage('pluginValidate.failedToRead', {
+                error: errorMessage(e),
+              }),
+            },
           ],
           warnings: [],
           filePath,
@@ -851,7 +883,7 @@ export async function validateManifest(
       errors: [
         {
           path: 'directory',
-          message: `No manifest found in directory. Expected .claude-plugin/marketplace.json or .claude-plugin/plugin.json`,
+          message: getMessage('pluginValidate.noManifestInDirectory'),
         },
       ],
       warnings: [],
@@ -885,7 +917,9 @@ export async function validateManifest(
             errors: [
               {
                 path: 'file',
-                message: `File not found: ${absolutePath}`,
+                message: getMessage('pluginValidate.fileNotFound', {
+                  path: absolutePath,
+                }),
               },
             ],
             warnings: [],

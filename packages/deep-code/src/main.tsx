@@ -46,7 +46,7 @@ import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js';
 import { uniq } from './utils/array.js';
 import { installAsciicastRecorder } from './utils/asciicast.js';
 import { checkHasTrustDialogAccepted, getGlobalConfig, getRemoteControlAtStartup, isAutoUpdaterDisabled, saveGlobalConfig } from './utils/config.js';
-import { initActiveLocale } from './i18n/index.js';
+import { getMessage, initActiveLocale } from './i18n/index.js';
 import { seedEarlyInput, stopCapturingEarlyInput } from './utils/earlyInput.js';
 import { getInitialEffortSetting, parseEffortValue } from './utils/effort.js';
 import { getInitialFastModeSetting, isFastModeEnabled, prefetchFastModeStatus, resolveFastModeStatusFromCache } from './utils/fastMode.js';
@@ -397,7 +397,7 @@ function loadSettingsFromFlag(settingsFile: string): void {
       // It's a JSON string - validate and create temp file
       const parsedJson = safeParseJSON(trimmedSettings);
       if (!parsedJson) {
-        process.stderr.write(chalk.red('Error: Invalid JSON provided to --settings\n'));
+        process.stderr.write(chalk.red(getMessage('cli.error.invalidSettingsJson') + '\n'));
         process.exit(1);
       }
 
@@ -423,7 +423,7 @@ function loadSettingsFromFlag(settingsFile: string): void {
         readFileSync(resolvedSettingsPath, 'utf8');
       } catch (e) {
         if (isENOENT(e)) {
-          process.stderr.write(chalk.red(`Error: Settings file not found: ${resolvedSettingsPath}\n`));
+          process.stderr.write(chalk.red(getMessage('cli.error.settingsFileNotFound', { path: resolvedSettingsPath }) + '\n'));
           process.exit(1);
         }
         throw e;
@@ -436,7 +436,7 @@ function loadSettingsFromFlag(settingsFile: string): void {
     if (error instanceof Error) {
       logError(error);
     }
-    process.stderr.write(chalk.red(`Error processing settings: ${errorMessage(error)}\n`));
+    process.stderr.write(chalk.red(getMessage('cli.error.processingSettings', { message: errorMessage(error) }) + '\n'));
     process.exit(1);
   }
 }
@@ -449,7 +449,7 @@ function loadSettingSourcesFromFlag(settingSourcesArg: string): void {
     if (error instanceof Error) {
       logError(error);
     }
-    process.stderr.write(chalk.red(`Error processing --setting-sources: ${errorMessage(error)}\n`));
+    process.stderr.write(chalk.red(getMessage('cli.error.processingSettingSources', { message: errorMessage(error) }) + '\n'));
     process.exit(1);
   }
 }
@@ -533,7 +533,7 @@ const _pendingSSH: PendingSSH | undefined = feature('SSH_REMOTE') ? {
 function parseModelProviderOption(rawValue: string): string {
   const provider = normalizeModelProviderName(rawValue);
   if (!(MODEL_PROVIDER_NAMES as readonly string[]).includes(provider)) {
-    throw new InvalidArgumentError(`Unknown model provider: ${rawValue}. Valid providers: ${MODEL_PROVIDER_NAMES.join(', ')}`);
+    throw new InvalidArgumentError(getMessage('cli.error.unknownModelProvider', { provider: rawValue, validProviders: MODEL_PROVIDER_NAMES.join(', ') }));
   }
   return provider;
 }
@@ -681,7 +681,7 @@ export async function main() {
       // Headless (-p) mode is not supported with SSH in v1 — reject early
       // so the flag doesn't silently cause local execution.
       if (rest.includes('-p') || rest.includes('--print')) {
-        process.stderr.write('Error: headless (-p/--print) mode is not supported with claude ssh\n');
+        process.stderr.write(getMessage('cli.error.headlessNotSupportedWithSsh') + '\n');
         gracefulShutdownSync(1);
         return;
       }
@@ -773,7 +773,7 @@ async function getInputPrompt(prompt: string, inputFormat: 'text' | 'stream-json
     const timedOut = await peekForStdinData(process.stdin, 3000);
     process.stdin.off('data', onData);
     if (timedOut) {
-      process.stderr.write('Warning: no stdin data received in 3s, proceeding without it. ' + 'If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.\n');
+      process.stderr.write(getMessage('cli.warning.noStdinData') + '\n');
     }
     return [prompt, data].filter(Boolean).join('\n');
   }
@@ -922,7 +922,7 @@ async function run(): Promise<CommanderCommand> {
     if (prompt === 'code') {
       logEvent('tengu_code_prompt_ignored', {});
       // biome-ignore lint/suspicious/noConsole:: intentional console output
-      console.warn(chalk.yellow('Tip: You can launch Deep Code with just `deepcode`'));
+      console.warn(chalk.yellow(getMessage('cli.tip.launchWithDeepcode')));
       prompt = undefined;
     }
 
@@ -1015,15 +1015,15 @@ async function run(): Promise<CommanderCommand> {
     // Validate tmux option
     if (tmuxEnabled) {
       if (!worktreeEnabled) {
-        process.stderr.write(chalk.red('Error: --tmux requires --worktree\n'));
+        process.stderr.write(chalk.red(getMessage('cli.error.tmuxRequiresWorktree') + '\n'));
         process.exit(1);
       }
       if (getPlatform() === 'windows') {
-        process.stderr.write(chalk.red('Error: --tmux is not supported on Windows\n'));
+        process.stderr.write(chalk.red(getMessage('cli.error.tmuxNotSupportedOnWindows') + '\n'));
         process.exit(1);
       }
       if (!(await isTmuxAvailable())) {
-        process.stderr.write(chalk.red(`Error: tmux is not installed.\n${getTmuxInstallInstructions()}\n`));
+        process.stderr.write(chalk.red(getMessage('cli.error.tmuxNotInstalled') + `\n${getTmuxInstallInstructions()}\n`));
         process.exit(1);
       }
     }
@@ -1041,7 +1041,7 @@ async function run(): Promise<CommanderCommand> {
       const hasAnyTeammateOpt = teammateOpts.agentId || teammateOpts.agentName || teammateOpts.teamName;
       const hasAllRequiredTeammateOpts = teammateOpts.agentId && teammateOpts.agentName && teammateOpts.teamName;
       if (hasAnyTeammateOpt && !hasAllRequiredTeammateOpts) {
-        process.stderr.write(chalk.red('Error: --agent-id, --agent-name, and --team-name must all be provided together\n'));
+        process.stderr.write(chalk.red(getMessage('cli.error.teammateOptionsRequiredTogether') + '\n'));
         process.exit(1);
       }
 
@@ -1115,7 +1115,7 @@ async function run(): Promise<CommanderCommand> {
       // --session-id can be used with --continue or --resume when --fork-session is also provided
       // (to specify a custom ID for the forked session)
       if ((options.continue || options.resume) && !options.forkSession) {
-        process.stderr.write(chalk.red('Error: --session-id can only be used with --continue or --resume if --fork-session is also specified.\n'));
+        process.stderr.write(chalk.red(getMessage('cli.error.sessionIdRequiresForkSession') + '\n'));
         process.exit(1);
       }
 
@@ -1125,13 +1125,13 @@ async function run(): Promise<CommanderCommand> {
       if (!sdkUrl) {
         const validatedSessionId = validateUuid(sessionId);
         if (!validatedSessionId) {
-          process.stderr.write(chalk.red('Error: Invalid session ID. Must be a valid UUID.\n'));
+          process.stderr.write(chalk.red(getMessage('cli.error.invalidSessionId') + '\n'));
           process.exit(1);
         }
 
         // Check if session ID already exists
         if (sessionIdExists(validatedSessionId)) {
-          process.stderr.write(chalk.red(`Error: Session ID ${validatedSessionId} is already in use.\n`));
+          process.stderr.write(chalk.red(getMessage('cli.error.sessionIdInUse', { sessionId: validatedSessionId }) + '\n'));
           process.exit(1);
         }
       }
@@ -1142,7 +1142,7 @@ async function run(): Promise<CommanderCommand> {
 
     // Validate that fallback model is different from main model
     if (fallbackModel && options.model && fallbackModel === options.model) {
-      process.stderr.write(chalk.red('Error: Fallback model cannot be the same as the main model. Please specify a different model for --fallback-model.\n'));
+      process.stderr.write(chalk.red(getMessage('cli.error.fallbackModelSameAsMain') + '\n'));
       process.exit(1);
     }
 
@@ -1150,7 +1150,7 @@ async function run(): Promise<CommanderCommand> {
     let systemPrompt = options.systemPrompt;
     if (options.systemPromptFile) {
       if (options.systemPrompt) {
-        process.stderr.write(chalk.red('Error: Cannot use both --system-prompt and --system-prompt-file. Please use only one.\n'));
+        process.stderr.write(chalk.red(getMessage('cli.error.systemPromptConflict') + '\n'));
         process.exit(1);
       }
       try {
@@ -1159,10 +1159,10 @@ async function run(): Promise<CommanderCommand> {
       } catch (error) {
         const code = getErrnoCode(error);
         if (code === 'ENOENT') {
-          process.stderr.write(chalk.red(`Error: System prompt file not found: ${resolve(options.systemPromptFile)}\n`));
+          process.stderr.write(chalk.red(getMessage('cli.error.systemPromptFileNotFound', { path: resolve(options.systemPromptFile) }) + '\n'));
           process.exit(1);
         }
-        process.stderr.write(chalk.red(`Error reading system prompt file: ${errorMessage(error)}\n`));
+        process.stderr.write(chalk.red(getMessage('cli.error.readingSystemPromptFile', { message: errorMessage(error) }) + '\n'));
         process.exit(1);
       }
     }
@@ -1171,7 +1171,7 @@ async function run(): Promise<CommanderCommand> {
     let appendSystemPrompt = options.appendSystemPrompt;
     if (options.appendSystemPromptFile) {
       if (options.appendSystemPrompt) {
-        process.stderr.write(chalk.red('Error: Cannot use both --append-system-prompt and --append-system-prompt-file. Please use only one.\n'));
+        process.stderr.write(chalk.red(getMessage('cli.error.appendSystemPromptConflict') + '\n'));
         process.exit(1);
       }
       try {
@@ -1180,10 +1180,10 @@ async function run(): Promise<CommanderCommand> {
       } catch (error) {
         const code = getErrnoCode(error);
         if (code === 'ENOENT') {
-          process.stderr.write(chalk.red(`Error: Append system prompt file not found: ${resolve(options.appendSystemPromptFile)}\n`));
+          process.stderr.write(chalk.red(getMessage('cli.error.appendSystemPromptFileNotFound', { path: resolve(options.appendSystemPromptFile) }) + '\n'));
           process.exit(1);
         }
-        process.stderr.write(chalk.red(`Error reading append system prompt file: ${errorMessage(error)}\n`));
+        process.stderr.write(chalk.red(getMessage('cli.error.readingAppendSystemPromptFile', { message: errorMessage(error) }) + '\n'));
         process.exit(1);
       }
     }
@@ -1271,7 +1271,7 @@ async function run(): Promise<CommanderCommand> {
         logForDebugging(`--mcp-config validation failed (${allErrors.length} errors): ${formattedErrors}`, {
           level: 'error'
         });
-        process.stderr.write(`Error: Invalid MCP configuration:\n${formattedErrors}\n`);
+        process.stderr.write(getMessage('cli.error.invalidMcpConfiguration', { errors: formattedErrors }) + '\n');
         process.exit(1);
       }
       if (Object.keys(allConfigs).length > 0) {
@@ -1318,7 +1318,7 @@ async function run(): Promise<CommanderCommand> {
           blocked
         } = filterMcpServersByPolicy(scopedConfigs);
         if (blocked.length > 0) {
-          process.stderr.write(`Warning: MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`);
+          process.stderr.write(getMessage('cli.warning.mcpServersBlockedByPolicy', { servers: plural(blocked.length, 'server'), names: blocked.join(', ') }) + '\n');
         }
         dynamicMcpConfig = {
           ...dynamicMcpConfig,
@@ -1334,13 +1334,13 @@ async function run(): Promise<CommanderCommand> {
     // configs that contain special server types (sdk)
     if (doesEnterpriseMcpConfigExist()) {
       if (strictMcpConfig) {
-        process.stderr.write(chalk.red('You cannot use --strict-mcp-config when an enterprise MCP config is present'));
+        process.stderr.write(chalk.red(getMessage('cli.error.strictMcpConfigWithEnterprise')));
         process.exit(1);
       }
 
       // For --mcp-config, allow if all servers are internal types (sdk)
       if (dynamicMcpConfig && !areMcpConfigsAllowedWithEnterpriseMcpConfig(dynamicMcpConfig)) {
-        process.stderr.write(chalk.red('You cannot dynamically configure MCP servers when an enterprise MCP config is present'));
+        process.stderr.write(chalk.red(getMessage('cli.error.dynamicMcpWithEnterprise')));
         process.exit(1);
       }
     }
@@ -1433,7 +1433,7 @@ async function run(): Promise<CommanderCommand> {
         blocked
       } = filterMcpServersByPolicy(configs);
       if (blocked.length > 0) {
-        process.stderr.write(`Warning: claude.ai MCP ${plural(blocked.length, 'server')} blocked by enterprise policy: ${blocked.join(', ')}\n`);
+        process.stderr.write(getMessage('cli.warning.claudeAiMcpServersBlockedByPolicy', { servers: plural(blocked.length, 'server'), names: blocked.join(', ') }) + '\n');
       }
       return allowed;
     }) : Promise.resolve({});
@@ -1459,12 +1459,12 @@ async function run(): Promise<CommanderCommand> {
 
     if (inputFormat && inputFormat !== 'text' && inputFormat !== 'stream-json') {
       // biome-ignore lint/suspicious/noConsole:: intentional console output
-      console.error(`Error: Invalid input format "${inputFormat}".`);
+      console.error(getMessage('cli.error.invalidInputFormat', { format: inputFormat }));
       process.exit(1);
     }
     if (inputFormat === 'stream-json' && outputFormat !== 'stream-json') {
       // biome-ignore lint/suspicious/noConsole:: intentional console output
-      console.error(`Error: --input-format=stream-json requires output-format=stream-json.`);
+      console.error(getMessage('cli.error.inputFormatRequiresOutputFormat'));
       process.exit(1);
     }
 
@@ -1472,7 +1472,7 @@ async function run(): Promise<CommanderCommand> {
     if (sdkUrl) {
       if (inputFormat !== 'stream-json' || outputFormat !== 'stream-json') {
         // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.error(`Error: --sdk-url requires both --input-format=stream-json and --output-format=stream-json.`);
+        console.error(getMessage('cli.error.sdkUrlRequiresStreamJson'));
         process.exit(1);
       }
     }
@@ -1481,7 +1481,7 @@ async function run(): Promise<CommanderCommand> {
     if (options.replayUserMessages) {
       if (inputFormat !== 'stream-json' || outputFormat !== 'stream-json') {
         // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.error(`Error: --replay-user-messages requires both --input-format=stream-json and --output-format=stream-json.`);
+        console.error(getMessage('cli.error.replayUserMessagesRequiresStreamJson'));
         process.exit(1);
       }
     }
@@ -1489,14 +1489,14 @@ async function run(): Promise<CommanderCommand> {
     // Validate includePartialMessages is only used with print mode and stream-json output
     if (effectiveIncludePartialMessages) {
       if (!isNonInteractiveSession || outputFormat !== 'stream-json') {
-        writeToStderr(`Error: --include-partial-messages requires --print and --output-format=stream-json.`);
+        writeToStderr(getMessage('cli.error.includePartialMessagesRequiresPrint'));
         process.exit(1);
       }
     }
 
     // Validate --no-session-persistence is only used with print mode
     if (options.sessionPersistence === false && !isNonInteractiveSession) {
-      writeToStderr(`Error: --no-session-persistence can only be used with --print mode.`);
+      writeToStderr(getMessage('cli.error.noSessionPersistenceRequiresPrint'));
       process.exit(1);
     }
     const effectivePrompt = prompt || '';
@@ -1764,12 +1764,12 @@ async function run(): Promise<CommanderCommand> {
       if (advisorOption) {
         logForDebugging(`[AdvisorTool] --advisor ${advisorOption}`);
         if (!modelSupportsAdvisor(resolvedInitialModel)) {
-          process.stderr.write(chalk.red(`Error: The model "${resolvedInitialModel}" does not support the advisor tool.\n`));
+          process.stderr.write(chalk.red(getMessage('cli.error.modelDoesNotSupportAdvisor', { model: resolvedInitialModel }) + '\n'));
           process.exit(1);
         }
         const normalizedAdvisorModel = normalizeModelStringForAPI(parseUserSpecifiedModel(advisorOption));
         if (!isValidAdvisorModel(normalizedAdvisorModel)) {
-          process.stderr.write(chalk.red(`Error: The model "${advisorOption}" cannot be used as an advisor.\n`));
+          process.stderr.write(chalk.red(getMessage('cli.error.modelCannotBeAdvisor', { model: advisorOption }) + '\n'));
           process.exit(1);
         }
       }
@@ -1862,7 +1862,7 @@ async function run(): Promise<CommanderCommand> {
       // If the user passes the flag, print a deprecation notice and proceed
       // without remote control.
       if (feature('BRIDGE_MODE') && remoteControlOption !== undefined) {
-        process.stderr.write(chalk.yellow('Remote Control is not available in this build.\n--rc flag ignored.\n'));
+        process.stderr.write(chalk.yellow(getMessage('cli.warning.remoteControlUnavailable') + '\n'));
         remoteControl = false;
       }
 
@@ -2674,7 +2674,7 @@ async function run(): Promise<CommanderCommand> {
           logEvent('tengu_continue', {
             success: false
           });
-          return await exitWithError(root, 'No conversation found to continue');
+          return await exitWithError(root, getMessage('cli.error.noConversationToContinue'));
         }
         const loaded = await processResumedConversation(result, {
           forkSession: !!options.forkSession,
@@ -2731,7 +2731,7 @@ async function run(): Promise<CommanderCommand> {
       } catch (err) {
         return await exitWithError(root, err instanceof DirectConnectError ? err.message : String(err), () => gracefulShutdown(1));
       }
-      const connectInfoMessage = createSystemMessage(`Connected to server at ${_pendingConnect.url}\nSession: ${directConnectConfig.sessionId}`, 'info');
+      const connectInfoMessage = createSystemMessage(getMessage('cli.system.connectedToServer', { url: _pendingConnect.url, sessionId: directConnectConfig.sessionId }), 'info');
       await launchRepl(root, {
         getFpsMetrics,
         stats,
@@ -2763,14 +2763,14 @@ async function run(): Promise<CommanderCommand> {
       let sshSession;
       try {
         if (_pendingSSH.local) {
-          process.stderr.write('Starting local ssh-proxy test session...\n');
+          process.stderr.write(getMessage('cli.status.startingLocalSshProxy') + '\n');
           sshSession = createLocalSSHSession({
             cwd: _pendingSSH.cwd,
             permissionMode: _pendingSSH.permissionMode,
             dangerouslySkipPermissions: _pendingSSH.dangerouslySkipPermissions
           });
         } else {
-          process.stderr.write(`Connecting to ${_pendingSSH.host}…\n`);
+          process.stderr.write(getMessage('cli.status.connectingToHost', { host: _pendingSSH.host }) + '\n');
           // In-place progress: \r + EL0 (erase to end of line). Final \n on
           // success so the next message lands on a fresh line. No-op when
           // stderr isn't a TTY (piped/redirected) — \r would just emit noise.
@@ -2797,7 +2797,7 @@ async function run(): Promise<CommanderCommand> {
       } catch (err) {
         return await exitWithError(root, err instanceof SSHSessionError ? err.message : String(err), () => gracefulShutdown(1));
       }
-      const sshInfoMessage = createSystemMessage(_pendingSSH.local ? `Local ssh-proxy test session\ncwd: ${sshSession.remoteCwd}\nAuth: unix socket → local proxy` : `SSH session to ${_pendingSSH.host}\nRemote cwd: ${sshSession.remoteCwd}\nAuth: unix socket -R → local proxy`, 'info');
+      const sshInfoMessage = createSystemMessage(_pendingSSH.local ? getMessage('cli.system.localSshProxyInfo', { cwd: sshSession.remoteCwd }) : getMessage('cli.system.sshSessionInfo', { host: _pendingSSH.host, cwd: sshSession.remoteCwd }), 'info');
       await launchRepl(root, {
         getFpsMetrics,
         stats,
@@ -2899,7 +2899,7 @@ async function run(): Promise<CommanderCommand> {
                 success: false
               });
               logError(error);
-              await exitWithError(root, `Unable to resume from ccshare: ${errorMessage(error)}`, () => gracefulShutdown(1));
+              await exitWithError(root, getMessage('cli.error.unableToResumeFromCcshare', { message: errorMessage(error) }), () => gracefulShutdown(1));
             }
           } else {
             const resolvedPath = resolve(options.resume);
@@ -2941,7 +2941,7 @@ async function run(): Promise<CommanderCommand> {
                 success: false
               });
               logError(error);
-              await exitWithError(root, `Unable to load transcript from file: ${options.resume}`, () => gracefulShutdown(1));
+              await exitWithError(root, getMessage('cli.error.unableToLoadTranscript', { path: options.resume }), () => gracefulShutdown(1));
             }
           }
         }
@@ -2961,7 +2961,7 @@ async function run(): Promise<CommanderCommand> {
               entrypoint: 'cli_flag' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               success: false
             });
-            return await exitWithError(root, `No conversation found with session ID: ${sessionId}`);
+            return await exitWithError(root, getMessage('cli.error.noConversationForSessionId', { sessionId }));
           }
           const fullPath = matchedLog?.fullPath ?? result.fullPath;
           processedResume = await processResumedConversation(result, {
@@ -2983,7 +2983,7 @@ async function run(): Promise<CommanderCommand> {
             success: false
           });
           logError(error);
-          await exitWithError(root, `Failed to resume session ${sessionId}`);
+          await exitWithError(root, getMessage('cli.error.failedToResumeSession', { sessionId }));
         }
       }
 
@@ -3041,7 +3041,7 @@ async function run(): Promise<CommanderCommand> {
 
       // Show a prefill warning banner so the user knows to review the
       // pre-filled prompt before pressing Enter.
-      const prefillBanner = options.prefill ? createSystemMessage('Launched with a pre-filled prompt — review it before pressing Enter.', 'warning') : null;
+      const prefillBanner = options.prefill ? createSystemMessage(getMessage('cli.warning.prefilledPromptBanner'), 'warning') : null;
       const initialMessages = prefillBanner ? [prefillBanner, ...hookMessages] : hookMessages.length > 0 ? hookMessages : undefined;
       await launchRepl(root, {
         getFpsMetrics,
@@ -3249,7 +3249,7 @@ async function run(): Promise<CommanderCommand> {
       } = await import('./server/lockfile.js');
       const existing = await probeRunningServer();
       if (existing) {
-        process.stderr.write(`A deepcode server is already running (pid ${existing.pid}) at ${existing.httpUrl}\n`);
+        process.stderr.write(getMessage('cli.error.serverAlreadyRunning', { pid: existing.pid, url: existing.httpUrl }) + '\n');
         process.exit(1);
       }
       const authToken = opts.authToken ?? `sk-ant-cc-${randomBytes(16).toString('base64url')}`;

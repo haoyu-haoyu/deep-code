@@ -13,6 +13,7 @@
  */
 import { dirname, join } from 'path'
 import { getOriginalCwd } from '../../bootstrap/state.js'
+import { getMessage } from '../../i18n/index.js'
 import { isBuiltinPluginId } from '../../plugins/builtinPlugins.js'
 import type { LoadedPlugin, PluginManifest } from '../../types/plugin.js'
 import { isENOENT, toError } from '../../utils/errors.js'
@@ -360,11 +361,16 @@ export async function installPluginOp(
 
   if (!foundPlugin || !foundMarketplace) {
     const location = marketplaceName
-      ? `marketplace "${marketplaceName}"`
-      : 'any configured marketplace'
+      ? getMessage('plugin.op.install.location.marketplace', {
+          marketplace: marketplaceName,
+        })
+      : getMessage('plugin.op.install.location.anyConfigured')
     return {
       success: false,
-      message: `Plugin "${pluginName}" not found in ${location}`,
+      message: getMessage('plugin.op.install.error.notFound', {
+        pluginName,
+        location,
+      }),
     }
   }
 
@@ -383,12 +389,16 @@ export async function installPluginOp(
       case 'local-source-no-location':
         return {
           success: false,
-          message: `Cannot install local plugin "${result.pluginName}" without marketplace install location`,
+          message: getMessage('plugin.op.install.error.localNoLocation', {
+            pluginName: result.pluginName,
+          }),
         }
       case 'settings-write-failed':
         return {
           success: false,
-          message: `Failed to update settings: ${result.message}`,
+          message: getMessage('plugin.op.install.error.settingsWriteFailed', {
+            message: result.message,
+          }),
         }
       case 'resolution-failed':
         return {
@@ -398,19 +408,28 @@ export async function installPluginOp(
       case 'blocked-by-policy':
         return {
           success: false,
-          message: `Plugin "${result.pluginName}" is blocked by your organization's policy and cannot be installed`,
+          message: getMessage('plugin.op.install.error.blockedByPolicy', {
+            pluginName: result.pluginName,
+          }),
         }
       case 'dependency-blocked-by-policy':
         return {
           success: false,
-          message: `Plugin "${result.pluginName}" depends on "${result.blockedDependency}", which is blocked by your organization's policy`,
+          message: getMessage('plugin.op.install.error.dependencyBlockedByPolicy', {
+            pluginName: result.pluginName,
+            blockedDependency: result.blockedDependency,
+          }),
         }
     }
   }
 
   return {
     success: true,
-    message: `Successfully installed plugin: ${pluginId} (scope: ${scope})${result.depNote}`,
+    message: getMessage('plugin.op.install.success', {
+      pluginId,
+      scope,
+      depNote: result.depNote,
+    }),
     pluginId,
     pluginName: entry.name,
     scope,
@@ -463,7 +482,9 @@ export async function uninstallPluginOp(
     if (!resolved) {
       return {
         success: false,
-        message: `Plugin "${plugin}" not found in installed plugins`,
+        message: getMessage('plugin.op.uninstall.error.notInstalled', {
+          plugin,
+        }),
       }
     }
     pluginId = resolved.pluginId
@@ -487,17 +508,26 @@ export async function uninstallPluginOp(
       if (actualScope === 'project') {
         return {
           success: false,
-          message: `Plugin "${plugin}" is enabled at project scope (.claude/settings.json, shared with your team). To disable just for you: claude plugin disable ${plugin} --scope local`,
+          message: getMessage('plugin.op.uninstall.error.enabledAtProjectScope', {
+            plugin,
+          }),
         }
       }
       return {
         success: false,
-        message: `Plugin "${plugin}" is installed in ${actualScope} scope, not ${scope}. Use --scope ${actualScope} to uninstall.`,
+        message: getMessage('plugin.op.uninstall.error.wrongScope', {
+          plugin,
+          actualScope,
+          scope,
+        }),
       }
     }
     return {
       success: false,
-      message: `Plugin "${plugin}" is not installed in ${scope} scope. Use --scope to specify the correct scope.`,
+      message: getMessage('plugin.op.uninstall.error.notInScope', {
+        plugin,
+        scope,
+      }),
     }
   }
 
@@ -548,7 +578,11 @@ export async function uninstallPluginOp(
 
   return {
     success: true,
-    message: `Successfully uninstalled plugin: ${pluginName} (scope: ${scope})${depWarn}`,
+    message: getMessage('plugin.op.uninstall.success', {
+      pluginName,
+      scope,
+      depWarn,
+    }),
     pluginId,
     pluginName,
     scope,
@@ -589,14 +623,20 @@ export async function setPluginEnabledOp(
     if (error) {
       return {
         success: false,
-        message: `Failed to ${operation} built-in plugin: ${error.message}`,
+        message: getMessage('plugin.op.setEnabled.error.builtinFailed', {
+          operation,
+          message: error.message,
+        }),
       }
     }
     clearAllCaches()
     const { name: pluginName } = parsePluginIdentifier(plugin)
     return {
       success: true,
-      message: `Successfully ${operation}d built-in plugin: ${pluginName}`,
+      message: getMessage('plugin.op.setEnabled.builtinSuccess', {
+        operation,
+        pluginName,
+      }),
       pluginId: plugin,
       pluginName,
       scope: 'user',
@@ -626,7 +666,9 @@ export async function setPluginEnabledOp(
     } else {
       return {
         success: false,
-        message: `Plugin "${plugin}" not found in settings. Use plugin@marketplace format.`,
+        message: getMessage('plugin.op.setEnabled.error.notInSettings', {
+          plugin,
+        }),
       }
     }
   } else if (found) {
@@ -643,7 +685,9 @@ export async function setPluginEnabledOp(
   } else {
     return {
       success: false,
-      message: `Plugin "${plugin}" not found in any editable settings scope. Use plugin@marketplace format.`,
+      message: getMessage('plugin.op.setEnabled.error.notInAnyScope', {
+        plugin,
+      }),
     }
   }
 
@@ -653,7 +697,9 @@ export async function setPluginEnabledOp(
   if (enabled && isPluginBlockedByPolicy(pluginId)) {
     return {
       success: false,
-      message: `Plugin "${pluginId}" is blocked by your organization's policy and cannot be enabled`,
+      message: getMessage('plugin.op.setEnabled.error.blockedByPolicy', {
+        pluginId,
+      }),
     }
   }
 
@@ -683,7 +729,11 @@ export async function setPluginEnabledOp(
   ) {
     return {
       success: false,
-      message: `Plugin "${plugin}" is installed at ${found.scope} scope, not ${scope}. Use --scope ${found.scope} or omit --scope to auto-detect.`,
+      message: getMessage('plugin.op.setEnabled.error.wrongScope', {
+        plugin,
+        foundScope: found.scope,
+        scope,
+      }),
     }
   }
 
@@ -700,9 +750,19 @@ export async function setPluginEnabledOp(
       ? scopeSettingsValue === true
       : getPluginEditableScopes().has(pluginId)
   if (enabled === isCurrentlyEnabled) {
+    const stateWord = enabled
+      ? getMessage('plugin.op.setEnabled.state.enabled')
+      : getMessage('plugin.op.setEnabled.state.disabled')
+    const scopeSuffix = scope
+      ? getMessage('plugin.op.setEnabled.alreadyScopeSuffix', { scope })
+      : ''
     return {
       success: false,
-      message: `Plugin "${plugin}" is already ${enabled ? 'enabled' : 'disabled'}${scope ? ` at ${scope} scope` : ''}`,
+      message: getMessage('plugin.op.setEnabled.error.alreadyInState', {
+        plugin,
+        stateWord,
+        scopeSuffix,
+      }),
     }
   }
 
@@ -728,7 +788,10 @@ export async function setPluginEnabledOp(
   if (error) {
     return {
       success: false,
-      message: `Failed to ${operation} plugin: ${error.message}`,
+      message: getMessage('plugin.op.setEnabled.error.failed', {
+        operation,
+        message: error.message,
+      }),
     }
   }
 
@@ -738,7 +801,12 @@ export async function setPluginEnabledOp(
   const depWarn = formatReverseDependentsSuffix(reverseDependents)
   return {
     success: true,
-    message: `Successfully ${operation}d plugin: ${pluginName} (scope: ${resolvedScope})${depWarn}`,
+    message: getMessage('plugin.op.setEnabled.success', {
+      operation,
+      pluginName,
+      scope: resolvedScope,
+      depWarn,
+    }),
     pluginId,
     pluginName,
     scope: resolvedScope,
@@ -783,7 +851,10 @@ export async function disableAllPluginsOp(): Promise<PluginOperationResult> {
   const enabledPlugins = getPluginEditableScopes()
 
   if (enabledPlugins.size === 0) {
-    return { success: true, message: 'No enabled plugins to disable' }
+    return {
+      success: true,
+      message: getMessage('plugin.op.disableAll.noneEnabled'),
+    }
   }
 
   const disabled: string[] = []
@@ -801,13 +872,21 @@ export async function disableAllPluginsOp(): Promise<PluginOperationResult> {
   if (errors.length > 0) {
     return {
       success: false,
-      message: `Disabled ${disabled.length} ${plural(disabled.length, 'plugin')}, ${errors.length} failed:\n${errors.join('\n')}`,
+      message: getMessage('plugin.op.disableAll.partialFailure', {
+        count: disabled.length,
+        pluginWord: plural(disabled.length, 'plugin'),
+        failedCount: errors.length,
+        errors: errors.join('\n'),
+      }),
     }
   }
 
   return {
     success: true,
-    message: `Disabled ${disabled.length} ${plural(disabled.length, 'plugin')}`,
+    message: getMessage('plugin.op.disableAll.success', {
+      count: disabled.length,
+      pluginWord: plural(disabled.length, 'plugin'),
+    }),
   }
 }
 
@@ -840,7 +919,7 @@ export async function updatePluginOp(
   if (!pluginInfo) {
     return {
       success: false,
-      message: `Plugin "${pluginName}" not found`,
+      message: getMessage('plugin.op.update.error.notFound', { pluginName }),
       pluginId,
       scope,
     }
@@ -855,7 +934,9 @@ export async function updatePluginOp(
   if (!installations || installations.length === 0) {
     return {
       success: false,
-      message: `Plugin "${pluginName}" is not installed`,
+      message: getMessage('plugin.op.update.error.notInstalled', {
+        pluginName,
+      }),
       pluginId,
       scope,
     }
@@ -872,7 +953,10 @@ export async function updatePluginOp(
     const scopeDesc = projectPath ? `${scope} (${projectPath})` : scope
     return {
       success: false,
-      message: `Plugin "${pluginName}" is not installed at scope ${scopeDesc}`,
+      message: getMessage('plugin.op.update.error.notInstalledAtScope', {
+        pluginName,
+        scopeDesc,
+      }),
       pluginId,
       scope,
     }
@@ -950,7 +1034,9 @@ async function performPluginUpdate({
       if (isENOENT(e)) {
         return {
           success: false,
-          message: `Marketplace directory not found at ${marketplaceInstallLocation}`,
+          message: getMessage('plugin.op.update.error.marketplaceDirNotFound', {
+            location: marketplaceInstallLocation,
+          }),
           pluginId,
           scope,
         }
@@ -976,7 +1062,9 @@ async function performPluginUpdate({
       if (isENOENT(e)) {
         return {
           success: false,
-          message: `Plugin source not found at ${sourcePath}`,
+          message: getMessage('plugin.op.update.error.sourceNotFound', {
+            sourcePath,
+          }),
           pluginId,
           scope,
         }
@@ -1021,7 +1109,10 @@ async function performPluginUpdate({
     if (isUpToDate) {
       return {
         success: true,
-        message: `${pluginName} is already at the latest version (${newVersion}).`,
+        message: getMessage('managePlugins.result.alreadyLatest', {
+          name: pluginName,
+          version: newVersion,
+        }),
         pluginId,
         newVersion,
         oldVersion,
@@ -1066,7 +1157,13 @@ async function performPluginUpdate({
     }
 
     const scopeDesc = projectPath ? `${scope} (${projectPath})` : scope
-    const message = `Plugin "${pluginName}" updated from ${oldVersion || 'unknown'} to ${newVersion} for scope ${scopeDesc}. Restart to apply changes.`
+    const message = getMessage('plugin.op.update.success', {
+      pluginName,
+      oldVersion:
+        oldVersion || getMessage('plugin.op.update.unknownVersion'),
+      newVersion,
+      scopeDesc,
+    })
 
     return {
       success: true,

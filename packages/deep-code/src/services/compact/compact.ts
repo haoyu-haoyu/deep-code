@@ -38,6 +38,7 @@ import {
   getMcpInstructionsDeltaAttachment,
 } from '../../utils/attachments.js'
 import { getMemoryPath } from '../../utils/config.js'
+import { getMessage } from '../../i18n/index.js'
 import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
 import {
   analyzeContext,
@@ -1099,7 +1100,7 @@ function addErrorNotificationIfNeeded(
   ) {
     context.addNotification?.({
       key: 'error-compacting-conversation',
-      text: 'Error compacting conversation',
+      text: getMessage('compact.error.compactingConversation'),
       priority: 'immediate',
       color: 'error',
     })

@@ -10,6 +10,7 @@ import { backgroundAll, hasForegroundTasks } from '../tasks/LocalShellTask/Local
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
 import { env } from '../utils/env.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js';
 type Props = {
   onBackgroundSession: () => void;
@@ -85,12 +86,15 @@ export function SessionBackgroundHint(t0) {
   useKeybinding("task:background", handleBackground, t4);
   const baseShortcut = useShortcutDisplay("task:background", "Task", "ctrl+b");
   const shortcut = env.terminal === "tmux" && baseShortcut === "ctrl+b" ? "ctrl+b ctrl+b" : baseShortcut;
+  const {
+    t
+  } = useTranslation();
   if (!isLoading || !showSessionHint) {
     return null;
   }
   let t5;
   if ($[8] !== shortcut) {
-    t5 = <Box paddingLeft={2}><Text dimColor={true}><KeyboardShortcutHint shortcut={shortcut} action="background" /></Text></Box>;
+    t5 = <Box paddingLeft={2}><Text dimColor={true}><KeyboardShortcutHint shortcut={shortcut} action={t('shortcutHint.action.background')} /></Text></Box>;
     $[8] = shortcut;
     $[9] = t5;
   } else {

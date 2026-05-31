@@ -1,4 +1,5 @@
 import { roughTokenCountEstimation } from './charEstimation.js'
+import { getMessage } from '../i18n/index.js'
 import type { Tool, ToolPermissionContext } from '../Tool.js'
 import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js'
 import { countMcpToolTokens } from './analyzeContext.js'
@@ -54,8 +55,14 @@ async function checkClaudeMdFiles(): Promise<ContextWarning | null> {
 
   const message =
     largeFiles.length === 1
-      ? `Large CLAUDE.md file detected (${largeFiles[0]!.content.length.toLocaleString()} chars > ${MAX_MEMORY_CHARACTER_COUNT.toLocaleString()})`
-      : `${largeFiles.length} large CLAUDE.md files detected (each > ${MAX_MEMORY_CHARACTER_COUNT.toLocaleString()} chars)`
+      ? getMessage('doctor.contextWarnings.claudeMd.messageSingular', {
+          chars: largeFiles[0]!.content.length.toLocaleString(),
+          max: MAX_MEMORY_CHARACTER_COUNT.toLocaleString(),
+        })
+      : getMessage('doctor.contextWarnings.claudeMd.messagePlural', {
+          n: largeFiles.length,
+          max: MAX_MEMORY_CHARACTER_COUNT.toLocaleString(),
+        })
 
   return {
     type: 'claudemd_files',
@@ -100,13 +107,20 @@ async function checkAgentDescriptions(
     .map(agent => `${agent.name}: ~${agent.tokens.toLocaleString()} tokens`)
 
   if (agentTokens.length > 5) {
-    details.push(`(${agentTokens.length - 5} more custom agents)`)
+    details.push(
+      getMessage('doctor.contextWarnings.agents.moreCustomAgents', {
+        n: agentTokens.length - 5,
+      }),
+    )
   }
 
   return {
     type: 'agent_descriptions',
     severity: 'warning',
-    message: `Large agent descriptions (~${totalTokens.toLocaleString()} tokens > ${AGENT_DESCRIPTIONS_THRESHOLD.toLocaleString()})`,
+    message: getMessage('doctor.contextWarnings.agents.message', {
+      tokens: totalTokens.toLocaleString(),
+      threshold: AGENT_DESCRIPTIONS_THRESHOLD.toLocaleString(),
+    }),
     details,
     currentValue: totalTokens,
     threshold: AGENT_DESCRIPTIONS_THRESHOLD,
@@ -177,7 +191,10 @@ async function checkMcpTools(
     return {
       type: 'mcp_tools',
       severity: 'warning',
-      message: `Large MCP tools context (~${mcpToolTokens.toLocaleString()} tokens > ${MCP_TOOLS_THRESHOLD.toLocaleString()})`,
+      message: getMessage('doctor.contextWarnings.mcp.message', {
+        tokens: mcpToolTokens.toLocaleString(),
+        threshold: MCP_TOOLS_THRESHOLD.toLocaleString(),
+      }),
       details,
       currentValue: mcpToolTokens,
       threshold: MCP_TOOLS_THRESHOLD,
@@ -196,9 +213,14 @@ async function checkMcpTools(
     return {
       type: 'mcp_tools',
       severity: 'warning',
-      message: `Large MCP tools context (~${estimatedTokens.toLocaleString()} tokens estimated > ${MCP_TOOLS_THRESHOLD.toLocaleString()})`,
+      message: getMessage('doctor.contextWarnings.mcp.messageEstimated', {
+        tokens: estimatedTokens.toLocaleString(),
+        threshold: MCP_TOOLS_THRESHOLD.toLocaleString(),
+      }),
       details: [
-        `${mcpTools.length} MCP tools detected (token count estimated)`,
+        getMessage('doctor.contextWarnings.mcp.detailsEstimated', {
+          n: mcpTools.length,
+        }),
       ],
       currentValue: estimatedTokens,
       threshold: MCP_TOOLS_THRESHOLD,
@@ -227,13 +249,18 @@ async function checkUnreachableRules(
 
   const details = unreachable.flatMap(r => [
     `${permissionRuleValueToString(r.rule.ruleValue)}: ${r.reason}`,
-    `  Fix: ${r.fix}`,
+    getMessage('doctor.contextWarnings.unreachableRules.fixLabel', {
+      fix: r.fix,
+    }),
   ])
 
   return {
     type: 'unreachable_rules',
     severity: 'warning',
-    message: `${unreachable.length} ${plural(unreachable.length, 'unreachable permission rule')} detected`,
+    message: getMessage('doctor.contextWarnings.unreachableRules.message', {
+      n: unreachable.length,
+      rules: plural(unreachable.length, 'unreachable permission rule'),
+    }),
     details,
     currentValue: unreachable.length,
     threshold: 0,
