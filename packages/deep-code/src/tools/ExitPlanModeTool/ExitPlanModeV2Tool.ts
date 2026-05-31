@@ -25,6 +25,13 @@ import {
 } from '../../utils/inProcessTeammateHelpers.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
+import { planTodosToTasks } from '../../utils/planTodos.mjs'
+import {
+  createTask,
+  getTaskListId,
+  isTodoV2Enabled,
+  listTasks,
+} from '../../utils/tasks.js'
 import {
   getPlan,
   getPlanFilePath,
@@ -138,6 +145,10 @@ export const outputSchema = lazySchema(() =>
       .string()
       .optional()
       .describe('Unique identifier for the plan approval request'),
+    seededTaskCount: z
+      .number()
+      .optional()
+      .describe('How many task-panel items were seeded from the approved plan'),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -406,6 +417,29 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       isAgentSwarmsEnabled() &&
       context.options.tools.some(t => toolMatchesName(t, AGENT_TOOL_NAME))
 
+    // Deterministically seed the task panel from the approved plan, so the
+    // checklist is GUARANTEED to populate instead of relying on the model to act
+    // on the "update your todo list" nudge (Reasonix makes the same flow a
+    // structural guarantee). Best-effort and non-clobbering: only when the V2
+    // task system is active (the interactive panel), only for the main agent,
+    // and only when the task list is currently empty. Never throws into the
+    // approval path.
+    let seededTaskCount = 0
+    if (!isAgent && plan && isTodoV2Enabled()) {
+      try {
+        const taskListId = getTaskListId()
+        const existing = await listTasks(taskListId)
+        if (existing.length === 0) {
+          for (const taskData of planTodosToTasks(plan)) {
+            await createTask(taskListId, taskData)
+            seededTaskCount++
+          }
+        }
+      } catch (error) {
+        logError(error)
+      }
+    }
+
     return {
       data: {
         plan,
@@ -413,6 +447,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
         filePath,
         hasTaskTool: hasTaskTool || undefined,
         planWasEdited: inputPlan !== undefined || undefined,
+        seededTaskCount: seededTaskCount || undefined,
       },
     }
   },
@@ -425,6 +460,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       planWasEdited,
       awaitingLeaderApproval,
       requestId,
+      seededTaskCount,
     },
     toolUseID,
   ) {
@@ -478,9 +514,14 @@ Request ID: ${requestId}`,
       ? 'Approved Plan (edited by user)'
       : 'Approved Plan'
 
+    const todoGuidance =
+      seededTaskCount && seededTaskCount > 0
+        ? `Your task list has been pre-populated with ${seededTaskCount} step${seededTaskCount === 1 ? '' : 's'} from this plan — mark each in_progress/completed as you go.`
+        : 'Start with updating your todo list if applicable.'
+
     return {
       type: 'tool_result',
-      content: `User has approved your plan. You can now start coding. Start with updating your todo list if applicable
+      content: `User has approved your plan. You can now start coding. ${todoGuidance}
 
 Your plan has been saved to: ${filePath}
 You can refer back to it if needed during implementation.${teamHint}
