@@ -2892,3 +2892,174 @@ test('saveDeepSeekConfigFile rejects non-object payload before touching the file
   const after = await readFile(filePath, 'utf8')
   assert.equal(after, original, 'config file must be untouched after rejected save')
 })
+
+// ── P2.11.a — prefix-cache moat self-verification ────────────────────────────
+// DeepCode's headline is "we keep the DeepSeek prefix cache hot across long
+// sessions." That only holds if every turn re-sends the prior turns BYTE-IDENTICAL
+// and only APPENDS new messages — never mutating an earlier message or the system
+// prefix. These tests drive the REAL buildDeepSeekRequest + mapMessagesToDeepSeek
+// and assert that invariant at the wire level, so a future serializer/normalizer
+// change that silently breaks the cache fails CI. (Reasonix's cachehit_e2e_test.go
+// asserts the same thing as hitChars[i] === reqChars[i-1].)
+
+// per-message wire snapshot: the bytes that would actually be sent for each message
+const perMessageBytes = messages => messages.map(m => JSON.stringify(m))
+
+test('runDeepSeekAgent keeps the request message-prefix byte-stable across tool turns (prefix-cache moat)', async () => {
+  const TOOL_TURNS = 3
+  const turns = []
+  await runDeepSeekAgent({
+    prompt: 'begin the task',
+    env: { DEEPSEEK_API_KEY: 'sk-test', DEEPSEEK_CACHE_USER_ID: 'workspace-1' },
+    systemPrompt: [{ type: 'text', text: 'You are a stable-prefix coding agent.' }],
+    tools: [
+      {
+        name: 'noop',
+        description: 'a no-op tool used to force tool-call turns',
+        inputJSONSchema: {
+          type: 'object',
+          properties: { step: { type: 'number' } },
+          required: [],
+        },
+        async execute() {
+          return 'ok'
+        },
+      },
+    ],
+    maxTurns: TOOL_TURNS + 2,
+    // complete() receives the exact request built by buildDeepSeekRequest each turn,
+    // so request.body.messages is the wire representation we must keep prefix-stable.
+    async complete(request) {
+      turns.push(perMessageBytes(request.body.messages))
+      if (turns.length <= TOOL_TURNS) {
+        return {
+          content: '',
+          reasoning: `reasoning trajectory step ${turns.length}`,
+          finishReason: 'tool_calls',
+          toolCalls: [
+            {
+              id: `call_${turns.length}`,
+              type: 'function',
+              function: { name: 'noop', arguments: `{"step":${turns.length}}` },
+            },
+          ],
+        }
+      }
+      return { content: 'all done', reasoning: '', finishReason: 'stop', toolCalls: [] }
+    },
+  })
+
+  assert.ok(turns.length >= 3, `expected a multi-turn tool loop, got ${turns.length}`)
+  for (let i = 1; i < turns.length; i++) {
+    const prev = turns[i - 1]
+    const cur = turns[i]
+    assert.ok(
+      cur.length >= prev.length,
+      `turn ${i}: request must only grow (prev=${prev.length}, cur=${cur.length})`,
+    )
+    const reqCharsPrev = prev.reduce((sum, m) => sum + m.length, 0)
+    let hitChars = 0
+    for (let k = 0; k < prev.length; k++) {
+      assert.equal(
+        cur[k],
+        prev[k],
+        `turn ${i}: message[${k}] changed byte-for-byte — prefix cache would miss here`,
+      )
+      hitChars += cur[k].length
+    }
+    // Reasonix invariant: the cached prefix on turn i equals the ENTIRE prior request.
+    assert.equal(
+      hitChars,
+      reqCharsPrev,
+      `turn ${i}: the whole previous request must be a byte-identical prefix of this one`,
+    )
+  }
+})
+
+test('the prefix-stability gate catches a mutated earlier message (negative control)', async () => {
+  // Proves the assertion above is not vacuous: mutating an EARLIER message — the
+  // exact failure mode that collapses DeepSeek's prefix cache — must break the
+  // byte-prefix at an early index.
+  const sys = [{ type: 'text', text: 'sys' }]
+  const env = { DEEPSEEK_API_KEY: 'sk-test' }
+  const base = await buildDeepSeekRequest({
+    env,
+    systemPrompt: sys,
+    messages: [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'reply' },
+      { role: 'user', content: 'second' },
+    ],
+  })
+  const mutated = await buildDeepSeekRequest({
+    env,
+    systemPrompt: sys,
+    messages: [
+      { role: 'user', content: 'FIRST-MUTATED' },
+      { role: 'assistant', content: 'reply' },
+      { role: 'user', content: 'second' },
+    ],
+  })
+  const a = perMessageBytes(base.body.messages)
+  const b = perMessageBytes(mutated.body.messages)
+  let firstDiff = -1
+  for (let k = 0; k < Math.min(a.length, b.length); k++) {
+    if (a[k] !== b[k]) {
+      firstDiff = k
+      break
+    }
+  }
+  assert.notEqual(firstDiff, -1, 'mutating an earlier message must break the byte-prefix')
+  assert.ok(
+    firstDiff < a.length - 1,
+    'the divergence must be at an EARLY message (cache collapses from there forward)',
+  )
+})
+
+test('transient per-turn content rides the message tail, never the cached system prefix', async () => {
+  // The stable cache prefix = systemPromptToMessages(systemPrompt) + prior history.
+  // Volatile per-turn content (attachments, <system-reminder>s) must ride the LATEST
+  // user message so it never mutates the cached prefix. Two requests with an identical
+  // stable prefix but DIFFERENT transient tails must share a byte-identical leading prefix.
+  const sys = [{ type: 'text', text: 'stable system instructions' }]
+  const env = { DEEPSEEK_API_KEY: 'sk-test' }
+  const history = [
+    { role: 'user', content: 'do the task' },
+    { role: 'assistant', content: 'working' },
+  ]
+  const reqA = await buildDeepSeekRequest({
+    env,
+    systemPrompt: sys,
+    messages: [
+      ...history,
+      { role: 'user', content: 'turn <system-reminder>todo: X</system-reminder>' },
+    ],
+  })
+  const reqB = await buildDeepSeekRequest({
+    env,
+    systemPrompt: sys,
+    messages: [
+      ...history,
+      {
+        role: 'user',
+        content: 'turn <system-reminder>todo: Y entirely different note</system-reminder>',
+      },
+    ],
+  })
+  const a = perMessageBytes(reqA.body.messages)
+  const b = perMessageBytes(reqB.body.messages)
+  assert.equal(a.length, b.length, 'same message count; only the tail content differs')
+  const stablePrefixLen = a.length - 1
+  for (let k = 0; k < stablePrefixLen; k++) {
+    assert.equal(
+      b[k],
+      a[k],
+      `message[${k}] (cached prefix) must be byte-identical regardless of the volatile tail`,
+    )
+  }
+  assert.notEqual(
+    a[a.length - 1],
+    b[b.length - 1],
+    'only the volatile tail message should differ between the two turns',
+  )
+})
