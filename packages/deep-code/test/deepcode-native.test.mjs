@@ -3105,3 +3105,65 @@ test('mapMessagesToDeepSeek drops orphan tool results (post-compaction / resume 
   assert.equal(toolMsgs.length, 1, 'a paired tool result must be kept')
   assert.equal(toolMsgs[0].tool_call_id, 'call_1')
 })
+
+test('reasoningReplay knob controls re-sending reasoning_content on tool turns (default preserves it)', async () => {
+  // Reasonix strips reasoning_content on tool turns after a live probe showed it
+  // costs ~500 uncached prompt tokens/turn. DeepCode re-sends it by deliberate
+  // design (deepseekHarnessPrompts). This proves the knob WORKS — isolating that
+  // the ONLY wire difference is the reasoning bytes — so a future flip can be
+  // justified by data. Default stays true (no behavior change).
+  async function runWith(extraEnv) {
+    const reqs = []
+    await runDeepSeekAgent({
+      prompt: 'go',
+      env: { DEEPSEEK_API_KEY: 'sk-test', DEEPCODE_CACHE_USER_ID: 'ws', ...extraEnv },
+      tools: [
+        {
+          name: 'noop',
+          description: 'x',
+          inputJSONSchema: { type: 'object', properties: {}, required: [] },
+          async execute() {
+            return 'ok'
+          },
+        },
+      ],
+      maxTurns: 3,
+      async complete(request) {
+        reqs.push(request.body.messages)
+        if (reqs.length === 1) {
+          return {
+            content: '',
+            reasoning: 'because reasons',
+            finishReason: 'tool_calls',
+            toolCalls: [
+              { id: 'c1', type: 'function', function: { name: 'noop', arguments: '{}' } },
+            ],
+          }
+        }
+        return { content: 'done', reasoning: '', finishReason: 'stop', toolCalls: [] }
+      },
+    })
+    return reqs
+  }
+
+  const onReqs = await runWith({})
+  const onAssistant = onReqs[1].find(m => m.role === 'assistant' && m.tool_calls)
+  assert.ok(onAssistant, 'turn 2 should include the assistant tool-call message')
+  assert.equal(
+    onAssistant.reasoning_content,
+    'because reasons',
+    'default (reasoningReplay=true) keeps reasoning_content on tool turns',
+  )
+
+  const offReqs = await runWith({ DEEPCODE_REASONING_REPLAY: 'false' })
+  const offAssistant = offReqs[1].find(m => m.role === 'assistant' && m.tool_calls)
+  assert.ok(offAssistant)
+  assert.equal(
+    offAssistant.reasoning_content,
+    undefined,
+    'reasoningReplay=false drops reasoning_content (saves prompt tokens)',
+  )
+
+  // The ONLY difference is the reasoning bytes — tool_calls are identical.
+  assert.deepEqual(offAssistant.tool_calls, onAssistant.tool_calls)
+})

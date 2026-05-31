@@ -1,10 +1,15 @@
-export function mapMessagesToDeepSeek(messages) {
+export function mapMessagesToDeepSeek(messages, options = {}) {
+  // reasoningReplay: whether to re-send assistant reasoning_content on tool-call
+  // turns. Default true preserves DeepSeek's reasoning-trajectory continuation
+  // (see deepseekHarnessPrompts). Set false to drop it (saves prompt tokens) once
+  // a live cost probe justifies it — gated by the config knob, never flipped blind.
+  const reasoningReplay = options.reasoningReplay ?? true
   const mapped = []
   for (const message of messages) {
     if (!message) continue
 
     if (message.role) {
-      mapped.push(...mapOpenAIStyleMessage(message))
+      mapped.push(...mapOpenAIStyleMessage(message, { reasoningReplay }))
       continue
     }
 
@@ -14,7 +19,7 @@ export function mapMessagesToDeepSeek(messages) {
     }
 
     if (message.type === 'assistant') {
-      mapped.push(mapClaudeCodeAssistantMessage(message))
+      mapped.push(mapClaudeCodeAssistantMessage(message, { reasoningReplay }))
     }
   }
   return dropOrphanToolMessages(mapped)
@@ -84,7 +89,7 @@ export function stringifyToolResultContent(content) {
     .join('\n')
 }
 
-function mapOpenAIStyleMessage(message) {
+function mapOpenAIStyleMessage(message, { reasoningReplay = true } = {}) {
   if (message.role === 'assistant') {
     const toolCalls = normalizeToolCalls(message.tool_calls)
     return [
@@ -92,7 +97,9 @@ function mapOpenAIStyleMessage(message) {
         role: 'assistant',
         content: message.content ?? '',
         reasoning_content:
-          toolCalls.length > 0 ? message.reasoning_content : undefined,
+          reasoningReplay && toolCalls.length > 0
+            ? message.reasoning_content
+            : undefined,
         tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
         name: message.name,
       }),
@@ -146,7 +153,7 @@ function mapClaudeCodeUserMessage(message) {
   return result
 }
 
-function mapClaudeCodeAssistantMessage(message) {
+function mapClaudeCodeAssistantMessage(message, { reasoningReplay = true } = {}) {
   const content = message.message?.content ?? message.content
   if (!Array.isArray(content)) {
     return { role: 'assistant', content: String(content ?? '') }
@@ -180,7 +187,7 @@ function mapClaudeCodeAssistantMessage(message) {
     role: 'assistant',
     content: textParts.join(''),
     reasoning_content:
-      toolCalls.length > 0 && reasoningParts.length > 0
+      reasoningReplay && toolCalls.length > 0 && reasoningParts.length > 0
         ? reasoningParts.join('\n')
         : undefined,
     tool_calls: toolCalls.length > 0 ? toolCalls : undefined,

@@ -103,7 +103,23 @@ export function resolveDeepSeekConfig({
       env.DEEPCODE_CACHE_USER_ID ??
       env.DEEPSEEK_CACHE_USER_ID ??
       createDeepSeekCacheUserId(cwd),
+    // Re-send assistant reasoning_content on tool-call turns. Default true keeps
+    // DeepSeek's reasoning-trajectory continuation (deepseekHarnessPrompts). Flip
+    // to false only after a live cost probe (scripts/deepseek-reasoning-cost-probe.mjs).
+    reasoningReplay:
+      overrides.reasoningReplay ??
+      envBool(env.DEEPCODE_REASONING_REPLAY ?? env.DEEPSEEK_REASONING_REPLAY) ??
+      file?.reasoningReplay ??
+      true,
   }
+}
+
+function envBool(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  const normalized = String(value).trim().toLowerCase()
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+  return undefined
 }
 
 export async function buildDeepSeekRequest({
@@ -125,11 +141,13 @@ export async function buildDeepSeekRequest({
   responseFormat,
   userId,
   cacheUserId,
+  reasoningReplay,
 } = {}) {
   const config = resolveDeepSeekConfig({
     env,
     cwd,
     overrides: {
+      reasoningReplay,
       model,
       thinking,
       reasoningEffort,
@@ -145,7 +163,9 @@ export async function buildDeepSeekRequest({
     model: config.model,
     messages: [
       ...systemPromptToMessages(systemPrompt),
-      ...mapMessagesToDeepSeek(messages),
+      ...mapMessagesToDeepSeek(messages, {
+        reasoningReplay: config.reasoningReplay,
+      }),
     ],
     tools:
       tools.length > 0

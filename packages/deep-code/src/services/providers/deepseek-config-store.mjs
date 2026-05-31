@@ -60,6 +60,10 @@ export function saveDeepSeekConfigFile(config, { env = process.env } = {}) {
         : undefined,
     thinking:
       typeof config.thinking === 'string' ? config.thinking : undefined,
+    reasoningReplay:
+      typeof config.reasoningReplay === 'boolean'
+        ? config.reasoningReplay
+        : undefined,
     completedAt: new Date().toISOString(),
   }
   for (const key of Object.keys(persisted)) {
@@ -246,6 +250,10 @@ function sanitizeProviderConfigSection(config) {
         : undefined,
     thinking:
       typeof config.thinking === 'string' ? config.thinking : undefined,
+    reasoningReplay:
+      typeof config.reasoningReplay === 'boolean'
+        ? config.reasoningReplay
+        : undefined,
   }
   for (const key of Object.keys(sanitized)) {
     if (sanitized[key] === undefined) delete sanitized[key]
