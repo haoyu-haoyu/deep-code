@@ -206,14 +206,26 @@ features adopted from DeepSeek-TUI competitive analysis.
 
 ### P2.10 — i18n (Complete)
 
-Completed 2026-05-29/30. Full TUI localization (English, Simplified Chinese,
-Japanese) on a typed TS catalog (Path A): entire user-facing English surface
-migrated; zh-Hans + ja catalogs (596 keys each, complete + placeholder-parity
-verified); startup-resolved locale switcher (`/locale` + `--locale` +
-`settings.locale` + LC_ALL/LANG/system detection). ~25 residual "Claude"/
-"DeepCode" branding leaks corrected along the way. Catalog 596 keys × 3 locales;
-dist refreshed +161 KB. 20 PRs (#250–#269). Full citation in EXECUTION_LOG.md
-"Phase 2.10: i18n (Complete)".
+Full TUI localization (English, Simplified Chinese, Japanese) on a typed TS
+catalog (Path A): startup-resolved locale switcher (`/locale` + `--locale` +
+`settings.locale` + LC_ALL/LANG/system detection), `/config` UI-language row,
+and regression guards.
+
+Initial pass (#250–#273, 2026-05-29/30) wired the messages/status, prompt/
+settings, command-metadata, permission-UI, MCP, and onboarding surfaces (596
+keys × 3). **A 2026-05-31 multi-agent coverage audit then found that pass was
+only ~55% complete** (~620 distinct raw strings across ~150 files remained,
+incl. dialogs, agent UI, all command result strings, diagnostics, and
+main.tsx). Completed in four batches + a dist refresh (#276–#281 + Z2):
+**catalog 596 → 2,582 keys × 3 locales**; dist 14.62 MB → 15.17 MB. Every wired
+key resolves (0 missing, full-codebase check). Multiple "Claude Code"/"Anthropic"
+branding leaks fixed.
+
+Intentional English exceptions: `utils/status.tsx` (--status diagnostic panel,
+env-var-tied provider/account labels), the model-picker registry
+(modelOptions.ts/agent.ts), `.mjs` command loaders, and slash-command
+`description:` metadata (feeds model prompts). zh/ja are machine-translated and
+pending native review. Full citation in EXECUTION_LOG.md "Phase 2.10".
 
 Deferred (non-blocking) follow-ups:
 - Native review of ~51 flagged zh-Hans/ja technical terms before external sign-off

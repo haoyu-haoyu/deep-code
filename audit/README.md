@@ -34,9 +34,12 @@ read-only references for Phase 1 implementation.
   v0.3.0-feature-parity (2026-05-28). 9/9 priority features adopted
   (auto mode + multi-provider + cache viz + workspace rollback + LSP +
   HTTP serve + session fork + doctor + workspace slash). P2.10 i18n
-  completed later (2026-05-29/30): full en/zh-Hans/ja TUI localization +
-  /locale switcher, 596 keys × 3 locales (#250–#269). See TODO.md and
-  EXECUTION_LOG.md "Phase 2.10: i18n (Complete)".
+  (en/zh-Hans/ja TUI localization + /locale switcher): initial pass #250–#273,
+  then a 2026-05-31 coverage audit found it ~55% done and a 4-batch completion
+  (#276–#281 + Z2 dist refresh) brought the catalog to **2,582 keys × 3 locales**
+  (0 unresolved keys; status.tsx/model-registry/.mjs are documented English
+  exceptions). Audit data: `audit/i18n-coverage-2026-05-30.json`. See TODO.md and
+  EXECUTION_LOG.md "Phase 2.10".
 - **Phase 3 (Distribution)**: complete at v0.4.0-distributed (2026-05-28).
   Docker + GitHub Release binaries ready (autonomous channels using
   GITHUB_TOKEN). npm publish (P3.1.c) deferred pending user `@deepcode-ai`
