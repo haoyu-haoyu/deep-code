@@ -3063,3 +3063,45 @@ test('transient per-turn content rides the message tail, never the cached system
     'only the volatile tail message should differ between the two turns',
   )
 })
+
+test('mapMessagesToDeepSeek drops orphan tool results (post-compaction / resume safety)', async () => {
+  // After a partial compaction, the kept tail can begin with a tool_result whose
+  // originating assistant tool_use was summarized away. Mapped naively that becomes
+  // an orphan role:'tool' message which DeepSeek's strict API rejects AND which
+  // breaks the prefix cache. mapMessagesToDeepSeek must drop it.
+  const withOrphan = mapMessagesToDeepSeek([
+    {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 'summarized_away', content: 'orphaned result' },
+        ],
+      },
+    },
+    { type: 'user', message: { content: [{ type: 'text', text: 'continue please' }] } },
+  ])
+  assert.equal(
+    withOrphan.filter(m => m.role === 'tool').length,
+    0,
+    'orphan tool result (no preceding assistant tool_call) must be dropped',
+  )
+  assert.ok(
+    withOrphan.some(m => m.role === 'user' && m.content === 'continue please'),
+    'surrounding user text must be preserved',
+  )
+
+  // A properly paired assistant tool_call + tool_result is preserved untouched.
+  const paired = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', id: 'call_1', name: 'noop', input: {} }] },
+    },
+    {
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 'call_1', content: 'ok' }] },
+    },
+  ])
+  const toolMsgs = paired.filter(m => m.role === 'tool')
+  assert.equal(toolMsgs.length, 1, 'a paired tool result must be kept')
+  assert.equal(toolMsgs[0].tool_call_id, 'call_1')
+})

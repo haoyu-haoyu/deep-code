@@ -17,7 +17,43 @@ export function mapMessagesToDeepSeek(messages) {
       mapped.push(mapClaudeCodeAssistantMessage(message))
     }
   }
-  return mapped
+  return dropOrphanToolMessages(mapped)
+}
+
+/**
+ * Drop orphan `role:'tool'` messages whose tool_call_id was never produced by a
+ * preceding assistant `tool_calls` entry in this request.
+ *
+ * This happens when the request's leading turns were summarized away — e.g. a
+ * partial-compaction kept-tail that starts with a tool_result whose originating
+ * assistant tool_use is now in the summary, or a session resumed/forked mid-turn.
+ * DeepSeek's API strictly requires every tool message to pair with a preceding
+ * assistant tool_call, so an orphan both hard-rejects the request AND breaks the
+ * prefix cache. Stripping is deterministic (same every turn), so the post-reset
+ * prefix stays byte-stable. (Reasonix avoids the orphan by moving the compaction
+ * boundary; we repair it at request-build time, which also covers resume/fork.)
+ */
+function dropOrphanToolMessages(mapped) {
+  const seenToolCallIds = new Set()
+  const out = []
+  for (const entry of mapped) {
+    if (entry.role === 'assistant' && Array.isArray(entry.tool_calls)) {
+      for (const call of entry.tool_calls) {
+        if (call?.id) seenToolCallIds.add(call.id)
+      }
+      out.push(entry)
+      continue
+    }
+    if (entry.role === 'tool') {
+      // Keep only tool results whose call was produced by an earlier assistant.
+      if (entry.tool_call_id && seenToolCallIds.has(entry.tool_call_id)) {
+        out.push(entry)
+      }
+      continue
+    }
+    out.push(entry)
+  }
+  return out
 }
 
 export function normalizeToolCalls(toolCalls) {
