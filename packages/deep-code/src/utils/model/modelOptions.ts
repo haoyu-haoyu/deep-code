@@ -29,6 +29,8 @@ import {
 } from './model.js'
 import { has1mContext } from '../context.js'
 import { getGlobalConfig } from '../config.js'
+import { getResolvedDeepSeekModelCatalog } from '../../services/providers/deepseek-config-store.mjs'
+import { resolveModelCatalogEntry } from '../../services/providers/model-catalog.mjs'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
 
@@ -136,17 +138,31 @@ function getAutoModelOption(): ModelOption {
 
 function getDeepSeekNativeModelOptions(): ModelOption[] {
   const options: ModelOption[] = [getDefaultOptionForUser(), getAutoModelOption()]
-  const candidates = [getDefaultMainLoopModelSetting(), getSmallFastModel()]
 
-  for (const model of candidates) {
-    if (!options.some(opt => opt.value === model)) {
-      options.push({
-        value: model,
-        label: getDeepSeekModelLabel(model),
-        description: getDeepSeekModelDescription(model),
-        descriptionForModel: `${getDeepSeekModelLabel(model)} (${model})`,
-      })
+  // The selectable models are now config-driven: built-in DeepSeek models plus
+  // any the user declared under `models` in the provider config. Adding a model
+  // is a config edit, not a code change.
+  const catalog = getResolvedDeepSeekModelCatalog()
+  const known = new Set(catalog.map(entry => entry.id.toLowerCase()))
+
+  // The resolved default + small models must always be selectable even if a
+  // user-trimmed catalog omitted them (the "Default" option resolves to one).
+  for (const fallback of [getDefaultMainLoopModelSetting(), getSmallFastModel()]) {
+    if (typeof fallback === 'string' && !known.has(fallback.toLowerCase())) {
+      catalog.push(resolveModelCatalogEntry(fallback, catalog))
+      known.add(fallback.toLowerCase())
     }
+  }
+
+  for (const entry of catalog) {
+    if (options.some(opt => opt.value === entry.id)) continue
+    const label = entry.label ?? getDeepSeekModelLabel(entry.id)
+    options.push({
+      value: entry.id,
+      label,
+      description: entry.description ?? getDeepSeekModelDescription(entry.id),
+      descriptionForModel: `${label} (${entry.id})`,
+    })
   }
 
   return options
