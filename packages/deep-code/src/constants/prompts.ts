@@ -102,6 +102,7 @@ import {
   getDeepSeekCacheDisciplineSection,
   getDeepSeekHarnessCoordinationSection,
   getDeepSeekHarnessIdentitySection,
+  getDeepSeekLanguagePolicySection,
   getDeepSeekReasoningSection,
   getDeepSeekToolHarnessSection,
 } from './deepseekHarnessPrompts.js'
@@ -565,6 +566,7 @@ ${CYBER_RISK_INSTRUCTION}`,
     getSimpleIntroSection(outputStyleConfig),
     getDeepSeekReasoningSection(),
     getDeepSeekToolHarnessSection(),
+    getDeepSeekLanguagePolicySection(),
     getSimpleSystemSection(),
     outputStyleConfig === null ||
     outputStyleConfig.keepCodingInstructions === true

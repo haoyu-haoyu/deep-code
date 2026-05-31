@@ -15,6 +15,13 @@ export function getDeepSeekReasoningSection(): string {
 - The final user-visible content must not reveal hidden reasoning. Summarize decisions, evidence, and next actions only.`
 }
 
+export function getDeepSeekLanguagePolicySection(): string {
+  return `# Response language
+Reply in the language of the user's most recent message. If the user switches languages, switch with them on the next reply.
+Keep code, identifiers, file paths, commands, flags, environment variables, and log/error output verbatim — never translate those.
+This is independent of the UI locale (the \`--locale\` / \`/locale\` setting localizes Deep Code's own interface chrome, not the content of your replies).`
+}
+
 export function getDeepSeekToolHarnessSection(): string {
   return `# Tool Harness
 - Tools are function calls. Do not describe a tool call in text when a tool is needed; call the tool.
