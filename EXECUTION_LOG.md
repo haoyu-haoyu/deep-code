@@ -215,12 +215,20 @@ consolidated dist refresh:
 | g.3b agents UI | #279 | 146 keys; agent menus + creation wizard. |
 | g.3c MCP + PromptInput | #280 | 113 keys; incl. ElicitationDialog. |
 | g.4 main.tsx + diagnostics/tips + edge | #281 | 476 keys. |
-| P2.10.Z2 dist refresh | (this PR) | dist 14,619,935 → 15,168,594 bytes (+549 KB) over the full surface. |
+| P2.10.Z2 dist refresh | #282 | dist 14,619,935 → 15,168,594 bytes (+549 KB). |
+| g.5 verification-driven fixes | #283 | +114 keys; fixed 2 HIGH de-brand bugs + 13 command-name leaks + mixed-language unit words + a zh/ja leak; migrated 21 straggler files. |
+| P2.10.Z3 dist refresh | (this PR) | dist 15,168,594 → 15,205,184 bytes (+37 KB) for g.5. |
 
-Catalog grew 596 → **2,582 keys × 3 locales**. Full-codebase check: every wired key
+Catalog grew 596 → **2,696 keys × 3 locales**. Full-codebase check: every wired key
 resolves (0 missing). Each batch validated against the FULL CI node-test list (p2-1..p2-9
 source-scan migrated literals). Produced via a two-stage migrate→recover multi-agent
 workflow (edit files, then recover catalog entries from git diffs to disk).
+
+A second multi-agent VERIFICATION workflow (re-audit + adversarial correctness sample +
+per-namespace translation QA; `audit/i18n-verification-2026-05-31.json`) ran after g.4 and
+found the migration was NOT yet complete — fixed in g.5. KEY LESSON: de-brand scans must be
+case-INSENSITIVE — the g.5 HIGH bugs (`claude ssh`, `*.anthropic.com`) were LOWERCASE leaks
+that capital-only `/Claude|Anthropic/` scans (and all other mechanical gates) missed.
 
 **i18n EXCEPTIONS (intentionally English):** `utils/status.tsx` (the `--status`
 diagnostic panel — env-var-tied provider/account labels like Anthropic/Bedrock/Vertex/
