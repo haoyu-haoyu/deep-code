@@ -2,11 +2,51 @@ import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { existsSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = join(packageRoot, 'src')
 const outDir = join(packageRoot, 'dist')
-const outFile = join(outDir, 'deepcode-full.mjs')
+// --inline-requires bundles pure-JS dynamic require() deps INTO the artifact
+// (instead of leaving them external for runtime NODE_PATH resolution) so the
+// output is self-contained and `bun --compile` can produce a working binary.
+// The default (lean) bundle keeps them external to stay small for the npm
+// tarball, which ships node_modules alongside it.
+const inlineRequires = process.argv.includes('--inline-requires')
+const outFile = join(
+  outDir,
+  inlineRequires ? 'deepcode-full-inline.mjs' : 'deepcode-full.mjs',
+)
+
+// Resolve bare specifiers from the package root (Node walks up to the hoisted
+// node_modules). In --inline-requires mode we inline only deps that are
+// actually installed; optional/uninstalled dynamic requires (e.g. telemetry
+// exporters) stay external and fail-soft behind their existing guards, exactly
+// as they do for an `npm install` that omits them.
+const requireFromPackage = createRequire(join(packageRoot, 'package.json'))
+function canResolveBarePackage(specifier) {
+  try {
+    requireFromPackage.resolve(specifier)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// In the default (lean) build, optional/native/stripped-feature modules are
+// left external and resolved from node_modules at runtime. The inline build
+// (consumed by `bun --compile`) has no runtime node_modules, and an
+// unresolvable external literal breaks the compile — so there we replace them
+// with an empty stub instead, keeping the artifact self-contained. These
+// modules are never reached in normal CLI use: image processing (sharp), the
+// daemon/server/ssh/self-hosted-runner features the DeepSeek rebrand stripped,
+// and optional telemetry exporters. If one is somehow invoked in the binary it
+// fails the same way an absent optional dependency would for an npm install.
+const INLINE_STUB_NAMESPACE = 'deepcode-inline-unavailable'
+function externalOrStub(path) {
+  if (inlineRequires) return { path, namespace: INLINE_STUB_NAMESPACE }
+  return { path, external: true }
+}
 const buildEntry = join(outDir, '.deepcode-full-entry.mjs')
 const buildOutDir = join(outDir, '.full-cli-build')
 
@@ -466,7 +506,7 @@ const sourceAliasPlugin = {
       const resolved = resolveModulePath(join(sourceRoot, args.path.slice(4)))
       if (resolved) return { path: resolved }
       if (isFeatureOnlyImport(args.path) || args.kind !== 'import-statement') {
-        return { path: args.path, external: true }
+        return externalOrStub(args.path)
       }
       return undefined
     })
@@ -477,7 +517,7 @@ const sourceAliasPlugin = {
       const resolved = resolveModulePath(resolve(dirname(args.importer), args.path))
       if (resolved) return { path: resolved }
       if (isFeatureOnlyImport(args.path) || args.kind !== 'import-statement') {
-        return { path: args.path, external: true }
+        return externalOrStub(args.path)
       }
       return undefined
     })
@@ -510,14 +550,25 @@ const optionalExternalPlugin = {
         optionalBarePackages.has(args.path) ||
         isFeatureOnlyImport(args.path)
       ) {
-        return { path: args.path, external: true }
+        return externalOrStub(args.path)
       }
 
       const shim = resolveBarePackageShim(args.path)
       if (shim) return { path: shim }
 
+      // Dynamic require() of a bare specifier. Normally externalized (resolved
+      // from node_modules at runtime via NODE_PATH). In --inline-requires mode
+      // we let Bun bundle it INTO the artifact so it is self-contained for
+      // `bun --compile` — but only when the dep is actually installed. Optional/
+      // uninstalled requires (telemetry exporters, etc.) stay external so they
+      // fail-soft behind their guards instead of breaking the build. Genuinely
+      // optional/native packages are already kept external above
+      // (optionalBarePackages / isFeatureOnlyImport).
       if (args.kind !== 'import-statement') {
-        return { path: args.path, external: true }
+        if (inlineRequires && canResolveBarePackage(args.path)) {
+          return undefined
+        }
+        return externalOrStub(args.path)
       }
 
       return undefined
@@ -533,9 +584,17 @@ const optionalExternalPlugin = {
       loader: 'js',
     }))
 
+    // Inline-build stub for optional/native/stripped-feature modules (see
+    // externalOrStub). An empty CJS module so both `import()` and `require()`
+    // sites resolve; never reached in normal CLI use.
+    build.onLoad({ filter: /.*/, namespace: INLINE_STUB_NAMESPACE }, () => ({
+      contents: 'module.exports = {}\n',
+      loader: 'js',
+    }))
+
     build.onResolve({ filter: /.*/ }, args => {
       if (optionalBarePackages.has(args.path) || isFeatureOnlyImport(args.path)) {
-        return { path: args.path, external: true }
+        return externalOrStub(args.path)
       }
       return undefined
     })

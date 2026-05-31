@@ -40,6 +40,8 @@
   },
   "scripts": {
     "build:full-cli": "bun scripts/build-full-cli.mjs",
+    "build:full-cli-inline": "bun scripts/build-full-cli.mjs --inline-requires",
+    "build:binaries": "node scripts/build-binaries.mjs",
     "test:deepcode": "node --test test/deepcode-native.test.mjs test/deepcode-package.test.mjs",
     "test:tui-deepseek": "bun test test/tui-deepseek.test.mjs",
     "test:real-cache-e2e": "node scripts/deepseek-cache-e2e.mjs",
