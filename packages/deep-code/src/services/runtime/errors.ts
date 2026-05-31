@@ -427,31 +427,31 @@ export function getCacheControl(_opts?: {
 export function getPdfTooLargeErrorMessage(): string {
   const limits = `max ${API_PDF_MAX_PAGES} pages, ${formatFileSize(PDF_TARGET_RAW_SIZE)}`
   return getIsNonInteractiveSession()
-    ? `PDF too large (${limits}). Try reading the file a different way (e.g., extract text with pdftotext).`
-    : `PDF too large (${limits}). Double press esc to go back and try again, or use pdftotext to convert to text first.`
+    ? getMessage('error.attachment.pdfTooLarge.nonInteractive', { limits })
+    : getMessage('error.attachment.pdfTooLarge.interactive', { limits })
 }
 
 export function getPdfPasswordProtectedErrorMessage(): string {
   return getIsNonInteractiveSession()
-    ? 'PDF is password protected. Try using a CLI tool to extract or convert the PDF.'
-    : 'PDF is password protected. Please double press esc to edit your message and try again.'
+    ? getMessage('error.attachment.pdfPasswordProtected.nonInteractive')
+    : getMessage('error.attachment.pdfPasswordProtected.interactive')
 }
 
 export function getPdfInvalidErrorMessage(): string {
   return getIsNonInteractiveSession()
-    ? 'The PDF file was not valid. Try converting it to text first (e.g., pdftotext).'
-    : 'The PDF file was not valid. Double press esc to go back and try again with a different file.'
+    ? getMessage('error.attachment.pdfInvalid.nonInteractive')
+    : getMessage('error.attachment.pdfInvalid.interactive')
 }
 
 export function getImageTooLargeErrorMessage(): string {
   return getIsNonInteractiveSession()
-    ? 'Image was too large. Try resizing the image or using a different approach.'
-    : 'Image was too large. Double press esc to go back and try again with a smaller image.'
+    ? getMessage('error.attachment.imageTooLarge.nonInteractive')
+    : getMessage('error.attachment.imageTooLarge.interactive')
 }
 
 export function getRequestTooLargeErrorMessage(): string {
   const limits = `max ${formatFileSize(PDF_TARGET_RAW_SIZE)}`
   return getIsNonInteractiveSession()
-    ? `Request too large (${limits}). Try with a smaller file.`
-    : `Request too large (${limits}). Double press esc to go back and try with a smaller file.`
+    ? getMessage('error.attachment.requestTooLarge.nonInteractive', { limits })
+    : getMessage('error.attachment.requestTooLarge.interactive', { limits })
 }

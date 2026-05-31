@@ -20,6 +20,7 @@ import { bindSessionContext, type ComputerUseSessionContext, type CuCallToolResu
 import * as React from 'react';
 import { getSessionId } from '../../bootstrap/state.js';
 import { ComputerUseApproval } from '../../components/permissions/ComputerUseApproval/ComputerUseApproval.js';
+import { getMessage } from '../../i18n/index.js';
 import type { Tool, ToolUseContext } from '../../Tool.js';
 import { logForDebugging } from '../debug.js';
 import { checkComputerUseLock, tryAcquireComputerUseLock } from './computerUseLock.js';
@@ -54,7 +55,7 @@ function tuc(): ToolUseContext {
   return currentToolUseContext!;
 }
 function formatLockHeld(holder: string): string {
-  return `Computer use is in use by another Claude session (${holder.slice(0, 8)}…). Wait for that session to finish or run /exit there.`;
+  return getMessage('computerUse.lockHeld', { holder: holder.slice(0, 8) });
 }
 export function buildSessionContext(): ComputerUseSessionContext {
   return {
@@ -219,7 +220,7 @@ export function buildSessionContext(): ComputerUseSessionContext {
           tuc().abortController.abort();
         });
         tuc().sendOSNotification?.({
-          message: escRegistered ? 'Claude is using your computer · press Esc to stop' : 'Claude is using your computer · press Ctrl+C to stop',
+          message: escRegistered ? getMessage('computerUse.notification.enterEsc') : getMessage('computerUse.notification.enterCtrlC'),
           notificationType: 'computer_use_enter'
         });
       }

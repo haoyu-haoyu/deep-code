@@ -1,7 +1,7 @@
 import type { ContentBlockParam } from '../types/sdk-shim.js';
 import type { Command } from '../commands.js';
 import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js';
-import { translate } from '../i18n/index.js';
+import { getMessage, translate } from '../i18n/index.js';
 const statusline = {
   type: 'prompt',
   description: translate('en', 'command.statusline.description'),
@@ -9,7 +9,7 @@ const statusline = {
   // Dynamic content
   aliases: [],
   name: 'statusline',
-  progressMessage: 'setting up statusLine',
+  progressMessage: getMessage('command.statusline.progressMessage'),
   allowedTools: [AGENT_TOOL_NAME, 'Read(~/**)', 'Edit(~/.deepcode/settings.json)'],
   source: 'builtin',
   disableNonInteractive: true,

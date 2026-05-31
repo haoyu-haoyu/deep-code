@@ -215,7 +215,7 @@ export function Config({
       mainLoopModelForSession: null
     }));
     setChanges(prev_0 => {
-      const valStr = modelDisplayString(value) + (isBilledAsExtraUsage(value, false, isOpus1mMergeEnabled()) ? ' · Billed as extra usage' : '');
+      const valStr = modelDisplayString(value) + (isBilledAsExtraUsage(value, false, isOpus1mMergeEnabled()) ? t('command.model.billedAsExtraUsageSuffix') : '');
       if ('model' in prev_0) {
         const {
           model,
@@ -997,14 +997,26 @@ export function Config({
     }
     // Log any changes that were made
     // TODO: Make these proper messages
+    // Map stable English change-tracking keys/values (kept verbatim for
+    // analytics above) to their localized display strings for the summary.
+    const changeKeyLabels: Record<string, string> = {
+      'Fast mode': t('command.fast.picker.label'),
+      'Use auto mode during plan': t('settings.config.useAutoModeDuringPlan'),
+      'Default view': t('settings.config.defaultView')
+    };
+    const changeValueLabels: Record<string, string> = {
+      ON: t('modelPicker.notice.fastModeOnLabel'),
+      OFF: t('command.fast.picker.toggleOff')
+    };
     const formattedChanges: string[] = Object.entries(changes).map(([key, value_2]) => {
       logEvent('tengu_config_changed', {
         key: key as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         value: value_2 as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
+      const displayValue = typeof value_2 === 'string' && value_2 in changeValueLabels ? changeValueLabels[value_2] : value_2;
       return t('settings.config.summary.setKeyToValue', {
-        key,
-        value: chalk.bold(value_2)
+        key: changeKeyLabels[key] ?? key,
+        value: chalk.bold(displayValue)
       });
     });
     const toggleState = (on: boolean): string => on ? t('settings.config.summary.enabled') : t('settings.config.summary.disabled');

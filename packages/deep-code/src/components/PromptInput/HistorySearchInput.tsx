@@ -3,6 +3,7 @@ import * as React from 'react';
 import { stringWidth } from '../../ink/stringWidth.js';
 import { Box, Text } from '../../ink.js';
 import TextInput from '../TextInput.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 type Props = {
   value: string;
   onChange: (value: string) => void;
@@ -15,7 +16,10 @@ function HistorySearchInput(t0) {
     onChange,
     historyFailedMatch
   } = t0;
-  const t1 = historyFailedMatch ? "no matching prompt:" : "search prompts:";
+  const {
+    t
+  } = useTranslation();
+  const t1 = historyFailedMatch ? `${t("historySearch.noMatches")}:` : `${t("historySearch.title")}:`;
   let t2;
   if ($[0] !== t1) {
     t2 = <Text dimColor={true}>{t1}</Text>;

@@ -3,13 +3,14 @@ import { spawnSync } from 'child_process';
 import sample from 'lodash-es/sample.js';
 import * as React from 'react';
 import { ExitFlow } from '../../components/ExitFlow.js';
+import { getMessage } from '../../i18n/index.js';
 import type { LocalJSXCommandOnDone } from '../../types/command.js';
 import { isBgSession } from '../../utils/concurrentSessions.js';
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js';
 import { getCurrentWorktreeSession } from '../../utils/worktree.js';
-const GOODBYE_MESSAGES = ['Goodbye!', 'See ya!', 'Bye!', 'Catch you later!'];
+const GOODBYE_MESSAGE_KEYS = ['command.exit.goodbye', 'command.exit.seeYa', 'command.exit.bye', 'command.exit.catchYouLater'];
 function getRandomGoodbyeMessage(): string {
-  return sample(GOODBYE_MESSAGES) ?? 'Goodbye!';
+  return getMessage(sample(GOODBYE_MESSAGE_KEYS) ?? 'command.exit.goodbye');
 }
 export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNode> {
   // Inside a `claude --bg` tmux session: detach instead of kill. The REPL

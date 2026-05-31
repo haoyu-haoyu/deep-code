@@ -1,5 +1,5 @@
 import type { Command } from '../commands.js'
-import { translate } from '../i18n/index.js'
+import { getMessage, translate } from '../i18n/index.js'
 import {
   getAttributionTexts,
   getEnhancedPRAttribution,
@@ -115,7 +115,7 @@ const command = {
     // Use 'main' as estimate for content length calculation
     return getPromptContent('main').length
   },
-  progressMessage: 'creating commit and PR',
+  progressMessage: getMessage('command.commitPushPr.progressMessage'),
   source: 'builtin',
   async getPromptForCommand(args, context) {
     // Get default branch and enhanced PR attribution

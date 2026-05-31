@@ -8,6 +8,7 @@ import {
   getLastDeepCodeHarnessRuntimeDecision,
 } from '../../deepcode/harness-runtime.mjs'
 import type { LocalCommandCall } from '../../types/command.js'
+import { getMessage } from '../../i18n/index.js'
 
 export const call: LocalCommandCall = async () => {
   const lastDecision = getLastDeepCodeHarnessRuntimeDecision()
@@ -15,10 +16,10 @@ export const call: LocalCommandCall = async () => {
     type: 'text',
     value: [
       formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig()),
-      'Auto mode evaluates each user turn and injects runtime Harness guidance only for complex work.',
+      getMessage('command.harness.autoModeDescription'),
       lastDecision
         ? formatDeepCodeHarnessRuntimeDecision(lastDecision)
-        : 'Harness runtime: unavailable',
+        : getMessage('command.harness.runtimeUnavailable'),
     ].join('\n'),
   }
 }
