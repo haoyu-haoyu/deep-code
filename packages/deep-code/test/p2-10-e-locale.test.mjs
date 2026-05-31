@@ -81,5 +81,5 @@ test('locale is a persisted GlobalConfig field + key (settings.locale)', () => {
 test('main entrypoint wires --locale and resolves the UI locale at startup', () => {
   assert.match(mainSource, /\.option\('--locale <locale>'/, 'a --locale CLI option should be registered')
   assert.match(mainSource, /initActiveLocale\(\{[^}]*override: options\.locale[^}]*configLocale: getGlobalConfig\(\)\.locale/, 'startup should resolve locale from --locale + GlobalConfig.locale')
-  assert.match(mainSource, /import \{ initActiveLocale \} from '\.\/i18n\/index\.js'/, 'main should import initActiveLocale')
+  assert.match(mainSource, /import \{[^}]*\binitActiveLocale\b[^}]*\} from '\.\/i18n\/index\.js'/, 'main should import initActiveLocale')
 })

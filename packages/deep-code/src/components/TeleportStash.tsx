@@ -1,5 +1,6 @@
 import figures from 'figures';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Text } from '../ink.js';
 import { logForDebugging } from '../utils/debug.js';
 import type { GitFileStatus } from '../utils/git.js';
@@ -15,6 +16,7 @@ export function TeleportStash({
   onStashAndContinue,
   onCancel
 }: TeleportStashProps): React.ReactNode {
+  const { t } = useTranslation();
   const [gitFileStatus, setGitFileStatus] = useState<GitFileStatus | null>(null);
   const changedFiles = gitFileStatus !== null ? [...gitFileStatus.tracked, ...gitFileStatus.untracked] : [];
   const [loading, setLoading] = useState(true);
@@ -32,7 +34,7 @@ export function TeleportStash({
         logForDebugging(`Error getting changed files: ${errorMessage}`, {
           level: 'error'
         });
-        setError('Failed to get changed files');
+        setError(t('teleportStash.error.getChangedFilesFailed'));
       } finally {
         setLoading(false);
       }
@@ -48,14 +50,14 @@ export function TeleportStash({
         logForDebugging('Successfully stashed changes');
         onStashAndContinue();
       } else {
-        setError('Failed to stash changes');
+        setError(t('teleportStash.error.stashFailed'));
       }
     } catch (err_0) {
       const errorMessage_0 = err_0 instanceof Error ? err_0.message : String(err_0);
       logForDebugging(`Error stashing changes: ${errorMessage_0}`, {
         level: 'error'
       });
-      setError('Failed to stash changes');
+      setError(t('teleportStash.error.stashFailed'));
     } finally {
       setStashing(false);
     }
@@ -71,44 +73,44 @@ export function TeleportStash({
     return <Box flexDirection="column" padding={1}>
         <Box marginBottom={1}>
           <Spinner />
-          <Text> Checking git status{figures.ellipsis}</Text>
+          <Text> {t('teleportStash.status.checkingGitStatus', { ellipsis: figures.ellipsis })}</Text>
         </Box>
       </Box>;
   }
   if (error) {
     return <Box flexDirection="column" padding={1}>
         <Text bold color="error">
-          Error: {error}
+          {t('teleportStash.error.label', { error })}
         </Text>
         <Box marginTop={1}>
-          <Text dimColor>Press </Text>
-          <Text bold>Escape</Text>
-          <Text dimColor> to cancel</Text>
+          <Text dimColor>{t('teleportStash.error.pressLabel')}</Text>
+          <Text bold>{t('teleportStash.error.escapeKey')}</Text>
+          <Text dimColor>{t('teleportStash.error.toCancel')}</Text>
         </Box>
       </Box>;
   }
   const showFileCount = changedFiles.length > 8;
-  return <Dialog title="Working Directory Has Changes" onCancel={onCancel}>
+  return <Dialog title={t('teleportStash.dialog.title')} onCancel={onCancel}>
       <Text>
-        Teleport will switch git branches. The following changes were found:
+        {t('teleportStash.body.willSwitchBranches')}
       </Text>
 
       <Box flexDirection="column" paddingLeft={2}>
-        {changedFiles.length > 0 ? showFileCount ? <Text>{changedFiles.length} files changed</Text> : changedFiles.map((file: string, index: number) => <Text key={index}>{file}</Text>) : <Text dimColor>No changes detected</Text>}
+        {changedFiles.length > 0 ? showFileCount ? <Text>{t('teleportStash.body.filesChanged', { count: changedFiles.length })}</Text> : changedFiles.map((file: string, index: number) => <Text key={index}>{file}</Text>) : <Text dimColor>{t('teleportStash.body.noChangesDetected')}</Text>}
       </Box>
 
       <Text>
-        Would you like to stash these changes and continue with teleport?
+        {t('teleportStash.body.confirmStashPrompt')}
       </Text>
 
       {stashing ? <Box>
           <Spinner />
-          <Text> Stashing changes...</Text>
+          <Text> {t('teleportStash.status.stashingChanges')}</Text>
         </Box> : <Select options={[{
-      label: 'Stash changes and continue',
+      label: t('teleportStash.option.stashAndContinue'),
       value: 'stash'
     }, {
-      label: 'Exit',
+      label: t('common.exit'),
       value: 'exit'
     }]} onChange={handleSelectChange} />}
     </Dialog>;

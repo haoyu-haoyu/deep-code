@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { Box, Text } from '../ink.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 type Props = {
   query: string;
   placeholder?: string;
@@ -23,7 +24,10 @@ export function SearchBox(t0) {
     cursorOffset,
     borderless: t3
   } = t0;
-  const placeholder = t1 === undefined ? "Search\u2026" : t1;
+  const {
+    t
+  } = useTranslation();
+  const placeholder = t1 === undefined ? t('searchBox.placeholder.default') : t1;
   const prefix = t2 === undefined ? "\u2315" : t2;
   const borderless = t3 === undefined ? false : t3;
   const offset = cursorOffset ?? query.length;

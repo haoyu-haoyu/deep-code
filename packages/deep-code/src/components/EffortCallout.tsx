@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useCallback, useEffect, useRef } from 'react';
 import { Box, Text } from '../ink.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';
 import type { EffortLevel } from '../utils/effort.js';
 import { convertEffortValueToLevel, getDefaultEffortForModel, getOpusDefaultEffortConfig, toPersistableEffort } from '../utils/effort.js';
@@ -22,6 +23,9 @@ export function EffortCallout(t0) {
     model,
     onDone
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = getOpusDefaultEffortConfig();
@@ -103,13 +107,13 @@ export function EffortCallout(t0) {
   let t9;
   if ($[11] === Symbol.for("react.memo_cache_sentinel")) {
     t9 = [{
-      label: <EffortOptionLabel level="medium" text="Medium (recommended)" />,
+      label: <EffortOptionLabel level="medium" text={t('effortCallout.option.mediumLabel')} />,
       value: "medium"
     }, {
-      label: <EffortOptionLabel level="high" text="High" />,
+      label: <EffortOptionLabel level="high" text={t('effortCallout.option.highLabel')} />,
       value: "high"
     }, {
-      label: <EffortOptionLabel level="low" text="Low" />,
+      label: <EffortOptionLabel level="low" text={t('effortCallout.option.lowLabel')} />,
       value: "low"
     }];
     $[11] = t9;
@@ -140,7 +144,7 @@ export function EffortCallout(t0) {
   }
   let t13;
   if ($[15] === Symbol.for("react.memo_cache_sentinel")) {
-    t13 = <Box marginBottom={1}><Text dimColor={true}>{t11} low {"\xB7"}{" "}{t12} medium {"\xB7"}{" "}<EffortIndicatorSymbol level="high" /> high</Text></Box>;
+    t13 = <Box marginBottom={1}><Text dimColor={true}>{t11} {t('effortCallout.legend.low')} {"\xB7"}{" "}{t12} {t('effortCallout.legend.medium')} {"\xB7"}{" "}<EffortIndicatorSymbol level="high" /> {t('effortCallout.legend.high')}</Text></Box>;
     $[15] = t13;
   } else {
     t13 = $[15];

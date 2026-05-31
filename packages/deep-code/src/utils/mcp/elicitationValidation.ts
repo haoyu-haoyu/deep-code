@@ -5,6 +5,7 @@ import type {
   StringSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod/v4'
+import { getMessage } from '../../i18n/index.js'
 import { jsonStringify } from '../slowOperations.js'
 import { plural } from '../stringUtils.js'
 import {
@@ -144,35 +145,40 @@ function getZodSchema(schema: PrimitiveSchemaDefinition): z.ZodTypeAny {
     let stringSchema = z.string()
     if (schema.minLength !== undefined) {
       stringSchema = stringSchema.min(schema.minLength, {
-        message: `Must be at least ${schema.minLength} ${plural(schema.minLength, 'character')}`,
+        message: getMessage('mcp.elicitation.validation.stringMinLength', {
+          count: schema.minLength,
+          unit: plural(schema.minLength, 'character'),
+        }),
       })
     }
     if (schema.maxLength !== undefined) {
       stringSchema = stringSchema.max(schema.maxLength, {
-        message: `Must be at most ${schema.maxLength} ${plural(schema.maxLength, 'character')}`,
+        message: getMessage('mcp.elicitation.validation.stringMaxLength', {
+          count: schema.maxLength,
+          unit: plural(schema.maxLength, 'character'),
+        }),
       })
     }
     switch (schema.format) {
       case 'email':
         stringSchema = stringSchema.email({
-          message: 'Must be a valid email address, e.g. user@example.com',
+          message: getMessage('mcp.elicitation.validation.email'),
         })
         break
       case 'uri':
         stringSchema = stringSchema.url({
-          message: 'Must be a valid URI, e.g. https://example.com',
+          message: getMessage('mcp.elicitation.validation.uri'),
         })
         break
       case 'date':
         stringSchema = stringSchema.date(
-          'Must be a valid date, e.g. 2024-03-15, today, next Monday',
+          getMessage('mcp.elicitation.validation.date'),
         )
         break
       case 'date-time':
         stringSchema = stringSchema.datetime({
           offset: true,
-          message:
-            'Must be a valid date-time, e.g. 2024-03-15T14:30:00Z, tomorrow at 3pm',
+          message: getMessage('mcp.elicitation.validation.dateTime'),
         })
         break
       default:
@@ -182,7 +188,10 @@ function getZodSchema(schema: PrimitiveSchemaDefinition): z.ZodTypeAny {
     return stringSchema
   }
   if (schema.type === 'number' || schema.type === 'integer') {
-    const typeLabel = schema.type === 'integer' ? 'an integer' : 'a number'
+    const typeLabel =
+      schema.type === 'integer'
+        ? getMessage('mcp.elicitation.validation.typeLabelInteger')
+        : getMessage('mcp.elicitation.validation.typeLabelNumber')
     const isInteger = schema.type === 'integer'
     const formatNum = (n: number) =>
       Number.isInteger(n) && !isInteger ? `${n}.0` : String(n)
@@ -190,12 +199,24 @@ function getZodSchema(schema: PrimitiveSchemaDefinition): z.ZodTypeAny {
     // Build a single descriptive error message for range violations
     const rangeMsg =
       schema.minimum !== undefined && schema.maximum !== undefined
-        ? `Must be ${typeLabel} between ${formatNum(schema.minimum)} and ${formatNum(schema.maximum)}`
+        ? getMessage('mcp.elicitation.validation.numberRangeBetween', {
+            typeLabel,
+            min: formatNum(schema.minimum),
+            max: formatNum(schema.maximum),
+          })
         : schema.minimum !== undefined
-          ? `Must be ${typeLabel} >= ${formatNum(schema.minimum)}`
+          ? getMessage('mcp.elicitation.validation.numberRangeMin', {
+              typeLabel,
+              min: formatNum(schema.minimum),
+            })
           : schema.maximum !== undefined
-            ? `Must be ${typeLabel} <= ${formatNum(schema.maximum)}`
-            : `Must be ${typeLabel}`
+            ? getMessage('mcp.elicitation.validation.numberRangeMax', {
+                typeLabel,
+                max: formatNum(schema.maximum),
+              })
+            : getMessage('mcp.elicitation.validation.numberRangeBare', {
+                typeLabel,
+              })
 
     let numberSchema = z.coerce.number({
       error: rangeMsg,

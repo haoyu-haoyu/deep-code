@@ -1445,8 +1445,9 @@ test('common interactive surfaces use Deep Code copy allowlist', () => {
     filePermissionOptionsSource,
   ].map(stripInlineSourceMap).join('\n')
 
-  assert.match(tipRegistrySource, /tell Deep Code to propose a plan/)
-  assert.match(tipRegistrySource, /DeepSeek reasoning/)
+  // Tip copy migrated to the i18n catalog (tip.*); assert it there.
+  assert.match(i18nEnglishSource, /tell Deep Code to propose a plan/)
+  assert.match(i18nEnglishSource, /DeepSeek reasoning/)
   assert.doesNotMatch(commonInteractiveSources, /tell Claude/)
   assert.doesNotMatch(commonInteractiveSources, /Ask Claude/)
   assert.doesNotMatch(commonInteractiveSources, /Use Claude/)

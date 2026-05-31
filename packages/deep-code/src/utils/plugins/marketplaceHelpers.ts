@@ -1,4 +1,5 @@
 import isEqual from 'lodash-es/isEqual.js'
+import { getMessage } from '../../i18n/index.js'
 import { toError } from '../errors.js'
 import { logError } from '../log.js'
 import { getSettingsForSource } from '../settings/settings.js'
@@ -128,15 +129,23 @@ export function formatMarketplaceLoadingErrors(
   if (successCount > 0) {
     const message =
       failures.length === 1
-        ? `Warning: Failed to load marketplace '${failures[0]!.name}': ${failures[0]!.error}`
-        : `Warning: Failed to load ${failures.length} marketplaces: ${formatFailureNames(failures)}`
+        ? getMessage('plugin.marketplace.loadError.single', {
+            name: failures[0]!.name,
+            error: failures[0]!.error,
+          })
+        : getMessage('plugin.marketplace.loadError.multiple', {
+            count: failures.length,
+            names: formatFailureNames(failures),
+          })
     return { type: 'warning', message }
   }
 
   // All marketplaces failed - this is a critical error
   return {
     type: 'error',
-    message: `Failed to load all marketplaces. Errors: ${formatFailureErrors(failures)}`,
+    message: getMessage('plugin.marketplace.loadError.all', {
+      errors: formatFailureErrors(failures),
+    }),
   }
 }
 

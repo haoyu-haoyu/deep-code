@@ -30,6 +30,7 @@ import {
   getCurrentSessionAgentColor,
   isCustomTitleEnabled,
 } from '../../utils/sessionStorage.js'
+import { getMessage } from '../../i18n/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../utils/featureFlags.js'
 import { getSessionsSinceLastShown } from './tipHistory.js'
 import type { Tip, TipContext } from './types.js'
@@ -73,8 +74,7 @@ async function isMarketplacePluginRelevant(
 const externalTips: Tip[] = [
   {
     id: 'new-user-warmup',
-    content: async () =>
-      `Start with small features or bug fixes, tell Deep Code to propose a plan, and verify its suggested edits`,
+    content: async () => getMessage('tip.new-user-warmup.content'),
     cooldownSessions: 3,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -84,7 +84,9 @@ const externalTips: Tip[] = [
   {
     id: 'plan-mode-for-complex-tasks',
     content: async () =>
-      `Use Plan Mode to prepare for a complex request before making changes. Press ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} twice to enable.`,
+      getMessage('tip.plan-mode-for-complex-tasks.content', {
+        shortcut: getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab'),
+      }),
     cooldownSessions: 5,
     isRelevant: async () => {
       if (process.env.USER_TYPE === 'ant') return false
@@ -99,7 +101,7 @@ const externalTips: Tip[] = [
   {
     id: 'default-permission-mode-config',
     content: async () =>
-      `Use /config to change your default permission mode (including Plan Mode)`,
+      getMessage('tip.default-permission-mode-config.content'),
     cooldownSessions: 10,
     isRelevant: async () => {
       try {
@@ -120,8 +122,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'git-worktrees',
-    content: async () =>
-      'Use git worktrees to run multiple Deep Code sessions in parallel.',
+    content: async () => getMessage('tip.git-worktrees.content'),
     cooldownSessions: 10,
     isRelevant: async () => {
       try {
@@ -135,8 +136,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'color-when-multi-clauding',
-    content: async () =>
-      'Running multiple Deep Code sessions? Use /color and /rename to tell them apart at a glance.',
+    content: async () => getMessage('tip.color-when-multi-clauding.content'),
     cooldownSessions: 10,
     isRelevant: async () => {
       if (getCurrentSessionAgentColor()) return false
@@ -148,8 +148,8 @@ const externalTips: Tip[] = [
     id: 'terminal-setup',
     content: async () =>
       env.terminal === 'Apple_Terminal'
-        ? 'Run /terminal-setup to enable convenient terminal integration like Option + Enter for new line and more'
-        : 'Run /terminal-setup to enable convenient terminal integration like Shift + Enter for new line and more',
+        ? getMessage('tip.terminal-setup.content.apple')
+        : getMessage('tip.terminal-setup.content.default'),
     cooldownSessions: 10,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -163,8 +163,8 @@ const externalTips: Tip[] = [
     id: 'shift-enter',
     content: async () =>
       env.terminal === 'Apple_Terminal'
-        ? 'Press Option+Enter to send a multi-line message'
-        : 'Press Shift+Enter to send a multi-line message',
+        ? getMessage('tip.shift-enter.content.apple')
+        : getMessage('tip.shift-enter.content.default'),
     cooldownSessions: 10,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -179,8 +179,8 @@ const externalTips: Tip[] = [
     id: 'shift-enter-setup',
     content: async () =>
       env.terminal === 'Apple_Terminal'
-        ? 'Run /terminal-setup to enable Option+Enter for new lines'
-        : 'Run /terminal-setup to enable Shift+Enter for new lines',
+        ? getMessage('tip.shift-enter-setup.content.apple')
+        : getMessage('tip.shift-enter-setup.content.default'),
     cooldownSessions: 10,
     async isRelevant() {
       if (!shouldOfferTerminalSetup()) {
@@ -194,7 +194,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'memory-command',
-    content: async () => 'Use /memory to view and manage Deep Code memory',
+    content: async () => getMessage('tip.memory-command.content'),
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -203,21 +203,19 @@ const externalTips: Tip[] = [
   },
   {
     id: 'theme-command',
-    content: async () => 'Use /theme to change the color theme',
+    content: async () => getMessage('tip.theme-command.content'),
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
   {
     id: 'colorterm-truecolor',
-    content: async () =>
-      'Try setting environment variable COLORTERM=truecolor for richer colors',
+    content: async () => getMessage('tip.colorterm-truecolor.content'),
     cooldownSessions: 30,
     isRelevant: async () => !process.env.COLORTERM && chalk.level < 3,
   },
   {
     id: 'powershell-tool-env',
-    content: async () =>
-      'Set CLAUDE_CODE_USE_POWERSHELL_TOOL=1 to enable the PowerShell tool (preview)',
+    content: async () => getMessage('tip.powershell-tool-env.content'),
     cooldownSessions: 10,
     isRelevant: async () =>
       getPlatform() === 'windows' &&
@@ -225,15 +223,13 @@ const externalTips: Tip[] = [
   },
   {
     id: 'status-line',
-    content: async () =>
-      'Use /statusline to set up a custom status line that will display beneath the input box',
+    content: async () => getMessage('tip.status-line.content'),
     cooldownSessions: 25,
     isRelevant: async () => getSettings_DEPRECATED().statusLine === undefined,
   },
   {
     id: 'prompt-queue',
-    content: async () =>
-      'Hit Enter to queue up additional messages while Deep Code is working.',
+    content: async () => getMessage('tip.prompt-queue.content'),
     cooldownSessions: 5,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -242,15 +238,13 @@ const externalTips: Tip[] = [
   },
   {
     id: 'enter-to-steer-in-relatime',
-    content: async () =>
-      'Send messages to Deep Code while it works to steer the task in real-time',
+    content: async () => getMessage('tip.enter-to-steer-in-relatime.content'),
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
   {
     id: 'todo-list',
-    content: async () =>
-      'Ask Deep Code to create a todo list when working on complex tasks to track progress and remain on track',
+    content: async () => getMessage('tip.todo-list.content'),
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
@@ -283,7 +277,8 @@ const externalTips: Tip[] = [
   },
   {
     id: 'ide-upsell-external-terminal',
-    content: async () => 'Connect Deep Code to your IDE · /ide',
+    content: async () =>
+      getMessage('tip.ide-upsell-external-terminal.content'),
     cooldownSessions: 4,
     async isRelevant() {
       if (isSupportedTerminal()) {
@@ -302,8 +297,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'permissions',
-    content: async () =>
-      'Use /permissions to pre-approve and pre-deny bash, edit, and MCP tools',
+    content: async () => getMessage('tip.permissions.content'),
     cooldownSessions: 10,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -312,51 +306,44 @@ const externalTips: Tip[] = [
   },
   {
     id: 'drag-and-drop-images',
-    content: async () =>
-      'Did you know you can drag and drop image files into your terminal?',
+    content: async () => getMessage('tip.drag-and-drop-images.content'),
     cooldownSessions: 10,
     isRelevant: async () => !env.isSSH(),
   },
   {
     id: 'paste-images-mac',
-    content: async () =>
-      'Paste images into Deep Code using control+v (not cmd+v!)',
+    content: async () => getMessage('tip.paste-images-mac.content'),
     cooldownSessions: 10,
     isRelevant: async () => getPlatform() === 'macos',
   },
   {
     id: 'double-esc',
-    content: async () =>
-      'Double-tap esc to rewind the conversation to a previous point in time',
+    content: async () => getMessage('tip.double-esc.content'),
     cooldownSessions: 10,
     isRelevant: async () => !fileHistoryEnabled(),
   },
   {
     id: 'double-esc-code-restore',
-    content: async () =>
-      'Double-tap esc to rewind the code and/or conversation to a previous point in time',
+    content: async () => getMessage('tip.double-esc-code-restore.content'),
     cooldownSessions: 10,
     isRelevant: async () => fileHistoryEnabled(),
   },
   {
     id: 'continue',
-    content: async () =>
-      'Run deepcode --continue or deepcode --resume to resume a conversation',
+    content: async () => getMessage('tip.continue.content'),
     cooldownSessions: 10,
     isRelevant: async () => true,
   },
   {
     id: 'rename-conversation',
-    content: async () =>
-      'Name your conversations with /rename to find them easily in /resume later',
+    content: async () => getMessage('tip.rename-conversation.content'),
     cooldownSessions: 15,
     isRelevant: async () =>
       isCustomTitleEnabled() && getGlobalConfig().numStartups > 10,
   },
   {
     id: 'custom-commands',
-    content: async () =>
-      'Create skills by adding .md files to .deepcode/skills/ in your project or ~/.deepcode/skills/ for skills that work in any project',
+    content: async () => getMessage('tip.custom-commands.content'),
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -367,22 +354,27 @@ const externalTips: Tip[] = [
     id: 'shift-tab',
     content: async () =>
       process.env.USER_TYPE === 'ant'
-        ? `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode and auto mode`
-        : `Hit ${getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab')} to cycle between default mode, auto-accept edit mode, and plan mode`,
+        ? getMessage('tip.shift-tab.content.ant', {
+            shortcut: getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab'),
+          })
+        : getMessage('tip.shift-tab.content.default', {
+            shortcut: getShortcutDisplay('chat:cycleMode', 'Chat', 'shift+tab'),
+          }),
     cooldownSessions: 10,
     isRelevant: async () => true,
   },
   {
     id: 'image-paste',
     content: async () =>
-      `Use ${getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v')} to paste images from your clipboard`,
+      getMessage('tip.image-paste.content', {
+        shortcut: getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v'),
+      }),
     cooldownSessions: 20,
     isRelevant: async () => true,
   },
   {
     id: 'custom-agents',
-    content: async () =>
-      'Use /agents to optimize specific tasks. Eg. Software Architect, Code Writer, Code Reviewer',
+    content: async () => getMessage('tip.custom-agents.content'),
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -391,8 +383,7 @@ const externalTips: Tip[] = [
   },
   {
     id: 'agent-flag',
-    content: async () =>
-      'Use --agent <agent_name> to directly start a conversation with a subagent',
+    content: async () => getMessage('tip.agent-flag.content'),
     cooldownSessions: 15,
     async isRelevant() {
       const config = getGlobalConfig()
@@ -401,15 +392,13 @@ const externalTips: Tip[] = [
   },
   {
     id: 'web-app',
-    content: async () =>
-      'Run tasks in the cloud while you keep coding locally · clau.de/web',
+    content: async () => getMessage('tip.web-app.content'),
     cooldownSessions: 15,
     isRelevant: async () => true,
   },
   {
     id: 'mobile-app',
-    content: async () =>
-      '/mobile to use Deep Code from the Deep Code app on your phone',
+    content: async () => getMessage('tip.mobile-app.content'),
     cooldownSessions: 15,
     isRelevant: async () => true,
   },
@@ -417,7 +406,9 @@ const externalTips: Tip[] = [
     id: 'frontend-design-plugin',
     content: async ctx => {
       const blue = color('suggestion', ctx.theme)
-      return `Working with HTML/CSS? Install the frontend-design plugin:\n${blue(`/plugin install frontend-design@${OFFICIAL_MARKETPLACE_NAME}`)}`
+      return getMessage('tip.frontend-design-plugin.content', {
+        command: blue(`/plugin install frontend-design@${OFFICIAL_MARKETPLACE_NAME}`),
+      })
     },
     cooldownSessions: 3,
     isRelevant: async context =>
@@ -429,7 +420,9 @@ const externalTips: Tip[] = [
     id: 'vercel-plugin',
     content: async ctx => {
       const blue = color('suggestion', ctx.theme)
-      return `Working with Vercel? Install the vercel plugin:\n${blue(`/plugin install vercel@${OFFICIAL_MARKETPLACE_NAME}`)}`
+      return getMessage('tip.vercel-plugin.content', {
+        command: blue(`/plugin install vercel@${OFFICIAL_MARKETPLACE_NAME}`),
+      })
     },
     cooldownSessions: 3,
     isRelevant: async context =>
@@ -447,8 +440,8 @@ const externalTips: Tip[] = [
         'off' | 'copy_a' | 'copy_b'
       >('tengu_tide_elm', 'off')
       return variant === 'copy_b'
-        ? `Use ${cmd} for better one-shot answers. DeepSeek reasoning works through it first.`
-        : `Working on something tricky? ${cmd} gives better first answers`
+        ? getMessage('tip.effort-high-nudge.content.copyB', { command: cmd })
+        : getMessage('tip.effort-high-nudge.content.default', { command: cmd })
     },
     cooldownSessions: 3,
     isRelevant: async () => false,
@@ -461,8 +454,12 @@ const externalTips: Tip[] = [
         'off' | 'copy_a' | 'copy_b'
       >('tengu_tern_alloy', 'off')
       return variant === 'copy_b'
-        ? `For big tasks, tell Deep Code to ${blue('use subagents')}. They work in parallel and keep your main thread clean.`
-        : `Say ${blue('"fan out subagents"')} and Deep Code sends a team. Each one digs deep so nothing gets missed.`
+        ? getMessage('tip.subagent-fanout-nudge.content.copyB', {
+            highlight: blue('use subagents'),
+          })
+        : getMessage('tip.subagent-fanout-nudge.content.default', {
+            highlight: blue('"fan out subagents"'),
+          })
     },
     cooldownSessions: 3,
     isRelevant: async () => false,
@@ -475,8 +472,12 @@ const externalTips: Tip[] = [
         'off' | 'copy_a' | 'copy_b'
       >('tengu_timber_lark', 'off')
       return variant === 'copy_b'
-        ? `Use ${blue('/loop 5m check the deploy')} to run any prompt on a schedule. Set it and forget it.`
-        : `${blue('/loop')} runs any prompt on a recurring schedule. Great for monitoring deploys, babysitting PRs, or polling status.`
+        ? getMessage('tip.loop-command-nudge.content.copyB', {
+            command: blue('/loop 5m check the deploy'),
+          })
+        : getMessage('tip.loop-command-nudge.content.default', {
+            command: blue('/loop'),
+          })
     },
     cooldownSessions: 3,
     isRelevant: async () => false,

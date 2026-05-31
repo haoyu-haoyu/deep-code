@@ -1,5 +1,6 @@
 import memoize from 'lodash-es/memoize.js'
 import sample from 'lodash-es/sample.js'
+import { getMessage } from '../i18n/index.js'
 import { getCwd } from '../utils/cwd.js'
 import { getCurrentProjectConfig, saveCurrentProjectConfig } from './config.js'
 import { env } from './env.js'
@@ -146,17 +147,27 @@ export const getExampleCommandFromCache = memoize(() => {
     : '<filepath>'
 
   const commands = [
-    'fix lint errors',
-    'fix typecheck errors',
-    `how does ${frequentFile} work?`,
-    `refactor ${frequentFile}`,
-    'how do I log an error?',
-    `edit ${frequentFile} to...`,
-    `write a test for ${frequentFile}`,
-    'create a util logging.py that...',
+    getMessage('promptInput.placeholder.example.fixLintErrors'),
+    getMessage('promptInput.placeholder.example.fixTypecheckErrors'),
+    getMessage('promptInput.placeholder.example.howDoesFileWork', {
+      file: frequentFile,
+    }),
+    getMessage('promptInput.placeholder.example.refactorFile', {
+      file: frequentFile,
+    }),
+    getMessage('promptInput.placeholder.example.howToLogError'),
+    getMessage('promptInput.placeholder.example.editFile', {
+      file: frequentFile,
+    }),
+    getMessage('promptInput.placeholder.example.writeTestForFile', {
+      file: frequentFile,
+    }),
+    getMessage('promptInput.placeholder.example.createUtilLogging'),
   ]
 
-  return `Try "${sample(commands)}"`
+  return getMessage('promptInput.placeholder.exampleTry', {
+    command: sample(commands),
+  })
 })
 
 export const refreshExampleCommands = memoize(async (): Promise<void> => {

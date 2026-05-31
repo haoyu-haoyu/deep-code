@@ -5,6 +5,7 @@ import { Box, Text } from '../ink.js';
 import type { Screen } from '../screens/REPL.js';
 import type { NormalizedUserMessage } from '../types/message.js';
 import { getUserMessageText } from '../utils/messages.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';
 import { MessageResponse } from './MessageResponse.js';
 type Props = {
@@ -17,6 +18,9 @@ export function CompactSummary(t0) {
     message,
     screen
   } = t0;
+  const {
+    t
+  } = useTranslation();
   const isTranscriptMode = screen === "transcript";
   let t1;
   if ($[0] !== message) {
@@ -38,14 +42,17 @@ export function CompactSummary(t0) {
     }
     let t3;
     if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
-      t3 = <Text bold={true}>Summarized conversation</Text>;
+      t3 = <Text bold={true}>{t('compactSummary.summarizedConversation')}</Text>;
       $[3] = t3;
     } else {
       t3 = $[3];
     }
     let t4;
     if ($[4] !== isTranscriptMode || $[5] !== metadata) {
-      t4 = !isTranscriptMode && <MessageResponse><Box flexDirection="column"><Text dimColor={true}>Summarized {metadata.messagesSummarized} messages{" "}{metadata.direction === "up_to" ? "up to this point" : "from this point"}</Text>{metadata.userContext && <Text dimColor={true}>Context: {"\u201C"}{metadata.userContext}{"\u201D"}</Text>}<Text dimColor={true}><ConfigurableShortcutHint action="app:toggleTranscript" context="Global" fallback="ctrl+o" description="expand history" parens={true} /></Text></Box></MessageResponse>;
+      t4 = !isTranscriptMode && <MessageResponse><Box flexDirection="column"><Text dimColor={true}>{t('compactSummary.summarizedMessages', {
+        count: metadata.messagesSummarized,
+        direction: metadata.direction === "up_to" ? t('compactSummary.direction.upTo') : t('compactSummary.direction.fromHere')
+      })}</Text>{metadata.userContext && <Text dimColor={true}>{t('compactSummary.contextLabel')}{"\u201C"}{metadata.userContext}{"\u201D"}</Text>}<Text dimColor={true}><ConfigurableShortcutHint action="app:toggleTranscript" context="Global" fallback="ctrl+o" description={t('compactSummary.expandHistoryHint')} parens={true} /></Text></Box></MessageResponse>;
       $[4] = isTranscriptMode;
       $[5] = metadata;
       $[6] = t4;
@@ -81,7 +88,7 @@ export function CompactSummary(t0) {
   }
   let t3;
   if ($[14] !== isTranscriptMode) {
-    t3 = !isTranscriptMode && <Text dimColor={true}>{" "}<ConfigurableShortcutHint action="app:toggleTranscript" context="Global" fallback="ctrl+o" description="expand" parens={true} /></Text>;
+    t3 = !isTranscriptMode && <Text dimColor={true}>{" "}<ConfigurableShortcutHint action="app:toggleTranscript" context="Global" fallback="ctrl+o" description={t('compactSummary.expandHint')} parens={true} /></Text>;
     $[14] = isTranscriptMode;
     $[15] = t3;
   } else {
@@ -89,7 +96,7 @@ export function CompactSummary(t0) {
   }
   let t4;
   if ($[16] !== t3) {
-    t4 = <Box flexDirection="row">{t2}<Box flexDirection="column"><Text bold={true}>Compact summary{t3}</Text></Box></Box>;
+    t4 = <Box flexDirection="row">{t2}<Box flexDirection="column"><Text bold={true}>{t('compactSummary.compactSummary')}{t3}</Text></Box></Box>;
     $[16] = t3;
     $[17] = t4;
   } else {

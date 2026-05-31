@@ -1,5 +1,6 @@
 import type { ConfigScope } from 'src/services/mcp/types.js'
 import type { ZodError, ZodIssue } from 'zod/v4'
+import { getMessage } from '../../i18n/index.js'
 import { jsonParse } from '../slowOperations.js'
 import { plural } from '../stringUtils.js'
 import { validatePermissionRule } from './permissionValidation.js'
@@ -138,7 +139,7 @@ export function formatZodError(
 
     if (isInvalidValueIssue(issue)) {
       expected = enumValues?.map(v => `"${v}"`).join(', ')
-      message = `Invalid value. Expected one of: ${expected}`
+      message = getMessage('settings.validation.invalidValue', { expected })
     } else if (isInvalidTypeIssue(issue)) {
       const receivedType =
         extractReceivedFromMessage(issue.message) ??
@@ -148,15 +149,23 @@ export function formatZodError(
         receivedType === 'null' &&
         path === ''
       ) {
-        message = 'Invalid or malformed JSON'
+        message = getMessage('settings.validation.malformedJson')
       } else {
-        message = `Expected ${issue.expected}, but received ${receivedType}`
+        message = getMessage('settings.validation.expectedButReceived', {
+          expected: issue.expected,
+          received: receivedType,
+        })
       }
     } else if (isUnrecognizedKeysIssue(issue)) {
       const keys = issue.keys.join(', ')
-      message = `Unrecognized ${plural(issue.keys.length, 'field')}: ${keys}`
+      message = getMessage('settings.validation.unrecognizedKeys', {
+        field: plural(issue.keys.length, 'field'),
+        keys,
+      })
     } else if (isTooSmallIssue(issue)) {
-      message = `Number must be greater than or equal to ${issue.minimum}`
+      message = getMessage('settings.validation.numberMinimum', {
+        minimum: issue.minimum,
+      })
       expected = String(issue.minimum)
     }
 
@@ -240,14 +249,19 @@ export function filterInvalidPermissionRules(
         warnings.push({
           file: filePath,
           path: `permissions.${key}`,
-          message: `Non-string value in ${key} array was removed`,
+          message: getMessage('settings.validation.nonStringRuleRemoved', {
+            key,
+          }),
           invalidValue: rule,
         })
         return false
       }
       const result = validatePermissionRule(rule)
       if (!result.valid) {
-        let message = `Invalid permission rule "${rule}" was skipped`
+        let message = getMessage(
+          'settings.validation.invalidPermissionRuleSkipped',
+          { rule },
+        )
         if (result.error) message += `: ${result.error}`
         if (result.suggestion) message += `. ${result.suggestion}`
         warnings.push({

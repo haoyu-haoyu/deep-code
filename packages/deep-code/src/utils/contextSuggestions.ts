@@ -2,6 +2,7 @@ import { BASH_TOOL_NAME } from '../tools/BashTool/toolName.js'
 import { FILE_READ_TOOL_NAME } from '../tools/FileReadTool/prompt.js'
 import { GREP_TOOL_NAME } from '../tools/GrepTool/prompt.js'
 import { WEB_FETCH_TOOL_NAME } from '../tools/WebFetchTool/prompt.js'
+import { getMessage } from '../i18n/index.js'
 import type { ContextData } from './analyzeContext.js'
 import { getDisplayPath } from './file.js'
 import { formatTokens } from './format.js'
@@ -59,10 +60,14 @@ function checkNearCapacity(
   if (data.percentage >= NEAR_CAPACITY_PERCENT) {
     suggestions.push({
       severity: 'warning',
-      title: `Context is ${data.percentage}% full`,
+      title: getMessage('context.suggestion.nearCapacity.title', {
+        percentage: data.percentage,
+      }),
       detail: data.isAutoCompactEnabled
-        ? 'Autocompact will trigger soon, which discards older messages. Use /compact now to control what gets kept.'
-        : 'Autocompact is disabled. Use /compact to free space, or enable autocompact in /config.',
+        ? getMessage('context.suggestion.nearCapacity.detailAutoCompactEnabled')
+        : getMessage(
+            'context.suggestion.nearCapacity.detailAutoCompactDisabled',
+          ),
     })
   }
 }
@@ -101,46 +106,59 @@ function getLargeToolSuggestion(
   percent: number,
 ): ContextSuggestion | null {
   const tokenStr = formatTokens(tokens)
+  const percentStr = percent.toFixed(0)
 
   switch (toolName) {
     case BASH_TOOL_NAME:
       return {
         severity: 'warning',
-        title: `Bash results using ${tokenStr} tokens (${percent.toFixed(0)}%)`,
-        detail:
-          'Pipe output through head, tail, or grep to reduce result size. Avoid cat on large files \u2014 use Read with offset/limit instead.',
+        title: getMessage('context.suggestion.largeTool.bash.title', {
+          tokens: tokenStr,
+          pct: percentStr,
+        }),
+        detail: getMessage('context.suggestion.largeTool.bash.detail'),
         savingsTokens: Math.floor(tokens * 0.5),
       }
     case FILE_READ_TOOL_NAME:
       return {
         severity: 'info',
-        title: `Read results using ${tokenStr} tokens (${percent.toFixed(0)}%)`,
-        detail:
-          'Use offset and limit parameters to read only the sections you need. Avoid re-reading entire files when you only need a few lines.',
+        title: getMessage('context.suggestion.largeTool.read.title', {
+          tokens: tokenStr,
+          pct: percentStr,
+        }),
+        detail: getMessage('context.suggestion.largeTool.read.detail'),
         savingsTokens: Math.floor(tokens * 0.3),
       }
     case GREP_TOOL_NAME:
       return {
         severity: 'info',
-        title: `Grep results using ${tokenStr} tokens (${percent.toFixed(0)}%)`,
-        detail:
-          'Add more specific patterns or use the glob or type parameter to narrow file types. Consider Glob for file discovery instead of Grep.',
+        title: getMessage('context.suggestion.largeTool.grep.title', {
+          tokens: tokenStr,
+          pct: percentStr,
+        }),
+        detail: getMessage('context.suggestion.largeTool.grep.detail'),
         savingsTokens: Math.floor(tokens * 0.3),
       }
     case WEB_FETCH_TOOL_NAME:
       return {
         severity: 'info',
-        title: `WebFetch results using ${tokenStr} tokens (${percent.toFixed(0)}%)`,
-        detail:
-          'Web page content can be very large. Consider extracting only the specific information needed.',
+        title: getMessage('context.suggestion.largeTool.webFetch.title', {
+          tokens: tokenStr,
+          pct: percentStr,
+        }),
+        detail: getMessage('context.suggestion.largeTool.webFetch.detail'),
         savingsTokens: Math.floor(tokens * 0.4),
       }
     default:
       if (percent >= 20) {
         return {
           severity: 'info',
-          title: `${toolName} using ${tokenStr} tokens (${percent.toFixed(0)}%)`,
-          detail: `This tool is consuming a significant portion of context.`,
+          title: getMessage('context.suggestion.largeTool.default.title', {
+            toolName,
+            tokens: tokenStr,
+            pct: percentStr,
+          }),
+          detail: getMessage('context.suggestion.largeTool.default.detail'),
           savingsTokens: Math.floor(tokens * 0.2),
         }
       }
@@ -176,9 +194,11 @@ function checkReadResultBloat(
   ) {
     suggestions.push({
       severity: 'info',
-      title: `File reads using ${formatTokens(readTool.resultTokens)} tokens (${readPercent.toFixed(0)}%)`,
-      detail:
-        'If you are re-reading files, consider referencing earlier reads. Use offset/limit for large files.',
+      title: getMessage('context.suggestion.readBloat.title', {
+        tokens: formatTokens(readTool.resultTokens),
+        pct: readPercent.toFixed(0),
+      }),
+      detail: getMessage('context.suggestion.readBloat.detail'),
       savingsTokens: Math.floor(readTool.resultTokens * 0.3),
     })
   }
@@ -209,8 +229,13 @@ function checkMemoryBloat(
 
     suggestions.push({
       severity: 'info',
-      title: `Memory files using ${formatTokens(totalMemoryTokens)} tokens (${memoryPercent.toFixed(0)}%)`,
-      detail: `Largest: ${largestFiles}. Use /memory to review and prune stale entries.`,
+      title: getMessage('context.suggestion.memoryBloat.title', {
+        tokens: formatTokens(totalMemoryTokens),
+        pct: memoryPercent.toFixed(0),
+      }),
+      detail: getMessage('context.suggestion.memoryBloat.detail', {
+        files: largestFiles,
+      }),
       savingsTokens: Math.floor(totalMemoryTokens * 0.3),
     })
   }
@@ -227,9 +252,8 @@ function checkAutoCompactDisabled(
   ) {
     suggestions.push({
       severity: 'info',
-      title: 'Autocompact is disabled',
-      detail:
-        'Without autocompact, you will hit context limits and lose the conversation. Enable it in /config or use /compact manually.',
+      title: getMessage('context.suggestion.autoCompactDisabled.title'),
+      detail: getMessage('context.suggestion.autoCompactDisabled.detail'),
     })
   }
 }

@@ -10,6 +10,7 @@ import type { Message } from '../types/message.js'
 import type { SkillUpdate } from '../utils/hooks/skillImprovement.js'
 import { applySkillImprovement } from '../utils/hooks/skillImprovement.js'
 import { createSystemMessage } from '../utils/messages.js'
+import { getMessage } from '../i18n/index.js'
 
 type SkillImprovementSuggestion = {
   skillName: string
@@ -75,7 +76,9 @@ export function useSkillImprovementSurvey(setMessages: SetMessages): {
             setMessages(prev => [
               ...prev,
               createSystemMessage(
-                `Skill "${current.skillName}" updated with improvements.`,
+                getMessage('skillImprovement.updated', {
+                  name: current.skillName,
+                }),
                 'suggestion',
               ),
             ])

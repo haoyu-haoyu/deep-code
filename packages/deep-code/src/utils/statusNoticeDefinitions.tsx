@@ -11,6 +11,7 @@ import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js
 import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
 import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
 import { isJetBrainsPluginInstalledCachedSync } from './jetbrains.js';
+import { getMessage } from '../i18n/index.js';
 
 // Types
 export type StatusNoticeType = 'warning' | 'info';
@@ -39,10 +40,14 @@ const largeMemoryFilesNotice: StatusNoticeDefinition = {
         return <Box key={file.path} flexDirection="row">
               <Text color="warning">{figures.warning}</Text>
               <Text color="warning">
-                Large <Text bold>{displayPath}</Text> will impact performance (
-                {formatNumber(file.content.length)} chars &gt;{' '}
-                {formatNumber(MAX_MEMORY_CHARACTER_COUNT)})
-                <Text dimColor> · /memory to edit</Text>
+                {getMessage('status.notice.largeMemoryFiles.warning', {
+                chars: formatNumber(file.content.length),
+                max: formatNumber(MAX_MEMORY_CHARACTER_COUNT)
+              }).split('{path}')[0]}<Text bold>{displayPath}</Text>{getMessage('status.notice.largeMemoryFiles.warning', {
+                chars: formatNumber(file.content.length),
+                max: formatNumber(MAX_MEMORY_CHARACTER_COUNT)
+              }).split('{path}')[1]}
+                <Text dimColor>{getMessage('status.notice.largeMemoryFiles.hint')}</Text>
               </Text>
             </Box>;
       })}
@@ -79,10 +84,11 @@ const largeAgentDescriptionsNotice: StatusNoticeDefinition = {
     return <Box flexDirection="row">
         <Text color="warning">{figures.warning}</Text>
         <Text color="warning">
-          Large cumulative agent descriptions will impact performance (~
-          {formatNumber(totalTokens)} tokens &gt;{' '}
-          {formatNumber(AGENT_DESCRIPTIONS_THRESHOLD)})
-          <Text dimColor> · /agents to manage</Text>
+          {getMessage('status.notice.largeAgentDescriptions.warning', {
+          tokens: formatNumber(totalTokens),
+          threshold: formatNumber(AGENT_DESCRIPTIONS_THRESHOLD)
+        })}
+          <Text dimColor>{getMessage('status.notice.largeAgentDescriptions.hint')}</Text>
         </Text>
       </Box>;
   }
@@ -110,8 +116,7 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
     return <Box flexDirection="row" gap={1} marginLeft={1}>
         <Text color="ide">{figures.arrowUp}</Text>
         <Text>
-          Install the <Text color="ide">{ideName}</Text> plugin from the
-          JetBrains Marketplace.
+          {getMessage('status.notice.jetbrainsPlugin.install').split('{ideName}')[0]}<Text color="ide">{ideName}</Text>{getMessage('status.notice.jetbrainsPlugin.install').split('{ideName}')[1]}
         </Text>
       </Box>;
   }

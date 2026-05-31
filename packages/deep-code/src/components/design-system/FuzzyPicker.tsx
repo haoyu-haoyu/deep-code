@@ -5,6 +5,7 @@ import { useSearchInput } from '../../hooks/useSearchInput.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
 import { clamp } from '../../ink/layout/geometry.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Text, useTerminalFocus } from '../../ink.js';
 import { SearchBox } from '../SearchBox.js';
 import { Byline } from './Byline.js';
@@ -67,7 +68,7 @@ const CHROME_ROWS = 10;
 const MIN_VISIBLE = 2;
 export function FuzzyPicker<T>({
   title,
-  placeholder = 'Type to search…',
+  placeholder,
   initialQuery,
   items,
   getKey,
@@ -82,11 +83,12 @@ export function FuzzyPicker<T>({
   onShiftTab,
   onFocus,
   onCancel,
-  emptyMessage = 'No results',
+  emptyMessage,
   matchLabel,
   selectAction = 'select',
   extraHints
 }: Props<T>): React.ReactNode {
+  const { t } = useTranslation();
   const isTerminalFocused = useTerminalFocus();
   const {
     rows,
@@ -168,8 +170,9 @@ export function FuzzyPicker<T>({
   }, [focused]);
   const windowStart = clamp(focusedIndex - visibleCount + 1, 0, items.length - visibleCount);
   const visible = items.slice(windowStart, windowStart + visibleCount);
-  const emptyText = typeof emptyMessage === 'function' ? emptyMessage(query) : emptyMessage;
-  const searchBox = <SearchBox query={query} cursorOffset={cursorOffset} placeholder={placeholder} isFocused isTerminalFocused={isTerminalFocused} />;
+  const resolvedEmptyMessage = emptyMessage ?? t('fuzzyPicker.emptyMessage.noResults');
+  const emptyText = typeof resolvedEmptyMessage === 'function' ? resolvedEmptyMessage(query) : resolvedEmptyMessage;
+  const searchBox = <SearchBox query={query} cursorOffset={cursorOffset} placeholder={placeholder ?? t('fuzzyPicker.placeholder.typeToSearch')} isFocused isTerminalFocused={isTerminalFocused} />;
   const listBlock = <List visible={visible} windowStart={windowStart} visibleCount={visibleCount} total={items.length} focusedIndex={focusedIndex} direction={direction} getKey={getKey} renderItem={renderItem} emptyText={emptyText} />;
   const preview = renderPreview && focused ? <Box flexDirection="column" flexGrow={1}>
         {renderPreview(focused)}

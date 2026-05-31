@@ -6,6 +6,7 @@
  * while keeping the side question response separate from main conversation.
  */
 
+import { getMessage } from '../i18n/index.js'
 import { formatAPIError } from '../services/runtime/errors.js'
 import type { NonNullableUsage } from '../services/runtime/usage.js'
 import type { Message, SystemAPIErrorMessage } from '../types/message.js'
@@ -137,7 +138,7 @@ function extractSideQuestionResponse(messages: Message[]): string | null {
     const toolUse = assistantBlocks.find(b => b.type === 'tool_use')
     if (toolUse) {
       const toolName = 'name' in toolUse ? toolUse.name : 'a tool'
-      return `(The model tried to call ${toolName} instead of answering directly. Try rephrasing or ask in the main conversation.)`
+      return getMessage('sideQuestion.toolCallAttempted', { toolName })
     }
   }
 
@@ -148,7 +149,9 @@ function extractSideQuestionResponse(messages: Message[]): string | null {
       m.type === 'system' && 'subtype' in m && m.subtype === 'api_error',
   )
   if (apiErr) {
-    return `(API error: ${formatAPIError(apiErr.error)})`
+    return getMessage('sideQuestion.apiError', {
+      message: formatAPIError(apiErr.error),
+    })
   }
 
   return null

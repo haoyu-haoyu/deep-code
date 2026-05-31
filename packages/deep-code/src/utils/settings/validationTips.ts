@@ -1,5 +1,7 @@
 import type { ZodIssueCode } from 'zod/v4'
 
+import { getMessage } from '../../i18n/index.js'
+
 // v4 ZodIssueCode is a value, not a type - use typeof to get the type
 type ZodIssueCodeType = (typeof ZodIssueCode)[keyof typeof ZodIssueCode]
 
@@ -22,88 +24,64 @@ export type TipContext = {
 
 type TipMatcher = {
   matches: (context: TipContext) => boolean
-  tip: ValidationTip
+  // i18n catalog key for the suggestion text, or null when the suggestion is
+  // built dynamically (e.g. enum values) in getValidationTip().
+  suggestionKey: string | null
 }
 
 const TIP_MATCHERS: TipMatcher[] = [
   {
     matches: (ctx): boolean =>
       ctx.path === 'permissions.defaultMode' && ctx.code === 'invalid_value',
-    tip: {
-      suggestion:
-        'Valid modes: "acceptEdits" (ask before file changes), "plan" (analysis only), "bypassPermissions" (auto-accept all), or "default" (standard behavior)',
-    },
+    suggestionKey: 'settings.validationTip.permissionsDefaultMode',
   },
   {
     matches: (ctx): boolean =>
       ctx.path === 'apiKeyHelper' && ctx.code === 'invalid_type',
-    tip: {
-      suggestion:
-        'Provide a shell command that outputs your API key to stdout. The script should output only the API key. Example: "/bin/generate_temp_api_key.sh"',
-    },
+    suggestionKey: 'settings.validationTip.apiKeyHelper',
   },
   {
     matches: (ctx): boolean =>
       ctx.path === 'cleanupPeriodDays' &&
       ctx.code === 'too_small' &&
       ctx.expected === '0',
-    tip: {
-      suggestion:
-        'Must be 0 or greater. Set a positive number for days to retain transcripts (default is 30). Setting 0 disables session persistence entirely: no transcripts are written and existing transcripts are deleted at startup.',
-    },
+    suggestionKey: 'settings.validationTip.cleanupPeriodDays',
   },
   {
     matches: (ctx): boolean =>
       ctx.path.startsWith('env.') && ctx.code === 'invalid_type',
-    tip: {
-      suggestion:
-        'Environment variables must be strings. Wrap numbers and booleans in quotes. Example: "DEBUG": "true", "PORT": "3000"',
-    },
+    suggestionKey: 'settings.validationTip.env',
   },
   {
     matches: (ctx): boolean =>
       (ctx.path === 'permissions.allow' || ctx.path === 'permissions.deny') &&
       ctx.code === 'invalid_type' &&
       ctx.expected === 'array',
-    tip: {
-      suggestion:
-        'Permission rules must be in an array. Format: ["Tool(specifier)"]. Examples: ["Bash(npm run build)", "Edit(docs/**)", "Read(~/.zshrc)"]. Use * for wildcards.',
-    },
+    suggestionKey: 'settings.validationTip.permissionsArray',
   },
   {
     matches: (ctx): boolean =>
       ctx.path.includes('hooks') && ctx.code === 'invalid_type',
-    tip: {
-      suggestion:
-        // gh-31187 / CC-282: prior example showed {"matcher": {"tools": ["BashTool"]}}
-        // — an object format that never existed in the schema (matcher is z.string(),
-        // always has been). Users copied the tip's example and got the same validation
-        // error again. See matchesPattern() in hooks.ts: matcher is exact-match,
-        // pipe-separated ("Edit|Write"), or regex. Empty/"*" matches all.
-        'Hooks use a matcher + hooks array. The matcher is a string: a tool name ("Bash"), pipe-separated list ("Edit|Write"), or empty to match all. Example: {"PostToolUse": [{"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "echo Done"}]}]}',
-    },
+    // gh-31187 / CC-282: prior example showed {"matcher": {"tools": ["BashTool"]}}
+    // — an object format that never existed in the schema (matcher is z.string(),
+    // always has been). Users copied the tip's example and got the same validation
+    // error again. See matchesPattern() in hooks.ts: matcher is exact-match,
+    // pipe-separated ("Edit|Write"), or regex. Empty/"*" matches all.
+    suggestionKey: 'settings.validationTip.hooks',
   },
   {
     matches: (ctx): boolean =>
       ctx.code === 'invalid_type' && ctx.expected === 'boolean',
-    tip: {
-      suggestion:
-        'Use true or false without quotes. Example: "includeCoAuthoredBy": true',
-    },
+    suggestionKey: 'settings.validationTip.boolean',
   },
   {
     matches: (ctx): boolean => ctx.code === 'unrecognized_keys',
-    tip: {
-      suggestion:
-        'Check for typos or refer to the documentation for valid fields',
-    },
+    suggestionKey: 'settings.validationTip.unrecognizedKeys',
   },
   {
     matches: (ctx): boolean =>
       ctx.code === 'invalid_value' && ctx.enumValues !== undefined,
-    tip: {
-      suggestion: undefined,
-    },
+    suggestionKey: null,
   },
   {
     matches: (ctx): boolean =>
@@ -111,19 +89,13 @@ const TIP_MATCHERS: TipMatcher[] = [
       ctx.expected === 'object' &&
       ctx.received === null &&
       ctx.path === '',
-    tip: {
-      suggestion:
-        'Check for missing commas, unmatched brackets, or trailing commas. Use a JSON validator to identify the exact syntax error.',
-    },
+    suggestionKey: 'settings.validationTip.malformedJson',
   },
   {
     matches: (ctx): boolean =>
       ctx.path === 'permissions.additionalDirectories' &&
       ctx.code === 'invalid_type',
-    tip: {
-      suggestion:
-        'Must be an array of directory paths. Example: ["~/projects", "/tmp/workspace"]. You can also use --add-dir flag or /add-dir command',
-    },
+    suggestionKey: 'settings.validationTip.additionalDirectories',
   },
 ]
 
@@ -132,14 +104,20 @@ export function getValidationTip(context: TipContext): ValidationTip | null {
 
   if (!matcher) return null
 
-  const tip: ValidationTip = { ...matcher.tip }
+  const tip: ValidationTip = {
+    suggestion: matcher.suggestionKey
+      ? getMessage(matcher.suggestionKey)
+      : undefined,
+  }
 
   if (
     context.code === 'invalid_value' &&
     context.enumValues &&
     !tip.suggestion
   ) {
-    tip.suggestion = `Valid values: ${context.enumValues.map(v => `"${v}"`).join(', ')}`
+    tip.suggestion = getMessage('settings.validationTip.validValues', {
+      list: context.enumValues.map(v => `"${v}"`).join(', '),
+    })
   }
 
   return tip

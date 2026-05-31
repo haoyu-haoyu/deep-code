@@ -8,6 +8,7 @@ import type { Command } from '../commands.js';
 import { LogSelector } from '../components/LogSelector.js';
 import { Spinner } from '../components/Spinner.js';
 import { restoreCostStateForSession } from '../cost-tracker.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { setClipboard } from '../ink/termio/osc.js';
 import { Box, Text } from '../ink.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
@@ -87,6 +88,9 @@ export function ResumeConversation({
   const {
     rows
   } = useTerminalSize();
+  const {
+    t
+  } = useTranslation();
   const agentDefinitions = useAppState(s => s.agentDefinitions);
   const setAppState = useSetAppState();
   const [logs, setLogs] = React.useState<LogOption[]>([]);
@@ -190,7 +194,7 @@ export function ResumeConversation({
     try {
       const result_3 = await loadConversationForResume(log_0, undefined);
       if (!result_3) {
-        throw new Error('Failed to load conversation');
+        throw new Error(t('command.resume.loadFailedSingle'));
       }
       if (feature('COORDINATOR_MODE')) {
         /* eslint-disable @typescript-eslint/no-require-imports */
@@ -299,13 +303,13 @@ export function ResumeConversation({
   if (loading) {
     return <Box>
         <Spinner />
-        <Text> Loading conversations…</Text>
+        <Text> {t('command.resume.loading')}</Text>
       </Box>;
   }
   if (resuming) {
     return <Box>
         <Spinner />
-        <Text> Resuming conversation…</Text>
+        <Text> {t('command.resume.resuming')}</Text>
       </Box>;
   }
   if (filteredLogs.length === 0) {
@@ -315,6 +319,9 @@ export function ResumeConversation({
 }
 function NoConversationsMessage() {
   const $ = _c(2);
+  const {
+    t
+  } = useTranslation();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = {
@@ -327,7 +334,7 @@ function NoConversationsMessage() {
   useKeybinding("app:interrupt", _temp, t0);
   let t1;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = <Box flexDirection="column"><Text>No conversations found to resume.</Text><Text dimColor={true}>Press Ctrl+C to exit and start a new conversation.</Text></Box>;
+    t1 = <Box flexDirection="column"><Text>{t('command.resume.noConversationsPeriod')}</Text><Text dimColor={true}>{t('command.resume.exitHint')}</Text></Box>;
     $[1] = t1;
   } else {
     t1 = $[1];
@@ -342,6 +349,9 @@ function CrossProjectMessage(t0) {
   const {
     command
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [];
@@ -352,14 +362,14 @@ function CrossProjectMessage(t0) {
   React.useEffect(_temp3, t1);
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Text>This conversation is from a different directory.</Text>;
+    t2 = <Text>{t('command.resume.crossProject.heading')}</Text>;
     $[1] = t2;
   } else {
     t2 = $[1];
   }
   let t3;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Text>To resume, run:</Text>;
+    t3 = <Text>{t('command.resume.crossProject.toResume')}</Text>;
     $[2] = t3;
   } else {
     t3 = $[2];
@@ -374,7 +384,7 @@ function CrossProjectMessage(t0) {
   }
   let t5;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text dimColor={true}>(Command copied to clipboard)</Text>;
+    t5 = <Text dimColor={true}>{t('command.resume.crossProject.copied')}</Text>;
     $[5] = t5;
   } else {
     t5 = $[5];

@@ -3,6 +3,7 @@ import { useNotifications } from 'src/context/notifications.js'
 import stripAnsi from 'strip-ansi'
 import { markBackslashReturnUsed } from '../commands/terminalSetup/terminalSetup.js'
 import { addToHistory } from '../history.js'
+import { getMessage } from '../i18n/index.js'
 import type { Key } from '../ink.js'
 import type {
   InlineGhostText,
@@ -130,7 +131,7 @@ export function useTextInput({
       }
       addNotification({
         key: 'escape-again-to-clear',
-        text: 'Esc again to clear',
+        text: getMessage('textInput.escAgainToClear'),
         priority: 'immediate',
         timeoutMs: 1000,
       })

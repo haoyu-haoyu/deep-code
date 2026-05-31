@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Box, Text } from '../ink.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import type { SandboxViolationEvent } from '../utils/sandbox/sandbox-adapter.js';
 import { SandboxManager } from '../utils/sandbox/sandbox-adapter.js';
 
@@ -19,6 +20,9 @@ function formatTime(date: Date): string {
 import { getPlatform } from 'src/utils/platform.js';
 export function SandboxViolationExpandedView() {
   const $ = _c(15);
+  const {
+    t
+  } = useTranslation();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = [];
@@ -53,10 +57,13 @@ export function SandboxViolationExpandedView() {
   if (totalCount === 0) {
     return null;
   }
-  const t3 = totalCount === 1 ? "operation" : "operations";
+  const t3 = totalCount === 1 ? t('promptInput.sandbox.operationSingular') : t('promptInput.sandbox.operationPlural');
   let t4;
   if ($[3] !== t3 || $[4] !== totalCount) {
-    t4 = <Box marginLeft={0}><Text color="permission">⧈ Sandbox blocked {totalCount} total{" "}{t3}</Text></Box>;
+    t4 = <Box marginLeft={0}><Text color="permission">{t('sandbox.violationView.blockedCount', {
+          count: totalCount,
+          operationLabel: t3
+        })}</Text></Box>;
     $[3] = t3;
     $[4] = totalCount;
     $[5] = t4;
@@ -74,7 +81,10 @@ export function SandboxViolationExpandedView() {
   const t6 = Math.min(10, violations.length);
   let t7;
   if ($[8] !== t6 || $[9] !== totalCount) {
-    t7 = <Box paddingLeft={2}><Text dimColor={true}>… showing last {t6} of {totalCount}</Text></Box>;
+    t7 = <Box paddingLeft={2}><Text dimColor={true}>{t('sandbox.violationView.showingLast', {
+          count: t6,
+          total: totalCount
+        })}</Text></Box>;
     $[8] = t6;
     $[9] = totalCount;
     $[10] = t7;

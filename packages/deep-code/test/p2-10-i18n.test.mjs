@@ -86,7 +86,7 @@ test('English catalog has a bounded non-empty string message set', () => {
   const entries = runI18nExpression('Object.entries(EN_MESSAGES)')
 
   assert.ok(entries.length >= 585, `expected at least 585 keys, got ${entries.length}`)
-  assert.ok(entries.length <= 2600, `expected at most 2600 keys, got ${entries.length}`)
+  assert.ok(entries.length <= 2800, `expected at most 2800 keys, got ${entries.length}`)
   for (const [key, value] of entries) {
     assert.equal(typeof key, 'string')
     assert.equal(typeof value, 'string')

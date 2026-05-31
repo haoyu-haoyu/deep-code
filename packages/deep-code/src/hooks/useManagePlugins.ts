@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import type { Command } from '../commands.js'
 import { useNotifications } from '../context/notifications.js'
+import { getMessage } from '../i18n/index.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -61,7 +62,7 @@ export function useManagePlugins({
       if (Object.keys(flagged).length > 0) {
         addNotification({
           key: 'plugin-delisted-flagged',
-          text: 'Plugins flagged. Check /plugins',
+          text: getMessage('plugins.notification.delistedFlagged'),
           color: 'warning',
           priority: 'high',
         })
@@ -294,7 +295,7 @@ export function useManagePlugins({
     if (!enabled || !needsRefresh) return
     addNotification({
       key: 'plugin-reload-pending',
-      text: 'Plugins changed. Run /reload-plugins to activate.',
+      text: getMessage('plugins.notification.reloadPending'),
       color: 'suggestion',
       priority: 'low',
     })

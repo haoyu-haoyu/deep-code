@@ -6,6 +6,7 @@
  */
 import { useCallback, useRef } from 'react'
 import { logEvent } from 'src/services/analytics/index.js'
+import { getMessage } from '../i18n/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/metadata.js'
 import {
   useAppState,
@@ -230,7 +231,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     if (!hasRunningAgents) {
       addNotification({
         key: 'kill-agents-none',
-        text: 'No background agents running',
+        text: getMessage('notification.killAgents.none'),
         priority: 'immediate',
         timeoutMs: 2000,
       })
@@ -259,7 +260,7 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
     )
     addNotification({
       key: 'kill-agents-confirm',
-      text: `Press ${shortcut} again to stop background agents`,
+      text: getMessage('notification.killAgents.confirm', { shortcut }),
       priority: 'immediate',
       timeoutMs: KILL_AGENTS_CONFIRM_WINDOW_MS,
     })

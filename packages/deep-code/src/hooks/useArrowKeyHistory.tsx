@@ -4,6 +4,7 @@ import { useNotifications } from 'src/context/notifications.js';
 import { ConfigurableShortcutHint } from '../components/ConfigurableShortcutHint.js';
 import { FOOTER_TEMPORARY_STATUS_TIMEOUT } from '../components/PromptInput/Notifications.js';
 import { getHistory } from '../history.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Text } from '../ink.js';
 import type { PromptInputMode } from '../types/textInputTypes.js';
 import type { HistoryEntry, PastedContent } from '../utils/config.js';
@@ -73,6 +74,7 @@ export function useArrowKeyHistory(onSetInput: (value: string, mode: HistoryMode
     mode?: HistoryMode;
   }) | undefined>(undefined);
   const hasShownSearchHintRef = useRef(false);
+  const { t } = useTranslation();
   const {
     addNotification,
     removeNotification
@@ -115,7 +117,7 @@ export function useArrowKeyHistory(onSetInput: (value: string, mode: HistoryMode
     addNotification({
       key: 'search-history-hint',
       jsx: <Text dimColor>
-          <ConfigurableShortcutHint action="history:search" context="Global" fallback="ctrl+r" description="search history" />
+          <ConfigurableShortcutHint action="history:search" context="Global" fallback="ctrl+r" description={t('promptInput.hint.searchHistory')} />
         </Text>,
       priority: 'immediate',
       timeoutMs: FOOTER_TEMPORARY_STATUS_TIMEOUT

@@ -8,6 +8,7 @@ import { sanitizeToolNameForAnalytics } from 'src/services/analytics/metadata.js
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js';
 import { Text } from '../ink.js';
 import type { ToolPermissionContext, Tool as ToolType, ToolUseContext } from '../Tool.js';
+import { getMessage } from '../i18n/index.js';
 import { consumeSpeculativeClassifierCheck, peekSpeculativeClassifierCheck } from '../tools/BashTool/bashPermissions.js';
 import { BASH_TOOL_NAME } from '../tools/BashTool/toolName.js';
 import type { AssistantMessage } from '../types/message.js';
@@ -84,7 +85,9 @@ function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
                 toolUseContext.addNotification?.({
                   key: "auto-mode-denied",
                   priority: "immediate",
-                  jsx: <><Text color="error">{tool.userFacingName(input).toLowerCase()} denied by auto mode</Text><Text dimColor={true}> · /permissions</Text></>
+                  jsx: <><Text color="error">{getMessage('permissions.autoModeDenied', {
+                    name: tool.userFacingName(input).toLowerCase()
+                  })}</Text><Text dimColor={true}>{getMessage('permissions.autoModeDenied.hint')}</Text></>
                 });
               }
               resolve(result);

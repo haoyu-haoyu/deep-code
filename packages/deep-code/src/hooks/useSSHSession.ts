@@ -11,6 +11,7 @@
 
 import { randomUUID } from 'crypto'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { getMessage } from '../i18n/index.js'
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js'
 import {
   createSyntheticAssistantMessage,
@@ -172,7 +173,7 @@ export function useSSHSession({
         const msg: MessageType = {
           type: 'system',
           subtype: 'informational',
-          content: `SSH connection dropped — reconnecting (attempt ${attempt}/${max})...`,
+          content: getMessage('ssh.session.reconnecting', { attempt, max }),
           timestamp: new Date().toISOString(),
           uuid: randomUUID(),
           level: 'warning',
@@ -188,12 +189,14 @@ export function useSSHSession({
         setIsLoading(false)
 
         let msg = connected
-          ? 'Remote session ended.'
-          : 'SSH session failed before connecting.'
+          ? getMessage('ssh.session.ended')
+          : getMessage('ssh.session.failedBeforeConnect')
         // Surface remote stderr if it looks like an error (pre-connect always,
         // post-connect only on nonzero exit — normal --verbose noise otherwise).
         if (stderr && (!connected || exitCode !== 0)) {
-          msg += `\nRemote stderr (exit ${exitCode ?? 'signal ' + session.proc.signalCode}):\n${stderr}`
+          msg += `\n${getMessage('ssh.session.remoteStderr', {
+            exitCode: exitCode ?? 'signal ' + session.proc.signalCode,
+          })}\n${stderr}`
         }
         void gracefulShutdown(1, 'other', { finalMessage: msg })
       },

@@ -2,21 +2,21 @@ import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { getAllOutputStyles, OUTPUT_STYLE_CONFIG, type OutputStyleConfig } from '../constants/outputStyles.js';
+import { getMessage } from '../i18n/index.js';
+import { useTranslation } from '../i18n/useTranslation.js';
 import { Box, Text } from '../ink.js';
 import type { OutputStyle } from '../utils/config.js';
 import { getCwd } from '../utils/cwd.js';
 import type { OptionWithDescription } from './CustomSelect/select.js';
 import { Select } from './CustomSelect/select.js';
 import { Dialog } from './design-system/Dialog.js';
-const DEFAULT_OUTPUT_STYLE_LABEL = 'Default';
-const DEFAULT_OUTPUT_STYLE_DESCRIPTION = 'Claude completes coding tasks efficiently and provides concise responses';
 function mapConfigsToOptions(styles: {
   [styleName: string]: OutputStyleConfig | null;
 }): OptionWithDescription[] {
   return Object.entries(styles).map(([style, config]) => ({
-    label: config?.name ?? DEFAULT_OUTPUT_STYLE_LABEL,
+    label: config?.name ?? getMessage('outputStyle.picker.defaultLabel'),
     value: style,
-    description: config?.description ?? DEFAULT_OUTPUT_STYLE_DESCRIPTION
+    description: config?.description ?? getMessage('outputStyle.picker.defaultDescription')
   }));
 }
 export type OutputStylePickerProps = {
@@ -33,6 +33,9 @@ export function OutputStylePicker(t0) {
     onCancel,
     isStandaloneCommand
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [];
@@ -80,14 +83,14 @@ export function OutputStylePicker(t0) {
   const t6 = !isStandaloneCommand;
   let t7;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t7 = <Box marginTop={1}><Text dimColor={true}>This changes how DeepCode communicates with you</Text></Box>;
+    t7 = <Box marginTop={1}><Text dimColor={true}>{t('outputStyle.picker.description')}</Text></Box>;
     $[5] = t7;
   } else {
     t7 = $[5];
   }
   let t8;
   if ($[6] !== handleStyleSelect || $[7] !== initialStyle || $[8] !== isLoading || $[9] !== styleOptions) {
-    t8 = <Box flexDirection="column" gap={1}>{t7}{isLoading ? <Text dimColor={true}>Loading output styles…</Text> : <Select options={styleOptions} onChange={handleStyleSelect} visibleOptionCount={10} defaultValue={initialStyle} />}</Box>;
+    t8 = <Box flexDirection="column" gap={1}>{t7}{isLoading ? <Text dimColor={true}>{t('outputStyle.picker.loading')}</Text> : <Select options={styleOptions} onChange={handleStyleSelect} visibleOptionCount={10} defaultValue={initialStyle} />}</Box>;
     $[6] = handleStyleSelect;
     $[7] = initialStyle;
     $[8] = isLoading;
@@ -98,7 +101,7 @@ export function OutputStylePicker(t0) {
   }
   let t9;
   if ($[11] !== onCancel || $[12] !== t5 || $[13] !== t6 || $[14] !== t8) {
-    t9 = <Dialog title="Preferred output style" onCancel={onCancel} hideInputGuide={t5} hideBorder={t6}>{t8}</Dialog>;
+    t9 = <Dialog title={t('outputStyle.picker.title')} onCancel={onCancel} hideInputGuide={t5} hideBorder={t6}>{t8}</Dialog>;
     $[11] = onCancel;
     $[12] = t5;
     $[13] = t6;

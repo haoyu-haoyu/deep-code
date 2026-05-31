@@ -2,6 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import type { RefObject } from 'react';
 import React, { useCallback, useMemo, useRef } from 'react';
+import { getMessage } from '../i18n/index.js';
 import { Box, Text } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { logEvent } from '../services/analytics/index.js';
@@ -69,51 +70,51 @@ type PrimaryInput = {
 const str = (k: string) => (i: Record<string, unknown>) => typeof i[k] === 'string' ? i[k] : undefined;
 const PRIMARY_INPUT: Record<string, PrimaryInput> = {
   Read: {
-    label: 'path',
+    label: 'messageActions.primaryInput.path',
     extract: str('file_path')
   },
   Edit: {
-    label: 'path',
+    label: 'messageActions.primaryInput.path',
     extract: str('file_path')
   },
   Write: {
-    label: 'path',
+    label: 'messageActions.primaryInput.path',
     extract: str('file_path')
   },
   NotebookEdit: {
-    label: 'path',
+    label: 'messageActions.primaryInput.path',
     extract: str('notebook_path')
   },
   Bash: {
-    label: 'command',
+    label: 'messageActions.primaryInput.command',
     extract: str('command')
   },
   Grep: {
-    label: 'pattern',
+    label: 'messageActions.primaryInput.pattern',
     extract: str('pattern')
   },
   Glob: {
-    label: 'pattern',
+    label: 'messageActions.primaryInput.pattern',
     extract: str('pattern')
   },
   WebFetch: {
-    label: 'url',
+    label: 'messageActions.primaryInput.url',
     extract: str('url')
   },
   WebSearch: {
-    label: 'query',
+    label: 'messageActions.primaryInput.query',
     extract: str('query')
   },
   Task: {
-    label: 'prompt',
+    label: 'messageActions.primaryInput.prompt',
     extract: str('prompt')
   },
   Agent: {
-    label: 'prompt',
+    label: 'messageActions.primaryInput.prompt',
     extract: str('prompt')
   },
   Tmux: {
-    label: 'command',
+    label: 'messageActions.primaryInput.command',
     extract: i => Array.isArray(i.args) ? `tmux ${i.args.join(' ')}` : undefined
   }
 };
@@ -157,25 +158,27 @@ function action<const T extends NavigableType, const K extends string>(a: {
 }
 export const MESSAGE_ACTIONS = [action({
   key: 'enter',
-  label: s => s.expanded ? 'collapse' : 'expand',
+  label: s => s.expanded ? getMessage('messageActions.action.collapse') : getMessage('messageActions.action.expand'),
   types: ['grouped_tool_use', 'collapsed_read_search', 'attachment', 'system'],
   stays: true,
   // Empty — `stays` handled inline by dispatch.
   run: () => {}
 }), action({
   key: 'enter',
-  label: 'edit',
+  label: () => getMessage('messageActions.action.edit'),
   types: ['user'],
   run: (m, c) => void c.edit(m)
 }), action({
   key: 'c',
-  label: 'copy',
+  label: () => getMessage('messageActions.action.copy'),
   types: NAVIGABLE_TYPES,
   run: (m, c) => c.copy(copyTextOf(m))
 }), action({
   key: 'p',
   // `!` safe: applies() guarantees toolName ∈ PRIMARY_INPUT.
-  label: s => `copy ${PRIMARY_INPUT[s.toolName!]!.label}`,
+  label: s => getMessage('messageActions.action.copyPrimary', {
+    label: getMessage(PRIMARY_INPUT[s.toolName!]!.label)
+  }),
   types: ['grouped_tool_use', 'assistant'],
   applies: s => s.toolName != null && s.toolName in PRIMARY_INPUT,
   run: (m, c) => {
@@ -355,9 +358,9 @@ export function MessageActionsBar(t0) {
   if ($[11] === Symbol.for("react.memo_cache_sentinel")) {
     t8 = <Text dimColor={true}> · </Text>;
     t9 = <Text bold={true} dimColor={false}>{figures.arrowUp}{figures.arrowDown}</Text>;
-    t10 = <Text dimColor={true}> navigate · </Text>;
+    t10 = <Text dimColor={true}>{getMessage('messageActions.footer.navigate')}</Text>;
     t11 = <Text bold={true} dimColor={false}>esc</Text>;
-    t12 = <Text dimColor={true}> back</Text>;
+    t12 = <Text dimColor={true}>{getMessage('messageActions.footer.back')}</Text>;
     $[11] = t10;
     $[12] = t11;
     $[13] = t12;
