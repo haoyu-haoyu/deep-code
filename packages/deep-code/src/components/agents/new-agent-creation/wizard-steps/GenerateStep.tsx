@@ -1,6 +1,7 @@
 import { APIUserAbortError } from '../../../../utils/sdkErrors.js';
 import React, { type ReactNode, useCallback, useRef, useState } from 'react';
 import { useMainLoopModel } from '../../../../hooks/useMainLoopModel.js';
+import { useTranslation } from '../../../../i18n/useTranslation.js';
 import { Box, Text } from '../../../../ink.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import { createAbortController } from '../../../../utils/abortController.js';
@@ -20,6 +21,7 @@ export function GenerateStep(): ReactNode {
     goToStep,
     wizardData
   } = useWizard<AgentWizardData>();
+  const { t } = useTranslation();
   const [prompt, setPrompt] = useState(wizardData.generationPrompt || '');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +35,7 @@ export function GenerateStep(): ReactNode {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsGenerating(false);
-      setError('Generation cancelled');
+      setError(t('agents.generate.error.cancelled'));
     }
   }, []);
 
@@ -77,7 +79,7 @@ export function GenerateStep(): ReactNode {
   const handleGenerate = async (): Promise<void> => {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt) {
-      setError('Please describe what the agent should do');
+      setError(t('agents.generate.error.emptyPrompt'));
       return;
     }
     setError(null);
@@ -108,7 +110,7 @@ export function GenerateStep(): ReactNode {
       if (err instanceof APIUserAbortError) {
         // User cancelled - no error to show
       } else if (err instanceof Error && !err.message.includes('No assistant message found')) {
-        setError(err.message || 'Failed to generate agent');
+        setError(err.message || t('agents.generate.error.failed'));
       }
       updateWizardData({
         isGenerating: false
@@ -118,12 +120,12 @@ export function GenerateStep(): ReactNode {
       abortControllerRef.current = null;
     }
   };
-  const subtitle = 'Describe what this agent should do and when it should be used (be comprehensive for best results)';
+  const subtitle = t('agents.generate.subtitle');
   if (isGenerating) {
     return <WizardDialogLayout subtitle={subtitle} footerText={<ConfigurableShortcutHint action="confirm:no" context="Settings" fallback="Esc" description="cancel" />}>
         <Box flexDirection="row" alignItems="center">
           <Spinner />
-          <Text color="suggestion"> Generating agent from description...</Text>
+          <Text color="suggestion"> {t('agents.generate.generating')}</Text>
         </Box>
       </WizardDialogLayout>;
   }
@@ -136,7 +138,7 @@ export function GenerateStep(): ReactNode {
         {error && <Box marginBottom={1}>
             <Text color="error">{error}</Text>
           </Box>}
-        <TextInput value={prompt} onChange={setPrompt} onSubmit={handleGenerate} placeholder="e.g., Help me write unit tests for my code..." columns={80} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} focus showCursor />
+        <TextInput value={prompt} onChange={setPrompt} onSubmit={handleGenerate} placeholder={t('agents.generate.promptPlaceholder')} columns={80} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} focus showCursor />
       </Box>
     </WizardDialogLayout>;
 }

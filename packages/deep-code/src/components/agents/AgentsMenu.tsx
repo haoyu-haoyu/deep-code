@@ -6,6 +6,7 @@ import type { SettingSource } from 'src/utils/settings/constants.js';
 import type { CommandResultDisplay } from '../../commands.js';
 import { useExitOnCtrlCDWithKeybindings } from '../../hooks/useExitOnCtrlCDWithKeybindings.js';
 import { useMergedTools } from '../../hooks/useMergedTools.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 import { Box, Text } from '../../ink.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
 import type { Tools } from '../../Tool.js';
@@ -34,6 +35,9 @@ export function AgentsMenu(t0) {
     tools,
     onExit
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = {
@@ -175,7 +179,9 @@ export function AgentsMenu(t0) {
             }
           };
         });
-        setChanges(prev_0 => [...prev_0, `Deleted agent: ${chalk.bold(agent.agentType)}`]);
+        setChanges(prev_0 => [...prev_0, t('agents.menu.deletedAgent', {
+          name: chalk.bold(agent.agentType)
+        })]);
         setModeState({
           mode: "list-agents",
           source: "all"
@@ -218,8 +224,10 @@ export function AgentsMenu(t0) {
         let t15;
         if ($[34] !== changes || $[35] !== onExit) {
           t15 = () => {
-            const exitMessage = changes.length > 0 ? `Agent changes:\n${changes.join("\n")}` : undefined;
-            onExit(exitMessage ?? "Agents dialog dismissed", {
+            const exitMessage = changes.length > 0 ? t('agents.menu.agentChanges', {
+              changes: changes.join("\n")
+            }) : undefined;
+            onExit(exitMessage ?? t('agents.menu.dialogDismissed'), {
               display: changes.length === 0 ? "system" : undefined
             });
           };
@@ -329,7 +337,7 @@ export function AgentsMenu(t0) {
         let t14;
         if ($[60] === Symbol.for("react.memo_cache_sentinel")) {
           t14 = {
-            label: "View agent",
+            label: t('agents.menu.viewAgent'),
             value: "view"
           };
           $[60] = t14;
@@ -339,10 +347,10 @@ export function AgentsMenu(t0) {
         let t15;
         if ($[61] !== isEditable) {
           t15 = isEditable ? [{
-            label: "Edit agent",
+            label: t('agents.menu.editAgent'),
             value: "edit"
           }, {
-            label: "Delete agent",
+            label: t('agents.menu.deleteAgentOption'),
             value: "delete"
           }] : [];
           $[61] = isEditable;
@@ -353,7 +361,7 @@ export function AgentsMenu(t0) {
         let t16;
         if ($[63] === Symbol.for("react.memo_cache_sentinel")) {
           t16 = {
-            label: "Back",
+            label: t('agents.menu.back'),
             value: "back"
           };
           $[63] = t16;
@@ -553,7 +561,7 @@ export function AgentsMenu(t0) {
         }
         let t18;
         if ($[109] === Symbol.for("react.memo_cache_sentinel")) {
-          t18 = <AgentNavigationFooter instructions="Press Enter or Esc to go back" />;
+          t18 = <AgentNavigationFooter instructions={t('agents.menu.pressEnterOrEscToGoBack')} />;
           $[109] = t18;
         } else {
           t18 = $[109];
@@ -573,10 +581,10 @@ export function AgentsMenu(t0) {
         let t13;
         if ($[112] === Symbol.for("react.memo_cache_sentinel")) {
           t13 = [{
-            label: "Yes, delete",
+            label: t('agents.menu.confirmDeleteYes'),
             value: "yes"
           }, {
-            label: "No, cancel",
+            label: t('agents.menu.confirmDeleteNo'),
             value: "no"
           }];
           $[112] = t13;
@@ -598,7 +606,7 @@ export function AgentsMenu(t0) {
         }
         let t15;
         if ($[115] !== modeState.agent.agentType) {
-          t15 = <Text>Are you sure you want to delete the agent{" "}<Text bold={true}>{modeState.agent.agentType}</Text>?</Text>;
+          t15 = <Text>{t('agents.menu.deleteConfirmPromptPrefix')}{" "}<Text bold={true}>{modeState.agent.agentType}</Text>{t('agents.menu.deleteConfirmPromptSuffix')}</Text>;
           $[115] = modeState.agent.agentType;
           $[116] = t15;
         } else {
@@ -606,7 +614,7 @@ export function AgentsMenu(t0) {
         }
         let t16;
         if ($[117] !== modeState.agent.source) {
-          t16 = <Box marginTop={1}><Text dimColor={true}>Source: {modeState.agent.source}</Text></Box>;
+          t16 = <Box marginTop={1}><Text dimColor={true}>{t('agents.menu.sourceLabel')}{modeState.agent.source}</Text></Box>;
           $[117] = modeState.agent.source;
           $[118] = t16;
         } else {
@@ -652,7 +660,7 @@ export function AgentsMenu(t0) {
         }
         let t20;
         if ($[127] !== t14 || $[128] !== t15 || $[129] !== t16 || $[130] !== t19) {
-          t20 = <Dialog title="Delete agent" onCancel={t14} color="error">{t15}{t16}{t19}</Dialog>;
+          t20 = <Dialog title={t('agents.menu.deleteAgentTitle')} onCancel={t14} color="error">{t15}{t16}{t19}</Dialog>;
           $[127] = t14;
           $[128] = t15;
           $[129] = t16;
@@ -663,7 +671,7 @@ export function AgentsMenu(t0) {
         }
         let t21;
         if ($[132] === Symbol.for("react.memo_cache_sentinel")) {
-          t21 = <AgentNavigationFooter instructions={"Press \u2191\u2193 to navigate, Enter to select, Esc to cancel"} />;
+          t21 = <AgentNavigationFooter instructions={t('agents.menu.deleteConfirmFooter')} />;
           $[132] = t21;
         } else {
           t21 = $[132];
@@ -699,7 +707,9 @@ export function AgentsMenu(t0) {
         }
         const freshAgent = t13;
         const agentToEdit = freshAgent || modeState.agent;
-        const t14 = `Edit agent: ${agentToEdit.agentType}`;
+        const t14 = t('agents.menu.editAgentTitle', {
+          name: agentToEdit.agentType
+        });
         let t15;
         if ($[140] !== modeState.previousMode) {
           t15 = () => setModeState(modeState.previousMode);

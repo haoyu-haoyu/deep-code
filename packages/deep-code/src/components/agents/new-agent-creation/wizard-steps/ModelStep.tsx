@@ -1,5 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { type ReactNode } from 'react';
+import { useTranslation } from '../../../../i18n/useTranslation.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
 import { Byline } from '../../../design-system/Byline.js';
 import { KeyboardShortcutHint } from '../../../design-system/KeyboardShortcutHint.js';
@@ -15,6 +16,7 @@ export function ModelStep() {
     updateWizardData,
     wizardData
   } = useWizard();
+  const { t } = useTranslation();
   let t0;
   if ($[0] !== goNext || $[1] !== updateWizardData) {
     t0 = model => {
@@ -39,7 +41,7 @@ export function ModelStep() {
   }
   let t2;
   if ($[4] !== goBack || $[5] !== handleComplete || $[6] !== wizardData.selectedModel) {
-    t2 = <WizardDialogLayout subtitle="Select model" footerText={t1}><ModelSelector initialModel={wizardData.selectedModel} onComplete={handleComplete} onCancel={goBack} /></WizardDialogLayout>;
+    t2 = <WizardDialogLayout subtitle={t('agents.model.subtitle')} footerText={t1}><ModelSelector initialModel={wizardData.selectedModel} onComplete={handleComplete} onCancel={goBack} /></WizardDialogLayout>;
     $[4] = goBack;
     $[5] = handleComplete;
     $[6] = wizardData.selectedModel;

@@ -3,6 +3,7 @@ import React, { type ReactNode, useCallback, useState } from 'react';
 import { Box, Text } from '../../../../ink.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import { editPromptInEditor } from '../../../../utils/promptEditor.js';
+import { useTranslation } from '../../../../i18n/useTranslation.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
 import { Byline } from '../../../design-system/Byline.js';
 import { KeyboardShortcutHint } from '../../../design-system/KeyboardShortcutHint.js';
@@ -18,6 +19,9 @@ export function PromptStep() {
     updateWizardData,
     wizardData
   } = useWizard();
+  const {
+    t
+  } = useTranslation();
   const [systemPrompt, setSystemPrompt] = useState(wizardData.systemPrompt || "");
   const [cursorOffset, setCursorOffset] = useState(systemPrompt.length);
   const [error, setError] = useState(null);
@@ -61,7 +65,7 @@ export function PromptStep() {
     t3 = () => {
       const trimmedPrompt = systemPrompt.trim();
       if (!trimmedPrompt) {
-        setError("System prompt is required");
+        setError(t('agents.prompt.error.required'));
         return;
       }
       setError(null);
@@ -88,8 +92,8 @@ export function PromptStep() {
   let t5;
   let t6;
   if ($[9] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text>Enter the system prompt for your agent:</Text>;
-    t6 = <Text dimColor={true}>Be comprehensive for best results</Text>;
+    t5 = <Text>{t('agents.prompt.enterLabel')}</Text>;
+    t6 = <Text dimColor={true}>{t('agents.prompt.helperHint')}</Text>;
     $[9] = t5;
     $[10] = t6;
   } else {
@@ -98,7 +102,7 @@ export function PromptStep() {
   }
   let t7;
   if ($[11] !== cursorOffset || $[12] !== handleSubmit || $[13] !== systemPrompt) {
-    t7 = <Box marginTop={1}><TextInput value={systemPrompt} onChange={setSystemPrompt} onSubmit={handleSubmit} placeholder="You are a helpful code reviewer who..." columns={80} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} focus={true} showCursor={true} /></Box>;
+    t7 = <Box marginTop={1}><TextInput value={systemPrompt} onChange={setSystemPrompt} onSubmit={handleSubmit} placeholder={t('agents.prompt.placeholder')} columns={80} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} focus={true} showCursor={true} /></Box>;
     $[11] = cursorOffset;
     $[12] = handleSubmit;
     $[13] = systemPrompt;
@@ -116,7 +120,7 @@ export function PromptStep() {
   }
   let t9;
   if ($[17] !== t7 || $[18] !== t8) {
-    t9 = <WizardDialogLayout subtitle="System prompt" footerText={t4}><Box flexDirection="column">{t5}{t6}{t7}{t8}</Box></WizardDialogLayout>;
+    t9 = <WizardDialogLayout subtitle={t('agents.prompt.subtitle')} footerText={t4}><Box flexDirection="column">{t5}{t6}{t7}{t8}</Box></WizardDialogLayout>;
     $[17] = t7;
     $[18] = t8;
     $[19] = t9;

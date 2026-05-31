@@ -9,6 +9,7 @@ import { KeyboardShortcutHint } from '../../../design-system/KeyboardShortcutHin
 import { useWizard } from '../../../wizard/index.js';
 import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js';
 import type { AgentWizardData } from '../types.js';
+import { useTranslation } from '../../../../i18n/useTranslation.js';
 export function LocationStep() {
   const $ = _c(11);
   const {
@@ -16,10 +17,13 @@ export function LocationStep() {
     updateWizardData,
     cancel
   } = useWizard();
+  const {
+    t
+  } = useTranslation();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = {
-      label: "Project (.deepcode/agents/)",
+      label: t('agentCreation.location.optionProject'),
       value: "projectSettings" as SettingSource
     };
     $[0] = t0;
@@ -29,7 +33,7 @@ export function LocationStep() {
   let t1;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [t0, {
-      label: "Personal (~/.deepcode/agents/)",
+      label: t('agentCreation.location.optionPersonal'),
       value: "userSettings" as SettingSource
     }];
     $[1] = t1;
@@ -68,7 +72,7 @@ export function LocationStep() {
   }
   let t5;
   if ($[8] !== t3 || $[9] !== t4) {
-    t5 = <WizardDialogLayout subtitle="Choose location" footerText={t2}><Box><Select key="location-select" options={locationOptions} onChange={t3} onCancel={t4} /></Box></WizardDialogLayout>;
+    t5 = <WizardDialogLayout subtitle={t('agentCreation.location.subtitle')} footerText={t2}><Box><Select key="location-select" options={locationOptions} onChange={t3} onCancel={t4} /></Box></WizardDialogLayout>;
     $[8] = t3;
     $[9] = t4;
     $[10] = t5;

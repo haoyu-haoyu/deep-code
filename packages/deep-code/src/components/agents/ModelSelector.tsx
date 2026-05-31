@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Box, Text } from '../../ink.js';
 import { getAgentModelOptions } from '../../utils/model/agent.js';
 import { Select } from '../CustomSelect/select.js';
+import { useTranslation } from '../../i18n/useTranslation.js';
 interface ModelSelectorProps {
   initialModel?: string;
   onComplete: (model?: string) => void;
@@ -15,6 +16,9 @@ export function ModelSelector(t0) {
     onComplete,
     onCancel
   } = t0;
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== initialModel) {
     bb0: {
@@ -23,7 +27,7 @@ export function ModelSelector(t0) {
         t1 = [{
           value: initialModel,
           label: initialModel,
-          description: "Current model (custom ID)"
+          description: t('agents.modelSelector.currentModelDescription')
         }, ...base];
         break bb0;
       }
@@ -38,7 +42,7 @@ export function ModelSelector(t0) {
   const defaultModel = initialModel ?? "deepseek-chat";
   let t2;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-    t2 = <Box marginBottom={1}><Text dimColor={true}>Model determines the agent's reasoning capabilities and speed.</Text></Box>;
+    t2 = <Box marginBottom={1}><Text dimColor={true}>{t('agents.modelSelector.helpText')}</Text></Box>;
     $[2] = t2;
   } else {
     t2 = $[2];
