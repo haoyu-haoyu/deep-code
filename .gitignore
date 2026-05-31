@@ -6,3 +6,9 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Single-binary build artifacts — regenerated on demand (build:full-cli-inline /
+# build:binaries) for `bun --compile`; never committed or shipped to npm (the
+# lean dist/deepcode-full.mjs is the runtime artifact).
+packages/deep-code/binaries/
+packages/deep-code/dist/deepcode-full-inline.mjs

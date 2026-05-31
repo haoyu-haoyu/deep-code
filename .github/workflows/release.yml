@@ -96,83 +96,89 @@ jobs:
           cache-to: type=gha,mode=max
 
 # =============================================================
-# DEFERRED: Binary distribution path
+# Binary distribution (single-binary via bun --compile)
 # =============================================================
-# P3.3 attempted bun --compile cross-platform binaries but the
-# path is incompatible with the existing build:full-cli bundler:
-# - scripts/build-full-cli.mjs uses optionalBarePackages allowlist
-#   to keep deps like cssfilter, fsevents, @anthropic-ai/bedrock-sdk
-#   external (intentional for npm publish size)
-# - bun --compile expects a self-contained bundle; cannot resolve
-#   external deps at runtime -> "Cannot find package 'cssfilter'"
-# - Fix requires either:
-#   * Dual bundle mode (lean for npm, full inline for binary)
-#   * Switch to Node SEA (still experimental as of 2026-05)
-#   * Different binary strategy (pkg/nexe deprecated)
+# P3.3 originally deferred this. scripts/build-full-cli.mjs externalizes
+# pure-JS deps (cssfilter, etc.) to keep the npm tarball lean, but
+# `bun --compile` produces a self-contained exe with no runtime node_modules,
+# so those externals failed to resolve ("Cannot find package 'cssfilter'").
 #
-# Active distribution channels:
-# - Docker (GHCR) - working via docker-publish job above
-# - npm (P3.1.c) - user gate on @deepcode-ai org + NPM_TOKEN/OIDC
-#
-# Disabled jobs preserved below as reference. Re-enable after
-# build pipeline restructure.
+# Fixed via a dual bundle (P2.13): `build:full-cli-inline` inlines the installed
+# pure-JS deps and stubs optional/native/stripped-feature modules, producing
+# dist/deepcode-full-inline.mjs which `bun --compile` consumes. The lean
+# dist/deepcode-full.mjs shipped to npm is unchanged. `build:binaries` compiles
+# each target from the inline bundle and smoke-tests it (--version must succeed
+# and must not print "Cannot find package"), so a broken binary fails the job
+# instead of shipping. Windows (bun --compile support unstable) and linux/arm64
+# (no bun target — Docker covers it) are intentionally not built here.
 # =============================================================
-# build-binaries:
-#   runs-on: ${{ matrix.os }}
-#   needs: pack-and-validate
-#   strategy:
-#     matrix:
-#       include:
-#         - os: ubuntu-latest
-#           target: bun-linux-x64
-#           name: deepcode-linux-x64
-#         - os: macos-latest
-#           target: bun-darwin-x64
-#           name: deepcode-darwin-x64
-#         - os: macos-14
-#           target: bun-darwin-arm64
-#           name: deepcode-darwin-arm64
-#   steps:
-#     - name: Checkout
-#       uses: actions/checkout@v4
-#
-#     - name: Setup Bun
-#       uses: oven-sh/setup-bun@v1
-#
-#     - name: Install
-#       run: npm ci
-#
-#     - name: Build full CLI bundle
-#       run: cd packages/deep-code && bun run build:full-cli
-#
-#     - name: Compile binary
-#       run: |
-#         cd packages/deep-code
-#         bun build dist/deepcode-full.mjs --compile --target=${{ matrix.target }} --outfile=${{ matrix.name }}
-#
-#     - name: Upload binary artifact
-#       uses: actions/upload-artifact@v4
-#       with:
-#         name: ${{ matrix.name }}
-#         path: packages/deep-code/${{ matrix.name }}
-#
-# create-release:
-#   runs-on: ubuntu-latest
-#   needs: build-binaries
-#   permissions:
-#     contents: write
-#   steps:
-#     - name: Download all binary artifacts
-#       uses: actions/download-artifact@v4
-#       with:
-#         path: artifacts/
-#
-#     - name: Create GitHub Release
-#       uses: softprops/action-gh-release@v2
-#       with:
-#         files: artifacts/**/*
-#         draft: false
-#         prerelease: ${{ contains(github.ref_name, '-rc') }}
-#         generate_release_notes: true
-#       env:
-#         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  build-binaries:
+    runs-on: ${{ matrix.os }}
+    needs: pack-and-validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Explicit native runners (not macos-latest, which is now arm64) so
+          # each target's smoke gate runs on matching hardware: macos-13=Intel,
+          # macos-14=Apple Silicon.
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            name: deepcode-linux-x64
+          - os: macos-13
+            target: bun-darwin-x64
+            name: deepcode-darwin-x64
+          - os: macos-14
+            target: bun-darwin-arm64
+            name: deepcode-darwin-arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install
+        run: npm ci
+
+      # Builds the self-contained inline bundle, compiles the matrix target, and
+      # smoke-tests the binary (the gate fails on any unresolved dependency).
+      - name: Build + smoke binary
+        run: cd packages/deep-code && DEEPCODE_BINARY_TARGET=${{ matrix.target }} npm run build:binaries
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: packages/deep-code/binaries/${{ matrix.name }}
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    permissions:
+      contents: write
+    steps:
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      # Flatten per-artifact directories and publish a SHA256SUMS manifest
+      # alongside the binaries so downloads can be verified.
+      - name: Collect binaries + checksums
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+          cd release
+          shasum -a 256 deepcode-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
