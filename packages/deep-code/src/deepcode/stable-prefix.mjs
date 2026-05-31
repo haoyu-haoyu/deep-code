@@ -12,6 +12,25 @@ export const DEEPCODE_STABLE_SYSTEM_PROMPT = [
   'No timestamps, request identifiers, random session identifiers, telemetry counters, current user input, or transient diagnostics belong in this stable prefix.',
 ].join(' ')
 
+/**
+ * PREFIX-CACHE INVARIANT (DeepCode's core positioning).
+ *
+ * The assembled prefix — system instructions, tool manifest, skills manifest,
+ * repo summary, and prior conversation history — must stay BYTE-IDENTICAL across
+ * turns so DeepSeek's automatic prefix cache stays warm. Two rules enforce it:
+ *
+ *  1. Every turn only APPENDS new messages; an earlier message or the system
+ *     prefix is never mutated in place. (Verified at the wire level by
+ *     test/deepcode-native.test.mjs "request message-prefix byte-stable across
+ *     tool turns" + its negative control.)
+ *  2. All per-turn TRANSIENT state — attachments, <system-reminder>s, background
+ *     notes, time/env — rides the volatile latest-user-message TAIL, never the
+ *     cached prefix. (Verified by "transient per-turn content rides the message
+ *     tail" in the same file.)
+ *
+ * Compaction is the ONLY sanctioned point at which the prefix changes; treat it
+ * as a deliberate, rare cache reset, not a per-turn mutation.
+ */
 export async function createDeepCodeStablePrefix({
   systemPrompt = [DEEPCODE_STABLE_SYSTEM_PROMPT],
   tools = [],
