@@ -4,6 +4,7 @@ import { Box } from '../../../../ink.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import { isAutoMemoryEnabled } from '../../../../memdir/paths.js';
 import { type AgentMemoryScope, loadAgentMemoryPrompt } from '../../../../tools/AgentTool/agentMemory.js';
+import { useTranslation } from '../../../../i18n/useTranslation.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
 import { Select } from '../../../CustomSelect/select.js';
 import { Byline } from '../../../design-system/Byline.js';
@@ -23,6 +24,9 @@ export function MemoryStep() {
     updateWizardData,
     wizardData
   } = useWizard();
+  const {
+    t
+  } = useTranslation();
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = {
@@ -37,28 +41,28 @@ export function MemoryStep() {
   let t1;
   if ($[1] !== isUserScope) {
     t1 = isUserScope ? [{
-      label: "User scope (~/.deepcode/agent-memory/) (Recommended)",
+      label: t('agent.memoryStep.scope.userRecommended'),
       value: "user"
     }, {
-      label: "None (no persistent memory)",
+      label: t('agent.memoryStep.scope.none'),
       value: "none"
     }, {
-      label: "Project scope (.deepcode/agent-memory/)",
+      label: t('agent.memoryStep.scope.project'),
       value: "project"
     }, {
-      label: "Local scope (.deepcode/agent-memory-local/)",
+      label: t('agent.memoryStep.scope.local'),
       value: "local"
     }] : [{
-      label: "Project scope (.deepcode/agent-memory/) (Recommended)",
+      label: t('agent.memoryStep.scope.projectRecommended'),
       value: "project"
     }, {
-      label: "None (no persistent memory)",
+      label: t('agent.memoryStep.scope.none'),
       value: "none"
     }, {
-      label: "User scope (~/.deepcode/agent-memory/)",
+      label: t('agent.memoryStep.scope.user'),
       value: "user"
     }, {
-      label: "Local scope (.deepcode/agent-memory-local/)",
+      label: t('agent.memoryStep.scope.local'),
       value: "local"
     }];
     $[1] = isUserScope;
@@ -100,7 +104,7 @@ export function MemoryStep() {
   }
   let t4;
   if ($[9] !== goBack || $[10] !== handleSelect || $[11] !== memoryOptions) {
-    t4 = <WizardDialogLayout subtitle="Configure agent memory" footerText={t3}><Box><Select key="memory-select" options={memoryOptions} onChange={handleSelect} onCancel={goBack} /></Box></WizardDialogLayout>;
+    t4 = <WizardDialogLayout subtitle={t('agent.memoryStep.subtitle')} footerText={t3}><Box><Select key="memory-select" options={memoryOptions} onChange={handleSelect} onCancel={goBack} /></Box></WizardDialogLayout>;
     $[9] = goBack;
     $[10] = handleSelect;
     $[11] = memoryOptions;

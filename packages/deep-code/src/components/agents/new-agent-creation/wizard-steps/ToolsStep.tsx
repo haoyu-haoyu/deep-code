@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { type ReactNode } from 'react';
 import type { Tools } from '../../../../Tool.js';
+import { useTranslation } from '../../../../i18n/useTranslation.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
 import { Byline } from '../../../design-system/Byline.js';
 import { KeyboardShortcutHint } from '../../../design-system/KeyboardShortcutHint.js';
@@ -22,6 +23,9 @@ export function ToolsStep(t0) {
     updateWizardData,
     wizardData
   } = useWizard();
+  const {
+    t
+  } = useTranslation();
   let t1;
   if ($[0] !== goNext || $[1] !== updateWizardData) {
     t1 = selectedTools => {
@@ -47,7 +51,7 @@ export function ToolsStep(t0) {
   }
   let t3;
   if ($[4] !== goBack || $[5] !== handleComplete || $[6] !== initialTools || $[7] !== tools) {
-    t3 = <WizardDialogLayout subtitle="Select tools" footerText={t2}><ToolSelector tools={tools} initialTools={initialTools} onComplete={handleComplete} onCancel={goBack} /></WizardDialogLayout>;
+    t3 = <WizardDialogLayout subtitle={t('agents.wizard.tools.subtitle')} footerText={t2}><ToolSelector tools={tools} initialTools={initialTools} onComplete={handleComplete} onCancel={goBack} /></WizardDialogLayout>;
     $[4] = goBack;
     $[5] = handleComplete;
     $[6] = initialTools;

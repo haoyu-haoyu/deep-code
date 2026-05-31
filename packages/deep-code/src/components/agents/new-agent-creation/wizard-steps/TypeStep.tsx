@@ -1,6 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { type ReactNode, useState } from 'react';
 import { Box, Text } from '../../../../ink.js';
+import { useTranslation } from '../../../../i18n/useTranslation.js';
 import { useKeybinding } from '../../../../keybindings/useKeybinding.js';
 import type { AgentDefinition } from '../../../../tools/AgentTool/loadAgentsDir.js';
 import { ConfigurableShortcutHint } from '../../../ConfigurableShortcutHint.js';
@@ -22,6 +23,7 @@ export function TypeStep(_props) {
     updateWizardData,
     wizardData
   } = useWizard();
+  const { t } = useTranslation();
   const [agentType, setAgentType] = useState(wizardData.agentType || "");
   const [error, setError] = useState(null);
   const [cursorOffset, setCursorOffset] = useState(agentType.length);
@@ -66,14 +68,14 @@ export function TypeStep(_props) {
   }
   let t3;
   if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-    t3 = <Text>Enter a unique identifier for your agent:</Text>;
+    t3 = <Text>{t('agents.type.prompt')}</Text>;
     $[5] = t3;
   } else {
     t3 = $[5];
   }
   let t4;
   if ($[6] !== agentType || $[7] !== cursorOffset || $[8] !== handleSubmit) {
-    t4 = <Box marginTop={1}><TextInput value={agentType} onChange={setAgentType} onSubmit={handleSubmit} placeholder="e.g., test-runner, tech-lead, etc" columns={60} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} focus={true} showCursor={true} /></Box>;
+    t4 = <Box marginTop={1}><TextInput value={agentType} onChange={setAgentType} onSubmit={handleSubmit} placeholder={t('agents.type.placeholder')} columns={60} cursorOffset={cursorOffset} onChangeCursorOffset={setCursorOffset} focus={true} showCursor={true} /></Box>;
     $[6] = agentType;
     $[7] = cursorOffset;
     $[8] = handleSubmit;
@@ -91,7 +93,7 @@ export function TypeStep(_props) {
   }
   let t6;
   if ($[12] !== t4 || $[13] !== t5) {
-    t6 = <WizardDialogLayout subtitle="Agent type (identifier)" footerText={t2}><Box flexDirection="column">{t3}{t4}{t5}</Box></WizardDialogLayout>;
+    t6 = <WizardDialogLayout subtitle={t('agents.type.subtitle')} footerText={t2}><Box flexDirection="column">{t3}{t4}{t5}</Box></WizardDialogLayout>;
     $[12] = t4;
     $[13] = t5;
     $[14] = t6;
