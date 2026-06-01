@@ -17,9 +17,10 @@ The fully-validatable high-value tier is **complete** — 8 PRs, all merged gree
 | P2.13 fix prebuilt binary distribution (dual bundle) | done | #292 |
 | P2.12 built-in codegraph (pure-JS index + tool) | done | #293 |
 | P2.16 ACP editor integration (Agent Client Protocol over stdio) | done | #295 |
-| P2.17 controller/desktop (Phase 0/1) | DEFERRED (go/no-go) | — |
+| P2.17-A real tool-executing ACP agent | done | #297 |
+| P2.17-B desktop GUI / React-free controller | DEFERRED (go/no-go) | — |
 
-**P2.17 decision (2026-06-01): DEFER.** Terminal-first DeepSeek coding assistant with no proven non-TUI demand; the full controller+desktop bet is XL effort retrofitting a tri-frontend design onto a 4883-line React-bound REPL. The cheap, high-leverage half (A — a single `toWireEvent` event vocabulary + running the real agent loop in serve/ACP, turning the P2.16 ACP echo into a real tool-executing agent) remains available and is the de-risked entry point IF serve/ACP becomes a product surface. The desktop GUI (B) stays deferred until a concrete product trigger (a paying integration needing HTTP/SSE, or real desktop demand).
+**P2.17 decision (2026-06-01): A done, B deferred.** P2.17-A (#297) shipped — the P2.16 ACP echo is now a real tool-executing agent (`acpAgentTurn` drives `runDeepSeekAgent` with read-only sandboxed tools, streaming ACP tool_call/tool_call_update). NOTE the implemented path drives DeepSeek provider events directly via runDeepSeekAgent rather than the `toWireEvent` query()-Message mapper sketched below — that mapper is the TUI vocabulary and is the wrong abstraction for the DeepSeek-native loop. P2.17-B (the desktop GUI + React-free SessionController) stays DEFERRED: terminal-first product, no proven non-TUI demand, XL retrofit onto a 4883-line React-bound REPL. Re-enter on a concrete product trigger (a paying integration needing HTTP/SSE, or real desktop demand). Next ACP follow-up: write/exec tools + the `session/request_permission` approval round-trip.
 
 Live findings worth keeping: prefix cache hits ~93% warm on real DeepSeek; re-sending `reasoning_content` on tool turns costs 0 extra prompt tokens on `deepseek-v4-pro` (so `reasoningReplay` stays default-true); only `deepseek-v4-pro`/`deepseek-v4-flash` are real API models (legacy aliases downgrade to flash). The detail below is the original plan; the two remaining workstreams (ACP, controller) are the largest and least live-key-testable.
 
