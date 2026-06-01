@@ -1,4 +1,5 @@
 import { startHttpServer } from './http.mjs'
+import { startAcpServer } from './acp/index.mjs'
 
 export async function startServeMode({
   acp = false,
@@ -6,11 +7,20 @@ export async function startServeMode({
   http = false,
   port,
   stderr = process.stderr,
+  stdin = process.stdin,
   stdout = process.stdout,
 } = {}) {
   if (acp) {
-    stderr.write('ACP protocol mode is not yet implemented. Reserved for future phase.\n')
-    process.exit(78)
+    // ACP (Agent Client Protocol) over stdio: serve --acp delegates with
+    // stdio:'inherit', so stdin/stdout are the editor's pipes. Stay alive until
+    // the editor closes stdin.
+    const { closed } = startAcpServer({ stdin, stdout, env: process.env })
+    await closed
+    // The editor closed stdin: flush any buffered output, then exit promptly.
+    // The full-CLI bundle leaves other handles on the loop, so returning isn't
+    // enough to end the process.
+    await new Promise(resolve => stdout.write('', resolve))
+    process.exit(0)
   }
 
   if (http) {
