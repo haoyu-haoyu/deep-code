@@ -9,6 +9,11 @@
 
 export const ACP_PROTOCOL_VERSION = 1
 
+// The ONLY permission outcome optionIds that grant a write (case-sensitive).
+// `allow`/`allow_once` permit a single call; `allow_always` permits it and is
+// remembered for the rest of the session. Everything else denies.
+export const ACP_ALLOW_OPTION_IDS = new Set(['allow', 'allow_once', 'allow_always'])
+
 // --- JSON-RPC newline framing --------------------------------------------
 
 /** Encode a JSON-RPC message as one newline-terminated line. */
@@ -161,10 +166,20 @@ export function createAcpServer({ runTurn, sessions, send, env = process.env, se
   const replyError = (id, code, message) => { if (hasId(id)) send({ jsonrpc: '2.0', id, error: { code, message } }) }
   const notify = (method, params) => send({ jsonrpc: '2.0', method, params })
 
+  // Per-session record of tool names approved for the WHOLE session via the
+  // `allow_always` outcome — so the editor is not re-prompted for the same tool.
+  // Bounded by the connection lifetime (one process per editor connection).
+  const sessionAlwaysAllow = new Map() // sessionId -> Set<toolName>
+
   // Ask the editor to approve a tool call (ACP session/request_permission).
   // DENY-SAFE: with no transport, on any transport error/timeout/disconnect, or
-  // on a non-"allow"/cancelled outcome, this resolves to false (denied).
+  // on anything other than an explicit selected+allow* outcome, this resolves to
+  // false (denied). `allow_always` additionally REMEMBERS the tool for the rest
+  // of the session, so subsequent calls of that tool auto-approve without a
+  // round-trip.
   async function requestPermission(sessionId, toolCall) {
+    const toolName = String(toolCall?.title ?? 'tool')
+    if (sessionAlwaysAllow.get(sessionId)?.has(toolName)) return true
     if (typeof sendRequest !== 'function') return false
     let result
     try {
@@ -172,14 +187,22 @@ export function createAcpServer({ runTurn, sessions, send, env = process.env, se
         sessionId,
         toolCall,
         options: [
-          { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+          { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' },
+          { optionId: 'allow_always', name: 'Allow for the rest of this session', kind: 'allow_always' },
           { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
         ],
       })
     } catch {
       return false
     }
-    return result?.outcome?.outcome === 'selected' && result.outcome.optionId === 'allow'
+    const outcome = result?.outcome
+    if (outcome?.outcome !== 'selected' || !ACP_ALLOW_OPTION_IDS.has(outcome.optionId)) return false
+    if (outcome.optionId === 'allow_always') {
+      let allowed = sessionAlwaysAllow.get(sessionId)
+      if (!allowed) { allowed = new Set(); sessionAlwaysAllow.set(sessionId, allowed) }
+      allowed.add(toolName)
+    }
+    return true
   }
 
   async function handlePrompt(id, params) {

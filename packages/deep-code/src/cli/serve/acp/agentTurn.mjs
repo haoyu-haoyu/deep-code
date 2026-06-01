@@ -3,10 +3,11 @@
 // tools to inspect the workspace and the loop feeds results back until it
 // answers. Streams provider output as ACP session/update objects.
 //
-// PR1 ships READ-ONLY tools only (Read + the read-only Bash allowlist: ls/cat/
-// pwd), sandboxed to the session cwd. Read-only tools need no approval, so this
-// is safe to expose over stdio. Write/exec tools + the ACP
-// session/request_permission round-trip are a follow-up.
+// Read-only tools (Read + the read-only Bash allowlist: ls/cat/pwd) need no
+// approval. Write tools (Edit/Write) are gated behind the ACP
+// session/request_permission round-trip; the editor may answer `allow_always`,
+// which the dispatcher remembers for the rest of the session so the same tool
+// is not re-prompted. Everything is sandboxed to the session cwd.
 //
 // All-.mjs (DeepSeek-native stack) → works in raw src AND the standalone binary
 // (no bundle-only .ts import, unlike the echo path's queryRuntimeWithStreaming).
@@ -21,7 +22,7 @@ import { createDeepSeekLocalTools } from '../../../deepcode/local-toolchain.mjs'
 export const ACP_AGENT_SYSTEM_PROMPT = [
   'You are Deep Code, a DeepSeek-native coding assistant driving an editor over the Agent Client Protocol.',
   'Inspect the workspace with Read and Bash (ls/cat/pwd) before acting.',
-  'Use Edit to change a file. Edits require the user to approve them in the editor, so keep them minimal and precise; if an edit is denied, stop and explain.',
+  'Use Edit to change an existing file and Write to create a new one. Writes require the user to approve them in the editor, so keep them minimal and precise; if a write is denied, stop and explain.',
   'Answer concisely and cite file paths (and line numbers where useful).',
 ]
 
@@ -115,12 +116,12 @@ function wrapTool(tool, { onUpdate, signal, requestPermission, needsApproval }) 
 }
 
 /**
- * Read-only ACP tool set: the local toolchain MINUS Edit (the only writer),
+ * Read-only ACP tool set: the local toolchain MINUS every writer (Edit/Write),
  * each wrapped for tool_call_update events. No approval needed.
  */
 export function buildReadOnlyAcpTools({ cwd = process.cwd(), onUpdate = () => {}, signal } = {}) {
   return createDeepSeekLocalTools({ cwd })
-    .filter(tool => tool.name !== 'Edit')
+    .filter(tool => !WRITE_TOOLS.has(tool.name))
     .map(tool => wrapTool(tool, { onUpdate, signal, needsApproval: false }))
 }
 

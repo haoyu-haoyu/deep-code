@@ -1628,8 +1628,8 @@ test('createDeepCodeStableTools exposes real local tools for stable prefix manif
   const tools = createDeepCodeStableTools({ cwd: '/tmp/workspace' })
   const stable = await createDeepCodeStablePrefix({ tools })
 
-  assert.deepEqual(tools.map(tool => tool.name), ['Read', 'Edit', 'Bash'])
-  assert.deepEqual(stable.stableTools.map(tool => tool.name), ['Bash', 'Edit', 'Read'])
+  assert.deepEqual(tools.map(tool => tool.name), ['Read', 'Edit', 'Write', 'Bash'])
+  assert.deepEqual(stable.stableTools.map(tool => tool.name), ['Bash', 'Edit', 'Read', 'Write'])
   assert.ok(stable.systemPrompt.some(item => item.includes('Stable tool manifest')))
   assert.equal(
     stable.stableTools.find(tool => tool.name === 'Read').parameters.properties.file_path.type,
@@ -2610,6 +2610,7 @@ test('runDeepSeekLocalToolChain executes Read -> Edit -> Bash -> Read through De
     'Bash',
     'Edit',
     'Read',
+    'Write',
   ])
   assert.equal(requests[1].body.messages.at(-2).reasoning_content, 'Need to read the file first.')
   assert.equal(requests[4].body.messages.at(-1).role, 'tool')
@@ -2638,12 +2639,12 @@ test('runDeepSeekLocalToolChain uses real tools in both stable prefix and DeepSe
   assert.equal(result.content, 'done')
   assert.deepEqual(
     result.stablePrefix.stableTools.map(tool => tool.name),
-    ['Bash', 'Edit', 'Read'],
+    ['Bash', 'Edit', 'Read', 'Write'],
   )
   assert.equal(requests.length, 1)
   assert.deepEqual(
     requests[0].body.tools.map(tool => tool.function.name),
-    ['Bash', 'Edit', 'Read'],
+    ['Bash', 'Edit', 'Read', 'Write'],
   )
   assert.match(
     requests[0].body.messages[0].content,
