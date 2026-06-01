@@ -73,6 +73,7 @@ jobs:
             test/p3-1-release.test.mjs \
             test/p3-2-docker.test.mjs \
             test/p3-3-binaries.test.mjs \
+            test/p3-4-live-e2e.test.mjs \
             test/phase5-perf-compare.test.mjs \
             test/phase5-ci-workflow.test.mjs \
             test/a1-mcp-nonblocking.test.mjs \

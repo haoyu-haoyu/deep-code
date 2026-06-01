@@ -1,0 +1,131 @@
+name: Live E2E (DeepSeek)
+
+# Live, NON-BLOCKING end-to-end validation against the real DeepSeek API.
+# Deliberately NOT triggered on pull_request / push — it needs a real API key
+# (cost + secret), so it runs on manual dispatch and a nightly schedule only.
+# Every job is guarded on the DEEPSEEK_API_KEY secret: when the secret is
+# absent (e.g. a fork) the live steps skip with a notice instead of failing.
+on:
+  workflow_dispatch:
+  schedule:
+    # Nightly at 07:00 UTC.
+    - cron: '0 7 * * *'
+
+concurrency:
+  group: live-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-e2e:
+    name: Live DeepSeek probes (cache, reasoning, tool-chain, ACP)
+    runs-on: ubuntu-latest
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Skip-with-notice when the key secret is not configured, so the nightly
+      # run on an unconfigured fork is green rather than a false failure.
+      - name: Guard on API key secret
+        id: guard
+        shell: bash
+        run: |
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Live E2E skipped: DEEPSEEK_API_KEY secret is not configured."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prefix-cache cold→warm E2E (cache hit rate)
+        if: steps.guard.outputs.run == 'true'
+        working-directory: packages/deep-code
+        env:
+          DEEPCODE_REAL_E2E: '1'
+        run: npm run test:real-cache-e2e
+
+      - name: Reasoning-replay cost probe
+        if: steps.guard.outputs.run == 'true'
+        working-directory: packages/deep-code
+        env:
+          DEEPCODE_REAL_E2E: '1'
+        run: npm run test:reasoning-cost
+
+      - name: Tool-chain E2E (Read → Edit → Write → Bash)
+        if: steps.guard.outputs.run == 'true'
+        working-directory: packages/deep-code
+        env:
+          DEEPCODE_REAL_E2E: '1'
+        run: npm run test:toolchain-e2e
+
+      - name: ACP allow_always + Write E2E
+        if: steps.guard.outputs.run == 'true'
+        working-directory: packages/deep-code
+        env:
+          DEEPCODE_REAL_E2E: '1'
+        run: npm run test:acp-e2e
+
+  binary-smoke:
+    name: Binary build + live-query smoke (darwin-arm64)
+    runs-on: macos-14
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Builds the inline bundle, bun --compiles the arm64 target, and smoke
+      # tests `--version` (exit 0 + no "Cannot find package"). This is the real
+      # bun --compile path that CI never otherwise exercises.
+      - name: Build + smoke darwin-arm64 binary
+        working-directory: packages/deep-code
+        env:
+          DEEPCODE_BINARY_TARGET: bun-darwin-arm64
+        run: npm run build:binaries
+
+      - name: Guard on API key secret
+        id: guard
+        shell: bash
+        run: |
+          if [ -z "$DEEPSEEK_API_KEY" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Binary live-query smoke skipped: DEEPSEEK_API_KEY secret is not configured."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Live query through the compiled binary
+        if: steps.guard.outputs.run == 'true'
+        working-directory: packages/deep-code
+        shell: bash
+        run: |
+          out=$(./binaries/deepcode-darwin-arm64 -p "Reply with exactly: binary-live-ok")
+          echo "binary replied: $out"
+          echo "$out" | grep -q "binary-live-ok"

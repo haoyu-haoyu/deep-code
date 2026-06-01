@@ -46,6 +46,8 @@
     "test:tui-deepseek": "bun test test/tui-deepseek.test.mjs",
     "test:real-cache-e2e": "node scripts/deepseek-cache-e2e.mjs",
     "test:reasoning-cost": "node scripts/deepseek-reasoning-cost-probe.mjs",
+    "test:toolchain-e2e": "node scripts/deepseek-toolchain-e2e.mjs",
+    "test:acp-e2e": "node scripts/deepseek-acp-e2e.mjs",
     "perf:fixture": "node scripts/perf/generate-fixture.mjs --count=1000",
     "perf:baseline": "bun scripts/perf-baseline.mjs",
     "perf:compare": "node scripts/perf-compare.mjs",
