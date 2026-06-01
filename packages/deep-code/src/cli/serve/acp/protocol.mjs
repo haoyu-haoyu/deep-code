@@ -96,6 +96,7 @@ export function extractPromptText(prompt) {
 export function mapStopReason(runtimeStopReason) {
   const reason = String(runtimeStopReason ?? '').toLowerCase()
   if (reason === 'length' || reason === 'max_tokens') return 'max_tokens'
+  if (reason === 'max_turns' || reason === 'max_turn_requests') return 'max_turn_requests'
   if (reason === 'content_filter' || reason === 'refusal') return 'refusal'
   return 'end_turn'
 }
@@ -172,8 +173,14 @@ export function createAcpServer({ runTurn, sessions, send, env = process.env } =
     let stopReason = 'end_turn'
     try {
       // Drive the iterator manually so its RETURN value (the runtime stop
-      // reason) is captured — a plain for-await would discard it.
-      const iterator = runTurn({ prompt: promptText, signal: abortController.signal, env })
+      // reason) is captured — a plain for-await would discard it. The turn runs
+      // in the session's cwd (from session/new).
+      const iterator = runTurn({
+        prompt: promptText,
+        signal: abortController.signal,
+        env,
+        cwd: started.session?.cwd,
+      })
       let step = await iterator.next()
       while (!step.done) {
         if (step.value) notify('session/update', { sessionId, update: step.value })

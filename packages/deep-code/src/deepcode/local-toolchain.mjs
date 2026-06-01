@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
-import { resolve, relative, sep } from 'node:path'
+import { dirname, resolve, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 import {
   createDeepSeekCacheDiagnostics,
@@ -147,15 +148,48 @@ export async function runAllowedBashCommand(workspaceRoot, rawCommand) {
   throw new Error(`Bash command is not allowed: ${command}`)
 }
 
+function isWithin(root, target) {
+  const rel = relative(root, target)
+  return rel === '' || (!rel.startsWith('..') && !rel.includes(`..${sep}`))
+}
+
 export function resolveWorkspacePath(workspaceRoot, filePath) {
   if (!filePath || typeof filePath !== 'string') {
     throw new Error('file_path is required')
   }
   const root = resolve(workspaceRoot)
   const resolved = resolve(root, filePath)
-  const rel = relative(root, resolved)
-  if (rel === '' || (!rel.startsWith('..') && !rel.includes(`..${sep}`))) {
-    return resolved
+  if (!isWithin(root, resolved)) {
+    throw new Error(`Path is outside workspace: ${filePath}`)
   }
-  throw new Error(`Path is outside workspace: ${filePath}`)
+  // Canonicalize to defeat symlink escapes: the REAL path must still be inside
+  // the REAL workspace root. We realpath the root too because the workspace
+  // itself can sit under a symlink (e.g. macOS /tmp -> /private/tmp). When the
+  // leaf does not exist yet (a new file), we canonicalize the DEEPEST EXISTING
+  // ANCESTOR instead — so a symlinked parent directory pointing outside is
+  // caught even before the leaf is created (closes the write-side TOCTOU).
+  let realRoot
+  try {
+    realRoot = realpathSync(root)
+  } catch {
+    realRoot = root
+  }
+  let probe = resolved
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let realProbe
+    try {
+      realProbe = realpathSync(probe)
+    } catch {
+      const parent = dirname(probe)
+      if (parent === probe) break // reached the filesystem root, nothing resolved
+      probe = parent
+      continue
+    }
+    if (!isWithin(realRoot, realProbe)) {
+      throw new Error(`Path escapes workspace via symlink: ${filePath}`)
+    }
+    break
+  }
+  return resolved
 }

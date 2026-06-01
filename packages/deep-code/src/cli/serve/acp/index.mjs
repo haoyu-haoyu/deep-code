@@ -4,6 +4,7 @@
 
 import { StringDecoder } from 'node:string_decoder'
 import { createSessionRegistry } from '../sessions.mjs'
+import { acpAgentTurn } from './agentTurn.mjs'
 import {
   createAcpServer,
   encodeMessage,
@@ -50,7 +51,9 @@ export function startAcpServer({
   stdin = process.stdin,
   stdout = process.stdout,
   env = process.env,
-  runTurn = defaultAcpRunTurn,
+  // Real tool-executing agent (read-only tools) by default; defaultAcpRunTurn
+  // remains as the no-tools echo fallback.
+  runTurn = acpAgentTurn,
   sessions = createSessionRegistry(),
 } = {}) {
   const send = message => stdout.write(encodeMessage(message))
