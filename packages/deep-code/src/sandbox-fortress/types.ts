@@ -41,6 +41,17 @@ export type StrictnessLevel = 'lenient' | 'standard' | 'paranoid'
 export interface ToolSandboxProfile {
   toolName: string
   fileSystemMode: 'read-only' | 'workspace-write' | 'no-fs'
+  /**
+   * @deprecated ADVISORY ONLY — NOT a security boundary. `mergeProfileIntoConfig`
+   * writes the deny/restrict intent into `customConfig.network`, but the
+   * sandbox-runtime HTTP/SOCKS proxy reads its allowlist from GLOBAL init config
+   * at process start, not per-call customConfig — so `networkMode: 'deny'` does
+   * NOT block outbound traffic. (The only enforced network control today is the
+   * process-wide `allowManagedDomainsOnly` policy in adapter/legacy.ts.) A
+   * per-call Layer-2 outbound interceptor is needed to make this real (tracked
+   * as F2.x). Until then do NOT rely on networkMode to isolate a tool's network
+   * access; treat it as a defense-in-depth hint only.
+   */
   networkMode: 'allow' | 'deny' | 'allow-with-restrictions'
   additionalDenyPatterns?: string[]
   additionalAllowPatterns?: string[]
