@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { PassThrough } from 'node:stream'
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -105,7 +105,8 @@ test('dispatcher: requestPermission sends session/request_permission and maps "a
   assert.equal(requests.length, 1)
   assert.equal(requests[0].method, 'session/request_permission')
   assert.equal(requests[0].params.sessionId, sessionId)
-  assert.ok(requests[0].params.options.some(o => o.optionId === 'allow'))
+  const offered = requests[0].params.options.map(o => o.optionId)
+  assert.ok(offered.includes('allow_once') && offered.includes('allow_always'), 'offers allow_once + allow_always')
   assert.equal(captured(), true)
 })
 
@@ -180,7 +181,7 @@ test('transport: a pending permission request is denied when the client disconne
   assert.equal(outcome, false)
 })
 
-test('SECURITY: a write is permitted ONLY on an exact selected+allow outcome', async () => {
+test('SECURITY: a write is permitted ONLY on an exact selected + allow* outcome', async () => {
   // Every malformed / edge / wrong-case permission response must DENY.
   const denyCases = [
     undefined,
@@ -193,6 +194,8 @@ test('SECURITY: a write is permitted ONLY on an exact selected+allow outcome', a
     { outcome: true },
     true,
     { outcome: { outcome: 'selected', optionId: 'ALLOW' } }, // case-sensitive
+    { outcome: { outcome: 'selected', optionId: 'allow_forever' } }, // not a real optionId
+    { outcome: { outcome: 'allowed', optionId: 'allow' } }, // outcome must be exactly 'selected'
   ]
   for (const result of denyCases) {
     const s = serverWithSendRequest(async () => result)
@@ -200,9 +203,120 @@ test('SECURITY: a write is permitted ONLY on an exact selected+allow outcome', a
     await s.server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: s.sent.at(-1).result.sessionId, prompt: 'x' } })
     assert.equal(s.captured(), false, `must deny: ${JSON.stringify(result)}`)
   }
-  // The one and only allow shape.
-  const allow = serverWithSendRequest(async () => ({ outcome: { outcome: 'selected', optionId: 'allow' } }))
-  await allow.server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'session/new' })
-  await allow.server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: allow.sent.at(-1).result.sessionId, prompt: 'x' } })
-  assert.equal(allow.captured(), true)
+  // The allow shapes — and ONLY these — grant the write.
+  for (const optionId of ['allow', 'allow_once', 'allow_always']) {
+    const allow = serverWithSendRequest(async () => ({ outcome: { outcome: 'selected', optionId } }))
+    await allow.server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'session/new' })
+    await allow.server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: allow.sent.at(-1).result.sessionId, prompt: 'x' } })
+    assert.equal(allow.captured(), true, `must allow: ${optionId}`)
+  }
+})
+
+// --- allow_always: session-scoped permission memory -----------------------
+
+// Drive N requestPermission calls (with the given tool titles) in one turn and
+// report each outcome plus how many times the editor was actually prompted.
+function serverWithPermissionProbe(sendRequest, titles) {
+  const sent = []
+  const outcomes = []
+  const runTurn = async function* ({ requestPermission }) {
+    for (const title of titles) {
+      outcomes.push(await requestPermission({ toolCallId: title, title, kind: 'edit', rawInput: {} }))
+    }
+    return 'end_turn'
+  }
+  const server = createAcpServer({ runTurn, sessions: createSessionRegistry(), send: m => sent.push(m), env: {}, sendRequest })
+  const runOnce = async () => {
+    await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'session/new' })
+    const sessionId = sent.at(-1).result.sessionId
+    await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId, prompt: 'x' } })
+    return sessionId
+  }
+  return { server, sent, outcomes, runOnce }
+}
+
+test('dispatcher: allow_always is remembered — the second call of that tool auto-approves without re-prompting', async () => {
+  let prompts = 0
+  const probe = serverWithPermissionProbe(async () => { prompts++; return { outcome: { outcome: 'selected', optionId: 'allow_always' } } }, ['Edit', 'Edit', 'Edit'])
+  await probe.runOnce()
+  assert.deepEqual(probe.outcomes, [true, true, true])
+  assert.equal(prompts, 1, 'only the first Edit prompts the editor; the rest are remembered')
+})
+
+test('dispatcher: allow_always is scoped to the tool name — a different tool still prompts', async () => {
+  let prompts = 0
+  const probe = serverWithPermissionProbe(async () => { prompts++; return { outcome: { outcome: 'selected', optionId: 'allow_always' } } }, ['Edit', 'Write'])
+  await probe.runOnce()
+  assert.deepEqual(probe.outcomes, [true, true])
+  assert.equal(prompts, 2, 'Write is a different tool, so it is not covered by the Edit grant')
+})
+
+test('dispatcher: allow_once does NOT persist — the next call prompts again', async () => {
+  let prompts = 0
+  const probe = serverWithPermissionProbe(async () => { prompts++; return { outcome: { outcome: 'selected', optionId: 'allow_once' } } }, ['Edit', 'Edit'])
+  await probe.runOnce()
+  assert.deepEqual(probe.outcomes, [true, true])
+  assert.equal(prompts, 2, 'allow_once is single-use, so each call re-prompts')
+})
+
+test('dispatcher: an allow_always grant in one session does NOT leak to another session', async () => {
+  let prompts = 0
+  const sendRequest = async () => { prompts++; return { outcome: { outcome: 'selected', optionId: 'allow_always' } } }
+  const sent = []
+  let captured
+  const runTurn = async function* ({ requestPermission }) {
+    captured = await requestPermission({ toolCallId: 't', title: 'Edit', kind: 'edit', rawInput: {} })
+    return 'end_turn'
+  }
+  const server = createAcpServer({ runTurn, sessions: createSessionRegistry(), send: m => sent.push(m), env: {}, sendRequest })
+  // Session A grants allow_always.
+  await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'session/new' })
+  const a = sent.at(-1).result.sessionId
+  await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: a, prompt: 'x' } })
+  // Session B is a fresh session — must prompt again.
+  await server.handleMessage({ jsonrpc: '2.0', id: 3, method: 'session/new' })
+  const b = sent.at(-1).result.sessionId
+  await server.handleMessage({ jsonrpc: '2.0', id: 4, method: 'session/prompt', params: { sessionId: b, prompt: 'x' } })
+  assert.notEqual(a, b)
+  assert.equal(prompts, 2, 'each session negotiates its own permissions')
+  assert.equal(captured, true)
+})
+
+// --- the Write tool (gated, sandboxed) ------------------------------------
+
+test('buildAcpTools: Write is gated — denial blocks file creation, approval creates it', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'acp-write-'))
+  try {
+    let asked = null
+    const denyTools = buildAcpTools({ cwd: dir, requestPermission: async tc => { asked = tc; return false } })
+    const wDeny = denyTools.find(t => t.name === 'Write')
+    assert.ok(wDeny, 'full tool set includes Write')
+    await assert.rejects(
+      () => wDeny.execute({ file_path: 'new.txt', content: 'hi' }, { toolCall: { id: 'w1' } }),
+      /Permission denied/,
+    )
+    assert.equal(asked?.title, 'Write')
+    assert.equal(asked?.kind, 'edit')
+    assert.equal(existsSync(join(dir, 'new.txt')), false, 'a denied Write must not create the file')
+
+    const wOk = buildAcpTools({ cwd: dir, requestPermission: async () => true }).find(t => t.name === 'Write')
+    await wOk.execute({ file_path: 'new.txt', content: 'hello' }, { toolCall: { id: 'w2' } })
+    assert.equal(readFileSync(join(dir, 'new.txt'), 'utf8'), 'hello')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('buildAcpTools: Write cannot escape the workspace', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'acp-write-'))
+  try {
+    const w = buildAcpTools({ cwd: dir, requestPermission: async () => true }).find(t => t.name === 'Write')
+    await assert.rejects(
+      () => w.execute({ file_path: '../escape.txt', content: 'x' }, { toolCall: { id: 'w' } }),
+      /outside workspace|escapes workspace/,
+    )
+    assert.equal(existsSync(join(dir, '..', 'escape.txt')), false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

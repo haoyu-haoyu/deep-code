@@ -97,6 +97,24 @@ export function createDeepSeekLocalTools({ cwd = process.cwd() } = {}) {
       },
     },
     {
+      name: 'Write',
+      description:
+        'Create or overwrite a UTF-8 text file in the current workspace.',
+      inputJSONSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string' },
+          content: { type: 'string' },
+        },
+        required: ['file_path', 'content'],
+      },
+      async execute(input) {
+        const filePath = resolveWorkspacePath(workspaceRoot, input.file_path)
+        await writeFile(filePath, String(input.content ?? ''))
+        return `Wrote ${input.file_path}`
+      },
+    },
+    {
       name: 'Bash',
       description:
         'Run a small allowlisted shell-style verification command in the current workspace.',
