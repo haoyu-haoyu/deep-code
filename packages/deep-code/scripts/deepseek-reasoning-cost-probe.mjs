@@ -10,10 +10,6 @@
 //   DEEPCODE_REAL_E2E=1 node scripts/deepseek-reasoning-cost-probe.mjs
 //   (or: npm run test:reasoning-cost)
 
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import {
   buildDeepSeekRequest,
   calculateDeepSeekCacheHitRate,
@@ -21,6 +17,7 @@ import {
   createDeepSeekProvider,
   resolveDeepSeekConfig,
 } from '../src/deepcode/deepseek-native.mjs'
+import { resolveLiveE2EEnv } from './lib/deepseek-e2e-env.mjs'
 
 const REAL_E2E_FLAG = 'DEEPCODE_REAL_E2E'
 const SETTLE_MS = 3000
@@ -34,7 +31,7 @@ async function main() {
   }
 
   const cwd = process.cwd()
-  const env = mergeSettingsEnv(process.env, await loadDeepCodeSettings(process.env))
+  const env = await resolveLiveE2EEnv()
   const config = resolveDeepSeekConfig({ env, cwd })
   if (!config.apiKey) {
     console.error('reasoning-cost probe failed: missing DEEPSEEK_API_KEY / DEEPCODE_API_KEY.')
@@ -136,49 +133,6 @@ function formatRun(label, run) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-async function loadDeepCodeSettings(env) {
-  const configDir = env.DEEPCODE_CONFIG_DIR || join(homedir(), '.deepcode')
-  const settingsPath = join(configDir, 'settings.json')
-  if (!existsSync(settingsPath)) return {}
-  try {
-    return JSON.parse(await readFile(settingsPath, 'utf8'))
-  } catch {
-    return {}
-  }
-}
-
-function mergeSettingsEnv(env, settings) {
-  const settingsEnv = settings.env ?? {}
-  return {
-    ...env,
-    DEEPSEEK_API_KEY: firstConfigured(
-      env.DEEPSEEK_API_KEY,
-      env.DEEPCODE_API_KEY,
-      settingsEnv.DEEPSEEK_API_KEY,
-      settingsEnv.DEEPCODE_API_KEY,
-      settingsEnv.API_KEY,
-    ),
-    DEEPSEEK_BASE_URL: firstConfigured(
-      env.DEEPSEEK_BASE_URL,
-      env.DEEPCODE_BASE_URL,
-      settingsEnv.DEEPSEEK_BASE_URL,
-      settingsEnv.DEEPCODE_BASE_URL,
-      settingsEnv.BASE_URL,
-    ),
-    DEEPSEEK_MODEL: firstConfigured(
-      env.DEEPSEEK_MODEL,
-      env.DEEPCODE_MODEL,
-      settingsEnv.DEEPSEEK_MODEL,
-      settingsEnv.DEEPCODE_MODEL,
-      settingsEnv.MODEL,
-    ),
-  }
-}
-
-function firstConfigured(...values) {
-  return values.find(value => typeof value === 'string' && value.length > 0)
 }
 
 main().catch(error => {
