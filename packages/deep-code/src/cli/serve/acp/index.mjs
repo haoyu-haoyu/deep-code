@@ -57,7 +57,27 @@ export function startAcpServer({
   sessions = createSessionRegistry(),
 } = {}) {
   const send = message => stdout.write(encodeMessage(message))
-  const server = createAcpServer({ runTurn, sessions, send, env })
+
+  // Agent->client requests (e.g. session/request_permission) correlate their
+  // responses by id. Deny-safe: a timeout or a disconnect rejects the waiter,
+  // which the permission gate maps to "denied".
+  const pendingRequests = new Map()
+  let nextRequestId = 1
+  const sendRequest = (method, params, { timeoutMs = 300_000 } = {}) =>
+    new Promise((resolve, reject) => {
+      const id = `agent-${nextRequestId++}`
+      const timer = setTimeout(() => {
+        if (pendingRequests.delete(id)) reject(new Error(`ACP request timed out: ${method}`))
+      }, timeoutMs)
+      timer.unref?.()
+      pendingRequests.set(id, {
+        resolve: value => { clearTimeout(timer); resolve(value) },
+        reject: error => { clearTimeout(timer); reject(error) },
+      })
+      send({ jsonrpc: '2.0', id, method, params })
+    })
+
+  const server = createAcpServer({ runTurn, sessions, send, env, sendRequest })
 
   let leftover = ''
   // StringDecoder buffers an incomplete multibyte UTF-8 sequence split across
@@ -80,6 +100,17 @@ export function startAcpServer({
       send({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })
     }
     for (const message of messages) {
+      // A response to an agent-initiated request (e.g. session/request_permission):
+      // an id with result/error and no method. Route it to the waiter.
+      if (message && message.method === undefined && (message.result !== undefined || message.error !== undefined)) {
+        const waiter = pendingRequests.get(message.id)
+        if (waiter) {
+          pendingRequests.delete(message.id)
+          if (message.error) waiter.reject(new Error(message.error.message ?? 'request failed'))
+          else waiter.resolve(message.result)
+        }
+        continue
+      }
       // Fire-and-forget: a long-running session/prompt must not block the read
       // loop (the client may send session/cancel while it streams). Track it so
       // shutdown can wait for its response.
@@ -93,6 +124,12 @@ export function startAcpServer({
     if (finished) return
     finished = true
     stdin.off?.('data', onData)
+    // Reject outstanding agent->client requests so a pending permission prompt
+    // resolves to DENY (safe) rather than hanging on disconnect.
+    for (const waiter of pendingRequests.values()) {
+      waiter.reject(new Error('connection closed'))
+    }
+    pendingRequests.clear()
     // Let in-flight handlers finish writing their responses before the
     // connection is considered closed — bounded, so a hung turn can't keep the
     // process alive forever after the editor disconnects.

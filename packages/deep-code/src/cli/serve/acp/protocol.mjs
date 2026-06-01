@@ -151,7 +151,7 @@ function isAbortError(error) {
  *
  * @returns {{ handleMessage(message: any): Promise<void> }}
  */
-export function createAcpServer({ runTurn, sessions, send, env = process.env } = {}) {
+export function createAcpServer({ runTurn, sessions, send, env = process.env, sendRequest } = {}) {
   if (typeof runTurn !== 'function') throw new TypeError('createAcpServer requires a runTurn function')
   if (!sessions || typeof sessions.startTurn !== 'function') throw new TypeError('createAcpServer requires a session registry')
   if (typeof send !== 'function') throw new TypeError('createAcpServer requires a send function')
@@ -160,6 +160,27 @@ export function createAcpServer({ runTurn, sessions, send, env = process.env } =
   const reply = (id, result) => { if (hasId(id)) send({ jsonrpc: '2.0', id, result }) }
   const replyError = (id, code, message) => { if (hasId(id)) send({ jsonrpc: '2.0', id, error: { code, message } }) }
   const notify = (method, params) => send({ jsonrpc: '2.0', method, params })
+
+  // Ask the editor to approve a tool call (ACP session/request_permission).
+  // DENY-SAFE: with no transport, on any transport error/timeout/disconnect, or
+  // on a non-"allow"/cancelled outcome, this resolves to false (denied).
+  async function requestPermission(sessionId, toolCall) {
+    if (typeof sendRequest !== 'function') return false
+    let result
+    try {
+      result = await sendRequest('session/request_permission', {
+        sessionId,
+        toolCall,
+        options: [
+          { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+          { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+        ],
+      })
+    } catch {
+      return false
+    }
+    return result?.outcome?.outcome === 'selected' && result.outcome.optionId === 'allow'
+  }
 
   async function handlePrompt(id, params) {
     const sessionId = params?.sessionId
@@ -180,6 +201,7 @@ export function createAcpServer({ runTurn, sessions, send, env = process.env } =
         signal: abortController.signal,
         env,
         cwd: started.session?.cwd,
+        requestPermission: toolCall => requestPermission(sessionId, toolCall),
       })
       let step = await iterator.next()
       while (!step.done) {
