@@ -9,7 +9,7 @@ Source plans: PURE_DEEPSEEK_PLAN.md, SANDBOX_FORTRESS_PLAN.md
 |---|---|---|---|---|
 | A: Pure-DeepSeek | P2.10 i18n (Complete) | Phase 3 done (Docker ready; Release binary jobs disabled; npm publish user-gated) + P2.10 i18n complete: full en/zh-Hans/ja TUI localization, /locale switcher, 596 keys × 3 locales (#250–#269) | Future phases user-priority-driven (npm publish, binary build restructure, Homebrew, Windows, multi-arch Docker, docs-URL cleanup, native translation review, polish) | no |
 | B: Sandbox Fortress | F1 | F1.3 adapter test coverage hardening | F2.x Layer 2 network outbound enforcement | no |
-| C: Reasonix-inspired | P2.12 codegraph (done) | 8 PRs merged: cache moat (#286–288), agent UX (#289–290), config models (#291), binary-distribution fix (#292), codegraph (#293) — all live-validated | P2.16 ACP / P2.17 controller (largest, least live-key-testable) | no |
+| C: Reasonix-inspired | P2.16 ACP (done) — workstream complete | 9 feature PRs merged (#286–293, #295), all live-validated: cache moat, agent UX, config models, binary-distribution fix, codegraph, ACP editor adapter | P2.17 controller/desktop DEFERRED (go/no-go: terminal-first, no proven non-TUI demand) | no |
 
 ## How to use this file
 
@@ -305,8 +305,8 @@ Borrowed from DeepSeek-Reasonix (prefix-cache stability headline). Full roadmap 
 | P2.15 config-driven model catalog | done | #291 | `d2a0ede` | model-catalog.mjs + config `models[]` round-trip; the /model picker sources from the catalog. Adding a model is a config edit, not code. |
 | P2.13 fix prebuilt binary distribution | done | #292 | `8d474b9` | Dual bundle: `build:full-cli-inline` (--inline-requires) inlines pure-JS deps + stubs optional/native, so `bun --compile` produces a working binary. Re-enables the P3.3 binary release jobs (see Phase 3). Live: the compiled binary runs a real DeepSeek query. |
 | P2.12 built-in codegraph | done | #293 | `1e1a707` | Pure-JS heuristic index (languages/indexer/query .mjs) + read-only CodegraphTool gated by ENABLE_CODEGRAPH_TOOL. Two adversarial review passes (workflow + Codex) + live e2e. NOT an MCP server (the Server class is stubbed in the binary). |
-| P2.16 ACP editor integration | ready | — | — | Fill the reserved `--acp` stub (startServeMode exits EX_CONFIG 78 today). Agent Client Protocol adapter (Zed et al.); protocol-test validatable, not live-key. |
-| P2.17 controller/desktop (Phase 0/1) | ready | — | — | Transport-agnostic controller + desktop. Largest/most exploratory; lowest value clarity. |
+| P2.16 ACP editor integration | done | #295 | `d796a2b` | Filled the reserved `serve --acp` stub: newline-delimited JSON-RPC 2.0 ACP adapter (acp/protocol.mjs pure framer+dispatcher, acp/index.mjs stdio transport + DeepSeek runtime bridge). initialize / session.new / session.prompt (streams session/update, returns stopReason) / session.cancel. DeepSeek reasoning_content -> agent_thought_chunk. 30 unit tests + live e2e (real `serve --acp` drove a real DeepSeek turn). Two Codex rounds: round-1 1 blocker (UTF-8 split) + 4 major all fixed; a 5th half-close-truncation edge fixed proactively. queryRuntimeWithStreaming does one turn, no tool execution (a real tool-executing ACP agent is the deferred P2.17-A follow-up). |
+| P2.17 controller/desktop (Phase 0/1) | deferred | — | — | DECISION 2026-06-01: DEFER. Terminal-first product, no proven non-TUI demand; the full controller+desktop bet is XL (retrofitting a tri-frontend design onto a 4883-line React-bound REPL). The cheap half (A: a single `toWireEvent` event vocabulary + running the real agent loop in serve/ACP — would upgrade the P2.16 ACP echo into a real tool-executing editor agent) remains the de-risked entry point if serve/ACP productizes; the desktop GUI (B) is deferred until a concrete product trigger. See REASONIX_IMPROVEMENTS.md controller-desktop-bet. |
 
 ## External decisions
 
