@@ -20,7 +20,8 @@ import { createDeepSeekLocalTools } from '../../../deepcode/local-toolchain.mjs'
 
 export const ACP_AGENT_SYSTEM_PROMPT = [
   'You are Deep Code, a DeepSeek-native coding assistant driving an editor over the Agent Client Protocol.',
-  'Use the read-only tools (Read; Bash limited to ls/cat/pwd) to inspect the workspace before answering.',
+  'Inspect the workspace with Read and Bash (ls/cat/pwd) before acting.',
+  'Use Edit to change a file. Edits require the user to approve them in the editor, so keep them minimal and precise; if an edit is denied, stop and explain.',
   'Answer concisely and cite file paths (and line numbers where useful).',
 ]
 
@@ -51,46 +52,87 @@ export function mapProviderEventToAcp(event) {
   return null
 }
 
-/**
- * The read-only ACP tool set: the local toolchain's tools MINUS Edit (the only
- * writer), each wrapped to emit ACP tool_call_update lifecycle events.
- */
-export function buildReadOnlyAcpTools({ cwd = process.cwd(), onUpdate = () => {}, signal } = {}) {
-  return createDeepSeekLocalTools({ cwd })
-    .filter(tool => tool.name !== 'Edit')
-    .map(tool => ({
-      name: tool.name,
-      description: tool.description,
-      inputJSONSchema: tool.inputJSONSchema,
-      async execute(input, ctx) {
-        // Don't start a tool once the turn was cancelled (runDeepSeekAgent has no
-        // signal of its own; in-flight model requests abort via complete()).
-        if (signal?.aborted) {
-          throw Object.assign(new Error('aborted'), { name: 'AbortError' })
-        }
-        const toolCallId = ctx?.toolCall?.id ?? ''
-        onUpdate({ sessionUpdate: 'tool_call_update', toolCallId, status: 'in_progress' })
-        try {
-          const result = await tool.execute(input, ctx)
-          const text = typeof result === 'string' ? result : JSON.stringify(result)
-          onUpdate({
-            sessionUpdate: 'tool_call_update',
-            toolCallId,
-            status: 'completed',
-            content: [{ type: 'content', content: { type: 'text', text: truncate(text, MAX_TOOL_RESULT_CHARS) } }],
-          })
-          return result
-        } catch (error) {
+// Tools that mutate the workspace and therefore require editor approval before
+// running. (The local toolchain's Bash is allowlisted to ls/cat/pwd — read-only
+// — so it is NOT gated.)
+const WRITE_TOOLS = new Set(['Edit', 'Write'])
+
+function toolKind(name) {
+  return name === 'Bash' ? 'execute' : 'edit'
+}
+
+// Wrap a bare-closure tool to emit ACP tool_call_update lifecycle events and,
+// when it mutates the workspace, gate execution behind requestPermission.
+function wrapTool(tool, { onUpdate, signal, requestPermission, needsApproval }) {
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputJSONSchema: tool.inputJSONSchema,
+    async execute(input, ctx) {
+      // Don't start a tool once the turn was cancelled (runDeepSeekAgent has no
+      // signal of its own; in-flight model requests abort via complete()).
+      if (signal?.aborted) {
+        throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+      }
+      const toolCallId = ctx?.toolCall?.id ?? ''
+      if (needsApproval) {
+        const approved =
+          typeof requestPermission === 'function'
+            ? await requestPermission({ toolCallId, title: tool.name, kind: toolKind(tool.name), rawInput: input })
+            : false
+        if (!approved) {
           onUpdate({
             sessionUpdate: 'tool_call_update',
             toolCallId,
             status: 'failed',
-            content: [{ type: 'content', content: { type: 'text', text: String(error?.message ?? error) } }],
+            content: [{ type: 'content', content: { type: 'text', text: 'Permission denied by the editor.' } }],
           })
-          throw error
+          throw new Error(`Permission denied for ${tool.name}`)
         }
-      },
-    }))
+      }
+      onUpdate({ sessionUpdate: 'tool_call_update', toolCallId, status: 'in_progress' })
+      try {
+        const result = await tool.execute(input, ctx)
+        const text = typeof result === 'string' ? result : JSON.stringify(result)
+        onUpdate({
+          sessionUpdate: 'tool_call_update',
+          toolCallId,
+          status: 'completed',
+          content: [{ type: 'content', content: { type: 'text', text: truncate(text, MAX_TOOL_RESULT_CHARS) } }],
+        })
+        return result
+      } catch (error) {
+        onUpdate({
+          sessionUpdate: 'tool_call_update',
+          toolCallId,
+          status: 'failed',
+          content: [{ type: 'content', content: { type: 'text', text: String(error?.message ?? error) } }],
+        })
+        throw error
+      }
+    },
+  }
+}
+
+/**
+ * Read-only ACP tool set: the local toolchain MINUS Edit (the only writer),
+ * each wrapped for tool_call_update events. No approval needed.
+ */
+export function buildReadOnlyAcpTools({ cwd = process.cwd(), onUpdate = () => {}, signal } = {}) {
+  return createDeepSeekLocalTools({ cwd })
+    .filter(tool => tool.name !== 'Edit')
+    .map(tool => wrapTool(tool, { onUpdate, signal, needsApproval: false }))
+}
+
+/**
+ * Full ACP tool set: read-only tools run freely; write tools (Edit) are gated
+ * behind the ACP session/request_permission round-trip via requestPermission
+ * (which is deny-safe when there is no approver / on timeout / on disconnect).
+ */
+export function buildAcpTools({ cwd = process.cwd(), onUpdate = () => {}, signal, requestPermission } = {}) {
+  return createDeepSeekLocalTools({ cwd }).map(tool =>
+    wrapTool(tool, { onUpdate, signal, requestPermission, needsApproval: WRITE_TOOLS.has(tool.name) }),
+  )
 }
 
 // A streaming complete(request) for runDeepSeekAgent: stream provider events,
@@ -184,10 +226,11 @@ export function acpAgentTurn({
   signal,
   env = process.env,
   cwd = process.cwd(),
+  requestPermission,
   runAgent = runDeepSeekAgent,
 } = {}) {
   return pumpUpdates(async push => {
-    const tools = buildReadOnlyAcpTools({ cwd, onUpdate: push, signal })
+    const tools = buildAcpTools({ cwd, onUpdate: push, signal, requestPermission })
     const state = { finishReason: undefined }
     const complete = makeStreamingComplete({ push, signal, state })
     const result = await runAgent({
