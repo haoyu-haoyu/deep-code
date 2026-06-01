@@ -324,24 +324,33 @@ test('client disconnect aborts a streamed turn without crashing', async () => {
   )
 })
 
-test('serve --acp exits with EX_CONFIG and prints not implemented status', () => {
-  const result = runServeModeInChild('{ acp: true }')
+test('serve --acp starts a JSON-RPC stdio server and answers initialize', () => {
+  const init =
+    JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 1 } }) + '\n'
+  const result = runServeModeInChild('{ acp: true }', { input: init })
 
-  assert.equal(result.status, 78, result.stderr)
-  assert.match(result.stderr, /not yet implemented/i)
-  assert.equal(result.stdout, '')
+  assert.equal(result.status, 0, result.stderr)
+  const messages = result.stdout
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map(line => JSON.parse(line))
+  const response = messages.find(m => m.id === 1)
+  assert.ok(response, `expected an initialize response, got: ${result.stdout}`)
+  assert.equal(response.result.protocolVersion, 1)
+  assert.equal(response.result.agentCapabilities.loadSession, false)
   assert.equal(result.stderr.includes(TOKEN), false)
 })
 
-test('serve --acp with --http does not start an HTTP server', async () => {
+test('serve --acp with --http starts ACP (not the HTTP server)', async () => {
   const port = await getUnusedPort()
+  // ACP wins over --http; with stdin closed immediately it starts then exits 0,
+  // and never binds the HTTP port.
   const result = runServeModeInChild(
     `{ acp: true, http: true, host: '127.0.0.1', port: ${port} }`,
   )
 
-  assert.equal(result.status, 78, result.stderr)
-  assert.match(result.stderr, /not yet implemented/i)
-
+  assert.equal(result.status, 0, result.stderr)
   await assert.rejects(
     fetch(`http://127.0.0.1:${port}/`, {
       signal: AbortSignal.timeout(100),
@@ -422,7 +431,7 @@ async function waitFor(predicate, { attempts = 50, interval = 10 } = {}) {
   assert.fail('condition not met before timeout')
 }
 
-function runServeModeInChild(optionsSource) {
+function runServeModeInChild(optionsSource, { input } = {}) {
   const script = `
     import { startServeMode } from './src/cli/serve/index.mjs'
     await startServeMode(${optionsSource})
@@ -434,7 +443,8 @@ function runServeModeInChild(optionsSource) {
       ...process.env,
       DEEPCODE_HTTP_TOKEN: TOKEN,
     },
-    timeout: 1000,
+    input,
+    timeout: 5000,
   })
 }
 
