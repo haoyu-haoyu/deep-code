@@ -149,6 +149,9 @@ export function mergeProfileIntoConfig(
 
   switch (profile.networkMode) {
     case 'deny':
+      // ADVISORY ONLY: this writes a "no network" shape into customConfig, but
+      // the running proxy does not read per-call config (see the file header +
+      // ToolSandboxProfile.networkMode @deprecated). It does NOT block traffic.
       hardDenyNetwork(merged)
       break
     case 'allow':
