@@ -52,6 +52,7 @@ jobs:
             test/p2-1-auto-mode.test.mjs \
             test/p2-2-providers.test.mjs \
             test/p2-3-cache.test.mjs \
+            test/p2-3-cache-sim.test.mjs \
             test/p2-4-snapshot.test.mjs \
             test/p2-5-lsp.test.mjs \
             test/p2-6-serve.test.mjs \
