@@ -79,17 +79,27 @@ export function processTailRead({
   // mid-codepoint when the tail buffer is smaller than the file).
   const content = decodeUtf8AtBoundary(buffer, 0, bytesRead)
 
-  // Count newlines in the tail; capture slice points for the last N / all N.
-  let pos = content.length
+  // Count LINES in the tail and capture the slice points for the last N / all N.
+  // A single trailing '\n' TERMINATES the last line — it must not add a phantom
+  // empty line — so we skip it before walking. Lines = (internal newlines) + 1
+  // for the final line when the content is non-empty. (`a\nb\n` and `a\nb` are
+  // both 2 lines; `\n` is 1 blank line; `\n\n` is 2.)
   let nLast = 0
   let nAll = 0
-  let lineCount = 0
-  while (pos > 0) {
-    pos = content.lastIndexOf('\n', pos - 1)
-    lineCount++
-    if (lineCount === lastLinesCount) nLast = pos <= 0 ? 0 : pos + 1
-    if (lineCount === allLinesCount) nAll = pos <= 0 ? 0 : pos + 1
+  let newlineCount = 0
+  let from =
+    content.length > 0 && content.charCodeAt(content.length - 1) === 10
+      ? content.length - 1
+      : content.length
+  while (from > 0) {
+    const nl = content.lastIndexOf('\n', from - 1)
+    if (nl < 0) break
+    newlineCount++
+    if (newlineCount === lastLinesCount) nLast = nl + 1
+    if (newlineCount === allLinesCount) nAll = nl + 1
+    from = nl
   }
+  const lineCount = content.length === 0 ? 0 : newlineCount + 1
 
   // Exact when the whole file fits in the tail; otherwise extrapolate from the
   // sample, kept monotone so the counter never regresses on a long-line tick.

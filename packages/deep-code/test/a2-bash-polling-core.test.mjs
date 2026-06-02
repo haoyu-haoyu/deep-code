@@ -85,24 +85,34 @@ test('processTailRead: file growth resets the empty-tick counter; no growth incr
 test('processTailRead: line count + last/all slices when the whole file fits the tail', () => {
   const text = Array.from({ length: 12 }, (_, i) => `line${i}`).join('\n') + '\n'
   const r = run({ buffer: buf(text), bytesRead: buf(text).length, bytesTotal: buf(text).length })
-  // PRE-EXISTING behavior: the counter walks `lastIndexOf('\n')` and also counts
-  // the empty segment after the FINAL newline, so a 12-line file ending in '\n'
-  // reports 13 (newlines + 1). This is faithful to the shipped TaskOutput; the
-  // trailing-segment over-count is a known cosmetic quirk, not changed here.
-  assert.equal(r.progress.totalLines, 13)
+  // 12 lines, each terminated by '\n' => exactly 12 (the trailing '\n' terminates
+  // line11; it is NOT a phantom 13th line).
+  assert.equal(r.progress.totalLines, 12)
   assert.equal(r.progress.isIncomplete, false)
-  assert.equal(r.progress.lastLines, Array.from({ length: 9 }, (_, i) => `line${i + 3}`).join('\n') + '\n')
+  // last 10 lines = line2..line11 (a full 10, not 9).
+  assert.equal(r.progress.lastLines, Array.from({ length: 10 }, (_, i) => `line${i + 2}`).join('\n') + '\n')
   assert.equal(r.progress.allLines, text)
+})
+
+test('processTailRead: line count handles terminated / unterminated / blank lines (no off-by-one)', () => {
+  const lc = text => run({ buffer: buf(text), bytesRead: buf(text).length, bytesTotal: buf(text).length }).progress.totalLines
+  assert.equal(lc('a'), 1, 'single unterminated => 1')
+  assert.equal(lc('a\n'), 1, "single terminated => 1 (trailing '\\n' is not a phantom line)")
+  assert.equal(lc('a\nb'), 2, 'two, last unterminated => 2')
+  assert.equal(lc('a\nb\n'), 2, 'two terminated => 2')
+  assert.equal(lc('a\nb\nc\n'), 3, 'three terminated => 3')
+  assert.equal(lc('\n'), 1, 'a single blank line => 1')
+  assert.equal(lc('\n\n'), 2, 'two blank lines => 2')
 })
 
 test('processTailRead: extrapolates total lines from the tail sample, kept monotone', () => {
   // Tail holds 10 newline-terminated lines / 40 bytes; the file is 400 bytes.
-  // lineCount of the tail is 11 (10 newlines + the trailing empty segment), so
-  // the extrapolation is round((400/40) * 11) = 110.
+  // lineCount of the tail is 10 (the trailing '\n' terminates the 10th line), so
+  // the extrapolation is round((400/40) * 10) = 100.
   const tail = Array.from({ length: 10 }, () => 'abc').join('\n') + '\n' // 40 bytes
   const r = run({ buffer: buf(tail), bytesRead: 40, bytesTotal: 400 }, { ...FRESH, totalLines: 0 })
   assert.equal(r.progress.isIncomplete, true)
-  assert.equal(r.progress.totalLines, 110)
+  assert.equal(r.progress.totalLines, 100)
   // monotone: a later tick with a longer-line tail must not regress the count
   const r2 = run({ buffer: buf(tail), bytesRead: 40, bytesTotal: 400 }, { ...FRESH, totalLines: 250 })
   assert.equal(r2.progress.totalLines, 250)
@@ -143,7 +153,7 @@ test('real growing file: consecutive ticks stream only the newly-appended bytes'
     const r1 = await pollFile(f, { ...FRESH })
     assert.equal(r1.stale, false)
     assert.equal(r1.progress.chunkDelta, 'line1\nline2\n', 'first tick emits all bytes')
-    assert.equal(r1.progress.totalLines, 3) // 2 newlines + trailing empty segment
+    assert.equal(r1.progress.totalLines, 2) // 2 terminated lines
     assert.equal(r1.progress.isIncomplete, false)
 
     assert.equal(r1.progress.lastLines, 'line1\nline2\n', 'first tick preview shows the whole small file')
@@ -151,7 +161,7 @@ test('real growing file: consecutive ticks stream only the newly-appended bytes'
     appendFileSync(f, 'line3\nline4\n') // a long command writes more
     const r2 = await pollFile(f, { ...r1.state })
     assert.equal(r2.progress.chunkDelta, 'line3\nline4\n', 'second tick emits ONLY the new bytes')
-    assert.equal(r2.progress.totalLines, 5) // 4 newlines + trailing empty segment
+    assert.equal(r2.progress.totalLines, 4) // 4 terminated lines
     // the preview (lastLines) reflects the FULL accumulated tail, not just the delta
     assert.equal(r2.progress.lastLines, 'line1\nline2\nline3\nline4\n', 'preview shows the accumulated tail')
 
