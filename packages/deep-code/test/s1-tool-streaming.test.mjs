@@ -62,11 +62,14 @@ test('TaskOutput.ts: ProgressCallback signature includes optional chunkDelta', (
 })
 
 test('TaskOutput.ts: #lastEmittedBytesTotal advances independently of #lastSeenBytesTotal', () => {
-  // Stale-callback guard already protects #lastSeenBytesTotal, but
-  // the new chunkDelta channel needs its OWN cursor — the
-  // adaptive-counter cursor advances even on dropped callbacks if
-  // bytesTotal grew, which would skip delta bytes for a future
-  // successful callback. Two cursors keeps them independent.
+  // Stale-callback guard already protects #lastSeenBytesTotal, but the new
+  // chunkDelta channel needs its OWN cursor — the adaptive-counter cursor
+  // advances even on dropped callbacks if bytesTotal grew, which would skip
+  // delta bytes for a future successful callback. Two cursors keeps them
+  // independent. The cursor LIVES in TaskOutput (declared + reset); the ADVANCE
+  // (only after a non-stale read) now lives in the taskOutputPoll core and is
+  // RUNTIME-tested in test/a2-bash-polling-core.test.mjs ("chunkDelta is the NEW
+  // bytes since the last emit").
   const source = readFileSync(
     resolve(packageRoot, 'src/utils/task/TaskOutput.ts'),
     'utf8',
@@ -76,20 +79,25 @@ test('TaskOutput.ts: #lastEmittedBytesTotal advances independently of #lastSeenB
     /#lastEmittedBytesTotal\s*=\s*0/,
     'TaskOutput must declare a separate emit cursor',
   )
+  const core = readFileSync(
+    resolve(packageRoot, 'src/utils/task/taskOutputPoll.mjs'),
+    'utf8',
+  )
   assert.match(
-    source,
-    /entry\.#lastEmittedBytesTotal\s*=\s*bytesTotal/,
-    'emit cursor must advance only after a non-stale callback succeeds',
+    core,
+    /lastEmittedBytesTotal:\s*bytesTotal/,
+    'emit cursor must advance to bytesTotal only on a non-stale, non-empty read',
   )
 })
 
 test('TaskOutput.ts: chunkDelta slicing works on raw bytes (UTF-8 safe)', () => {
-  // Codex flagged: an earlier fix that re-encoded the decoded
-  // `content` string lost data when the tail buffer started
-  // mid-codepoint (toString('utf8') had already inserted U+FFFD
-  // replacement chars). The current production path reads raw bytes
-  // via tailFileRaw and decodes at codepoint boundaries on BOTH the
-  // tail-start and the delta-start positions.
+  // Codex flagged: an earlier fix that re-encoded the decoded `content` string
+  // lost data when the tail buffer started mid-codepoint (toString('utf8') had
+  // already inserted U+FFFD replacement chars). The production path reads raw
+  // bytes via tailFileRaw (in TaskOutput) and decodes at codepoint boundaries on
+  // BOTH the tail-start and the delta-start (in the taskOutputPoll core). The
+  // UTF-8-safe behavior is RUNTIME-tested against a real multibyte file in
+  // test/a2-bash-polling-core.test.mjs ("multibyte UTF-8 straddling the tail").
   const source = readFileSync(
     resolve(packageRoot, 'src/utils/task/TaskOutput.ts'),
     'utf8',
@@ -99,27 +107,33 @@ test('TaskOutput.ts: chunkDelta slicing works on raw bytes (UTF-8 safe)', () => 
     /tailFileRaw\(entry\.path/,
     'must read raw bytes via tailFileRaw, not the lossy decoded tailFile',
   )
+  const core = readFileSync(
+    resolve(packageRoot, 'src/utils/task/taskOutputPoll.mjs'),
+    'utf8',
+  )
   assert.match(
-    source,
+    core,
     /decodeUtf8AtBoundary\(buffer,\s*0,\s*bytesRead\)/,
-    'must decode the full tail at a UTF-8 boundary for the line-slice path',
+    'core must decode the full tail at a UTF-8 boundary for the line-slice path',
   )
   assert.match(
-    source,
-    /decodeUtf8AtBoundary\(buffer,\s*start,\s*bytesRead\)/,
-    'must decode the chunkDelta range at a UTF-8 boundary',
+    core,
+    /decodeUtf8AtBoundary\(buffer,\s*bytesRead - cutFromEnd,\s*bytesRead\)/,
+    'core must decode the chunkDelta range at a UTF-8 boundary',
   )
-  // Regression guards against the prior buggy slice variants.
-  assert.doesNotMatch(
-    source,
-    /Buffer\.from\(content,\s*'utf8'\)/,
-    'must not re-encode the decoded string (lossy at tail start)',
-  )
-  assert.doesNotMatch(
-    source,
-    /content\.slice\(content\.length - newBytes\)/,
-    'must not slice the decoded string by a byte count (UTF-16 vs UTF-8 mismatch)',
-  )
+  // Regression guards against the prior buggy slice variants (in either file).
+  for (const [label, src] of [['TaskOutput', source], ['core', core]]) {
+    assert.doesNotMatch(
+      src,
+      /Buffer\.from\(content,\s*'utf8'\)/,
+      `${label} must not re-encode the decoded string (lossy at tail start)`,
+    )
+    assert.doesNotMatch(
+      src,
+      /content\.slice\(content\.length - newBytes\)/,
+      `${label} must not slice the decoded string by a byte count`,
+    )
+  }
 })
 
 test('TaskOutput.ts: LAST_LINES_COUNT is clamped to ALL_LINES_COUNT', () => {
