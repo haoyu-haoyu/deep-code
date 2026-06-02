@@ -20,6 +20,12 @@ const legacySourcePath = resolve(
   'src',
   'sandbox-fortress/adapter/legacy.ts',
 )
+// legacy.ts imports the pure availability core (../sandboxAvailability.mjs); it
+// has no deps of its own, so stage the REAL file into the fixture.
+const sandboxAvailabilitySourcePath = resolve(
+  packageRoot,
+  'src/sandbox-fortress/sandboxAvailability.mjs',
+)
 const harnessSourcePath = resolve(
   packageRoot,
   'test/sandbox-fortress/harness.mjs',
@@ -40,6 +46,12 @@ function writeLegacyFixture(root) {
   )
   mkdirSync(dirname(legacyTarget), { recursive: true })
   copyFileSync(legacySourcePath, legacyTarget)
+
+  // The pure availability core legacy.ts now delegates to.
+  copyFileSync(
+    sandboxAvailabilitySourcePath,
+    join(root, 'src/sandbox-fortress/sandboxAvailability.mjs'),
+  )
 
   const harnessTarget = join(root, 'test/sandbox-fortress/harness.mjs')
   mkdirSync(dirname(harnessTarget), { recursive: true })
