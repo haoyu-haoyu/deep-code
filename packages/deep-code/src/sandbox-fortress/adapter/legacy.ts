@@ -32,6 +32,10 @@ import {
 import { logForDebugging } from '../../utils/debug.js'
 import { expandPath } from '../../utils/path.js'
 import { getPlatform, type Platform } from '../../utils/platform.js'
+import {
+  isPlatformInEnabledList as platformInEnabledList,
+  sandboxUnavailableReason,
+} from '../sandboxAvailability.mjs'
 import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import { SETTING_SOURCES, type SettingSource } from '../../utils/settings/constants.js'
 import { getManagedSettingsDropInDir } from '../../utils/settings/managedPath.js'
@@ -512,17 +516,8 @@ function isPlatformInEnabledList(): boolean {
     const enabledPlatforms = (
       settings?.sandbox as { enabledPlatforms?: Platform[] } | undefined
     )?.enabledPlatforms
-
-    if (enabledPlatforms === undefined) {
-      return true
-    }
-
-    if (enabledPlatforms.length === 0) {
-      return false
-    }
-
-    const currentPlatform = getPlatform()
-    return enabledPlatforms.includes(currentPlatform)
+    // The undefined / [] / membership decision lives in the pure core.
+    return platformInEnabledList(getPlatform(), enabledPlatforms)
   } catch (error) {
     logForDebugging(`Failed to check enabledPlatforms: ${error}`)
     return true // Default to enabled if we can't read settings
@@ -564,35 +559,16 @@ function isSandboxingEnabled(): boolean {
  * Does not cover the case where the user never enabled sandbox (no noise).
  */
 function getSandboxUnavailableReason(): string | undefined {
-  // Only warn if user explicitly asked for sandbox. If they didn't enable
-  // it, missing deps are irrelevant.
-  if (!getSandboxEnabledSetting()) {
-    return undefined
-  }
-
-  if (!isSupportedPlatform()) {
-    const platform = getPlatform()
-    if (platform === 'wsl') {
-      return 'sandbox.enabled is set but WSL1 is not supported (requires WSL2)'
-    }
-    return `sandbox.enabled is set but ${platform} is not supported (requires macOS, Linux, or WSL2)`
-  }
-
-  if (!isPlatformInEnabledList()) {
-    return `sandbox.enabled is set but ${getPlatform()} is not in sandbox.enabledPlatforms`
-  }
-
-  const deps = checkDependencies()
-  if (deps.errors.length > 0) {
-    const platform = getPlatform()
-    const hint =
-      platform === 'macos'
-        ? 'run /sandbox or /doctor for details'
-        : 'install missing tools (e.g. apt install bubblewrap socat) or run /sandbox for details'
-    return `sandbox.enabled is set but dependencies are missing: ${deps.errors.join(', ')} · ${hint}`
-  }
-
-  return undefined
+  // The whole decision tree lives in the pure core; here we only supply the I/O
+  // inputs. getDepErrors is a thunk so the dependency check stays lazy (only run
+  // once the cheaper enabled→supported→in-list gates have passed).
+  return sandboxUnavailableReason({
+    enabledSetting: getSandboxEnabledSetting(),
+    supported: isSupportedPlatform(),
+    platform: getPlatform(),
+    inList: isPlatformInEnabledList(),
+    getDepErrors: () => checkDependencies().errors,
+  })
 }
 
 /**
