@@ -35,6 +35,7 @@ test('strips each safe wrapper so the real path command becomes baseCmd', () => 
   assert.deepEqual(stripWrappersFromArgv(['nice', ...C]), C) // bare nice
   assert.deepEqual(stripWrappersFromArgv(['nice', '-n', '5', ...C]), C)
   assert.deepEqual(stripWrappersFromArgv(['nice', '-5', ...C]), C) // legacy -N
+  assert.deepEqual(stripWrappersFromArgv(['stdbuf', ...C]), C) // bare stdbuf (no flag) — still execs the cmd
   assert.deepEqual(stripWrappersFromArgv(['stdbuf', '-o0', ...C]), C) // fused
   assert.deepEqual(stripWrappersFromArgv(['stdbuf', '-o', '0', ...C]), C) // space-sep
   assert.deepEqual(stripWrappersFromArgv(['stdbuf', '--output=0', ...C]), C) // long
@@ -42,6 +43,18 @@ test('strips each safe wrapper so the real path command becomes baseCmd', () => 
   assert.deepEqual(stripWrappersFromArgv(['env', 'FOO=bar', ...C]), C)
   assert.deepEqual(stripWrappersFromArgv(['env', '-i', ...C]), C)
   assert.deepEqual(stripWrappersFromArgv(['env', '-u', 'PATH', ...C]), C)
+})
+
+test('SECURITY: zero-flag `stdbuf <path-cmd>` exposes the real command for validation', () => {
+  // Regression for the path-validation bypass: `stdbuf cat /etc/passwd` (no
+  // stdbuf flag) must resolve to baseCmd 'cat' (→ path-validated), NOT 'stdbuf'
+  // (→ passthrough → out-of-project paths never validated). stdbuf with no flag
+  // is NOT inert — it still execs the wrapped command.
+  assert.deepEqual(stripWrappersFromArgv(['stdbuf', 'cat', '/etc/passwd']), ['cat', '/etc/passwd'])
+  assert.deepEqual(stripWrappersFromArgv(['stdbuf', 'rm', '-rf', '/etc/x']), ['rm', '-rf', '/etc/x'])
+  assert.deepEqual(stripWrappersFromArgv(['timeout', '5', 'stdbuf', 'cat', '/etc/x']), ['cat', '/etc/x']) // nested
+  // stdbuf ALONE (no wrapped command) stays inert.
+  assert.deepEqual(stripWrappersFromArgv(['stdbuf']), ['stdbuf'])
 })
 
 test('strips NESTED wrappers down to the real path command (fixed point)', () => {
@@ -92,7 +105,8 @@ test('skipStdbufFlags: index of wrapped command, -1 if no flags / unknown flag',
   assert.equal(skipStdbufFlags(['stdbuf', '-o0', 'cat']), 2)
   assert.equal(skipStdbufFlags(['stdbuf', '-o', '0', 'cat']), 3)
   assert.equal(skipStdbufFlags(['stdbuf', '--output=0', 'cat']), 2)
-  assert.equal(skipStdbufFlags(['stdbuf', 'cat']), -1) // no flags consumed → inert
+  assert.equal(skipStdbufFlags(['stdbuf', 'cat']), 1) // SECURITY: zero-flag stdbuf still execs cat → strip it (was -1, the bypass)
+  assert.equal(skipStdbufFlags(['stdbuf']), -1) // stdbuf alone — no wrapped cmd
   assert.equal(skipStdbufFlags(['stdbuf', '--bogus', 'cat']), -1)
 })
 

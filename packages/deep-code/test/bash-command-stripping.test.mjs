@@ -164,19 +164,33 @@ test('stripCommentLines: drops full-line comments, keeps inline, preserves all-c
 
 // --- stdbuf long-form / space-separated flags (deny-bypass regression) -------
 
-test('stripSafeWrappers: stdbuf strips fused / space-separated / long-form flags', () => {
+test('stripSafeWrappers: stdbuf strips fused / space-separated / long-form / bare', () => {
   assert.equal(stripSafeWrappers('stdbuf -o0 curl x'), 'curl x') // fused (pre-existing)
   assert.equal(stripSafeWrappers('stdbuf -o 0 curl x'), 'curl x') // space-separated
   assert.equal(stripSafeWrappers('stdbuf --output=0 curl x'), 'curl x') // long-form
   assert.equal(stripSafeWrappers('stdbuf -i L -o 4096 -eL curl x'), 'curl x') // mixed
+  // SECURITY: bare `stdbuf <cmd>` (no flag) still execs the cmd → must strip so a
+  // denied command run as `stdbuf <denied>` reduces to <denied>.
+  assert.equal(stripSafeWrappers('stdbuf curl x'), 'curl x')
 })
 
-test('stripSafeWrappers: stdbuf flag-VALUE injection is NOT stripped', () => {
+test('stripSafeWrappers: stdbuf flag-VALUE injection / unknown flag is NOT stripped', () => {
   // $(...) in a flag value must block stripping (bash expands it pre-stdbuf),
   // same guard as the timeout pattern.
   const out = stripSafeWrappers('stdbuf -o$(id) curl x')
   assert.notEqual(out, 'curl x')
   assert.match(out, /stdbuf/)
+  // `stdbuf` directly before a dash flag it doesn't recognize → not stripped.
+  assert.match(stripSafeWrappers('stdbuf --bogus curl x'), /stdbuf/)
+})
+
+test('stripSafeWrappers: bare stdbuf does NOT expose a substitution/operator (no over-strip)', () => {
+  // SECURITY: the bare-stdbuf pattern strips only an injection-safe command start
+  // [A-Za-z0-9_]; a leading shell substitution/operator after `stdbuf ` must NOT
+  // be exposed (bash expands $()/`` during word-splitting before stdbuf runs).
+  for (const cmd of ['stdbuf $(id) curl', 'stdbuf `whoami` cat', 'stdbuf ;rm -rf /', 'stdbuf |evil', 'stdbuf &bg']) {
+    assert.equal(stripSafeWrappers(cmd), cmd, `must not strip/expose: ${cmd}`)
+  }
 })
 
 // --- stripEnvCommandPrefix: the `env <denied>` deny-bypass fix ----------------
@@ -266,6 +280,7 @@ test('deny closure: `env <denied>` (and stdbuf/nohup combos) reduce to a deny ma
     'nohup env curl http://evil.com',
     'stdbuf -o0 env curl http://evil.com',
     'stdbuf --output=0 curl http://evil.com',
+    'stdbuf curl http://evil.com', // bare stdbuf (no flag) — the path/deny bypass fix
     'timeout 5 curl http://evil.com',
   ]) {
     assert.ok(denyMatches(command, 'curl'), `deny should match: ${command}`)
