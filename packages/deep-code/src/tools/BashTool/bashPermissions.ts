@@ -74,6 +74,7 @@ import {
   SAFE_ENV_VARS,
   stripAllLeadingEnvVars,
   stripCommentLines,
+  stripEnvCommandPrefix,
   stripSafeWrappers,
 } from './commandStripping.mjs'
 export { BINARY_HIJACK_VARS, stripAllLeadingEnvVars, stripSafeWrappers }
@@ -504,7 +505,7 @@ function filterRulesByContentsMatchingInput(
   // must be harder to circumvent — a denied command should stay denied
   // regardless of env var prefixes.
   //
-  // We iteratively apply both stripping operations to all candidates until no
+  // We iteratively apply all stripping operations to all candidates until no
   // new candidates are produced (fixed-point). This handles interleaved patterns
   // like `nohup FOO=bar timeout 5 claude` where:
   //   1. stripSafeWrappers strips `nohup` → `FOO=bar timeout 5 claude`
@@ -535,6 +536,17 @@ function filterRulesByContentsMatchingInput(
         if (!seen.has(wrapperStripped)) {
           commandsToTry.push(wrapperStripped)
           seen.add(wrapperStripped)
+        }
+        // Try stripping a leading `env [flags] ` wrapper. SECURITY: deny/ask
+        // ONLY — `env` can set LD_PRELOAD/PATH so it is intentionally NOT a
+        // stripSafeWrappers safe-list entry (allow rules must not strip it), but
+        // a denied command must stay denied when run as `env <denied>`. The
+        // VAR=val left after `env` is stripped by stripAllLeadingEnvVars on the
+        // next iteration (e.g. `env FOO=bar rm` → `FOO=bar rm` → `rm`).
+        const envCmdStripped = stripEnvCommandPrefix(cmd)
+        if (!seen.has(envCmdStripped)) {
+          commandsToTry.push(envCmdStripped)
+          seen.add(envCmdStripped)
         }
       }
       startIdx = endIdx
