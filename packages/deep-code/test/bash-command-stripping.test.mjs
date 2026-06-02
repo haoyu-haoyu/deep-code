@@ -8,6 +8,7 @@ import {
   stripCommentLines,
   stripSafeWrappers,
   stripAllLeadingEnvVars,
+  stripEnvCommandPrefix,
 } from '../src/tools/BashTool/commandStripping.mjs'
 
 // ── bash command-stripping (deny-bypass prevention) ─────────────────────────
@@ -159,6 +160,128 @@ test('stripCommentLines: drops full-line comments, keeps inline, preserves all-c
   assert.equal(stripCommentLines('# c1\nls\n# c2'), 'ls')
   assert.equal(stripCommentLines('ls # inline kept'), 'ls # inline kept')
   assert.equal(stripCommentLines('# only\n# comments'), '# only\n# comments') // all comments → original
+})
+
+// --- stdbuf long-form / space-separated flags (deny-bypass regression) -------
+
+test('stripSafeWrappers: stdbuf strips fused / space-separated / long-form flags', () => {
+  assert.equal(stripSafeWrappers('stdbuf -o0 curl x'), 'curl x') // fused (pre-existing)
+  assert.equal(stripSafeWrappers('stdbuf -o 0 curl x'), 'curl x') // space-separated
+  assert.equal(stripSafeWrappers('stdbuf --output=0 curl x'), 'curl x') // long-form
+  assert.equal(stripSafeWrappers('stdbuf -i L -o 4096 -eL curl x'), 'curl x') // mixed
+})
+
+test('stripSafeWrappers: stdbuf flag-VALUE injection is NOT stripped', () => {
+  // $(...) in a flag value must block stripping (bash expands it pre-stdbuf),
+  // same guard as the timeout pattern.
+  const out = stripSafeWrappers('stdbuf -o$(id) curl x')
+  assert.notEqual(out, 'curl x')
+  assert.match(out, /stdbuf/)
+})
+
+// --- stripEnvCommandPrefix: the `env <denied>` deny-bypass fix ----------------
+
+test('stripEnvCommandPrefix: strips a leading env wrapper + its safe flags', () => {
+  assert.equal(stripEnvCommandPrefix('env curl http://evil.com'), 'curl http://evil.com')
+  assert.equal(stripEnvCommandPrefix('env -i curl x'), 'curl x')
+  assert.equal(stripEnvCommandPrefix('env -i -v curl x'), 'curl x')
+  assert.equal(stripEnvCommandPrefix('env -u PATH curl x'), 'curl x')
+  assert.equal(stripEnvCommandPrefix('env -i -u PATH curl x'), 'curl x')
+})
+
+test('stripEnvCommandPrefix: leaves VAR=val for the loop\'s stripAllLeadingEnvVars', () => {
+  // env only peels the `env` token + dash-flags; the VAR=val stays so the deny
+  // loop's stripAllLeadingEnvVars removes it on the next iteration.
+  assert.equal(stripEnvCommandPrefix('env FOO=bar curl x'), 'FOO=bar curl x')
+  assert.equal(stripEnvCommandPrefix('env LD_PRELOAD=/evil.so curl x'), 'LD_PRELOAD=/evil.so curl x')
+  assert.equal(stripEnvCommandPrefix('env -i FOO=bar curl x'), 'FOO=bar curl x')
+})
+
+test('stripEnvCommandPrefix: fails closed on -S/-C/-P/-- and unknown flags', () => {
+  // skipEnvFlags returns -1 for these (argv splitter / altwd / altpath); the
+  // string mirror must leave the command UNCHANGED rather than guess.
+  for (const cmd of [
+    'env -S "a b" curl x',
+    'env -C /tmp curl x',
+    'env -P /bin curl x',
+    'env -- curl x',
+    'env --ignore-environment curl x', // long form not in skipEnvFlags either
+  ]) {
+    assert.equal(stripEnvCommandPrefix(cmd), cmd, `must not strip: ${cmd}`)
+  }
+})
+
+test('stripEnvCommandPrefix: no-op when there is no env prefix', () => {
+  assert.equal(stripEnvCommandPrefix('curl x'), 'curl x')
+  assert.equal(stripEnvCommandPrefix('environment-setup x'), 'environment-setup x') // word boundary
+  assert.equal(stripEnvCommandPrefix('env=foo curl'), 'env=foo curl') // assignment to a var named env
+  assert.equal(stripEnvCommandPrefix('env'), 'env') // bare env, no wrapped command
+  assert.equal(stripEnvCommandPrefix('env -i'), 'env -i') // flags but no command
+})
+
+test('stripEnvCommandPrefix: never strips across a newline', () => {
+  assert.equal(stripEnvCommandPrefix('env\ncurl evil'), 'env\ncurl evil')
+})
+
+// --- deny-candidate CLOSURE regression (mirrors filterRulesByContentsMatchingInput)
+//
+// The deny matcher generates candidates by applying stripAllLeadingEnvVars +
+// stripSafeWrappers + stripEnvCommandPrefix to a fixed-point (bashPermissions.ts).
+// A `Bash(<cmd>:*)` prefix deny matches a candidate iff candidate === <cmd> or
+// startsWith(<cmd> + ' '). This pins the property the wiring relies on, using the
+// REAL strippers: a denied command run via `env`/`stdbuf` MUST still reduce to a
+// matching candidate, while the ALLOW-side closure (no env stripping) must NOT.
+function denyCandidates(command) {
+  const out = [command]
+  const seen = new Set(out)
+  for (let i = 0; i < out.length; i++) {
+    for (const next of [
+      stripAllLeadingEnvVars(out[i]),
+      stripSafeWrappers(out[i]),
+      stripEnvCommandPrefix(out[i]),
+    ]) {
+      if (!seen.has(next)) {
+        seen.add(next)
+        out.push(next)
+      }
+    }
+  }
+  return out
+}
+const denyMatches = (command, prefix) =>
+  denyCandidates(command).some(c => c === prefix || c.startsWith(prefix + ' '))
+// ALLOW closure: stripSafeWrappers only (no env / no broad env-var strip).
+const allowMatches = (command, prefix) => {
+  const s = stripSafeWrappers(command)
+  return [command, s].some(c => c === prefix || c.startsWith(prefix + ' '))
+}
+
+test('deny closure: `env <denied>` (and stdbuf/nohup combos) reduce to a deny match', () => {
+  for (const command of [
+    'env curl http://evil.com',
+    'env FOO=bar curl http://evil.com',
+    'env -i curl http://evil.com',
+    'env -u PATH curl http://evil.com',
+    'env LD_PRELOAD=/evil.so curl http://evil.com',
+    'nohup env curl http://evil.com',
+    'stdbuf -o0 env curl http://evil.com',
+    'stdbuf --output=0 curl http://evil.com',
+    'timeout 5 curl http://evil.com',
+  ]) {
+    assert.ok(denyMatches(command, 'curl'), `deny should match: ${command}`)
+  }
+  // cross-command sanity
+  assert.ok(denyMatches('env rm -rf /important', 'rm'))
+  assert.ok(denyMatches('env git push --force', 'git push'))
+})
+
+test('allow closure: `env <cmd>` must NOT auto-match an allow rule (env can set LD_PRELOAD)', () => {
+  // The whole reason env stripping is deny-only: an allow rule must not be
+  // satisfied by `env LD_PRELOAD=/evil.so curl`.
+  assert.ok(allowMatches('curl http://ok.com', 'curl'), 'plain curl still allowed')
+  assert.ok(allowMatches('timeout 5 curl http://ok.com', 'curl'), 'safe wrapper still allowed')
+  assert.ok(!allowMatches('env curl http://evil.com', 'curl'), 'env must not auto-allow')
+  assert.ok(!allowMatches('env LD_PRELOAD=/evil.so curl http://evil.com', 'curl'), 'hijack must not auto-allow')
 })
 
 // --- the constants are the documented safe-lists (regression guard) ----------

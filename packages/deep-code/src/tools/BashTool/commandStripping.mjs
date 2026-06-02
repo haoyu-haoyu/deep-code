@@ -180,8 +180,16 @@ export function stripSafeWrappers(command) {
     // Now matches: `nice cmd`, `nice -n N cmd`, `nice -N cmd` (all forms
     // checkSemantics strips).
     /^nice(?:[ \t]+-n[ \t]+-?\d+|[ \t]+-\d+)?[ \t]+(?:--[ \t]+)?/,
-    // stdbuf: fused short flags only (-o0, -eL). Main need: `stdbuf -o0 cmd`.
-    /^stdbuf(?:[ \t]+-[ioe][LN0-9]+)+[ \t]+(?:--[ \t]+)?/,
+    // stdbuf: fused short (-o0), space-separated short (-o 0), and long-form
+    // (--output=0) flags. SECURITY: keep in sync with skipStdbufFlags
+    // (pathValidation.ts ~:1225) AND checkSemantics (ast.ts). Values use the
+    // allowlist [A-Za-z0-9] (sizes are 0/L/4096/4K) for the same reason the
+    // timeout pattern allowlists its values: at the string level an un-stripped
+    // `stdbuf -o$(evil) cmd` must NOT reduce to `cmd` (bash expands $(evil)
+    // during word-splitting before stdbuf runs). Long-form (`--output=0`) and
+    // space-separated (`-o 0`) were previously unmatched — only fused `-o0` was
+    // — letting `stdbuf --output=0 <denied>` slip a deny rule.
+    /^stdbuf(?:[ \t]+(?:-[ioe][ \t]+[A-Za-z0-9]+|-[ioe][A-Za-z0-9]+|--(?:input|output|error)=[A-Za-z0-9]+))+[ \t]+(?:--[ \t]+)?/,
     /^nohup[ \t]+(?:--[ \t]+)?/,
   ]
 
@@ -279,4 +287,55 @@ export function stripAllLeadingEnvVars(command, blocklist) {
   }
 
   return stripped.trim()
+}
+
+/**
+ * Strip a leading `env [-i|-0|-v|-u NAME]... ` wrapper so a denied command run
+ * as `env <denied>` still matches its deny rule. Returns the wrapped command,
+ * or the input unchanged if there is no `env` prefix or it is unparseable.
+ *
+ * DENY/ASK PATH ONLY. `env` can set arbitrary environment (including
+ * LD_PRELOAD / PATH that hijack which binary actually runs), so it is
+ * deliberately absent from stripSafeWrappers' ALLOW-rule safe-list — stripping
+ * it for allow matching would let `env LD_PRELOAD=/evil.so curl` satisfy
+ * Bash(curl:*). For deny/ask matching the opposite is required (a denied
+ * command must stay denied under any wrapper), so this is applied only in
+ * filterRulesByContentsMatchingInput's stripAllEnvVars fixed-point loop.
+ *
+ * The `VAR=val` assignments that follow `env` are left to stripAllLeadingEnvVars
+ * (applied together in that same loop), so this only peels the `env` token and
+ * its own dash-flags. Fails closed on -S (argv splitter), -C/-P (altwd/altpath),
+ * `--`, and any unknown flag — leaving the command unstripped rather than
+ * guessing the real base command.
+ *
+ * SECURITY: KEEP IN SYNC with skipEnvFlags (pathValidation.ts ~:1244) and
+ * checkSemantics' env unwrap (ast.ts). Trailing whitespace is [ \t]+ (horizontal
+ * only) — \n/\r are command separators and must not be crossed.
+ *
+ * @param {string} command
+ * @returns {string}
+ */
+export function stripEnvCommandPrefix(command) {
+  const envToken = command.match(/^env[ \t]+/)
+  if (!envToken) return command
+  let rest = command.slice(envToken[0].length)
+  for (;;) {
+    const noValueFlag = rest.match(/^(?:-i|-0|-v)[ \t]+/)
+    if (noValueFlag) {
+      rest = rest.slice(noValueFlag[0].length)
+      continue
+    }
+    const unsetFlag = rest.match(/^-u[ \t]+[^ \t\n\r]+[ \t]+/)
+    if (unsetFlag) {
+      rest = rest.slice(unsetFlag[0].length)
+      continue
+    }
+    // -S/-C/-P/--/unknown dash-flag: fail closed (mirror skipEnvFlags === -1).
+    if (rest.startsWith('-')) return command
+    break
+  }
+  // rest now begins with the VAR=val assignments (handled by the loop's
+  // stripAllLeadingEnvVars) or the wrapped command itself. Empty => no wrapped
+  // command (e.g. `env -i`) => leave the original untouched.
+  return rest.length > 0 ? rest : command
 }
