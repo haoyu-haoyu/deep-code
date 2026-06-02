@@ -81,6 +81,8 @@ jobs:
             test/phase5-perf-compare.test.mjs \
             test/phase5-ci-workflow.test.mjs \
             test/a1-mcp-nonblocking.test.mjs \
+            test/sanitization.test.mjs \
+            test/redact.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \
             test/sandbox-fortress/integration/*.test.mjs \
             test/sandbox-fortress/redteam/*.test.mjs
