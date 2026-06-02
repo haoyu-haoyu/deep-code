@@ -46,7 +46,10 @@ export async function buildIndex({ files, readFile, maxFileBytes = 2_000_000 }) 
     let text
     try {
       text = await readFile(path)
-    } catch {
+    } catch (e) {
+      // A genuine cancellation propagates (the injected readFile re-throws an
+      // AbortError); only a real per-file read error degrades to a skip.
+      if (e?.name === 'AbortError') throw e
       skipped++
       continue
     }
