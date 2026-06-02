@@ -46,6 +46,7 @@ jobs:
             test/s3-render-perf.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
+            test/a2-bash-polling-core.test.mjs \
             test/a4-paste-cleanup.test.mjs \
             test/s1-tool-streaming.test.mjs \
             test/s4-streaming-resume.test.mjs \

@@ -2,14 +2,11 @@ import { unlink } from 'fs/promises'
 import { CircularBuffer } from '../CircularBuffer.js'
 import { readBranchedEnvInt } from '../branchedEnv.mjs'
 import { logForDebugging } from '../debug.js'
-import {
-  decodeUtf8AtBoundary,
-  readFileRange,
-  tailFileRaw,
-} from '../fsOperations.js'
+import { readFileRange, tailFileRaw } from '../fsOperations.js'
 import { getMaxOutputLength } from '../shell/outputLimits.js'
 import { safeJoinLines } from '../stringUtils.js'
 import { DiskTaskOutput, getTaskOutputPath } from './diskOutput.js'
+import { processTailRead, shouldSkipIdleTick } from './taskOutputPoll.mjs'
 
 const DEFAULT_MAX_MEMORY = 8 * 1024 * 1024 // 8MB
 // Bash output polling cadence. Default 200ms (5 Hz) is the sweet spot for
@@ -230,8 +227,11 @@ export class TaskOutput {
       // skip the same ticks, doubling the active-tick load.
       entry.#pollSkipParity ^= 1
       if (
-        entry.#consecutiveEmptyTicks >= IDLE_TICK_SKIP_THRESHOLD &&
-        entry.#pollSkipParity === 0
+        shouldSkipIdleTick(
+          entry.#consecutiveEmptyTicks,
+          entry.#pollSkipParity,
+          IDLE_TICK_SKIP_THRESHOLD,
+        )
       ) {
         continue
       }
@@ -245,98 +245,45 @@ export class TaskOutput {
       entry.#pollGeneration++
       const gen = entry.#pollGeneration
       void tailFileRaw(entry.path, PROGRESS_TAIL_BYTES).then(
-        ({ buffer, bytesRead, bytesTotal }) => {
+        read => {
           if (!entry.#onProgress) {
             return
           }
-          // Stale-callback guard: when a later tick already issued a
-          // newer read, this older one MUST drop everything — not
-          // just adaptive state but also #totalLines, #totalBytes,
-          // and the onProgress emit. Otherwise BashTool / PowerShell
-          // could see progress regress to an older snapshot after
-          // overlapping polls or a stopPolling/startPolling restart.
-          if (gen !== entry.#pollGeneration) {
+          // The stale-callback guard, adaptive backoff, line counting, and
+          // byte-correct chunkDelta all live in the pure taskOutputPoll core
+          // (so they are unit-testable). The class keeps the I/O, the field
+          // storage, and the onProgress emit.
+          const result = processTailRead({
+            read,
+            capturedGen: gen,
+            currentGen: entry.#pollGeneration,
+            state: {
+              totalLines: entry.#totalLines,
+              totalBytes: entry.#totalBytes,
+              lastSeenBytesTotal: entry.#lastSeenBytesTotal,
+              consecutiveEmptyTicks: entry.#consecutiveEmptyTicks,
+              lastEmittedBytesTotal: entry.#lastEmittedBytesTotal,
+            },
+            lastLinesCount: LAST_LINES_COUNT,
+            allLinesCount: ALL_LINES_COUNT,
+          })
+          if (result.stale) {
             return
           }
-          // Adaptive bookkeeping: did the file grow this tick?
-          if (bytesTotal > entry.#lastSeenBytesTotal) {
-            entry.#consecutiveEmptyTicks = 0
-            entry.#lastSeenBytesTotal = bytesTotal
-          } else {
-            entry.#consecutiveEmptyTicks++
-          }
-          // Always call onProgress even when content is empty, so the
-          // progress loop wakes up and can check for backgrounding.
-          // Commands like `git log -S` produce no output for long periods.
-          if (bytesRead === 0) {
-            entry.#onProgress(
-              '',
-              '',
-              entry.#totalLines,
-              bytesTotal,
-              false,
-              '',
-            )
-            return
-          }
-          // Decode the tail buffer at a UTF-8 codepoint boundary so the
-          // start of the slice (which may land mid-codepoint when the
-          // tail buffer is smaller than the file) is byte-correct.
-          // Avoids U+FFFD replacement-char re-encoding hazards that
-          // would otherwise corrupt downstream byte arithmetic.
-          const content = decodeUtf8AtBoundary(buffer, 0, bytesRead)
-          // Count all newlines in the tail and capture slice points for
-          // the last LAST_LINES_COUNT and ALL_LINES_COUNT lines.
-          // Uncapped so extrapolation stays accurate for dense output
-          // (short lines → many newlines in 4KB).
-          let pos = content.length
-          let nLast = 0
-          let nAll = 0
-          let lineCount = 0
-          while (pos > 0) {
-            pos = content.lastIndexOf('\n', pos - 1)
-            lineCount++
-            if (lineCount === LAST_LINES_COUNT) {
-              nLast = pos <= 0 ? 0 : pos + 1
-            }
-            if (lineCount === ALL_LINES_COUNT) {
-              nAll = pos <= 0 ? 0 : pos + 1
-            }
-          }
-          // lineCount is exact when the whole file fits in PROGRESS_TAIL_BYTES.
-          // Otherwise extrapolate from the tail sample; monotone max keeps the
-          // counter from going backwards when the tail has longer lines on one tick.
-          const totalLines =
-            bytesRead >= bytesTotal
-              ? lineCount
-              : Math.max(
-                  entry.#totalLines,
-                  Math.round((bytesTotal / bytesRead) * lineCount),
-                )
-          entry.#totalLines = totalLines
-          entry.#totalBytes = bytesTotal
-          // Byte-correct chunk delta: slice the RAW buffer (not the
-          // decoded string), realign to a UTF-8 codepoint boundary,
-          // then decode. bytesTotal and #lastEmittedBytesTotal are
-          // both byte counts so the math is unitary. If the file grew
-          // by more than the tail buffer can sample, we hand back the
-          // full aligned tail; the caller can detect undersampling
-          // via bytesTotal - lastEmitted > chunkDelta.length.
-          const newBytes = Math.max(0, bytesTotal - entry.#lastEmittedBytesTotal)
-          let chunkDelta = ''
-          if (newBytes > 0 && bytesRead > 0) {
-            const cutFromEnd = Math.min(newBytes, bytesRead)
-            const start = bytesRead - cutFromEnd
-            chunkDelta = decodeUtf8AtBoundary(buffer, start, bytesRead)
-          }
-          entry.#lastEmittedBytesTotal = bytesTotal
+          const s = result.state
+          entry.#totalLines = s.totalLines
+          entry.#totalBytes = s.totalBytes
+          entry.#lastSeenBytesTotal = s.lastSeenBytesTotal
+          entry.#consecutiveEmptyTicks = s.consecutiveEmptyTicks
+          entry.#lastEmittedBytesTotal = s.lastEmittedBytesTotal
+          const p = result.progress
           entry.#onProgress(
-            content.slice(nLast),
-            content.slice(nAll),
-            totalLines,
-            bytesTotal,
-            bytesRead < bytesTotal,
-            chunkDelta,
+            p.lastLines,
+            p.allLines,
+            p.totalLines,
+            p.totalBytes,
+            p.isIncomplete,
+            p.chunkDelta,
           )
         },
         () => {

@@ -137,23 +137,18 @@ test('legacy single-name PROGRESS_THRESHOLD_MS no longer exists in BashTool', ()
 })
 
 test('TaskOutput.ts: stale tailFile resolutions are dropped via generation guard', () => {
-  // The race Codex flagged: two ticks fire while one tailFile read
-  // is still in flight. If the older read resolves AFTER the newer,
-  // its bookkeeping would walk #lastSeenBytesTotal backward and
-  // falsely increment #consecutiveEmptyTicks. The fix is per-tick
-  // generation bumping plus a guard inside the .then() handler.
-  // We assert the guard is present in source — runtime simulation
-  // would require stubbing the private static state machine which
-  // is not exposed for testing.
+  // The race Codex flagged: two ticks fire while one tailFile read is still in
+  // flight. If the older read resolves AFTER the newer, its bookkeeping would
+  // walk #lastSeenBytesTotal backward and falsely increment
+  // #consecutiveEmptyTicks. The generation LIFECYCLE (bump per-tick, on
+  // startPolling, on stopPolling) lives in TaskOutput; the actual GUARD now
+  // lives in the pure taskOutputPoll core and is RUNTIME-tested in
+  // test/a2-bash-polling-core.test.mjs ("a stale generation drops the read").
   const source = readFileSync(
     resolve(packageRoot, 'src/utils/task/TaskOutput.ts'),
     'utf8',
   )
-  assert.match(
-    source,
-    /#pollGeneration/,
-    'TaskOutput must track per-instance pollGeneration',
-  )
+  assert.match(source, /#pollGeneration/, 'TaskOutput must track per-instance pollGeneration')
   assert.match(
     source,
     /entry\.#pollGeneration\+\+/,
@@ -164,17 +159,34 @@ test('TaskOutput.ts: stale tailFile resolutions are dropped via generation guard
     /instance\.#pollGeneration\+\+/,
     'pollGeneration must also be bumped on startPolling restart',
   )
+  // The tick passes the captured + current generation to the core and
+  // EARLY-RETURNS when the core reports the read stale.
   assert.match(
     source,
-    /gen !== entry\.#pollGeneration[\s\S]{0,80}return/,
-    'handler must EARLY-RETURN on stale generation so totalLines/onProgress also stop',
+    /capturedGen:\s*gen[\s\S]{0,120}currentGen:\s*entry\.#pollGeneration/,
+    'tick must hand the captured + current generation to processTailRead',
   )
-  // stopPolling MUST also bump the generation. Without this, a late
-  // tailFile resolution after React unmount can leak one onProgress
-  // call into a torn-down component.
+  assert.match(
+    source,
+    /if \(result\.stale\)\s*\{[\s\S]{0,40}return/,
+    'tick must early-return when the core flags the read stale',
+  )
+  // stopPolling MUST also bump the generation. Without this, a late tailFile
+  // resolution after React unmount can leak one onProgress call into a
+  // torn-down component.
   assert.match(
     source,
     /static stopPolling[\s\S]{0,300}#pollGeneration\+\+/,
     'stopPolling must bump #pollGeneration before detaching the entry',
+  )
+  // The actual guard predicate lives in the extracted core.
+  const core = readFileSync(
+    resolve(packageRoot, 'src/utils/task/taskOutputPoll.mjs'),
+    'utf8',
+  )
+  assert.match(
+    core,
+    /capturedGen !== currentGen[\s\S]{0,40}return \{ stale: true \}/,
+    'the core must drop the read when the captured generation is behind the current one',
   )
 })
