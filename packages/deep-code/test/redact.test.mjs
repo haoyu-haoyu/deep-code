@@ -1,0 +1,90 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+
+import { redactSensitiveInfo } from '../src/utils/redact.mjs'
+
+// ── secret redaction before diagnostics leave the machine ────────────────────
+// redactSensitiveInfo scrubs API keys / tokens / secrets out of diagnostic
+// payloads (FeedbackSurvey transcript-share, marketplace logging) before they go
+// to an external service. A regex gap = a leaked credential. It had ZERO direct
+// unit coverage (trapped in a .ts node --test can't load); behavior is a verbatim
+// extraction — these tests pin the current contract. Keys below are fake.
+
+const ANT = 'sk-ant-api03-' + 'A1b2C3d4E5f6G7h8I9j0K1l2'.repeat(2) // long, quote-safe
+
+test('redacts Anthropic sk-ant keys, quoted and unquoted', () => {
+  const quoted = redactSensitiveInfo(`{"key":"${ANT}"}`)
+  assert.equal(quoted, '{"key":"[REDACTED_API_KEY]"}')
+  assert.ok(!quoted.includes('sk-ant'))
+
+  const unquoted = redactSensitiveInfo(`token is sk-ant-abc1234567890 here`)
+  assert.match(unquoted, /\[REDACTED_API_KEY\]/)
+  assert.ok(!unquoted.includes('sk-ant-abc'))
+})
+
+test('sk-ant word boundary: a key glued to leading alphanumerics is NOT matched', () => {
+  // lookbehind (?<![A-Za-z0-9"']) — `xsk-ant...` must stay (avoids partial-token noise).
+  const glued = 'xsk-ant-abc1234567890'
+  assert.equal(redactSensitiveInfo(glued), glued)
+})
+
+test('redacts AWS access key IDs (AKIA…) and the AWS key: "AWS…" form', () => {
+  assert.equal(redactSensitiveInfo('AKIAIOSFODNN7EXAMPLE'), '[REDACTED_AWS_KEY]')
+  assert.equal(
+    redactSensitiveInfo('AWS key: "AWS01234567890123456789"'),
+    'AWS key: "[REDACTED_AWS_KEY]"',
+  )
+})
+
+test('redacts GCP API keys (AIza…) and service-account emails', () => {
+  const gcp = 'AIza' + 'B'.repeat(35)
+  assert.equal(redactSensitiveInfo(gcp), '[REDACTED_GCP_KEY]')
+  assert.equal(
+    redactSensitiveInfo('svc: my-bot-1@my-proj.iam.gserviceaccount.com'),
+    'svc: [REDACTED_GCP_SERVICE_ACCOUNT]',
+  )
+})
+
+test('redacts header-style secrets: x-api-key and authorization bearer (prefix preserved)', () => {
+  // KNOWN QUIRK (pre-existing, documented): the x-api-key rule redacts first,
+  // then the later generic `API[-_]?KEY[=:]` rule re-matches the same `api-key:`
+  // prefix and double-redacts the placeholder, yielding `[REDACTED]]`. This is
+  // cosmetic over-redaction — the real secret is still fully removed (no leak).
+  const out = redactSensitiveInfo('x-api-key: deadbeefcafef00d')
+  assert.equal(out, 'x-api-key: [REDACTED]]')
+  assert.ok(!out.includes('deadbeef'), 'the secret value is gone')
+
+  // authorization does NOT cascade (no `[=:]` after TOKEN in the placeholder).
+  assert.equal(
+    redactSensitiveInfo('Authorization: Bearer abc.def.ghi'),
+    'Authorization: Bearer [REDACTED_TOKEN]',
+  )
+})
+
+test('redacts AWS_*/GOOGLE_* assignments and generic KEY/TOKEN/SECRET/PASSWORD', () => {
+  assert.equal(
+    redactSensitiveInfo('AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCY'),
+    'AWS_SECRET_ACCESS_KEY=[REDACTED_AWS_VALUE]',
+  )
+  assert.equal(
+    redactSensitiveInfo('GOOGLE_APPLICATION_CREDENTIALS=/tmp/creds.json'),
+    'GOOGLE_APPLICATION_CREDENTIALS=[REDACTED_GCP_VALUE]',
+  )
+  assert.equal(redactSensitiveInfo('API_KEY=supersecretvalue'), 'API_KEY=[REDACTED]')
+  assert.equal(redactSensitiveInfo('password: hunter2horse'), 'password: [REDACTED]')
+  assert.equal(redactSensitiveInfo('TOKEN = abc123def456'), 'TOKEN = [REDACTED]')
+})
+
+test('leaves non-secret text untouched, and redacts multiple secrets in one blob', () => {
+  const innocent = 'the curl command failed with exit code 7 at /usr/bin/curl'
+  assert.equal(redactSensitiveInfo(innocent), innocent)
+
+  const blob = `AKIAIOSFODNN7EXAMPLE and API_KEY=topsecret123 and ${ANT}`
+  const out = redactSensitiveInfo(blob)
+  assert.ok(!out.includes('AKIAIOSFODNN7EXAMPLE'))
+  assert.ok(!out.includes('topsecret123'))
+  assert.ok(!out.includes('sk-ant'))
+  assert.match(out, /\[REDACTED_AWS_KEY\]/)
+  assert.match(out, /\[REDACTED\]/)
+  assert.match(out, /\[REDACTED_API_KEY\]/)
+})
