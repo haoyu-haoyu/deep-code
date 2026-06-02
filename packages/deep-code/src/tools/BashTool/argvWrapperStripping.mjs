@@ -76,8 +76,16 @@ export function skipTimeoutFlags(a) {
 
 /**
  * Parse stdbuf's flags (-i/-o/-e in fused/space-separated/long-= forms).
- * Returns argv index of wrapped COMMAND, or -1 if unparseable or no flags
- * consumed (stdbuf without flags is inert). Mirrors checkSemantics (ast.ts).
+ * Returns argv index of wrapped COMMAND, or -1 if unparseable / no wrapped cmd.
+ * Mirrors checkSemantics (ast.ts).
+ *
+ * SECURITY: `stdbuf <cmd>` with NO flags is NOT inert — it still execs <cmd>.
+ * Earlier this returned -1 (treating zero-flag stdbuf as inert) so the wrapper
+ * was left intact → baseCmd='stdbuf' → not path-restricted → the wrapped path
+ * command's out-of-project paths escaped validation. Now zero-flag stdbuf is
+ * stripped like any other wrapper (i===1 → return 1). KEEP IN SYNC with
+ * checkSemantics (ast.ts) + the bare-stdbuf pattern in stripSafeWrappers
+ * (commandStripping.mjs).
  */
 export function skipStdbufFlags(a) {
   let i = 1
@@ -90,7 +98,7 @@ export function skipStdbufFlags(a) {
       return -1 // unknown flag: fail closed
     else break
   }
-  return i > 1 && i < a.length ? i : -1
+  return i < a.length ? i : -1
 }
 
 /**

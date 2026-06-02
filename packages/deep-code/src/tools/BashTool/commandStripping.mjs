@@ -190,6 +190,17 @@ export function stripSafeWrappers(command) {
     // space-separated (`-o 0`) were previously unmatched — only fused `-o0` was
     // — letting `stdbuf --output=0 <denied>` slip a deny rule.
     /^stdbuf(?:[ \t]+(?:-[ioe][ \t]+[A-Za-z0-9]+|-[ioe][A-Za-z0-9]+|--(?:input|output|error)=[A-Za-z0-9]+))+[ \t]+(?:--[ \t]+)?/,
+    // Bare `stdbuf <cmd>` (no flags) is ALSO a wrapper — it still execs <cmd>, so
+    // a denied command run as `stdbuf <denied>` must reduce to <denied>.
+    // SECURITY: strip only when the wrapped token starts with an injection-safe
+    // command-name character [A-Za-z0-9_]. A broad `(?=[^-])` lookahead would
+    // expose shell substitutions/operators at the string level — `stdbuf $(id)
+    // cmd` / `stdbuf ;rm` would strip to `$(id) cmd` / `;rm` (bash expands those
+    // during word-splitting before stdbuf runs). Restricting to [A-Za-z0-9_]
+    // excludes $ ` ; | & ( ) < > ' " and `-`, so injection forms fail closed
+    // (and dash flags fall to the allowlisted flag pattern above). KEEP IN SYNC
+    // with skipStdbufFlags (argvWrapperStripping) + checkSemantics (ast.ts).
+    /^stdbuf[ \t]+(?=[A-Za-z0-9_])/,
     /^nohup[ \t]+(?:--[ \t]+)?/,
   ]
 

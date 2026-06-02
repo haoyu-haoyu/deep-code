@@ -2373,10 +2373,16 @@ export function checkSemantics(commands: SimpleCommand[]): SemanticCheckResult {
             break // the wrapped command
           }
         }
-        if (i > 1 && i < a.length) {
+        // SECURITY: `stdbuf <cmd>` with NO flags is NOT inert — it still execs
+        // <cmd>, so unwrap it (i===1) like any other wrapper rather than leaving
+        // name='stdbuf'. Otherwise a wrapped dangerous command escapes the
+        // semantic gate (and, via the same gap in stripWrappersFromArgv, path
+        // validation). KEEP IN SYNC with skipStdbufFlags (pathValidation.ts /
+        // argvWrapperStripping.mjs) + the bare-stdbuf pattern in stripSafeWrappers.
+        if (i < a.length) {
           a = a.slice(i)
         } else {
-          break // `stdbuf` with no flags or no wrapped cmd — inert
+          break // `stdbuf` alone (no wrapped cmd) — inert, name='stdbuf'
         }
       } else {
         break
