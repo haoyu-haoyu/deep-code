@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto'
 
 import {
-  createDeepSeekProvider,
   DEFAULT_DEEPSEEK_SMALL_MODEL,
   resolveDeepSeekConfig,
 } from '../providers/deepseek.mjs'
 import { resolveProviderConfig } from '../providers/provider-config.mjs'
 import { resolveModelProvider } from '../providers/registry.mjs'
+import {
+  isDeepSeekProvider,
+  resolveRuntimeModelProvider,
+} from '../providers/runtime-provider.mjs'
 import { routeTurn, type AutoRouteDecision } from '../autoMode/router.js'
 import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
 // @ts-expect-error DeepSeek call-model adapter is JS; runtime native primitives use it
@@ -828,13 +831,22 @@ type RuntimeCallModelArgs = {
 export function createRuntimeCallModel(
   options: RuntimeCallModelFactoryOptions = {},
 ): ReturnType<typeof createDeepSeekCallModel> {
-  const defaultCallModel = createDeepSeekCallModel(options)
+  // Resolve the configured provider ONCE so the default call model and the
+  // auto-route gate agree. With nothing configured this is the byte-identical
+  // DeepSeek provider; an explicit non-deepseek provider switches the runtime.
+  const provider = options.provider ?? resolveRuntimeModelProvider()
+  const resolvedOptions = { ...options, provider }
+  const defaultCallModel = createDeepSeekCallModel(resolvedOptions)
 
   return (async function* queryDeepSeekModelWithStreaming(
     callArgs: RuntimeCallModelArgs = {},
   ): AsyncGenerator<unknown, void, void> {
     const callOptions = isRecord(callArgs.options) ? callArgs.options : {}
-    if (!isAutoModelSetting(callOptions.model)) {
+    // 'auto' routing is DeepSeek-specific (it routes among deepseek models). For
+    // a non-DeepSeek configured provider, treat 'auto' as a normal request to
+    // that provider (its default model) rather than silently rerouting the
+    // user's data to DeepSeek.
+    if (!isAutoModelSetting(callOptions.model) || !isDeepSeekProvider(provider)) {
       yield* defaultCallModel(callArgs)
       return
     }
@@ -846,8 +858,8 @@ export function createRuntimeCallModel(
       maxThinkingTokens: 0,
     })
     const callModel = createDeepSeekCallModel({
-      ...options,
-      provider: createAutoRouteProvider(options.provider, route),
+      ...resolvedOptions,
+      provider: createAutoRouteProvider(provider, route),
     })
     const routedArgs = {
       ...callArgs,
@@ -868,7 +880,7 @@ function createAutoRouteProvider(
   provider: RuntimeCallModelFactoryOptions['provider'],
   route: ResolvedRuntimeRoute,
 ): RuntimeCallModelFactoryOptions['provider'] {
-  const baseProvider = provider ?? createDeepSeekProvider()
+  const baseProvider = provider ?? resolveRuntimeModelProvider()
   return {
     ...baseProvider,
     streamQuery(context: Record<string, unknown> = {}) {
