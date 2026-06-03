@@ -30,6 +30,7 @@ import {
   type PathCommand,
 } from './pathValidation.js'
 import { sedCommandIsAllowedByAllowlist } from './sedValidation.js'
+import { isCommandSafeViaFlagParsingCore } from './readOnlyFlagParsingCore.mjs'
 
 // Unified command validation configuration system
 type CommandConfig = {
@@ -1244,167 +1245,12 @@ const SAFE_TARGET_COMMANDS_FOR_XARGS = [
  * Handles combined flags, argument validation, and shell quoting bypass detection.
  */
 export function isCommandSafeViaFlagParsing(command: string): boolean {
-  // Parse the command to get individual tokens using shell-quote for accuracy
-  // Handle glob operators by converting them to strings, they don't matter from the perspective
-  // of this function
-  const parseResult = tryParseShellCommand(command, env => `$${env}`)
-  if (!parseResult.success) return false
-
-  const parsed = parseResult.tokens.map(token => {
-    if (typeof token !== 'string') {
-      token = token as { op: 'glob'; pattern: string }
-      if (token.op === 'glob') {
-        return token.pattern
-      }
-    }
-    return token
+  return isCommandSafeViaFlagParsingCore(command, {
+    parseShellCommand: (cmd: string) => tryParseShellCommand(cmd, env => `$${env}`),
+    getAllowlist: getCommandAllowlist,
+    validateFlags,
+    safeXargsTargetCommands: SAFE_TARGET_COMMANDS_FOR_XARGS,
   })
-
-  // If there are operators (pipes, redirects, etc.), it's not a simple command.
-  // Breaking commands down into their constituent parts is handled upstream of
-  // this function, so we reject anything with operators here.
-  const hasOperators = parsed.some(token => typeof token !== 'string')
-  if (hasOperators) {
-    return false
-  }
-
-  // Now we know all tokens are strings
-  const tokens = parsed as string[]
-
-  if (tokens.length === 0) {
-    return false
-  }
-
-  // Find matching command configuration
-  let commandConfig: CommandConfig | undefined
-  let commandTokens: number = 0
-
-  // Check for multi-word commands first (e.g., "git diff", "git stash list")
-  const allowlist = getCommandAllowlist()
-  for (const [cmdPattern] of Object.entries(allowlist)) {
-    const cmdTokens = cmdPattern.split(' ')
-    if (tokens.length >= cmdTokens.length) {
-      let matches = true
-      for (let i = 0; i < cmdTokens.length; i++) {
-        if (tokens[i] !== cmdTokens[i]) {
-          matches = false
-          break
-        }
-      }
-      if (matches) {
-        commandConfig = allowlist[cmdPattern]
-        commandTokens = cmdTokens.length
-        break
-      }
-    }
-  }
-
-  if (!commandConfig) {
-    return false // Command not in allowlist
-  }
-
-  // Special handling for git ls-remote to reject URLs that could lead to data exfiltration
-  if (tokens[0] === 'git' && tokens[1] === 'ls-remote') {
-    // Check if any argument looks like a URL or remote specification
-    for (let i = 2; i < tokens.length; i++) {
-      const token = tokens[i]
-      if (token && !token.startsWith('-')) {
-        // Reject HTTP/HTTPS URLs
-        if (token.includes('://')) {
-          return false
-        }
-        // Reject SSH URLs like git@github.com:user/repo.git
-        if (token.includes('@') || token.includes(':')) {
-          return false
-        }
-        // Reject variable references
-        if (token.includes('$')) {
-          return false
-        }
-      }
-    }
-  }
-
-  // SECURITY: Reject ANY token containing `$` (variable expansion). The
-  // `env => \`$${env}\`` callback at line 825 preserves `$VAR` as LITERAL TEXT
-  // in tokens, but bash expands it at runtime (unset vars → empty string).
-  // This parser differential defeats BOTH validateFlags and callbacks:
-  //
-  //   (1) `$VAR`-prefix defeats validateFlags `startsWith('-')` check:
-  //       `git diff "$Z--output=/tmp/pwned"` → token `$Z--output=/tmp/pwned`
-  //       (starts with `$`) falls through as positional at ~:1730. Bash runs
-  //       `git diff --output=/tmp/pwned`. ARBITRARY FILE WRITE, zero perms.
-  //
-  //   (2) `$VAR`-prefix → RCE via `rg --pre`:
-  //       `rg . "$Z--pre=bash" FILE` → executes `bash FILE`. rg's config has
-  //       no regex and no callback. SINGLE-STEP ARBITRARY CODE EXECUTION.
-  //
-  //   (3) `$VAR`-infix defeats additionalCommandIsDangerousCallback regex:
-  //       `ps ax"$Z"e` → token `ax$Ze`. The ps callback regex
-  //       `/^[a-zA-Z]*e[a-zA-Z]*$/` fails on `$` → "not dangerous". Bash runs
-  //       `ps axe` → env vars for all processes. A fix limited to `$`-PREFIXED
-  //       tokens would NOT close this.
-  //
-  // We check ALL tokens after the command prefix. Any `$` means we cannot
-  // determine the runtime token value, so we cannot verify read-only safety.
-  // This check must run BEFORE validateFlags and BEFORE callbacks.
-  for (let i = commandTokens; i < tokens.length; i++) {
-    const token = tokens[i]
-    if (!token) continue
-    // Reject any token containing $ (variable expansion)
-    if (token.includes('$')) {
-      return false
-    }
-    // Reject tokens with BOTH `{` and `,` (brace expansion obfuscation).
-    // `git diff {@'{'0},--output=/tmp/pwned}` → shell-quote strips quotes
-    // → token `{@{0},--output=/tmp/pwned}` has `{` + `,` → brace expansion.
-    // This is defense-in-depth with validateBraceExpansion in bashSecurity.ts.
-    // We require BOTH `{` and `,` to avoid false positives on legitimate
-    // patterns: `stash@{0}` (git ref, has `{` no `,`), `{{.State}}` (Go
-    // template, no `,`), `prefix-{}-suffix` (xargs, no `,`). Sequence form
-    // `{1..5}` also needs checking (has `{` + `..`).
-    if (token.includes('{') && (token.includes(',') || token.includes('..'))) {
-      return false
-    }
-  }
-
-  // Validate flags starting after the command tokens
-  if (
-    !validateFlags(tokens, commandTokens, commandConfig, {
-      commandName: tokens[0],
-      rawCommand: command,
-      xargsTargetCommands:
-        tokens[0] === 'xargs' ? SAFE_TARGET_COMMANDS_FOR_XARGS : undefined,
-    })
-  ) {
-    return false
-  }
-
-  if (commandConfig.regex && !commandConfig.regex.test(command)) {
-    return false
-  }
-  if (!commandConfig.regex && /`/.test(command)) {
-    return false
-  }
-  // Block newlines and carriage returns in grep/rg patterns as they can be used for injection
-  if (
-    !commandConfig.regex &&
-    (tokens[0] === 'rg' || tokens[0] === 'grep') &&
-    /[\n\r]/.test(command)
-  ) {
-    return false
-  }
-  if (
-    commandConfig.additionalCommandIsDangerousCallback &&
-    commandConfig.additionalCommandIsDangerousCallback(
-      command,
-      tokens.slice(commandTokens),
-    )
-  ) {
-    return false
-  }
-
-  return true
 }
 
 /**

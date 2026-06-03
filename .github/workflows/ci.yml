@@ -86,6 +86,7 @@ jobs:
             test/sed-validation.test.mjs \
             test/argv-wrapper-stripping.test.mjs \
             test/sed-edit-parser.test.mjs \
+            test/readonly-flag-parsing.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \
             test/sandbox-fortress/integration/*.test.mjs \
             test/sandbox-fortress/redteam/*.test.mjs
