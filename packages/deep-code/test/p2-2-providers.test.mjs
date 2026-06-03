@@ -251,6 +251,7 @@ test('buildRequest emits OpenAI chat-completions JSON and strips DeepSeek-only f
     model: 'llama3.1:70b',
     messages,
     stream: true,
+    stream_options: { include_usage: true }, // opt into streaming usage chunks
     tools: [{ type: 'function', function: { name: 'search' } }],
     tool_choice: 'auto',
   })
