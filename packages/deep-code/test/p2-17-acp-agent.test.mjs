@@ -148,6 +148,45 @@ test('acpAgentTurn maps a max_turns cap to the runtime finish reason', async () 
   assert.equal(step.value, 'max_turns')
 })
 
+test('acpAgentTurn threads the configured provider into runAgent AND the streaming complete', async () => {
+  // A fake non-DeepSeek provider: streamQuery yields the shared event vocabulary.
+  let streamQueryCalls = 0
+  const provider = {
+    name: 'openai-compatible',
+    streamQuery() {
+      streamQueryCalls++
+      return (async function* () {
+        yield { type: 'content_delta', text: 'Hi from provider' }
+        yield { type: 'finish', finishReason: 'stop' }
+      })()
+    },
+  }
+  // runAgent receives the resolved provider; it drives the real makeStreamingComplete.
+  let receivedProvider
+  const runAgent = async ({ provider: p, complete }) => {
+    receivedProvider = p
+    const res = await complete({ url: 'u', method: 'POST', headers: {}, body: '{}' })
+    return { content: res.content, stoppedReason: undefined }
+  }
+  const updates = []
+  const gen = acpAgentTurn({ prompt: 'hi', cwd: process.cwd(), provider, runAgent })
+  let step = await gen.next()
+  while (!step.done) {
+    updates.push(step.value)
+    step = await gen.next()
+  }
+  // the explicit provider was threaded into runAgent
+  assert.equal(receivedProvider, provider)
+  // and the streaming `complete` streamed via that SAME provider (not streamDeepSeekQuery)
+  assert.equal(streamQueryCalls, 1)
+  // its content_delta was mapped + pushed as an ACP agent_message_chunk
+  assert.ok(
+    updates.some(
+      u => u.sessionUpdate === 'agent_message_chunk' && u.content?.text === 'Hi from provider',
+    ),
+  )
+})
+
 // --- review fixes: sandbox + cancellation + bridge robustness -------------
 
 test('Read rejects a symlink that escapes the workspace (canonicalized sandbox)', async () => {

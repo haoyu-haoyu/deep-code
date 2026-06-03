@@ -254,7 +254,10 @@ export async function runDeepSeekAgent({
   let lastResponse = null
 
   for (let turn = 0; turn < maxTurns; turn++) {
-    const request = await buildDeepSeekRequest({
+    // Build via the provider so a non-DeepSeek provider produces its own request
+    // format. For the DeepSeek provider this is buildDeepSeekRequest with an
+    // empty defaults spread — byte-identical to the prior direct call.
+    const request = await modelProvider.buildRequest({
       systemPrompt,
       messages: conversation,
       tools,

@@ -15,9 +15,9 @@
 import {
   mergeDeepSeekToolCallDelta,
   runDeepSeekAgent,
-  streamDeepSeekQuery,
 } from '../../../deepcode/deepseek-native.mjs'
 import { createDeepSeekLocalTools } from '../../../deepcode/local-toolchain.mjs'
+import { resolveRuntimeModelProvider } from '../../../services/providers/runtime-provider.mjs'
 
 export const ACP_AGENT_SYSTEM_PROMPT = [
   'You are Deep Code, a DeepSeek-native coding assistant driving an editor over the Agent Client Protocol.',
@@ -140,14 +140,17 @@ export function buildAcpTools({ cwd = process.cwd(), onUpdate = () => {}, signal
 // push ACP text/thought updates as they arrive, announce tool calls, and return
 // the aggregate the agent loop expects. Records the turn's finishReason in
 // `state` so the driver can map the final stop reason.
-function makeStreamingComplete({ push, signal, state }) {
+function makeStreamingComplete({ push, signal, state, provider }) {
   return async function complete(request) {
     let content = ''
     let reasoning = ''
     let usage = null
     let finishReason
     const toolCalls = new Map()
-    for await (const event of streamDeepSeekQuery({ ...request, signal })) {
+    // Stream via the configured provider (request is already built by its
+    // buildRequest in runDeepSeekAgent). The event vocabulary is shared, so the
+    // ACP mapping + tool-call merge below work for any provider.
+    for await (const event of provider.streamQuery({ ...request, signal })) {
       const update = mapProviderEventToAcp(event)
       if (update) {
         if (event.type === 'reasoning_delta') reasoning += event.text
@@ -229,11 +232,15 @@ export function acpAgentTurn({
   cwd = process.cwd(),
   requestPermission,
   runAgent = runDeepSeekAgent,
+  // The configured runtime provider; defaults to DEEPCODE_PROVIDER resolution
+  // (DeepSeek with nothing configured — byte-identical to the prior path).
+  provider,
 } = {}) {
   return pumpUpdates(async push => {
+    const modelProvider = provider ?? resolveRuntimeModelProvider({ env })
     const tools = buildAcpTools({ cwd, onUpdate: push, signal, requestPermission })
     const state = { finishReason: undefined }
-    const complete = makeStreamingComplete({ push, signal, state })
+    const complete = makeStreamingComplete({ push, signal, state, provider: modelProvider })
     const result = await runAgent({
       prompt,
       systemPrompt: ACP_AGENT_SYSTEM_PROMPT,
@@ -241,6 +248,7 @@ export function acpAgentTurn({
       env,
       cwd,
       maxTurns: 8,
+      provider: modelProvider,
       complete,
     })
     return result?.stoppedReason === 'max_turns' ? 'max_turns' : state.finishReason ?? 'end_turn'
