@@ -1993,6 +1993,9 @@ test('runDeepSeekAgent executes tool calls and preserves reasoning_content acros
 test('runDeepSeekAgent can drive tool loop through provider streams', async () => {
   const requests = []
   const provider = {
+    // real DeepSeek buildRequest (runDeepSeekAgent builds via the provider now);
+    // streamQuery is mocked to drive the tool loop.
+    ...createDeepSeekProvider(),
     streamQuery(request) {
       requests.push(request.body.messages)
       if (requests.length === 1) {
@@ -2576,6 +2579,7 @@ test('runDeepSeekLocalToolChain executes Read -> Edit -> Bash -> Read through De
       DEEPSEEK_CACHE_USER_ID: 'workspace-1',
     },
     provider: {
+      ...createDeepSeekProvider(),
       streamQuery(request) {
         requests.push(request)
         if (requests.length === 1) {
@@ -2652,6 +2656,7 @@ test('runDeepSeekLocalToolChain uses real tools in both stable prefix and DeepSe
     cwd,
     prompt: 'Read sample.txt and answer.',
     provider: {
+      ...createDeepSeekProvider(),
       streamQuery(request) {
         requests.push(request)
         return (async function* stream() {
