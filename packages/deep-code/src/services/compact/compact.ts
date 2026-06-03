@@ -13,6 +13,7 @@ import type { QuerySource } from '../../constants/querySource.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
+import { alignCompactBoundaryBackward } from './compactBoundary.mjs'
 import { FileReadTool } from '../../tools/FileReadTool/FileReadTool.js'
 import {
   FILE_READ_TOOL_NAME,
@@ -769,6 +770,14 @@ export async function partialCompactConversation(
   direction: PartialCompactDirection = 'from',
 ): Promise<CompactionResult> {
   try {
+    // CORRECTNESS: never split an assistant tool_use from its tool_result at the
+    // keep/summarize boundary — that orphans the tool_result (breaks DeepSeek's
+    // strict tool pairing) AND mutates the stable prefix (collapses the prompt
+    // cache). Walk the boundary back off any tool_result messages first; applies
+    // to BOTH directions and is used consistently everywhere pivotIndex is read
+    // below. (Reasonix compactBounds equivalent — REASONIX_IMPROVEMENTS.md P2.11.b.)
+    pivotIndex = alignCompactBoundaryBackward(allMessages, pivotIndex)
+
     const messagesToSummarize =
       direction === 'up_to'
         ? allMessages.slice(0, pivotIndex)
