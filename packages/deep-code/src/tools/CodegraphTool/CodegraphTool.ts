@@ -8,8 +8,8 @@ import { runCodegraphQuery } from '../../utils/codegraph/workspace.mjs'
 
 export const CODEGRAPH_TOOL_NAME = 'CodeGraph'
 
-const DESCRIPTION = `Navigate the codebase's structure without reading whole files. A fast, dependency-free heuristic index of JS/TS and Python source. Queries:
-- list_symbols: declarations in a file (functions, classes, methods, const/let/var, TS interface/type/enum, Python def/class) with kind + line. Requires "file".
+const DESCRIPTION = `Navigate the codebase's structure without reading whole files. A fast, dependency-free heuristic index of JS/TS, Python, Go, and Rust source. Queries:
+- list_symbols: declarations in a file (functions, classes, methods, const/let/var, TS interface/type/enum, Python def/class, Go struct/interface/func/method, Rust fn/struct/enum/trait/impl/mod) with kind + line. Requires "file".
 - find_definition: candidate declaration sites for a symbol name, ranked best-first. Requires "name". Returns CANDIDATES (heuristic — no scope/binding resolution), so verify before relying on a single hit.
 - import_graph: the modules a file imports. Optional "file" (omit for the whole workspace).
 - importers: files that import a given module specifier. Requires "module".
@@ -58,9 +58,10 @@ export const CodegraphTool = buildTool({
   get outputSchema(): OutputSchema {
     return outputSchema()
   },
-  // Dark-launched: opt-in via ENABLE_CODEGRAPH_TOOL (mirrors ENABLE_LSP_TOOL).
+  // Generally available (read-only). DEEPCODE_DISABLE_CODEGRAPH_TOOL opts out for
+  // anyone who wants the smaller tool set / stable prefix back.
   isEnabled() {
-    return isEnvTruthy(process.env.ENABLE_CODEGRAPH_TOOL)
+    return !isEnvTruthy(process.env.DEEPCODE_DISABLE_CODEGRAPH_TOOL)
   },
   // Each call rebuilds the workspace index (no shared cache yet), so a parallel
   // fan-out would multiply full-repo I/O — run codegraph queries sequentially.
