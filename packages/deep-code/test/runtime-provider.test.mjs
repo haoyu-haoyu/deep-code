@@ -6,7 +6,10 @@ import {
   resolveRuntimeModelProvider,
 } from '../src/services/providers/runtime-provider.mjs'
 import { createDeepSeekProvider } from '../src/services/providers/deepseek.mjs'
-import { createDeepSeekCallModel } from '../src/query/deepseek-call-model.mjs'
+import {
+  createDeepSeekCallModel,
+  resolveDeepSeekRuntimeModel,
+} from '../src/query/deepseek-call-model.mjs'
 
 // ── runtime multi-provider wiring ────────────────────────────────────────────
 // resolveRuntimeModelProvider is the seam that turns the previously-latent
@@ -86,6 +89,35 @@ test('isDeepSeekProvider gates auto-routing to the DeepSeek provider only', () =
   assert.equal(isDeepSeekProvider({}), false)
 })
 
+// --- per-request model override (provider-aware model resolution) ------------
+
+test('resolveDeepSeekRuntimeModel passes any model through for non-DeepSeek, guards DeepSeek', async () => {
+  const ds = resolveRuntimeModelProvider({ env: {} })
+  const oa = resolveRuntimeModelProvider({
+    env: {
+      DEEPCODE_PROVIDER: 'openai-compatible',
+      OPENAI_COMPATIBLE_BASE_URL: 'https://x/v1',
+      OPENAI_COMPATIBLE_API_KEY: 'k',
+      OPENAI_COMPATIBLE_MODEL: 'gpt-x',
+    },
+  })
+
+  // non-DeepSeek: any concrete model passes through; 'auto'/none → provider default
+  assert.equal(resolveDeepSeekRuntimeModel('gpt-4o-mini', { provider: oa }), 'gpt-4o-mini')
+  assert.equal(resolveDeepSeekRuntimeModel('llama3.1:70b', { provider: oa }), 'llama3.1:70b')
+  assert.equal(resolveDeepSeekRuntimeModel('auto', { provider: oa }), undefined)
+  assert.equal(resolveDeepSeekRuntimeModel(undefined, { provider: oa }), undefined)
+
+  // DeepSeek: deepseek-* passes through; a foreign model NEVER leaks (env fallback)
+  assert.equal(resolveDeepSeekRuntimeModel('deepseek-v4-flash', { provider: ds }), 'deepseek-v4-flash')
+  await withEnv({ DEEPSEEK_MODEL: 'deepseek-v4-pro' }, () => {
+    assert.equal(resolveDeepSeekRuntimeModel('gpt-4o', { provider: ds }), 'deepseek-v4-pro')
+  })
+
+  // backward-compat: no provider → DeepSeek semantics
+  assert.equal(resolveDeepSeekRuntimeModel('deepseek-x'), 'deepseek-x')
+})
+
 // --- end-to-end: the DEFAULT wiring streams through the configured provider ---
 
 const enc = new TextEncoder()
@@ -94,7 +126,12 @@ const sse = obj => `data: ${JSON.stringify(obj)}\n\n`
 function withEnv(overrides, fn) {
   const keys = Object.keys(overrides)
   const saved = Object.fromEntries(keys.map(k => [k, process.env[k]]))
-  Object.assign(process.env, overrides)
+  // assign — deleting keys whose override is undefined (process.env coerces an
+  // assigned `undefined` to the string 'undefined', which is not the same as unset)
+  for (const k of keys) {
+    if (overrides[k] === undefined) delete process.env[k]
+    else process.env[k] = overrides[k]
+  }
   return (async () => {
     try {
       return await fn()
@@ -179,6 +216,39 @@ test('createDeepSeekCallModel() with DEEPCODE_PROVIDER set streams via the confi
       assert.ok(events.includes('message_start'))
       assert.ok(events.includes('content_block_delta'))
       assert.equal(assistant.message.content.find(b => b.type === 'text').text, 'Hello')
+    },
+  )
+})
+
+test('a per-request model override reaches the configured non-DeepSeek provider', async () => {
+  await withEnv(
+    {
+      DEEPCODE_PROVIDER: 'openai-compatible',
+      OPENAI_COMPATIBLE_BASE_URL: 'https://api.example.com/v1',
+      OPENAI_COMPATIBLE_API_KEY: 'sk-test',
+      OPENAI_COMPATIBLE_MODEL: 'gpt-x', // the configured DEFAULT
+    },
+    async () => {
+      let captured
+      const fetch = async (url, opts) => {
+        captured = JSON.parse(opts.body)
+        return {
+          ok: true,
+          status: 200,
+          body: (async function* () {
+            yield enc.encode('data: [DONE]\n\n')
+          })(),
+        }
+      }
+      // options.model picks a DIFFERENT model per request — it must override the
+      // provider's configured default (gpt-x).
+      // eslint-disable-next-line no-empty
+      for await (const _ of createDeepSeekCallModel()({
+        messages: [{ role: 'user', content: 'hi' }],
+        options: { fetchOverride: fetch, model: 'gpt-4o-mini' },
+      })) {
+      }
+      assert.equal(captured.model, 'gpt-4o-mini') // override won, not the default gpt-x
     },
   )
 })

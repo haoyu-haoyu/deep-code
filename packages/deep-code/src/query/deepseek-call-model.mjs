@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { mapDeepSeekFinishReason } from '../deepcode/deepseek-native.mjs'
-import { resolveRuntimeModelProvider } from '../services/providers/runtime-provider.mjs'
+import {
+  isDeepSeekProvider,
+  resolveRuntimeModelProvider,
+} from '../services/providers/runtime-provider.mjs'
+
+// Mirrors AUTO_MODEL_SETTING in src/utils/model/model.ts (a .ts, not
+// node-loadable). 'auto' is DeepSeek-specific routing; it is never a literal
+// model name for another provider.
+const AUTO_MODEL_SETTING = 'auto'
 import {
   recordDeepSeekCacheUsage,
   resolveDeepSeekCacheStatsPath,
@@ -43,7 +51,7 @@ export function createDeepSeekCallModel({
       toolSchemaOptions,
     })
 
-    const runtimeModel = resolveDeepSeekRuntimeModel(options.model)
+    const runtimeModel = resolveDeepSeekRuntimeModel(options.model, { provider })
     const messageId = `msg_deepseek_${uuid()}`
 
     yield streamEvent({
@@ -337,8 +345,22 @@ async function recordQueryCacheUsage(usage, stablePrefix, provider, turnId) {
   })
 }
 
-export function resolveDeepSeekRuntimeModel(model) {
-  if (typeof model === 'string' && model.startsWith('deepseek')) {
+export function resolveDeepSeekRuntimeModel(model, { provider } = {}) {
+  const hasModel = typeof model === 'string' && model.length > 0
+
+  // Non-DeepSeek provider: pass through ANY concrete model so the user can pick
+  // e.g. gpt-4o / llama3.1:70b per request. 'auto' is DeepSeek-only routing
+  // (gated upstream in createRuntimeCallModel) and must NOT leak through as a
+  // literal model name — fall back to the provider's configured default
+  // (undefined → buildRequest uses its resolvedDefaultModel).
+  if (provider && !isDeepSeekProvider(provider)) {
+    return hasModel && model !== AUTO_MODEL_SETTING ? model : undefined
+  }
+
+  // DeepSeek (and the no-provider default): only a deepseek-* model passes
+  // through; otherwise the env-configured DeepSeek model. Never let a foreign
+  // model name into a DeepSeek request — it would also mutate the stable prefix.
+  if (hasModel && model.startsWith('deepseek')) {
     return model
   }
   return process.env.DEEPSEEK_MODEL ?? process.env.DEEPCODE_MODEL

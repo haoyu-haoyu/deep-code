@@ -2277,6 +2277,10 @@ test('createDeepSeekCallModel forwards query runtime controls to DeepSeek provid
   const requests = []
   const callModel = createDeepSeekCallModel({
     provider: {
+      // name 'deepseek' so model resolution applies DeepSeek model-guarding
+      // (a foreign model name like 'claude-sonnet-4-5' must NOT reach DeepSeek);
+      // real providers always carry a name.
+      name: 'deepseek',
       streamQuery(request) {
         requests.push(request)
         return (async function* stream() {
