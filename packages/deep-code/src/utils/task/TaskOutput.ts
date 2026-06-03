@@ -286,8 +286,14 @@ export class TaskOutput {
             p.chunkDelta,
           )
         },
-        () => {
-          // File may not exist yet
+        (err: unknown) => {
+          // ENOENT is expected — the output file may not exist yet. Any other
+          // error (permission, disk, etc.) is a real failure that should not be
+          // silently swallowed (it would surface as "no task output" with no
+          // explanation).
+          if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+            logForDebugging('TaskOutput: error reading task output file', err)
+          }
         },
       )
     }

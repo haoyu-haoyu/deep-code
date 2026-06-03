@@ -1081,6 +1081,28 @@ test('parseDeepSeekSSELines extracts usage from DeepSeek final choice chunk', ()
   ])
 })
 
+test('parseDeepSeekSSELines skips a malformed/truncated data line instead of crashing the stream', () => {
+  // ROBUSTNESS regression: a single corrupt SSE line (network glitch / proxy /
+  // a connection dropped mid-message so the final-buffer flush sees partial
+  // JSON) must NOT throw — it would abort streamDeepSeekResponseBody and lose
+  // all already-received content. The bad line is skipped; the rest parses.
+  let events
+  assert.doesNotThrow(() => {
+    events = parseDeepSeekSSELines([
+      'data: {"choices":[{"delta":{"content":"hi"}}]}',
+      'data: {"choices":[{"delta":', // truncated JSON (dropped connection)
+      'data: not json at all',
+      'data: {"choices":[{"delta":{"content":" there"}}]}',
+      'data: [DONE]',
+    ])
+  })
+  assert.deepEqual(events, [
+    { type: 'content_delta', text: 'hi' },
+    { type: 'content_delta', text: ' there' },
+    { type: 'done' },
+  ])
+})
+
 test('streamDeepSeekResponseBody buffers split SSE lines', async () => {
   const encoder = new TextEncoder()
   const body = new ReadableStream({
