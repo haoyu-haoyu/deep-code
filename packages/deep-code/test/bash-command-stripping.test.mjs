@@ -193,6 +193,26 @@ test('stripSafeWrappers: bare stdbuf does NOT expose a substitution/operator (no
   }
 })
 
+test('stripSafeWrappers: benign scheduler wrappers strip; dangerous/injection do NOT', () => {
+  // setsid / ionice / chrt / taskset are transparent → strip to expose the cmd
+  assert.equal(stripSafeWrappers('setsid curl x'), 'curl x')
+  assert.equal(stripSafeWrappers('ionice -c2 curl x'), 'curl x')
+  assert.equal(stripSafeWrappers('ionice -c 2 -n 0 curl x'), 'curl x')
+  assert.equal(stripSafeWrappers('chrt 50 curl x'), 'curl x')
+  assert.equal(stripSafeWrappers('chrt -f 50 curl x'), 'curl x')
+  assert.equal(stripSafeWrappers('taskset 0x3 curl x'), 'curl x')
+  assert.equal(stripSafeWrappers('taskset -c 0,1 curl x'), 'curl x')
+  // SECURITY: privilege/exec wrappers must NOT be stripped (would let a deny on
+  // the inner command be evaded AND, worse, an allow rule auto-approve `sudo rm`)
+  for (const cmd of ['sudo curl x', 'doas curl x', 'gdb curl x', 'strace curl x', 'systemd-run curl x', 'proxychains curl x']) {
+    assert.match(stripSafeWrappers(cmd), new RegExp('^' + cmd.split(' ')[0]), `must not strip: ${cmd}`)
+  }
+  // injection / pid-mode / missing-arg → fail closed (not stripped)
+  for (const cmd of ['setsid $(id) rm', 'ionice -c $(id) rm', 'ionice -p 1234', 'chrt -p 50 1234', 'chrt rm', 'taskset $(id) rm']) {
+    assert.equal(stripSafeWrappers(cmd), cmd, `must not strip/expose: ${cmd}`)
+  }
+})
+
 // --- stripEnvCommandPrefix: the `env <denied>` deny-bypass fix ----------------
 
 test('stripEnvCommandPrefix: strips a leading env wrapper + its safe flags', () => {
@@ -281,6 +301,10 @@ test('deny closure: `env <denied>` (and stdbuf/nohup combos) reduce to a deny ma
     'stdbuf -o0 env curl http://evil.com',
     'stdbuf --output=0 curl http://evil.com',
     'stdbuf curl http://evil.com', // bare stdbuf (no flag) — the path/deny bypass fix
+    'setsid curl http://evil.com', // benign scheduler wrappers
+    'ionice -c2 curl http://evil.com',
+    'chrt 50 curl http://evil.com',
+    'taskset 0x3 curl http://evil.com',
     'timeout 5 curl http://evil.com',
   ]) {
     assert.ok(denyMatches(command, 'curl'), `deny should match: ${command}`)

@@ -18,6 +18,12 @@
  * argv[0] against permission rules and flag allowlists. If no, ask the user.
  */
 
+import {
+  skipChrtFlags,
+  skipIoniceFlags,
+  skipSetsidFlags,
+  skipTasksetFlags,
+} from '../../tools/BashTool/argvWrapperStripping.mjs'
 import { SHELL_KEYWORDS } from './bashParser.js'
 import type { Node } from './parser.js'
 import { PARSE_ABORTED, parseCommandRaw } from './parser.js'
@@ -2384,6 +2390,29 @@ export function checkSemantics(commands: SimpleCommand[]): SemanticCheckResult {
         } else {
           break // `stdbuf` alone (no wrapped cmd) — inert, name='stdbuf'
         }
+      } else if (a[0] === 'setsid') {
+        // Benign scheduler wrappers — share the exact skip logic with
+        // stripWrappersFromArgv via the imported helpers (no drift). Each fails
+        // closed (-1) on a pid mode / unsafe value / expansion command / unknown
+        // flag → inert (name stays the wrapper).
+        const i = skipSetsidFlags(a)
+        if (i < 0) break
+        a = a.slice(i)
+      } else if (a[0] === 'ionice') {
+        // Benign IO-scheduler wrappers — share the exact skip logic with
+        // stripWrappersFromArgv via the imported helpers (no drift). Each fails
+        // closed (-1) on a pid mode / unsafe value / unknown flag → inert.
+        const i = skipIoniceFlags(a)
+        if (i < 0) break
+        a = a.slice(i)
+      } else if (a[0] === 'chrt') {
+        const i = skipChrtFlags(a)
+        if (i < 0) break
+        a = a.slice(i)
+      } else if (a[0] === 'taskset') {
+        const i = skipTasksetFlags(a)
+        if (i < 0) break
+        a = a.slice(i)
       } else {
         break
       }

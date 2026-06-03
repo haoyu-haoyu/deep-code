@@ -202,6 +202,19 @@ export function stripSafeWrappers(command) {
     // with skipStdbufFlags (argvWrapperStripping) + checkSemantics (ast.ts).
     /^stdbuf[ \t]+(?=[A-Za-z0-9_])/,
     /^nohup[ \t]+(?:--[ \t]+)?/,
+    // Benign scheduler wrappers (setsid/ionice/chrt/taskset) — transparent (the
+    // wrapped command still runs), so a denied command run as `<wrapper> <denied>`
+    // must reduce to <denied>. SECURITY: each requires a non-dash command start
+    // (?=[A-Za-z0-9_]) so injection / `-p` pid-mode / unknown-flag forms fail
+    // closed; flag values use [A-Za-z0-9-]/digit/hex allowlists (no expansion).
+    // Privilege/exec wrappers (sudo/doas/su/gdb/strace/perf/systemd-run/
+    // proxychains) are deliberately NOT here — stripping them would auto-approve
+    // `sudo rm` as `rm`. KEEP IN SYNC with skip{Ionice,Chrt,Taskset}Flags
+    // (argvWrapperStripping) + checkSemantics (ast.ts).
+    /^setsid(?:[ \t]+(?:-c|-f|-w|--ctty|--fork|--wait))*[ \t]+(?=[A-Za-z0-9_])/,
+    /^ionice(?:[ \t]+(?:-[cn][ \t]+[A-Za-z0-9-]+|-[cn][A-Za-z0-9-]+|-t|--ignore))*[ \t]+(?=[A-Za-z0-9_])/,
+    /^chrt(?:[ \t]+(?:-f|-r|-b|-o|-i|-d|-R|-a|--(?:fifo|rr|batch|other|idle|deadline|reset-on-fork|all-tasks)))*[ \t]+\d+[ \t]+(?=[A-Za-z0-9_])/,
+    /^taskset(?:[ \t]+(?:-c|--cpu-list|-a|--all-tasks))*[ \t]+(?:0x[0-9a-fA-F]+|[0-9][0-9,-]*)[ \t]+(?=[A-Za-z0-9_])/,
   ]
 
   // Pattern for environment variables. SECURITY: Only matches unquoted values
