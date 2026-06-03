@@ -221,7 +221,8 @@ export function getAllBaseTools(): Tools {
     ...(CtxInspectTool ? [CtxInspectTool] : []),
     ...(TerminalCaptureTool ? [TerminalCaptureTool] : []),
     ...(isEnvTruthy(process.env.ENABLE_LSP_TOOL) ? [LSPTool] : []),
-    ...(isEnvTruthy(process.env.ENABLE_CODEGRAPH_TOOL) ? [CodegraphTool] : []),
+    // CodeGraph is generally available (read-only); opt out via DEEPCODE_DISABLE_CODEGRAPH_TOOL.
+    ...(isEnvTruthy(process.env.DEEPCODE_DISABLE_CODEGRAPH_TOOL) ? [] : [CodegraphTool]),
     ...(isWorktreeModeEnabled() ? [EnterWorktreeTool, ExitWorktreeTool] : []),
     RevertTurnTool,
     getSendMessageTool(),

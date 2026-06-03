@@ -4,8 +4,12 @@ import assert from 'node:assert/strict'
 import {
   extractJsTs,
   extractPython,
+  extractGo,
+  extractRust,
   maskJsTs,
   maskPython,
+  maskGo,
+  maskRust,
   languageForPath,
   extractFile,
 } from '../src/utils/codegraph/languages.mjs'
@@ -257,7 +261,9 @@ test('languageForPath / extractFile dispatch by extension', () => {
   assert.equal(languageForPath('a/b.tsx'), 'jsts')
   assert.equal(languageForPath('a/b.mjs'), 'jsts')
   assert.equal(languageForPath('a/b.py'), 'python')
-  assert.equal(languageForPath('a/b.go'), null)
+  assert.equal(languageForPath('a/b.go'), 'go')
+  assert.equal(languageForPath('a/b.rs'), 'rust')
+  assert.equal(languageForPath('a/b.txt'), null)
   assert.equal(extractFile('x.txt', 'whatever'), null)
   assert.ok(extractFile('x.ts', 'export const z = 1').symbols.length === 1)
 })
@@ -381,4 +387,188 @@ test('importGraph and importersOf trace dependencies', async () => {
 
   // Single-file restriction.
   assert.deepEqual(Object.keys(importGraph(index, { file: 'src/app.ts' })), ['src/app.ts'])
+})
+
+// ── Go extractor ─────────────────────────────────────────────────────────────
+
+const byName = syms => Object.fromEntries(syms.map(s => [s.name, s]))
+
+test('languageForPath recognizes Go and Rust', () => {
+  assert.equal(languageForPath('cmd/main.go'), 'go')
+  assert.equal(languageForPath('src/lib.rs'), 'rust')
+  assert.equal(languageForPath('a/b/x.GO'), 'go') // case-insensitive
+  assert.equal(languageForPath('README.md'), null)
+})
+
+test('extractGo captures funcs, methods (by receiver), types, consts/vars with Go export rules', () => {
+  const src = [
+    'package server',
+    'func New() *Server { return nil }',
+    'func helper() {}',
+    'func (s *Server) Start() error { return nil }',
+    'func (s Server) addr() string { return "" }',
+    'type Server struct {',
+    '\tAddr string',
+    '}',
+    'type Handler interface { Serve() }',
+    'type ID = int',
+    'const MaxConns = 10',
+    'var logger = newLogger()',
+  ].join('\n')
+  const { symbols } = extractGo(src)
+  const m = byName(symbols)
+  assert.equal(m.server.kind, 'package')
+  assert.deepEqual([m.New.kind, m.New.exported, m.New.scope], ['function', true, ''])
+  assert.equal(m.helper.exported, false) // lower-case → unexported
+  // methods attributed to the receiver type; export by method-name case
+  assert.deepEqual([m.Start.kind, m.Start.scope, m.Start.exported], ['method', 'Server', true])
+  assert.deepEqual([m.addr.kind, m.addr.scope, m.addr.exported], ['method', 'Server', false])
+  assert.equal(m.Server.kind, 'struct')
+  assert.equal(m.Handler.kind, 'interface')
+  assert.equal(m.ID.kind, 'type')
+  assert.deepEqual([m.MaxConns.kind, m.MaxConns.exported], ['const', true])
+  assert.deepEqual([m.logger.kind, m.logger.exported], ['var', false])
+})
+
+test('extractGo reads single + grouped imports (with alias / blank / dot) and grouped type/const blocks', () => {
+  const src = [
+    'package main',
+    'import "fmt"',
+    'import (',
+    '\t"os"',
+    '\talias "net/http"',
+    '\t_ "embed"',
+    '\t. "errors"',
+    ')',
+    'type (',
+    '\tFoo struct { x int }',
+    '\tBar interface { M() }',
+    '\tBaz int',
+    ')',
+    'const (',
+    '\tA = 1',
+    '\tB = 2',
+    ')',
+  ].join('\n')
+  const { symbols, imports } = extractGo(src)
+  assert.deepEqual(imports.map(i => i.module), ['fmt', 'os', 'net/http', 'embed', 'errors'])
+  const m = byName(symbols)
+  assert.equal(m.Foo.kind, 'struct')
+  assert.equal(m.Bar.kind, 'interface')
+  assert.equal(m.Baz.kind, 'type')
+  assert.equal(m.A.kind, 'const')
+  assert.equal(m.B.kind, 'const')
+})
+
+test('maskGo blanks comments + interpreted/raw strings + runes so they yield no symbols/imports', () => {
+  const src = [
+    'package main',
+    '// func ghost() {} and import "evil"',
+    '/* block func phantom() */',
+    'func real() {',
+    '\ts := "func notReal() { import \\"nope\\""',
+    '\tr := `raw } func alsoNot() import "x"`',
+    "\tc := '}'",
+    '\treturn',
+    '}',
+  ].join('\n')
+  const { symbols, imports } = extractGo(src)
+  assert.deepEqual(symbols.filter(s => s.kind === 'function').map(s => s.name), ['real'])
+  assert.equal(symbols.some(s => /ghost|phantom|notReal|alsoNot/.test(s.name)), false)
+  assert.deepEqual(imports, []) // the "evil"/"nope"/"x" specifiers are all masked
+})
+
+// ── Rust extractor ───────────────────────────────────────────────────────────
+
+test('extractRust captures fn/method (impl + trait scope), struct/enum/union/trait/impl/mod/type/const with pub export', () => {
+  const src = [
+    'pub struct Point { x: i32 }',
+    'pub enum Color { Red, Green }',
+    'union U { a: u8 }',
+    'pub trait Shape {',
+    '\tfn area(&self) -> f64;',
+    '}',
+    'impl Shape for Point {',
+    '\tpub fn area(&self) -> f64 { 0.0 }',
+    '\tfn hidden(&self) {}',
+    '}',
+    'pub fn free() {}',
+    'mod internal {',
+    '\tfn secret() {}',
+    '}',
+    'pub const MAX: u32 = 9;',
+    'pub type Alias = u8;',
+  ].join('\n')
+  const { symbols } = extractRust(src)
+  const m = byName(symbols)
+  // `Point` is BOTH a struct and an impl target — find each by kind.
+  const structPoint = symbols.find(s => s.name === 'Point' && s.kind === 'struct')
+  assert.deepEqual([structPoint.kind, structPoint.exported], ['struct', true])
+  assert.deepEqual([m.Color.kind, m.Color.exported], ['enum', true])
+  assert.equal(m.U.kind, 'struct') // union mapped to struct
+  assert.equal(m.Shape.kind, 'trait')
+  // `area` appears twice: the trait signature (scope Shape) + the impl method
+  // (scope Point) — both attributed as methods to their enclosing block.
+  const areas = symbols.filter(s => s.name === 'area')
+  assert.deepEqual(areas.map(a => a.scope).sort(), ['Point', 'Shape'])
+  assert.ok(areas.every(a => a.kind === 'method'))
+  const impl = symbols.find(s => s.kind === 'impl')
+  assert.equal(impl.name, 'Point')
+  assert.deepEqual([m.hidden.kind, m.hidden.scope, m.hidden.exported], ['method', 'Point', false])
+  assert.deepEqual([m.free.kind, m.free.exported], ['function', true])
+  assert.equal(m.internal.kind, 'mod')
+  assert.deepEqual([m.secret.kind, m.secret.scope], ['function', '']) // fn in a mod is a function, not a method
+  assert.deepEqual([m.MAX.kind, m.MAX.exported], ['const', true])
+  assert.equal(m.Alias.kind, 'type')
+})
+
+test('extractRust reads single + multi-line + pub use imports', () => {
+  const src = [
+    'use std::fmt;',
+    'use std::collections::{',
+    '\tHashMap,',
+    '\tBTreeMap,',
+    '};',
+    'pub use crate::foo::Bar;',
+    'fn after() {}',
+  ].join('\n')
+  const { symbols, imports } = extractRust(src)
+  assert.equal(imports.length, 3)
+  assert.equal(imports[0].module, 'std::fmt')
+  assert.match(imports[1].module, /^std::collections::\{/) // multi-line joined
+  assert.equal(imports[2].module, 'crate::foo::Bar')
+  // the multi-line `use {...}` braces must not corrupt scope/attribution
+  assert.equal(byName(symbols).after.kind, 'function')
+})
+
+test('maskRust handles NESTED block comments, raw strings, and brace-bearing char literals vs lifetimes', () => {
+  const src = [
+    '/* outer /* nested fn ghost() */ still comment, struct Phantom */',
+    'pub fn real<\'a>(s: &\'a str) -> char {', // 'a is a lifetime, not a char literal
+    '\tlet open = \'{\';',                      // a brace char literal must not open scope
+    '\tlet close = \'}\';',                     // a brace char literal must not close scope
+    '\tlet raw = r#"struct NotReal { } fn nope()"#;',
+    '\tlet s = "fn alsoNope() {";',
+    "\t'x'",
+    '}',
+    'pub fn sibling() {}', // must be a top-level function, proving braces stayed balanced
+  ].join('\n')
+  const { symbols } = extractRust(src)
+  const names = symbols.map(s => s.name)
+  assert.equal(names.some(n => /ghost|Phantom|NotReal|nope|alsoNope/.test(n)), false)
+  const m = byName(symbols)
+  assert.deepEqual([m.real.kind, m.real.scope], ['function', '']) // top level
+  // sibling stays a top-level function — proves the char-literal braces + raw
+  // string + nested comment never corrupted depth tracking.
+  assert.deepEqual([m.sibling.kind, m.sibling.scope], ['function', ''])
+})
+
+// ── dispatch ─────────────────────────────────────────────────────────────────
+
+test('extractFile dispatches Go and Rust by extension', () => {
+  const go = extractFile('x/main.go', 'package main\nfunc Main() {}\n')
+  assert.equal(go.symbols.find(s => s.name === 'Main').kind, 'function')
+  const rs = extractFile('src/lib.rs', 'pub fn run() {}\n')
+  assert.equal(rs.symbols.find(s => s.name === 'run').kind, 'function')
+  assert.equal(extractFile('notes.txt', 'whatever'), null)
 })

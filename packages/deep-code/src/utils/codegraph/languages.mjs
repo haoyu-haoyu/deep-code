@@ -16,7 +16,7 @@
 /**
  * @typedef {Object} SymbolRecord
  * @property {string} name
- * @property {'function'|'class'|'const'|'let'|'var'|'interface'|'type'|'enum'|'namespace'|'method'|'def'} kind
+ * @property {'function'|'class'|'const'|'let'|'var'|'interface'|'type'|'enum'|'namespace'|'method'|'def'|'struct'|'trait'|'impl'|'mod'|'package'} kind
  * @property {number} line   1-based line number of the declaration
  * @property {boolean} exported
  * @property {string} scope  enclosing symbol name, or '' at top level
@@ -33,6 +33,8 @@ const JS_TS_EXTENSIONS = new Set([
   '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts',
 ])
 const PYTHON_EXTENSIONS = new Set(['.py', '.pyi'])
+const GO_EXTENSIONS = new Set(['.go'])
+const RUST_EXTENSIONS = new Set(['.rs'])
 
 /** Lowercased file extension including the dot, or '' if none. */
 export function extensionOf(path) {
@@ -45,6 +47,8 @@ export function languageForPath(path) {
   const ext = extensionOf(path)
   if (JS_TS_EXTENSIONS.has(ext)) return 'jsts'
   if (PYTHON_EXTENSIONS.has(ext)) return 'python'
+  if (GO_EXTENSIONS.has(ext)) return 'go'
+  if (RUST_EXTENSIONS.has(ext)) return 'rust'
   return null
 }
 
@@ -56,6 +60,8 @@ export function extractFile(path, text) {
   const language = languageForPath(path)
   if (language === 'jsts') return extractJsTs(text)
   if (language === 'python') return extractPython(text)
+  if (language === 'go') return extractGo(text)
+  if (language === 'rust') return extractRust(text)
   return null
 }
 
@@ -375,4 +381,345 @@ export function extractPython(text) {
   }
 
   return { symbols, imports }
+}
+
+// ---------------------------------------------------------------------------
+// Go extractor
+// ---------------------------------------------------------------------------
+
+const GO_ID = '[A-Za-z_][A-Za-z0-9_]*'
+// Go visibility is by capitalization: an identifier is exported iff its first
+// rune is upper-case.
+const goExported = name => /^[\p{Lu}]/u.test(name)
+
+// Mask Go comments + string/rune literals (bodies -> spaces, delimiters +
+// newlines + length preserved). Go has line and C-style block comments
+// (non-nesting), `"..."` interpreted strings, backtick raw strings (span
+// newlines, no escapes), and `'...'` rune literals (so a brace inside a rune
+// can't corrupt brace tracking — Go has no `'`-lifetimes, unlike Rust).
+export function maskGo(text) {
+  const out = new Array(text.length)
+  let state = 'code' // code | line | block | dq | raw | rune
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    const n = text[i + 1]
+    const keep = c === '\n' ? '\n' : ' '
+    switch (state) {
+      case 'code':
+        if (c === '/' && n === '/') { state = 'line'; out[i] = ' ' }
+        else if (c === '/' && n === '*') { state = 'block'; out[i] = ' ' }
+        else if (c === '"') { state = 'dq'; out[i] = c }
+        else if (c === '`') { state = 'raw'; out[i] = c }
+        else if (c === "'") { state = 'rune'; out[i] = c }
+        else out[i] = c
+        break
+      case 'line':
+        out[i] = keep
+        if (c === '\n') state = 'code'
+        break
+      case 'block':
+        out[i] = keep
+        if (c === '*' && n === '/') { out[i + 1] = ' '; i++; state = 'code' }
+        break
+      case 'dq': // interpreted string: escapes, cannot span a newline
+        if (c === '\\') { out[i] = ' '; if (i + 1 < text.length) { out[i + 1] = text[i + 1] === '\n' ? '\n' : ' '; i++ } }
+        else if (c === '"' || c === '\n') { out[i] = c; state = 'code' }
+        else out[i] = keep
+        break
+      case 'raw': // `...` raw string: no escapes, spans newlines
+        if (c === '`') { out[i] = c; state = 'code' }
+        else out[i] = keep
+        break
+      case 'rune':
+        if (c === '\\') { out[i] = ' '; if (i + 1 < text.length) { out[i + 1] = text[i + 1] === '\n' ? '\n' : ' '; i++ } }
+        else if (c === "'" || c === '\n') { out[i] = c; state = 'code' }
+        else out[i] = keep
+        break
+    }
+  }
+  return out.join('')
+}
+
+const GO_PACKAGE_RE = new RegExp(`^\\s*package\\s+(${GO_ID})`)
+// func (recv [*]T) Name   |   func (recv [*]T[generics]) Name
+const GO_METHOD_RE = new RegExp(`^\\s*func\\s+\\(\\s*(?:${GO_ID}\\s+)?\\*?(${GO_ID})\\b[^)]*\\)\\s+(${GO_ID})`)
+// func Name(  |  func Name[  (generic)
+const GO_FUNC_RE = new RegExp(`^\\s*func\\s+(${GO_ID})\\s*[([]`)
+const GO_TYPE_KIND_RE = new RegExp(`^\\s*type\\s+(${GO_ID})\\s+(struct|interface)\\b`)
+const GO_TYPE_ALIAS_RE = new RegExp(`^\\s*type\\s+(${GO_ID})\\s+\\S`)
+const GO_CONST_RE = new RegExp(`^\\s*const\\s+(${GO_ID})`)
+const GO_VAR_RE = new RegExp(`^\\s*var\\s+(${GO_ID})`)
+// [alias|.|_] "path"  or  [alias] `path`  — the module specifier is quoted.
+const GO_IMPORT_SPEC_RE = new RegExp(`(?:(?:${GO_ID}|\\.|_)\\s+)?[\`"]([^\`"]+)[\`"]`)
+const GO_IMPORT_SINGLE_RE = new RegExp(`^\\s*import\\s+${GO_IMPORT_SPEC_RE.source}`)
+const GROUP_OPEN_RE = /^\s*(import|type|const|var)\s*\(\s*$/
+// inside a grouped `type (...)`: `Name struct|interface` or `Name OtherType`
+const GO_GROUP_TYPE_KIND_RE = new RegExp(`^\\s*(${GO_ID})\\s+(struct|interface)\\b`)
+const GO_GROUP_TYPE_ALIAS_RE = new RegExp(`^\\s*(${GO_ID})\\s+\\S`)
+const GO_GROUP_NAME_RE = new RegExp(`^\\s*(${GO_ID})`)
+
+export function extractGo(text) {
+  const masked = maskGo(text)
+  const lines = masked.split('\n')
+  const origLines = text.split('\n')
+  /** @type {SymbolRecord[]} */
+  const symbols = []
+  /** @type {ImportRecord[]} */
+  const imports = []
+  let group = null // 'import' | 'type' | 'const' | 'var' | null — open grouped decl
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const lineNo = i + 1
+
+    // Inside a grouped declaration: a `)` at the start closes it.
+    if (group) {
+      if (/^\s*\)/.test(line)) { group = null; continue }
+      if (line.trim() === '') continue
+      if (group === 'import') {
+        const om = origLines[i].match(GO_IMPORT_SPEC_RE)
+        if (om) imports.push({ module: om[1], line: lineNo, kind: 'import' })
+      } else if (group === 'type') {
+        const tk = line.match(GO_GROUP_TYPE_KIND_RE)
+        const ta = line.match(GO_GROUP_TYPE_ALIAS_RE)
+        if (tk) symbols.push({ name: tk[1], kind: tk[2] === 'struct' ? 'struct' : 'interface', line: lineNo, exported: goExported(tk[1]), scope: '' })
+        else if (ta) symbols.push({ name: ta[1], kind: 'type', line: lineNo, exported: goExported(ta[1]), scope: '' })
+      } else {
+        // const | var group: first identifier on the line is the name
+        const gm = line.match(GO_GROUP_NAME_RE)
+        if (gm) symbols.push({ name: gm[1], kind: group, line: lineNo, exported: goExported(gm[1]), scope: '' })
+      }
+      continue
+    }
+
+    // Open a grouped declaration: `import (` / `type (` / `const (` / `var (`.
+    const openM = line.match(GROUP_OPEN_RE)
+    if (openM) { group = openM[1]; continue }
+
+    // package
+    const pkg = line.match(GO_PACKAGE_RE)
+    if (pkg) { symbols.push({ name: pkg[1], kind: 'package', line: lineNo, exported: true, scope: '' }); continue }
+
+    // single-line import
+    const imp = origLines[i].match(GO_IMPORT_SINGLE_RE)
+    if (imp && GO_IMPORT_SINGLE_RE.test(line)) { imports.push({ module: imp[1], line: lineNo, kind: 'import' }); continue }
+
+    // method (receiver) — try before plain func
+    const method = line.match(GO_METHOD_RE)
+    if (method) {
+      symbols.push({ name: method[2], kind: 'method', line: lineNo, exported: goExported(method[2]), scope: method[1] })
+      continue
+    }
+    const fn = line.match(GO_FUNC_RE)
+    if (fn) { symbols.push({ name: fn[1], kind: 'function', line: lineNo, exported: goExported(fn[1]), scope: '' }); continue }
+
+    // type X struct|interface  |  type X <alias>
+    const tk = line.match(GO_TYPE_KIND_RE)
+    if (tk) { symbols.push({ name: tk[1], kind: tk[2] === 'struct' ? 'struct' : 'interface', line: lineNo, exported: goExported(tk[1]), scope: '' }); continue }
+    const ta = line.match(GO_TYPE_ALIAS_RE)
+    if (ta) { symbols.push({ name: ta[1], kind: 'type', line: lineNo, exported: goExported(ta[1]), scope: '' }); continue }
+
+    // const / var
+    const cm = line.match(GO_CONST_RE)
+    if (cm) { symbols.push({ name: cm[1], kind: 'const', line: lineNo, exported: goExported(cm[1]), scope: '' }); continue }
+    const vm = line.match(GO_VAR_RE)
+    if (vm) { symbols.push({ name: vm[1], kind: 'var', line: lineNo, exported: goExported(vm[1]), scope: '' }); continue }
+  }
+
+  return { symbols, imports }
+}
+
+// ---------------------------------------------------------------------------
+// Rust extractor
+// ---------------------------------------------------------------------------
+
+const RS_ID = '[A-Za-z_][A-Za-z0-9_]*'
+// `pub`, `pub(crate)`, `pub(in path)` … all count as exported.
+const RS_PUB = /^\s*pub\b/
+
+// Mask Rust comments + string/char literals. Rust block comments NEST (a depth
+// counter handles inner open/close pairs); strings are `"..."` (escapes) and
+// raw `r"..."` / `r#"..."#` (hash-balanced, no escapes); char literals like
+// `'x'` / `'\n'` are masked (so a brace inside a char literal can't corrupt
+// brace tracking) but lifetimes (`'a`, `'static`) are left as code —
+// disambiguated by whether a closing `'` follows a single char.
+export function maskRust(text) {
+  const out = new Array(text.length)
+  let state = 'code' // code | line | block | dq | raw | char
+  let blockDepth = 0
+  let rawHashes = 0
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    const n = text[i + 1]
+    const keep = c === '\n' ? '\n' : ' '
+    switch (state) {
+      case 'code': {
+        if (c === '/' && n === '/') { state = 'line'; out[i] = ' ' }
+        else if (c === '/' && n === '*') { state = 'block'; blockDepth = 1; out[i] = ' '; out[i + 1] = ' '; i++ }
+        else if (c === '"') { state = 'dq'; out[i] = c }
+        else if (c === 'r' && (n === '"' || n === '#')) {
+          // raw string r"..." / r#"..."# (vs the raw identifier r#name) — only a
+          // string if the hashes are followed by a quote.
+          let j = i + 1
+          let hashes = 0
+          while (text[j] === '#') { hashes++; j++ }
+          if (text[j] === '"') {
+            state = 'raw'; rawHashes = hashes
+            for (let k = i; k <= j; k++) out[k] = text[k]
+            i = j
+          } else out[i] = c
+        }
+        else if (c === "'") {
+          // char literal ('x' / '\n') vs lifetime ('a / 'static): a char literal
+          // either escapes (next is \) or is a single char then a closing '.
+          if (n === '\\') { state = 'char'; out[i] = c }
+          else if (text[i + 2] === "'") { state = 'char'; out[i] = c }
+          else out[i] = c // lifetime → code
+        }
+        else out[i] = c
+        break
+      }
+      case 'line':
+        out[i] = keep
+        if (c === '\n') state = 'code'
+        break
+      case 'block':
+        if (c === '/' && n === '*') { blockDepth++; out[i] = ' '; out[i + 1] = ' '; i++ }
+        else if (c === '*' && n === '/') { blockDepth--; out[i] = ' '; out[i + 1] = ' '; i++; if (blockDepth === 0) state = 'code' }
+        else out[i] = keep
+        break
+      case 'dq':
+        if (c === '\\') { out[i] = ' '; if (i + 1 < text.length) { out[i + 1] = text[i + 1] === '\n' ? '\n' : ' '; i++ } }
+        else if (c === '"') { out[i] = c; state = 'code' }
+        else out[i] = keep
+        break
+      case 'raw': { // ends at a `"` followed by exactly rawHashes `#`
+        if (c === '"') {
+          let ok = true
+          for (let k = 1; k <= rawHashes; k++) { if (text[i + k] !== '#') { ok = false; break } }
+          if (ok) {
+            out[i] = c
+            for (let k = 1; k <= rawHashes; k++) out[i + k] = '#'
+            i += rawHashes
+            state = 'code'
+          } else out[i] = keep
+        } else out[i] = keep
+        break
+      }
+      case 'char':
+        if (c === '\\') { out[i] = ' '; if (i + 1 < text.length) { out[i + 1] = text[i + 1] === '\n' ? '\n' : ' '; i++ } }
+        else if (c === "'" || c === '\n') { out[i] = c; state = 'code' }
+        else out[i] = keep
+        break
+    }
+  }
+  return out.join('')
+}
+
+// optional `pub` / `pub(crate)` / `pub(in ...)` prefix
+const RS_VIS = `(?:pub(?:\\([^)]*\\))?\\s+)?`
+const RS_FN_RE = new RegExp(`^\\s*${RS_VIS}(?:(?:default|async|const|unsafe|extern(?:\\s+"[^"]*")?)\\s+)*fn\\s+(${RS_ID})`)
+const RS_STRUCT_RE = new RegExp(`^\\s*${RS_VIS}struct\\s+(${RS_ID})`)
+const RS_ENUM_RE = new RegExp(`^\\s*${RS_VIS}enum\\s+(${RS_ID})`)
+const RS_UNION_RE = new RegExp(`^\\s*${RS_VIS}union\\s+(${RS_ID})`)
+const RS_TRAIT_RE = new RegExp(`^\\s*${RS_VIS}(?:unsafe\\s+)?trait\\s+(${RS_ID})`)
+const RS_MOD_RE = new RegExp(`^\\s*${RS_VIS}mod\\s+(${RS_ID})`)
+const RS_TYPE_RE = new RegExp(`^\\s*${RS_VIS}type\\s+(${RS_ID})`)
+const RS_CONST_RE = new RegExp(`^\\s*${RS_VIS}(?:const|static)\\s+(?:mut\\s+)?(${RS_ID})`)
+// impl Trait for Type  →  Type ;  impl[<…>] Type  →  Type
+const RS_IMPL_FOR_RE = new RegExp(`^\\s*(?:unsafe\\s+)?impl\\b[^{]*\\bfor\\s+([A-Za-z_][\\w]*)`)
+const RS_IMPL_RE = new RegExp(`^\\s*(?:unsafe\\s+)?impl(?:\\s*<[^>]*>)?\\s+([A-Za-z_][\\w]*)`)
+const RS_USE_RE = new RegExp(`^\\s*${RS_VIS}use\\s+`)
+
+export function extractRust(text) {
+  const masked = maskRust(text)
+  const lines = masked.split('\n')
+  /** @type {SymbolRecord[]} */
+  const symbols = []
+  /** @type {ImportRecord[]} */
+  const imports = []
+
+  let depth = 0
+  // impl/trait scopes for method attribution: { name, depth }
+  const scopeStack = []
+  // a multi-line `use …;` opened but not yet terminated
+  let pendingUse = null
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const lineNo = i + 1
+    const enclosing = scopeStack.length ? scopeStack[scopeStack.length - 1].name : ''
+    const exported = RS_PUB.test(line)
+
+    // Resolve a multi-line use on the line bearing its `;`.
+    if (pendingUse) {
+      pendingUse.text += ` ${line.trim()}`
+      if (line.includes(';') || i - pendingUse.openedAt > 20) {
+        const mod = pendingUse.text.replace(/;[\s\S]*$/, '').replace(RS_USE_RE, '').trim()
+        if (mod) imports.push({ module: mod, line: pendingUse.line, kind: 'import' })
+        pendingUse = null
+      }
+      applyBraces(line)
+      continue
+    }
+
+    // use (single line, or open a multi-line one)
+    if (RS_USE_RE.test(line)) {
+      if (line.includes(';')) {
+        const mod = line.replace(/;[\s\S]*$/, '').replace(RS_USE_RE, '').trim()
+        if (mod) imports.push({ module: mod, line: lineNo, kind: 'import' })
+      } else {
+        pendingUse = { text: line.trim(), line: lineNo, openedAt: i }
+      }
+      applyBraces(line)
+      continue
+    }
+
+    let decl = null // { name, kind, opensScope }
+    const fn = line.match(RS_FN_RE)
+    const isMethod = scopeStack.length && depth === scopeStack[scopeStack.length - 1].depth + 1
+    if (fn) {
+      symbols.push({ name: fn[1], kind: isMethod ? 'method' : 'function', line: lineNo, exported, scope: isMethod ? enclosing : '' })
+    } else {
+      const implFor = line.match(RS_IMPL_FOR_RE)
+      const impl = implFor ?? line.match(RS_IMPL_RE)
+      const struct = line.match(RS_STRUCT_RE)
+      const en = line.match(RS_ENUM_RE)
+      const union = line.match(RS_UNION_RE)
+      const trait = line.match(RS_TRAIT_RE)
+      const mod = line.match(RS_MOD_RE)
+      const ty = line.match(RS_TYPE_RE)
+      const cs = line.match(RS_CONST_RE)
+      if (impl) { symbols.push({ name: impl[1], kind: 'impl', line: lineNo, exported: false, scope: '' }); decl = { name: impl[1], opensScope: true } }
+      else if (struct) symbols.push({ name: struct[1], kind: 'struct', line: lineNo, exported, scope: enclosing })
+      else if (en) symbols.push({ name: en[1], kind: 'enum', line: lineNo, exported, scope: enclosing })
+      else if (union) symbols.push({ name: union[1], kind: 'struct', line: lineNo, exported, scope: enclosing })
+      else if (trait) { symbols.push({ name: trait[1], kind: 'trait', line: lineNo, exported, scope: enclosing }); decl = { name: trait[1], opensScope: true } }
+      else if (mod) symbols.push({ name: mod[1], kind: 'mod', line: lineNo, exported, scope: enclosing })
+      else if (ty) symbols.push({ name: ty[1], kind: 'type', line: lineNo, exported, scope: enclosing })
+      else if (cs) symbols.push({ name: cs[1], kind: 'const', line: lineNo, exported, scope: enclosing })
+    }
+
+    // Brace + scope bookkeeping. impl/trait whose line opens a body push a scope.
+    // HEURISTIC LIMIT: the body-opening `{` must be on the impl/trait line; if a
+    // multi-line generic/`where` clause pushes it to a later line, no scope is
+    // pushed and that block's methods are attributed at top level (kind stays
+    // 'method'-vs-'function' wrong). Acceptable for this candidate-level indexer.
+    const opens = countChar(line, '{')
+    const closes = countChar(line, '}')
+    if (decl?.opensScope && opens > closes) scopeStack.push({ name: decl.name, depth })
+    depth += opens - closes
+    if (depth < 0) depth = 0
+    while (scopeStack.length && depth <= scopeStack[scopeStack.length - 1].depth) scopeStack.pop()
+  }
+
+  return { symbols, imports }
+
+  // Keep brace depth honest across use/pending lines (a `use a::{…}` group's
+  // braces are balanced, but multi-line groups still move depth mid-block).
+  function applyBraces(line) {
+    depth += countChar(line, '{') - countChar(line, '}')
+    if (depth < 0) depth = 0
+    while (scopeStack.length && depth <= scopeStack[scopeStack.length - 1].depth) scopeStack.pop()
+  }
 }
