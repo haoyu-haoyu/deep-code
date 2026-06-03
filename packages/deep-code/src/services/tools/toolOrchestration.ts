@@ -3,7 +3,17 @@ import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { findToolByName, type ToolUseContext } from '../../Tool.js'
 import type { AssistantMessage, Message } from '../../types/message.js'
 import { all } from '../../utils/generators.js'
+import {
+  AGENT_TOOL_NAME,
+  LEGACY_AGENT_TOOL_NAME,
+} from '../../tools/AgentTool/constants.js'
+import { resolveDeepCodeHarnessConfig } from '../../deepcode/harness-config.mjs'
+import { computeBatchConcurrency } from './batchConcurrency.mjs'
 import { type MessageUpdateLazy, runToolUse } from './toolExecution.js'
+
+// The Agent/Task tool names — a batch containing one of these is bounded by the
+// harness sub-agent cap rather than the generic tool cap.
+const AGENT_TOOL_NAMES = [AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME]
 
 function getMaxToolUseConcurrency(): number {
   return (
@@ -177,7 +187,14 @@ async function* runToolsConcurrently(
       )
       markToolUseAsComplete(toolUseContext, toolUse.id)
     }),
-    getMaxToolUseConcurrency(),
+    // Agent fan-out honors the (previously phantom) harness maxAgents cap; all
+    // other concurrency-safe batches use the generic per-turn tool cap.
+    computeBatchConcurrency({
+      toolNames: toolUseMessages.map(t => t.name),
+      agentToolNames: AGENT_TOOL_NAMES,
+      genericCap: getMaxToolUseConcurrency(),
+      maxAgents: resolveDeepCodeHarnessConfig().maxAgents,
+    }),
   )
 }
 
