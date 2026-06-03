@@ -120,6 +120,89 @@ export function skipEnvFlags(a) {
   return i < a.length ? i : -1
 }
 
+// ── benign scheduler wrappers (setsid/ionice/chrt/taskset) ──────────────────
+// These run their wrapped command with a modified session/IO-priority/CPU-
+// scheduling/affinity — they are TRANSPARENT (the wrapped command still runs),
+// so the wrapped command must be exposed for path/deny validation, exactly like
+// nice/stdbuf. SECURITY: privilege/exec wrappers (sudo/doas/su/gdb/strace/perf/
+// systemd-run/proxychains) are deliberately NOT handled — they are NOT
+// transparent and stripping them would let `sudo rm` be auto-approved as `rm`.
+// Each helper FAILS CLOSED (returns -1 → caller leaves argv unchanged) on a
+// "-p"/pid mode (operates on an existing process, no wrapped command), an
+// unknown flag, or a missing command. KEEP IN SYNC with checkSemantics (ast.ts)
+// + stripSafeWrappers (commandStripping.mjs).
+
+// A wrapped-command token containing an expansion ($(...) / ${...} / backtick)
+// cannot be statically resolved to a real command — fail closed rather than
+// expose the substitution as baseCmd. Mirrors the nice block in checkSemantics.
+const EXPANSION_RE = /[$(`]/
+
+/** ionice [-c CLASS] [-n NUM] [-t] cmd. -p/-P/-u = pid mode (no cmd) → -1. */
+export function skipIoniceFlags(a) {
+  let i = 1
+  while (i < a.length) {
+    const arg = a[i]
+    // -c/-n VALUE: value must be a plain class/level token (0-3, 0-7, or a class
+    // word like best-effort) — NOT an expansion. `ionice -c $(id) cmd` → fail
+    // closed rather than consuming the substitution as the class.
+    if ((arg === '-c' || arg === '-n') && /^[A-Za-z0-9-]+$/.test(a[i + 1] ?? ''))
+      i += 2
+    else if (arg === '-c' || arg === '-n') return -1 // missing/unsafe value
+    else if (/^-[cn][A-Za-z0-9]+$/.test(arg)) i++ // fused -c2 / -n0
+    else if (arg === '-t' || arg === '--ignore') i++
+    else if (arg === '-p' || arg === '-P' || arg === '-u') return -1 // pid mode
+    else if (arg.startsWith('-')) return -1 // unknown → fail closed
+    else break
+  }
+  // ionice with no flags (ionice cmd) is valid. SECURITY: the wrapped command
+  // token must be a real command, NOT an expansion — `ionice $(id) cmd` exposes
+  // a substitution as baseCmd; fail closed (mirrors the nice block in
+  // checkSemantics). EXPANSION_RE is shared across all benign-scheduler helpers.
+  return i < a.length && !EXPANSION_RE.test(a[i]) ? i : -1
+}
+
+/** chrt [POLICY] PRIORITY cmd. -p = pid mode (no cmd) → -1. */
+export function skipChrtFlags(a) {
+  let i = 1
+  let sawPriority = false
+  while (i < a.length) {
+    const arg = a[i]
+    if (arg === '-p' || arg === '--pid') return -1 // pid mode
+    else if (/^(-f|-r|-b|-o|-i|-d|-R|-a|--(fifo|rr|batch|other|idle|deadline|reset-on-fork|all-tasks))$/.test(arg)) i++
+    else if (/^-?\d+$/.test(arg)) {
+      sawPriority = true
+      i++
+    } else if (arg.startsWith('-')) return -1 // unknown (incl. -T/-D deadline) → fail closed
+    else break
+  }
+  return sawPriority && i < a.length && !EXPANSION_RE.test(a[i]) ? i : -1
+}
+
+/** taskset [-a] MASK cmd  |  taskset -c CPU-LIST cmd. -p = pid mode → -1. */
+export function skipTasksetFlags(a) {
+  let i = 1
+  let sawMask = false
+  while (i < a.length) {
+    const arg = a[i]
+    if (arg === '-p' || arg === '--pid') return -1 // pid mode
+    else if (arg === '-c' || arg === '--cpu-list' || arg === '-a' || arg === '--all-tasks') i++
+    else if (/^(0x[0-9a-fA-F]+|[0-9][0-9,-]*)$/.test(arg)) {
+      sawMask = true
+      i++
+    } else if (arg.startsWith('-')) return -1 // unknown → fail closed
+    else break
+  }
+  return sawMask && i < a.length && !EXPANSION_RE.test(a[i]) ? i : -1
+}
+
+/** setsid [-c|-f|-w] cmd — transparent session wrapper, no-value flags only. */
+export function skipSetsidFlags(a) {
+  let i = 1
+  while (i < a.length && /^(-c|-f|-w|--ctty|--fork|--wait)$/.test(a[i])) i++
+  if (i >= a.length || a[i].startsWith('-') || EXPANSION_RE.test(a[i])) return -1
+  return i
+}
+
 /**
  * Argv-level counterpart to stripSafeWrappers (bashPermissions.ts). Strips
  * wrapper commands from AST-derived argv. Env vars are already separated
@@ -159,6 +242,22 @@ export function stripWrappersFromArgv(argv) {
     } else if (a[0] === 'env') {
       // Same asymmetry: checkSemantics strips env, we didn't.
       const i = skipEnvFlags(a)
+      if (i < 0) return a
+      a = a.slice(i)
+    } else if (a[0] === 'setsid') {
+      const i = skipSetsidFlags(a)
+      if (i < 0) return a
+      a = a.slice(i)
+    } else if (a[0] === 'ionice') {
+      const i = skipIoniceFlags(a)
+      if (i < 0) return a
+      a = a.slice(i)
+    } else if (a[0] === 'chrt') {
+      const i = skipChrtFlags(a)
+      if (i < 0) return a
+      a = a.slice(i)
+    } else if (a[0] === 'taskset') {
+      const i = skipTasksetFlags(a)
       if (i < 0) return a
       a = a.slice(i)
     } else {

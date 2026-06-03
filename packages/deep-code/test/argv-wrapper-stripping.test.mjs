@@ -5,6 +5,9 @@ import {
   skipTimeoutFlags,
   skipStdbufFlags,
   skipEnvFlags,
+  skipIoniceFlags,
+  skipChrtFlags,
+  skipTasksetFlags,
   stripWrappersFromArgv,
 } from '../src/tools/BashTool/argvWrapperStripping.mjs'
 
@@ -61,6 +64,58 @@ test('strips NESTED wrappers down to the real path command (fixed point)', () =>
   assert.deepEqual(stripWrappersFromArgv(['nice', 'timeout', '5', ...C]), C)
   assert.deepEqual(stripWrappersFromArgv(['nohup', 'nice', '-n', '5', 'stdbuf', '-o0', ...C]), C)
   assert.deepEqual(stripWrappersFromArgv(['timeout', '5', 'env', 'FOO=bar', ...C]), C)
+})
+
+test('SECURITY: benign scheduler wrappers (setsid/ionice/chrt/taskset) expose the wrapped command', () => {
+  const C = ['rm', '-rf', '/etc/x']
+  // transparent wrappers → strip to the real path command (so it gets validated)
+  assert.deepEqual(stripWrappersFromArgv(['setsid', ...C]), C)
+  assert.deepEqual(stripWrappersFromArgv(['setsid', '-f', ...C]), C)
+  assert.deepEqual(stripWrappersFromArgv(['ionice', ...C]), C)
+  assert.deepEqual(stripWrappersFromArgv(['ionice', '-c2', ...C]), C)
+  assert.deepEqual(stripWrappersFromArgv(['ionice', '-c', '2', '-n', '0', ...C]), C)
+  assert.deepEqual(stripWrappersFromArgv(['chrt', '50', ...C]), C)
+  assert.deepEqual(stripWrappersFromArgv(['chrt', '-f', '50', ...C]), C)
+  assert.deepEqual(stripWrappersFromArgv(['taskset', '0x3', ...C]), C)
+  assert.deepEqual(stripWrappersFromArgv(['taskset', '-c', '0,1', ...C]), C)
+  assert.deepEqual(stripWrappersFromArgv(['setsid', 'ionice', '-c2', 'chrt', '20', ...C]), C) // nested
+})
+
+test('SECURITY: dangerous / pid-mode / unparseable wrappers are NOT stripped (fail closed)', () => {
+  // privilege/exec wrappers must NOT be transparently stripped — `sudo rm` must
+  // not reduce to `rm` (that would auto-approve a root delete under Bash(rm:*)).
+  for (const w of ['sudo', 'doas', 'su', 'gdb', 'strace', 'systemd-run', 'proxychains']) {
+    assert.deepEqual(stripWrappersFromArgv([w, 'rm', '/etc/x']), [w, 'rm', '/etc/x'])
+  }
+  // pid-modes operate on an existing process (no wrapped command) → leave intact
+  assert.deepEqual(stripWrappersFromArgv(['ionice', '-p', '1234']), ['ionice', '-p', '1234'])
+  assert.deepEqual(stripWrappersFromArgv(['chrt', '-p', '50', '1234']), ['chrt', '-p', '50', '1234'])
+  assert.deepEqual(stripWrappersFromArgv(['taskset', '-p', '0x3', '1234']), ['taskset', '-p', '0x3', '1234'])
+  // chrt requires a numeric priority; unknown flag; unsafe ionice value → fail closed
+  assert.deepEqual(stripWrappersFromArgv(['chrt', 'rm', '/x']), ['chrt', 'rm', '/x'])
+  assert.deepEqual(stripWrappersFromArgv(['setsid', '--bogus', 'rm']), ['setsid', '--bogus', 'rm'])
+  assert.deepEqual(stripWrappersFromArgv(['ionice', '-c', '$(id)', 'rm']), ['ionice', '-c', '$(id)', 'rm'])
+  // SECURITY: an EXPANSION in the wrapped-command position must NOT be exposed as
+  // baseCmd (mirrors the nice fail-closed) — across all 4 benign wrappers.
+  assert.deepEqual(stripWrappersFromArgv(['setsid', '$(id)', 'curl']), ['setsid', '$(id)', 'curl'])
+  assert.deepEqual(stripWrappersFromArgv(['ionice', '$(id)', 'curl']), ['ionice', '$(id)', 'curl'])
+  assert.deepEqual(stripWrappersFromArgv(['chrt', '50', '$(id)']), ['chrt', '50', '$(id)'])
+  assert.deepEqual(stripWrappersFromArgv(['taskset', '0x3', '`id`']), ['taskset', '0x3', '`id`'])
+  // a plain absolute path is fine (not an expansion) — still strips
+  assert.deepEqual(stripWrappersFromArgv(['setsid', '/bin/rm', '/x']), ['/bin/rm', '/x'])
+})
+
+test('skip{Ionice,Chrt,Taskset}Flags: command index, -1 on pid-mode / missing arg', () => {
+  assert.equal(skipIoniceFlags(['ionice', 'cat']), 1)
+  assert.equal(skipIoniceFlags(['ionice', '-c2', 'cat']), 2)
+  assert.equal(skipIoniceFlags(['ionice', '-p', '1234']), -1)
+  assert.equal(skipChrtFlags(['chrt', '50', 'cat']), 2)
+  assert.equal(skipChrtFlags(['chrt', '-f', '50', 'cat']), 3)
+  assert.equal(skipChrtFlags(['chrt', 'cat']), -1) // no priority
+  assert.equal(skipChrtFlags(['chrt', '-p', '1234']), -1)
+  assert.equal(skipTasksetFlags(['taskset', '0x3', 'cat']), 2)
+  assert.equal(skipTasksetFlags(['taskset', '-c', '0,1', 'cat']), 3)
+  assert.equal(skipTasksetFlags(['taskset', '-p', '0x3', '1234']), -1)
 })
 
 test("consumes a wrapper's own -- end-of-options marker", () => {
