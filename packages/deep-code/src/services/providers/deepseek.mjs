@@ -564,7 +564,18 @@ export function parseDeepSeekSSELines(lines) {
       continue
     }
 
-    const chunk = JSON.parse(payload)
+    // ROBUSTNESS: a single malformed / truncated `data:` line (network glitch,
+    // proxy interference, or a connection dropped mid-message so the
+    // final-buffer flush sees partial JSON) must NOT abort the whole stream —
+    // skip it and keep parsing the rest. Previously an unguarded JSON.parse
+    // threw, crashing streamDeepSeekResponseBody and losing all already-received
+    // content.
+    let chunk
+    try {
+      chunk = JSON.parse(payload)
+    } catch {
+      continue
+    }
     for (const choice of chunk.choices ?? []) {
       const delta = choice.delta ?? {}
       if (delta.reasoning_content) {
