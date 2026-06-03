@@ -1,3 +1,11 @@
+import {
+  // The OpenAI /chat/completions SSE wire format is the SUBSET that DeepSeek
+  // extends (DeepSeek only ADDS reasoning_content), so the proven, #317-hardened
+  // DeepSeek body streamer parses OpenAI chunks correctly — the reasoning_delta
+  // branch simply never fires. Single source of truth (DRY); aliased to a
+  // format-neutral name here.
+  streamDeepSeekResponseBody as streamChatCompletionsBody,
+} from './deepseek.mjs'
 import { assertModelProvider } from './types.mjs'
 
 export const OPENAI_COMPATIBLE_PROVIDER_DEFAULTS = Object.freeze({
@@ -53,51 +61,77 @@ export function createOpenAICompatibleProvider({
 
   const resolvedDefaultModel = defaultModel || defaults.defaultModel
 
+  // Extracted to a local const (not an inline method) so streamQuery can call
+  // it directly without relying on `this`/the returned object's identity.
+  const buildRequest = ({
+    messages = [],
+    model,
+    tools = [],
+    stream = true,
+    maxTokens,
+    responseFormat,
+    temperature,
+    topP,
+    toolChoice,
+  } = {}) => {
+    const resolvedModel = model || resolvedDefaultModel
+    if (!resolvedModel) {
+      throw new Error(`${providerName} requires a model`)
+    }
+
+    return {
+      method: 'POST',
+      url: `${resolvedBaseUrl}/chat/completions`,
+      headers: omitUndefined({
+        'Content-Type': 'application/json',
+        Authorization: apiKey ? `Bearer ${apiKey}` : undefined,
+      }),
+      body: JSON.stringify(
+        omitUndefined({
+          model: resolvedModel,
+          messages,
+          stream,
+          // OpenAI-style servers only emit the final `usage` chunk in streaming
+          // mode when the caller opts in via stream_options.include_usage.
+          // Without it, no usage event arrives → token/cost accounting stays at
+          // defaults. Only meaningful while streaming.
+          stream_options: stream ? { include_usage: true } : undefined,
+          tools: tools.length ? tools : undefined,
+          tool_choice: tools.length ? toolChoice ?? 'auto' : toolChoice,
+          max_tokens: maxTokens,
+          response_format: responseFormat,
+          temperature,
+          top_p: topP,
+        }),
+      ),
+    }
+  }
+
   return assertModelProvider({
     name: providerName,
 
-    async *streamQuery() {
-      throw new Error('TODO P2.2.b registry integration: streamQuery is scaffolded')
+    // Accept either a pre-built request object (url+method+headers+body) or the
+    // buildRequest() options — mirrors streamDeepSeekQuery's dual contract — then
+    // fetch + yield normalized stream events.
+    async *streamQuery(context = {}) {
+      // A pre-built request carries url+method+headers+body; buildRequest options
+      // (messages/model/…) never do. Discriminate on key PRESENCE, not
+      // truthiness, so a valid-but-falsy body (e.g. '') isn't silently misrouted
+      // back through buildRequest. buildRequest inputs take precedence so a
+      // half-merged object (both shapes' keys) builds rather than fetching a
+      // stray url.
+      const isPrebuiltRequest =
+        !('messages' in context) &&
+        !('model' in context) &&
+        'url' in context &&
+        'method' in context &&
+        'headers' in context &&
+        'body' in context
+      const request = isPrebuiltRequest ? context : buildRequest(context)
+      yield* streamOpenAICompatibleQuery(request, context)
     },
 
-    buildRequest({
-      messages = [],
-      model,
-      tools = [],
-      stream = true,
-      maxTokens,
-      responseFormat,
-      temperature,
-      topP,
-      toolChoice,
-    } = {}) {
-      const resolvedModel = model || resolvedDefaultModel
-      if (!resolvedModel) {
-        throw new Error(`${providerName} requires a model`)
-      }
-
-      return {
-        method: 'POST',
-        url: `${resolvedBaseUrl}/chat/completions`,
-        headers: omitUndefined({
-          'Content-Type': 'application/json',
-          Authorization: apiKey ? `Bearer ${apiKey}` : undefined,
-        }),
-        body: JSON.stringify(
-          omitUndefined({
-            model: resolvedModel,
-            messages,
-            stream,
-            tools: tools.length ? tools : undefined,
-            tool_choice: tools.length ? toolChoice ?? 'auto' : toolChoice,
-            max_tokens: maxTokens,
-            response_format: responseFormat,
-            temperature,
-            top_p: topP,
-          }),
-        ),
-      }
-    },
+    buildRequest,
 
     parseStreamChunk(chunk) {
       return parseOpenAICompatibleStreamChunk(chunk)
@@ -113,6 +147,92 @@ export function createOpenAICompatibleProvider({
       return false
     },
   })
+}
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000
+
+/**
+ * Stream an OpenAI-compatible /chat/completions request, yielding the same
+ * normalized stream-event vocabulary collectDeepSeekStreamEvents() assembles
+ * (content_delta / tool_call_delta / finish / usage / done). The body parser is
+ * shared with DeepSeek because the wire format is identical (see import note);
+ * usage events therefore carry raw {prompt_tokens, completion_tokens}, while the
+ * provider's mapUsage() exposes the Anthropic-shaped view for callers that want it.
+ *
+ * v1 is a single attempt with a connect-timeout (time-to-first-response, like
+ * streamDeepSeekQuery) and the caller's abort signal forwarded for mid-stream
+ * cancellation. Transient-failure retry is intentionally left to the caller —
+ * DeepSeek's loop has its own retry; this keeps the unblocking change focused.
+ *
+ * @param {{url:string,method:string,headers:object,body:string|object}} request
+ * @param {{fetch?:Function,signal?:AbortSignal,requestTimeoutMs?:number}} [context]
+ */
+export async function* streamOpenAICompatibleQuery(request, context = {}) {
+  const fetchFn = context.fetch ?? globalThis.fetch
+  if (typeof fetchFn !== 'function') {
+    throw new Error(
+      'openai-compatible streamQuery requires a fetch implementation',
+    )
+  }
+  const timeoutMs = context.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+  timer.unref?.()
+
+  // Forward the caller's abort signal onto our controller so an external cancel
+  // tears the request down (and fire immediately if it is already aborted).
+  const userSignal = context.signal
+  const onUserAbort = () => controller.abort()
+  if (userSignal) {
+    if (userSignal.aborted) controller.abort()
+    else userSignal.addEventListener('abort', onUserAbort, { once: true })
+  }
+
+  try {
+    let response
+    try {
+      response = await fetchFn(request.url, {
+        method: request.method,
+        headers: request.headers,
+        signal: controller.signal,
+        body:
+          typeof request.body === 'string'
+            ? request.body
+            : JSON.stringify(request.body),
+      })
+    } catch (error) {
+      if (timedOut) {
+        throw new Error(
+          `openai-compatible request to ${request.url} timed out after ${timeoutMs}ms`,
+        )
+      }
+      throw error
+    }
+
+    // Connection established — cancel the connect-timeout BEFORE streaming the
+    // body, so a legitimately long response isn't aborted mid-flight. The
+    // caller's abort signal stays forwarded for explicit mid-stream cancel.
+    clearTimeout(timer)
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      throw new Error(
+        `openai-compatible request to ${request.url} failed: ${response.status} ${response.statusText}${
+          detail ? ` — ${detail.slice(0, 500)}` : ''
+        }`,
+      )
+    }
+
+    yield* streamChatCompletionsBody(response.body)
+  } finally {
+    clearTimeout(timer)
+    if (userSignal) userSignal.removeEventListener('abort', onUserAbort)
+  }
 }
 
 export function parseOpenAICompatibleStreamChunk(chunk) {
