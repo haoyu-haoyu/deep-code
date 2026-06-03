@@ -6,6 +6,8 @@ import {
   // format-neutral name here.
   streamDeepSeekResponseBody as streamChatCompletionsBody,
 } from './deepseek.mjs'
+import { mapMessagesToDeepSeek } from '../../messages/deepseek-normalizer.mjs'
+import { toolToDeepSeekFunctionSchema } from '../../tools/deepseek-schema.mjs'
 import { assertModelProvider } from './types.mjs'
 
 export const OPENAI_COMPATIBLE_PROVIDER_DEFAULTS = Object.freeze({
@@ -62,11 +64,14 @@ export function createOpenAICompatibleProvider({
   const resolvedDefaultModel = defaultModel || defaults.defaultModel
 
   // Extracted to a local const (not an inline method) so streamQuery can call
-  // it directly without relying on `this`/the returned object's identity.
-  const buildRequest = ({
+  // it directly without relying on `this`/the returned object's identity. Async
+  // because tool-schema resolution is async (mirrors deepseek's buildRequest).
+  const buildRequest = async ({
+    systemPrompt = [],
     messages = [],
     model,
     tools = [],
+    toolSchemaOptions = {},
     stream = true,
     maxTokens,
     responseFormat,
@@ -79,6 +84,30 @@ export function createOpenAICompatibleProvider({
       throw new Error(`${providerName} requires a model`)
     }
 
+    // Convert the runtime's inputs into a chat-completions request, exactly as
+    // buildDeepSeekRequest does — DeepSeek IS OpenAI-compatible, so the SHARED
+    // normalizer/schema produce valid OpenAI output: systemPrompt → a leading
+    // system message; internal messages → OpenAI role/content/tool_calls/tool
+    // (reasoning replay OFF, since OpenAI has no reasoning_content); runtime
+    // tool objects → OpenAI function schema (sorted for prefix stability). The
+    // DeepSeek-only fields (thinking / reasoning_effort / user_id) are omitted.
+    const chatMessages = [
+      ...systemPromptToMessages(systemPrompt),
+      ...mapMessagesToDeepSeek(messages, { reasoningReplay: false }),
+    ]
+    const functionTools = tools.length
+      ? await Promise.all(
+          [...tools]
+            .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+            .map(tool =>
+              toolToDeepSeekFunctionSchema(tool, {
+                ...toolSchemaOptions,
+                tools: toolSchemaOptions.tools ?? tools,
+              }),
+            ),
+        )
+      : undefined
+
     return {
       method: 'POST',
       url: `${resolvedBaseUrl}/chat/completions`,
@@ -89,15 +118,15 @@ export function createOpenAICompatibleProvider({
       body: JSON.stringify(
         omitUndefined({
           model: resolvedModel,
-          messages,
+          messages: chatMessages,
           stream,
           // OpenAI-style servers only emit the final `usage` chunk in streaming
           // mode when the caller opts in via stream_options.include_usage.
           // Without it, no usage event arrives → token/cost accounting stays at
           // defaults. Only meaningful while streaming.
           stream_options: stream ? { include_usage: true } : undefined,
-          tools: tools.length ? tools : undefined,
-          tool_choice: tools.length ? toolChoice ?? 'auto' : toolChoice,
+          tools: functionTools,
+          tool_choice: functionTools ? toolChoice ?? 'auto' : toolChoice,
           max_tokens: maxTokens,
           response_format: responseFormat,
           temperature,
@@ -127,7 +156,7 @@ export function createOpenAICompatibleProvider({
         'method' in context &&
         'headers' in context &&
         'body' in context
-      const request = isPrebuiltRequest ? context : buildRequest(context)
+      const request = isPrebuiltRequest ? context : await buildRequest(context)
       yield* streamOpenAICompatibleQuery(request, context)
     },
 
@@ -271,6 +300,16 @@ export function mapOpenAICompatibleUsage(raw = {}) {
     iterations: [],
     speed: 'standard',
   }
+}
+
+// Mirror of deepseek.mjs's local systemPromptToMessages (the runtime passes the
+// system prompt separately; OpenAI carries it as a leading system message).
+function systemPromptToMessages(systemPrompt) {
+  if (Array.isArray(systemPrompt)) {
+    const content = systemPrompt.filter(Boolean).join('\n\n')
+    return content ? [{ role: 'system', content }] : []
+  }
+  return systemPrompt ? [{ role: 'system', content: String(systemPrompt) }] : []
 }
 
 function omitUndefined(value) {

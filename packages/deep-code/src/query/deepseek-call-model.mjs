@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import {
-  createDeepSeekProvider,
-  mapDeepSeekFinishReason,
-} from '../deepcode/deepseek-native.mjs'
+import { mapDeepSeekFinishReason } from '../deepcode/deepseek-native.mjs'
+import { resolveRuntimeModelProvider } from '../services/providers/runtime-provider.mjs'
 import {
   recordDeepSeekCacheUsage,
   resolveDeepSeekCacheStatsPath,
@@ -14,7 +12,11 @@ import { resolveDeepCodeRequestMaxTokens } from '../deepcode/context-policy.mjs'
 import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
 
 export function createDeepSeekCallModel({
-  provider = createDeepSeekProvider(),
+  // Defaults to the config-resolved provider (DEEPCODE_PROVIDER / config file).
+  // With nothing configured this returns the exact DeepSeek provider as before
+  // — byte-identical request + cache moat — so existing behavior is unchanged;
+  // an explicit non-deepseek provider switches the runtime to it.
+  provider = resolveRuntimeModelProvider(),
   now = () => new Date(),
   uuid = randomUUID,
 } = {}) {

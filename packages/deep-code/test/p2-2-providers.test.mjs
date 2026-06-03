@@ -166,9 +166,9 @@ function createStatusReport({ capabilities }) {
   }
 }
 
-test('ollama provider uses localhost OpenAI-compatible default without an API key', () => {
+test('ollama provider uses localhost OpenAI-compatible default without an API key', async () => {
   const provider = createOpenAICompatibleProvider({ providerName: 'ollama' })
-  const request = provider.buildRequest({ messages, stream: true })
+  const request = await provider.buildRequest({ messages, stream: true })
   const body = JSON.parse(request.body)
 
   assert.equal(provider.name, 'ollama')
@@ -179,7 +179,7 @@ test('ollama provider uses localhost OpenAI-compatible default without an API ke
   assert.equal(body.stream, true)
 })
 
-test('vllm provider requires explicit base URL but no API key by default', () => {
+test('vllm provider requires explicit base URL but no API key by default', async () => {
   assert.throws(
     () => createOpenAICompatibleProvider({ providerName: 'vllm' }),
     /vllm requires a base URL/,
@@ -190,7 +190,7 @@ test('vllm provider requires explicit base URL but no API key by default', () =>
     baseUrl: 'http://localhost:8000/v1/',
     defaultModel: 'served-model',
   })
-  const request = provider.buildRequest({ messages })
+  const request = await provider.buildRequest({ messages })
   const body = JSON.parse(request.body)
 
   assert.equal(request.url, 'http://localhost:8000/v1/chat/completions')
@@ -198,7 +198,7 @@ test('vllm provider requires explicit base URL but no API key by default', () =>
   assert.equal(body.model, 'served-model')
 })
 
-test('openai-compatible provider requires a base URL and API key', () => {
+test('openai-compatible provider requires a base URL and API key', async () => {
   assert.throws(
     () => createOpenAICompatibleProvider({ providerName: 'openai-compatible' }),
     /openai-compatible requires a base URL/,
@@ -218,7 +218,7 @@ test('openai-compatible provider requires a base URL and API key', () => {
     apiKey: 'test-key',
     defaultModel: 'custom-model',
   })
-  const request = provider.buildRequest({ messages })
+  const request = await provider.buildRequest({ messages })
 
   assert.equal(request.url, 'https://example.com/v1/chat/completions')
   assert.equal(request.headers.Authorization, 'Bearer test-key')
@@ -231,30 +231,33 @@ test('unknown OpenAI-compatible provider names throw', () => {
   )
 })
 
-test('buildRequest emits OpenAI chat-completions JSON and strips DeepSeek-only fields', () => {
+test('buildRequest emits OpenAI chat-completions JSON and strips DeepSeek-only fields', async () => {
   const provider = createOpenAICompatibleProvider({
     providerName: 'ollama',
     defaultModel: 'llama3.1:8b',
   })
-  const request = provider.buildRequest({
+  const request = await provider.buildRequest({
     messages,
     model: 'llama3.1:70b',
     stream: true,
-    tools: [{ type: 'function', function: { name: 'search' } }],
+    tools: [{ name: 'search', description: 'web search' }],
     thinking: { type: 'enabled' },
     reasoning_effort: 'max',
     user_id: 'cache-user',
   })
   const body = JSON.parse(request.body)
 
-  assert.deepEqual(body, {
-    model: 'llama3.1:70b',
-    messages,
-    stream: true,
-    stream_options: { include_usage: true }, // opt into streaming usage chunks
-    tools: [{ type: 'function', function: { name: 'search' } }],
-    tool_choice: 'auto',
-  })
+  assert.equal(body.model, 'llama3.1:70b')
+  assert.deepEqual(body.messages, messages) // already-OpenAI messages pass through
+  assert.equal(body.stream, true)
+  assert.deepEqual(body.stream_options, { include_usage: true }) // usage opt-in
+  assert.equal(body.tool_choice, 'auto')
+  // runtime tool object → OpenAI function schema (name + resolved description)
+  assert.equal(body.tools.length, 1)
+  assert.equal(body.tools[0].type, 'function')
+  assert.equal(body.tools[0].function.name, 'search')
+  assert.equal(body.tools[0].function.description, 'web search')
+  // DeepSeek-only request fields are never emitted
   assert.equal(Object.hasOwn(body, 'thinking'), false)
   assert.equal(Object.hasOwn(body, 'reasoning_effort'), false)
   assert.equal(Object.hasOwn(body, 'user_id'), false)
