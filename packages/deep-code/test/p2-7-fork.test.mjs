@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
 import { forkHandler } from '../src/cli/handlers/session.mjs'
 import { forkSession } from '../src/utils/sessionFork.mjs'
+import { scanSessionFile } from '../src/utils/sessionList.mjs'
 
 test('forkSession copies a 10-turn session through turn 5', async () => {
   const fixture = await createSessionFixture({ turns: 10 })
@@ -126,6 +127,74 @@ test('forkHandler validates atTurn and prints the fork result', async () => {
     }),
     /positive integer/i,
   )
+})
+
+// A benign trailing half-write (the CLI SIGKILLed mid-append) is what
+// scanSessionFile (list/show) reports as corrupt:false / forkable. fork must
+// AGREE — it used to hard-throw "Invalid JSONL", so `list` showed a clean
+// session that `fork <id>` then rejected.
+test('forkSession tolerates a benign trailing half-write (consistent with list/show)', async () => {
+  const fixture = await createSessionFixture({ turns: 3 })
+  // append a truncated final line, no newline — exactly a killed-mid-append write
+  await appendFile(fixture.sourcePath, '{"type":"user","message":{"con', 'utf8')
+
+  // list/show would call this clean + forkable:
+  const acc = await scanSessionFile(fixture.sourcePath)
+  assert.equal(acc.corrupt, false, 'scanner treats a trailing half-write as benign')
+
+  // fork must therefore succeed (dropping the partial line), not throw:
+  const result = await forkSession({
+    sessionDir: fixture.sessionDir,
+    sourceSessionId: fixture.sourceSessionId,
+  })
+  assert.equal(result.turnCount, 3)
+  const forked = await readSessionLines(fixture.sessionDir, result.newSessionId)
+  assert.equal(countTurns(forked), 3)
+})
+
+test('forkSession still rejects REAL mid-file corruption (also consistent with list/show)', async () => {
+  // A malformed line FOLLOWED by a good line is real corruption, not a trailing
+  // half-write — the scanner marks corrupt:true and fork still throws.
+  const fixture = await createSessionFixture({ turns: 2 })
+  const good = (await readFile(fixture.sourcePath, 'utf8')).trimEnd().split('\n')
+  await writeFile(
+    fixture.sourcePath,
+    [good[0], '{"type":"user","message":{"broken', ...good.slice(1)].join('\n') + '\n',
+    'utf8',
+  )
+  const acc = await scanSessionFile(fixture.sourcePath)
+  assert.equal(acc.corrupt, true, 'scanner flags mid-file corruption')
+  await assert.rejects(
+    forkSession({ sessionDir: fixture.sessionDir, sourceSessionId: fixture.sourceSessionId }),
+    /Invalid JSONL/,
+  )
+})
+
+test('forkSession tokenizes/parses like the scanner (BOM/NBSP-led + CR-only lines)', async () => {
+  // parseJsonl must mirror scanSessionFile EXACTLY: split on universal newlines
+  // (\r\n, \r, \n — readline breaks on a lone \r) and JSON.parse the TRIMMED line
+  // (JSON.parse rejects a leading BOM/NBSP that String.trim() strips). Otherwise
+  // a BOM/NBSP-led or CR-terminated transcript that list/show call clean would
+  // throw (or silently undercount turns) on fork.
+  for (const [label, build] of [
+    ['BOM-led 2nd line', (u, a) => `${u}\n﻿${a}`],
+    ['NBSP-led 2nd line', (u, a) => `${u}\n ${a}`],
+    ['CR-only separators', (u, a) => `${u}\r${a}\r`],
+    ['CRLF separators', (u, a) => `${u}\r\n${a}\r\n`],
+  ]) {
+    const fixture = await createSessionFixture({ turns: 2 })
+    const [u, a] = (await readFile(fixture.sourcePath, 'utf8')).trimEnd().split('\n').slice(0, 2)
+    await writeFile(fixture.sourcePath, build(u, a), 'utf8')
+
+    const acc = await scanSessionFile(fixture.sourcePath)
+    const result = await forkSession({
+      sessionDir: fixture.sessionDir,
+      sourceSessionId: fixture.sourceSessionId,
+    })
+    // fork's turn count must match what the scanner (list/show) reported.
+    assert.equal(result.turnCount, acc.turnCount, `${label}: fork/scan turn count must agree`)
+    assert.equal(acc.corrupt, false, `${label}: scanner clean`)
+  }
 })
 
 async function createSessionFixture({ turns }) {
