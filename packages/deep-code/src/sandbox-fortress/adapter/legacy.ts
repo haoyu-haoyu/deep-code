@@ -36,6 +36,7 @@ import {
   isPlatformInEnabledList as platformInEnabledList,
   sandboxUnavailableReason,
 } from '../sandboxAvailability.mjs'
+import { resolveNetworkDecision } from '../networkDecision.mjs'
 import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import { SETTING_SOURCES, type SettingSource } from '../../utils/settings/constants.js'
 import { getManagedSettingsDropInDir } from '../../utils/settings/managedPath.js'
@@ -164,6 +165,23 @@ export function shouldAllowManagedSandboxDomainsOnly(): boolean {
   )
 }
 
+/**
+ * The explicit network denylist (settings.sandbox.network.deniedDomains), read
+ * fresh from the same source convertToSandboxRuntimeConfig uses (managed mode →
+ * policy settings, else merged settings). Used by the wrapped network callback
+ * for DeepCode-side deny enforcement; the runtime ALSO denies these via the
+ * config (filterNetworkRequest), so this is defense-in-depth + node-testable.
+ */
+export function resolveSandboxDeniedDomains(): string[] {
+  if (shouldAllowManagedSandboxDomainsOnly()) {
+    return (
+      getSettingsForSource('policySettings')?.sandbox?.network?.deniedDomains ||
+      []
+    )
+  }
+  return getSettings_DEPRECATED().sandbox?.network?.deniedDomains || []
+}
+
 function shouldAllowManagedReadPathsOnly(): boolean {
   return (
     getSettingsForSource('policySettings')?.sandbox?.filesystem
@@ -202,6 +220,11 @@ export function convertToSandboxRuntimeConfig(
         allowedDomains.push(rule.ruleContent.substring('domain:'.length))
       }
     }
+    // Explicit denylist (managed mode → policy source), symmetric with
+    // allowedDomains. Enforced deny-first by the runtime's filterNetworkRequest.
+    for (const domain of policySettings?.sandbox?.network?.deniedDomains || []) {
+      deniedDomains.push(domain)
+    }
   } else {
     for (const domain of settings.sandbox?.network?.allowedDomains || []) {
       allowedDomains.push(domain)
@@ -214,6 +237,10 @@ export function convertToSandboxRuntimeConfig(
       ) {
         allowedDomains.push(rule.ruleContent.substring('domain:'.length))
       }
+    }
+    // Explicit denylist (settings source), symmetric with allowedDomains above.
+    for (const domain of settings.sandbox?.network?.deniedDomains || []) {
+      deniedDomains.push(domain)
     }
   }
 
@@ -734,9 +761,19 @@ async function initialize(
   // This ensures all code paths (REPL, print/SDK) are covered.
   const wrappedCallback: SandboxAskCallback | undefined = sandboxAskCallback
     ? async (hostPattern: NetworkHostPattern) => {
-        if (shouldAllowManagedSandboxDomainsOnly()) {
+        // DeepCode-side enforcement via the pure, tested networkDecision core:
+        // deny the explicit denylist (deny-first) + the managed-only policy,
+        // read fresh per request (not reliant on the runtime's module-global
+        // config being in sync). Defaults are unchanged when the denylist is
+        // empty + managed-only is off (→ 'ask' → defers to the host callback).
+        const decision = resolveNetworkDecision({
+          host: hostPattern.host,
+          deniedDomains: resolveSandboxDeniedDomains(),
+          allowManagedDomainsOnly: shouldAllowManagedSandboxDomainsOnly(),
+        })
+        if (decision === 'deny') {
           logForDebugging(
-            `[sandbox] Blocked network request to ${hostPattern.host} (allowManagedDomainsOnly)`,
+            `[sandbox] Blocked network request to ${hostPattern.host} (network policy)`,
           )
           return false
         }

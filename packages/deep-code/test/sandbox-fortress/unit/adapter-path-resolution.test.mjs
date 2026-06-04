@@ -26,6 +26,11 @@ const sandboxAvailabilitySourcePath = resolve(
   packageRoot,
   'src/sandbox-fortress/sandboxAvailability.mjs',
 )
+// legacy.ts also imports the pure network-decision core (../networkDecision.mjs).
+const networkDecisionSourcePath = resolve(
+  packageRoot,
+  'src/sandbox-fortress/networkDecision.mjs',
+)
 const harnessSourcePath = resolve(
   packageRoot,
   'test/sandbox-fortress/harness.mjs',
@@ -51,6 +56,11 @@ function writeLegacyFixture(root) {
   copyFileSync(
     sandboxAvailabilitySourcePath,
     join(root, 'src/sandbox-fortress/sandboxAvailability.mjs'),
+  )
+  // The pure network-decision core legacy.ts's network callback delegates to.
+  copyFileSync(
+    networkDecisionSourcePath,
+    join(root, 'src/sandbox-fortress/networkDecision.mjs'),
   )
 
   const harnessTarget = join(root, 'test/sandbox-fortress/harness.mjs')

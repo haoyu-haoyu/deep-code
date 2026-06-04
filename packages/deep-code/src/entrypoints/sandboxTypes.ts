@@ -15,6 +15,14 @@ export const SandboxNetworkConfigSchema = lazySchema(() =>
   z
     .object({
       allowedDomains: z.array(z.string()).optional(),
+      deniedDomains: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Explicit denylist of domains/host patterns (e.g. "evil.com", "*.tracker.net"). ' +
+            'Enforced deny-first by the sandbox network proxy — matched hosts are blocked ' +
+            'regardless of allowedDomains. Respected from all sources.',
+        ),
       allowManagedDomainsOnly: z
         .boolean()
         .optional()
