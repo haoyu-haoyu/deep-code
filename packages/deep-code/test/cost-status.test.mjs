@@ -1,5 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import {
   formatTurnTokenStatus,
@@ -98,12 +101,26 @@ test('null / empty / non-positive usage yields null', () => {
   )
 })
 
-test('an unknown model falls back to a known pricing tier (no throw, savings still computed)', () => {
-  const s = formatTurnTokenStatus({
-    usage: { input_tokens: 1000, output_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0 },
-    model: 'some-unknown-model',
-  })
-  assert.match(s, / · saved ~\$/)
+test('a NON-DeepSeek / unknown model omits the savings clause (no misleading flash-priced $)', () => {
+  // The savings $ is DeepSeek-only (estimateDeepSeekCacheSavingsUsd falls back to
+  // flash pricing for unknown models). A non-DeepSeek model must NOT print a
+  // flash-priced "saved" clause — tokens + cache% are still shown.
+  const usage = { input_tokens: 1000, output_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0 }
+  for (const model of ['some-unknown-model', 'gpt-4o', 'claude-sonnet-4-20250514', 'auto', 'llama3.1:70b']) {
+    const s = formatTurnTokenStatus({ usage, model })
+    assert.doesNotMatch(s, / · saved ~\$/, `${model} must not show savings`)
+    assert.match(s, /cache 100%/, `${model} still shows tokens + cache%`)
+  }
+  // recognized DeepSeek models (and the default) still show savings
+  for (const model of ['deepseek-v4-flash', 'deepseek-v4-pro']) {
+    assert.match(formatTurnTokenStatus({ usage, model }), / · saved ~\$/, `${model} shows savings`)
+  }
+  assert.match(formatTurnTokenStatus({ usage }), / · saved ~\$/, 'default model shows savings')
+  // an inherited prototype key must NOT masquerade as a real model (Object.hasOwn,
+  // not `in`) — else it would slip past the gate and compute a NaN-priced clause.
+  for (const protoKey of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+    assert.doesNotMatch(formatTurnTokenStatus({ usage, model: protoKey }), / · saved ~\$/, `${protoKey} must not enable savings`)
+  }
 })
 
 // ── latestTurnModel: the per-turn model for the correct pricing tier ─────────
@@ -164,4 +181,60 @@ test('latestTurnModel skips synthetic messages (matches getCurrentUsage selectio
     A('<synthetic>', { input_tokens: 0, output_tokens: 0 }), // e.g. an interrupt marker
   ]
   assert.equal(latestTurnModel(messages), 'deepseek-v4-pro')
+})
+
+// a synthetic MESSAGE carrying a REAL model — getTokenUsage skips on the FIRST
+// TEXT BLOCK too, not only on model===SYNTHETIC_MODEL. latestTurnModel must mirror
+// BOTH or it would price the real turn's usage at the wrong tier.
+const Atext = (model, firstText) => ({
+  type: 'assistant',
+  message: { model, usage: { input_tokens: 0, output_tokens: 0 }, content: [{ type: 'text', text: firstText }] },
+})
+
+test('latestTurnModel skips a synthetic-MESSAGE assistant even when it carries a real model (GAP 2)', () => {
+  for (const synthetic of [
+    '[Request interrupted by user]',
+    '[Request interrupted by user for tool use]',
+    'No response requested.',
+    "The user doesn't want to take this action right now. STOP what you are doing and wait for the user to tell you how to proceed.",
+  ]) {
+    const messages = [
+      Atext('deepseek-v4-pro', 'the real turn output'), // the real, usage-bearing turn
+      Atext('deepseek-v4-flash', synthetic), // a synthetic marker that (in theory) carries a real model
+    ]
+    assert.equal(latestTurnModel(messages), 'deepseek-v4-pro', `skip synthetic: ${synthetic.slice(0, 30)}`)
+  }
+  // a GENUINE trailing answer (not a synthetic string) is still used
+  assert.equal(
+    latestTurnModel([Atext('deepseek-v4-pro', 'first'), Atext('deepseek-v4-flash', 'a real answer')]),
+    'deepseek-v4-flash',
+  )
+})
+
+// DRIFT GUARD: the SYNTHETIC_MODEL + SYNTHETIC_MESSAGES mirrored in
+// costStatusData.mjs (a .mjs that can't import the bun-tainted messages.ts) must
+// stay byte-equal to the source constants, or the synthetic-skip predicate
+// silently diverges from getTokenUsage.
+test('costStatusData mirrors SYNTHETIC_MODEL + SYNTHETIC_MESSAGES from messages.ts (drift guard)', () => {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const messagesSrc = readFileSync(resolve(here, '..', 'src/utils/messages.ts'), 'utf8')
+  const costSrc = readFileSync(resolve(here, '..', 'src/components/costStatusData.mjs'), 'utf8')
+
+  // SYNTHETIC_MODEL value from source
+  const modelLit = messagesSrc.match(/export const SYNTHETIC_MODEL\s*=\s*('[^']*'|"[^"]*")/)
+  assert.ok(modelLit, 'SYNTHETIC_MODEL must be a string literal in messages.ts')
+  assert.ok(costSrc.includes(`SYNTHETIC_MODEL = ${modelLit[1]}`), 'costStatusData must mirror SYNTHETIC_MODEL')
+
+  // the 5 SYNTHETIC_MESSAGES members (constant NAMES → their string values), each
+  // must appear verbatim in costStatusData's mirrored Set.
+  const memberNames = ['INTERRUPT_MESSAGE', 'INTERRUPT_MESSAGE_FOR_TOOL_USE', 'CANCEL_MESSAGE', 'REJECT_MESSAGE', 'NO_RESPONSE_REQUESTED']
+  for (const name of memberNames) {
+    const lit = messagesSrc.match(new RegExp(`export const ${name}\\s*=\\s*('[^']*'|"[^"]*")`))
+    assert.ok(lit, `${name} must be a single-line string literal in messages.ts`)
+    const value = lit[1].slice(1, -1) // strip quotes
+    assert.ok(
+      costSrc.includes(value),
+      `costStatusData.mjs must mirror ${name} verbatim (drift): ${value.slice(0, 40)}…`,
+    )
+  }
 })

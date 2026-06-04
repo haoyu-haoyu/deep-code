@@ -1,4 +1,5 @@
 import {
+  DEEPSEEK_INPUT_PRICING_USD_PER_MILLION,
   estimateDeepSeekCacheSavingsUsd,
   formatUsdEstimate,
 } from '../cache/deepseek-pricing.mjs'
@@ -46,7 +47,15 @@ export function formatTurnTokenStatus({ usage, model = 'deepseek-v4-pro' } = {})
     const hitPct = Math.min(100, Math.max(0, Math.round((cacheRead / cacheTotal) * 100)))
     parts.push(`cache ${hitPct}%`)
   }
-  if (cacheRead > 0) {
+  // The savings $ is a DEEPSEEK-only figure: estimateDeepSeekCacheSavingsUsd silently
+  // falls back to deepseek-v4-flash pricing for any unrecognized model, so a
+  // non-DeepSeek model (gpt-4o / claude-* under a configured provider) would print a
+  // misleading DeepSeek-flash-priced "saved" clause. Gate it on a model the pricing
+  // table actually knows (the table is the authoritative recognition source — no
+  // hardcoded model list to drift); tokens + cache% are still shown for every model.
+  // Object.hasOwn (not `in`) so an inherited prototype key ('constructor', 'toString')
+  // can't masquerade as a real DeepSeek model.
+  if (cacheRead > 0 && Object.hasOwn(DEEPSEEK_INPUT_PRICING_USD_PER_MILLION, model)) {
     // The "~" marks this an ESTIMATE: it's the cache SAVINGS (not the turn cost),
     // computed from the deepseek-pricing.mjs snapshot, which can drift from live
     // pricing (e.g. promo windows) — the same snapshot /cache already uses.
@@ -82,10 +91,18 @@ export function latestTurnModel(messages) {
       'usage' in m.message &&
       typeof m.message.model === 'string' &&
       m.message.model &&
-      // Mirror getTokenUsage()'s synthetic exclusion (src/utils/messages.ts
-      // SYNTHETIC_MODEL) so this selects the SAME message getCurrentUsage() does
-      // — otherwise a trailing synthetic assistant message would price the real
-      // turn's savings at the wrong tier.
+      // Mirror getTokenUsage()'s SYNTHETIC-SKIP predicate (src/utils/tokens.ts) so
+      // this selects the same message getCurrentUsage() does — it skips on EITHER:
+      //   (a) the first text block is one of the SYNTHETIC_MESSAGES, OR
+      //   (b) model === SYNTHETIC_MODEL.
+      // Mirroring only (b) would price a real turn's savings at the wrong tier if a
+      // trailing synthetic-MESSAGE assistant record carried a real model. (We also
+      // require a truthy model string, so the caller can fall back to the session
+      // model when the turn carries none.)
+      !(
+        m.message.content?.[0]?.type === 'text' &&
+        SYNTHETIC_MESSAGES.has(m.message.content[0].text)
+      ) &&
       m.message.model !== SYNTHETIC_MODEL
     ) {
       return m.message.model
@@ -94,5 +111,13 @@ export function latestTurnModel(messages) {
   return undefined
 }
 
-// Mirrors SYNTHETIC_MODEL in src/utils/messages.ts (a .ts, not node-loadable).
+// Mirrors SYNTHETIC_MODEL + SYNTHETIC_MESSAGES in src/utils/messages.ts (a .ts, not
+// node-loadable). The cost-status drift-guard test pins these against that source.
 const SYNTHETIC_MODEL = '<synthetic>'
+const SYNTHETIC_MESSAGES = new Set([
+  '[Request interrupted by user]',
+  '[Request interrupted by user for tool use]',
+  "The user doesn't want to take this action right now. STOP what you are doing and wait for the user to tell you how to proceed.",
+  "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+  'No response requested.',
+])
