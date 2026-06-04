@@ -47,6 +47,25 @@ for (const { script, label } of [
   })
 }
 
+test('sandbox network-deny probe HARD-FAILS in STRICT mode when DEEPCODE_REAL_E2E is unset (no silent green)', () => {
+  // STRICT means the dedicated CI job committed (via its preflight) to EXERCISING
+  // enforcement, so an unset DEEPCODE_REAL_E2E there is a job misconfiguration,
+  // not an external precondition — it must fail loudly (exit 1), not skip (exit 0).
+  // Otherwise STRICT's "exercise-or-go-red" guarantee silently depends on a second
+  // env var being set. (Run the script directly so npm's own exit handling can't
+  // mask the code.)
+  const result = spawnSync('node', [resolve(packageRoot, 'scripts/sandbox-network-e2e.mjs')], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, DEEPCODE_REAL_E2E: '', DEEPCODE_SANDBOX_E2E_STRICT: '1' },
+  })
+  assert.equal(result.status, 1, `expected hard-fail, got ${result.status}: ${result.stdout}`)
+  assert.match(result.stderr, /FAILED \(strict\)/)
+  assert.match(result.stderr, /DEEPCODE_REAL_E2E must be set/)
+  assert.doesNotMatch(result.stdout, /sk-/)
+  assert.doesNotMatch(result.stderr ?? '', /sk-/)
+})
+
 test('live-e2e probe scripts exist on disk', () => {
   assert.equal(existsSync(resolve(packageRoot, 'scripts/deepseek-toolchain-e2e.mjs')), true)
   assert.equal(existsSync(resolve(packageRoot, 'scripts/deepseek-acp-e2e.mjs')), true)

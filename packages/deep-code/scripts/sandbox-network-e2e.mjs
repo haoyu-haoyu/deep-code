@@ -82,6 +82,15 @@ function concludeUnproven(reason) {
 
 async function main() {
   if (!REAL) {
+    // STRICT means the dedicated CI job has already committed (via its preflight)
+    // to EXERCISING enforcement, so an unset DEEPCODE_REAL_E2E there is a job
+    // MISCONFIGURATION, not an external precondition — fail loudly rather than
+    // silently passing (skip → exit 0). Otherwise STRICT's "exercise-or-go-red"
+    // guarantee would quietly depend on a second env var being set. bail() hard-
+    // fails under STRICT and skips otherwise.
+    if (STRICT) {
+      return bail('DEEPCODE_REAL_E2E must be set in STRICT mode (the job committed to exercising enforcement)')
+    }
     return skip(
       'set DEEPCODE_REAL_E2E=1 on a sandbox-capable host (the nightly live-e2e workflow installs bubblewrap + socat + the real runtime on Linux) to run real network-deny enforcement.',
     )
