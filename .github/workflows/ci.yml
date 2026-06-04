@@ -91,6 +91,7 @@ jobs:
             test/sed-edit-parser.test.mjs \
             test/readonly-flag-parsing.test.mjs \
             test/tool-batch-concurrency.test.mjs \
+            test/cost-status.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \
             test/sandbox-fortress/integration/*.test.mjs \
             test/sandbox-fortress/redteam/*.test.mjs
