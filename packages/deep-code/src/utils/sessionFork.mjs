@@ -269,15 +269,37 @@ function readSourceSession(sourcePath, sourceSessionId) {
   }
 }
 
+// Parse a transcript's non-blank lines, mirroring scanSessionFile (sessionList.mjs)
+// EXACTLY so `list`/`show` and `fork` AGREE on which sessions are usable:
+//   - line splitting: universal newlines (\r\n, \r, \n) — readline (what the
+//     scanner uses) breaks on a lone \r too, so a CR-terminated transcript must
+//     tokenize identically here.
+//   - per line: JSON.parse the TRIMMED text — JSON.parse rejects a leading BOM /
+//     NBSP / line-separator that String.trim() strips, so the scanner (which
+//     parses the trimmed line) and fork must trim before parsing or they disagree
+//     on a BOM/NBSP-led line.
+//   - corruption policy: a malformed LAST line with ≥1 good line before it is a
+//     benign trailing half-write (the CLI was SIGKILLed mid-append) → drop it;
+//     anything else (a malformed line followed by a good line, or a sole
+//     malformed line) is real mid-file corruption → throw. Without this, a
+//     session `list`/`show` call clean (corrupt:false) would hard-throw on `fork`.
 function parseJsonl(content) {
-  const lines = content.split('\n').filter(line => line.trim().length > 0)
-  return lines.map((line, index) => {
+  const lines = content
+    .split(/\r\n|\r|\n/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+  const parsed = []
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]
     try {
-      return { entry: JSON.parse(line), line }
+      parsed.push({ entry: JSON.parse(line), line })
     } catch {
+      // benign trailing half-write: the LAST line, with good content before it.
+      if (index === lines.length - 1 && parsed.length > 0) break
       throw new Error(`Invalid JSONL in source session at line ${index + 1}`)
     }
-  })
+  }
+  return parsed
 }
 
 function findCopyLineCount(sourceLines, targetTurn) {
