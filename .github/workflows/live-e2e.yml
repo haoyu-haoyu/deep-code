@@ -129,3 +129,82 @@ jobs:
           out=$(./binaries/deepcode-darwin-arm64 -p "Reply with exactly: binary-live-ok")
           echo "binary replied: $out"
           echo "$out" | grep -q "binary-live-ok"
+
+  sandbox-network:
+    name: Sandbox network-deny enforcement (Linux + bubblewrap)
+    # Needs the OS sandbox (bubblewrap), NOT the DeepSeek key — so this job is
+    # gated on the sandbox being available, not on a secret. The probe itself
+    # self-skips (exit 0) when the platform/deps are unavailable, so it is
+    # never a false failure.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+
+      # bubblewrap + socat are the Linux OS-sandbox primitives the runtime needs
+      # for real network-namespace + proxy enforcement (the in-app dependency
+      # contract checks for both — see sandbox-fortress/sandboxAvailability.mjs).
+      # Without either, checkDependencies() flags an error and the probe self-skips,
+      # so the job would stay green without exercising enforcement. Install both.
+      - name: Install bubblewrap + socat
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap socat
+
+      # The real @anthropic-ai/sandbox-runtime is a closed-source, self-use-only
+      # dependency (docs/sandbox-runtime-distribution.md): the committed tree ships
+      # a NO-OP shim so normal builds never bundle it, and it is not in the
+      # lockfile, so `npm ci` leaves it absent. Installing it here is self-use CI
+      # testing (NOT publishing), which the policy allows, and it gives the probe
+      # the REAL runtime instead of the shim. This step HARD-FAILS on error: if the
+      # runtime can't be installed the probe would silently self-skip, so the job
+      # must go RED (this is a non-blocking nightly, so a red run is a visible
+      # "could not exercise enforcement" signal, never a PR gate).
+      - name: Install the real sandbox-runtime (self-use test only)
+        run: npm install --no-save @anthropic-ai/sandbox-runtime@0.0.52
+
+      # Fail loudly (not skip silently) on every prerequisite the probe would
+      # otherwise self-skip on, so this job can never go green without exercising
+      # enforcement:
+      #   - the bare import must resolve to the REAL runtime, not the no-op shim
+      #     (the shim hard-codes isSupportedPlatform()===false; the real runtime
+      #     returns true on this Linux runner), and
+      #   - checkDependencies() must report no errors (bubblewrap/socat present),
+      #     mirroring the probe's own dep gate but turning a silent skip into a
+      #     loud fail BEFORE the probe runs.
+      - name: Verify the real runtime resolves (not the shim) and deps are satisfied
+        working-directory: packages/deep-code
+        run: |
+          node --input-type=module -e "
+            const m = await import('@anthropic-ai/sandbox-runtime');
+            const SM = m.SandboxManager;
+            if (typeof SM?.isSupportedPlatform !== 'function' || SM.isSupportedPlatform() !== true) {
+              console.error('real sandbox-runtime not active (got the no-op shim or an unsupported platform); cannot exercise enforcement');
+              process.exit(1);
+            }
+            const deps = SM.checkDependencies?.() ?? { errors: [] };
+            if ((deps.errors ?? []).length > 0) {
+              console.error('sandbox dependency errors on the runner (probe would self-skip): ' + JSON.stringify(deps.errors));
+              process.exit(1);
+            }
+            console.log('real sandbox-runtime resolved, platform supported, deps satisfied');
+          "
+
+      # STRICT: the preflight above already proved real-runtime + supported
+      # platform + deps, so here a "can't run" is no longer a harmless skip — it is
+      # a failure of the thing under test. STRICT makes post-preflight setup/init
+      # problems and a sandbox that blocks an allowed host HARD-FAIL, so this job
+      # is truly "exercise enforcement or go red" (only an external host outage
+      # still skips). It is a non-blocking nightly, so a red run is the right signal.
+      - name: Sandbox network-deny E2E (denied host refused, allowed control connects)
+        working-directory: packages/deep-code
+        env:
+          DEEPCODE_REAL_E2E: '1'
+          DEEPCODE_SANDBOX_E2E_STRICT: '1'
+        run: npm run test:sandbox-network-e2e

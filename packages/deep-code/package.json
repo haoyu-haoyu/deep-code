@@ -48,6 +48,7 @@
     "test:reasoning-cost": "node scripts/deepseek-reasoning-cost-probe.mjs",
     "test:toolchain-e2e": "node scripts/deepseek-toolchain-e2e.mjs",
     "test:acp-e2e": "node scripts/deepseek-acp-e2e.mjs",
+    "test:sandbox-network-e2e": "node scripts/sandbox-network-e2e.mjs",
     "perf:fixture": "node scripts/perf/generate-fixture.mjs --count=1000",
     "perf:baseline": "bun scripts/perf-baseline.mjs",
     "perf:compare": "node scripts/perf-compare.mjs",

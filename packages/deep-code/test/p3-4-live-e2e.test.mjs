@@ -21,6 +21,9 @@ function runSkip(scriptName) {
     env: {
       ...process.env,
       DEEPCODE_REAL_E2E: '',
+      // Force non-strict so the sandbox probe self-skips here rather than
+      // hard-failing (strict is opt-in for the dedicated CI job only).
+      DEEPCODE_SANDBOX_E2E_STRICT: '',
       DEEPSEEK_API_KEY: '',
       DEEPCODE_API_KEY: '',
     },
@@ -30,19 +33,58 @@ function runSkip(scriptName) {
 for (const { script, label } of [
   { script: 'test:toolchain-e2e', label: 'tool-chain' },
   { script: 'test:acp-e2e', label: 'ACP allow_always' },
+  { script: 'test:sandbox-network-e2e', label: 'sandbox network deny' },
 ]) {
   test(`${label} E2E script skips cleanly (exit 0, notice, no key) without DEEPCODE_REAL_E2E`, () => {
     const result = runSkip(script)
     assert.equal(result.status, 0, result.stderr)
     assert.match(result.stdout, /skipped/i)
     assert.match(result.stdout, /DEEPCODE_REAL_E2E=1/)
+    // No key may leak on EITHER stream — a notice on stdout must not mask a key
+    // dumped to stderr.
     assert.doesNotMatch(result.stdout, /sk-/)
+    assert.doesNotMatch(result.stderr ?? '', /sk-/)
   })
 }
 
 test('live-e2e probe scripts exist on disk', () => {
   assert.equal(existsSync(resolve(packageRoot, 'scripts/deepseek-toolchain-e2e.mjs')), true)
   assert.equal(existsSync(resolve(packageRoot, 'scripts/deepseek-acp-e2e.mjs')), true)
+  assert.equal(existsSync(resolve(packageRoot, 'scripts/sandbox-network-e2e.mjs')), true)
+})
+
+// The sandbox network-deny probe is gated on the OS SANDBOX (bubblewrap + socat),
+// not on the DeepSeek key — so it runs in its own job that installs those + the
+// real runtime, and runs strict so it cannot go green without enforcing.
+test('live-e2e sandbox-network job installs every prerequisite, verifies the real runtime, runs strict', () => {
+  const yaml = readFileSync(liveYamlPath, 'utf8')
+  // Isolate JUST the sandbox-network job block — from its key to the next top-level
+  // job (2-space indent) or EOF — so these assertions are scoped to that job's
+  // steps and stay correct even if it is no longer the last job. Each missing
+  // prerequisite would make the probe self-skip → a green job that never enforces.
+  const jobKey = '\n  sandbox-network:'
+  const jobStart = yaml.indexOf(jobKey)
+  assert.notEqual(jobStart, -1, 'live-e2e must define a sandbox-network job')
+  const after = yaml.slice(jobStart + jobKey.length)
+  const nextJob = after.search(/\n  [A-Za-z0-9_-]+:\n/)
+  const job = nextJob === -1 ? after : after.slice(0, nextJob)
+  //   - bubblewrap + socat: the Linux OS-sandbox deps (checkDependencies contract)
+  assert.match(job, /run: sudo apt-get update && sudo apt-get install -y bubblewrap socat/, 'must apt-get install both bubblewrap AND socat')
+  //   - the real @anthropic-ai/sandbox-runtime: the vendored build ships a no-op shim
+  assert.match(
+    job,
+    /run: npm install --no-save @anthropic-ai\/sandbox-runtime@/,
+    'must install the real sandbox-runtime (the vendored shim is a no-op)',
+  )
+  //   - the shim/deps preflight: removing it would re-open the false-green path, so
+  //     guard both of its hard-fail checks with CODE-shaped patterns (not satisfiable
+  //     by a comment that merely mentions the words)
+  assert.match(job, /isSupportedPlatform\(\) !== true/, 'must verify the REAL runtime resolved (not the shim) before enforcing')
+  assert.match(job, /SM\.checkDependencies\?\.\(\)/, 'must verify sandbox deps so a missing dep fails loudly, not skips')
+  //   - strict mode: turns post-preflight "can't run" into a hard fail, so the job
+  //     is "exercise enforcement or go red"
+  assert.match(job, /DEEPCODE_SANDBOX_E2E_STRICT: '1'/, 'must run the probe in strict mode on the dedicated runner')
+  assert.match(job, /run: npm run test:sandbox-network-e2e/, 'must actually run the sandbox network-deny probe')
 })
 
 // --- the live-e2e workflow is non-blocking + key-guarded ------------------
