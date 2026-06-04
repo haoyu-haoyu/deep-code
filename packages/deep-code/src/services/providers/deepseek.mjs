@@ -598,13 +598,18 @@ export function parseDeepSeekSSELines(lines) {
         })
         events.push(event)
       }
+      // Emit a synthetic finish whenever a choice carries finish_reason and is NOT
+      // a tool-call chunk (tool_call_delta already carries finishReason, so a
+      // separate finish would be redundant). This MUST fire even when the SAME
+      // chunk also carries content/reasoning: many OpenAI-compatible servers
+      // attach finish_reason to the LAST content chunk, whereas DeepSeek uses a
+      // trailing empty-delta chunk (so DeepSeek is unaffected — it never bundles).
+      // Without this, a pure-text turn from such a server ended with
+      // stop_reason:null. The finish is pushed AFTER the content_delta above, so
+      // consumers see content first, then finish (the agent loop only records
+      // finishReason on finish; blocks close after the stream drains).
       const hasToolCallDeltas = (delta.tool_calls?.length ?? 0) > 0
-      if (
-        choice.finish_reason &&
-        !delta.reasoning_content &&
-        !delta.content &&
-        !hasToolCallDeltas
-      ) {
+      if (choice.finish_reason && !hasToolCallDeltas) {
         events.push({ type: 'finish', finishReason: choice.finish_reason })
       }
     }

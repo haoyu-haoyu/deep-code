@@ -11,6 +11,9 @@ import {
   pumpUpdates,
 } from '../src/cli/serve/acp/agentTurn.mjs'
 import { mapStopReason } from '../src/cli/serve/acp/protocol.mjs'
+import { providerSupports } from '../src/deepcode/provider-capabilities.mjs'
+import { createDeepSeekProvider } from '../src/services/providers/deepseek.mjs'
+import { createOpenAICompatibleProvider } from '../src/services/providers/openai-compatible.mjs'
 
 // --- pumpUpdates (callback -> async generator bridge) ---------------------
 
@@ -61,6 +64,31 @@ test('mapProviderEventToAcp maps reasoning/content deltas, ignores the rest', ()
   })
   assert.equal(mapProviderEventToAcp({ type: 'tool_call_delta', id: 't', name: 'x' }), null)
   assert.equal(mapProviderEventToAcp({ type: 'usage', usage: {} }), null)
+})
+
+test('mapProviderEventToAcp gates reasoning by provider capability (no CoT leak for non-reasoning providers)', () => {
+  // Mirror the main query loop (deepseek-call-model.mjs): reasoning_delta becomes
+  // an ACP thought ONLY when the provider supports reasoning_content. An
+  // openai-compatible provider declares it false but reuses the DeepSeek SSE
+  // parser, so a reasoning model proxied through it would otherwise leak CoT.
+  const reasoning = { type: 'reasoning_delta', text: 'secret chain of thought' }
+  const deepseek = createDeepSeekProvider()
+  const openaiCompat = createOpenAICompatibleProvider({ providerName: 'ollama', baseUrl: 'http://x', apiKey: 'k' })
+
+  // capability-supporting provider → mapped; capability-lacking provider → null
+  assert.equal(providerSupports(deepseek, 'reasoning_content'), true)
+  assert.equal(providerSupports(openaiCompat, 'reasoning_content'), false)
+  assert.deepEqual(mapProviderEventToAcp(reasoning, deepseek), {
+    sessionUpdate: 'agent_thought_chunk',
+    content: { type: 'text', text: 'secret chain of thought' },
+  })
+  assert.equal(mapProviderEventToAcp(reasoning, openaiCompat), null) // gated → no leak
+  // content is never gated (only reasoning is); no-provider keeps back-compat
+  assert.deepEqual(mapProviderEventToAcp({ type: 'content_delta', text: 'hi' }, openaiCompat), {
+    sessionUpdate: 'agent_message_chunk',
+    content: { type: 'text', text: 'hi' },
+  })
+  assert.ok(mapProviderEventToAcp(reasoning) !== null) // no provider → unchanged
 })
 
 test('mapStopReason maps max_turns to max_turn_requests', () => {

@@ -17,6 +17,7 @@ import {
   runDeepSeekAgent,
 } from '../../../deepcode/deepseek-native.mjs'
 import { createDeepSeekLocalTools } from '../../../deepcode/local-toolchain.mjs'
+import { providerSupports } from '../../../deepcode/provider-capabilities.mjs'
 import { resolveRuntimeModelProvider } from '../../../services/providers/runtime-provider.mjs'
 
 export const ACP_AGENT_SYSTEM_PROMPT = [
@@ -42,9 +43,19 @@ function safeParseArgs(raw) {
   }
 }
 
-/** Map a low-level DeepSeek provider delta to an ACP session/update, or null. */
-export function mapProviderEventToAcp(event) {
+/**
+ * Map a low-level DeepSeek provider delta to an ACP session/update, or null.
+ * `provider` (when given) gates reasoning: mirror the main query loop
+ * (deepseek-call-model.mjs) and only surface reasoning as an ACP thought when the
+ * provider supports reasoning_content. An openai-compatible provider declares it
+ * false but reuses the DeepSeek SSE parser, which emits reasoning_delta for any
+ * server that sends reasoning_content (e.g. a distill/reasoning model proxied via
+ * vLLM/Ollama). Without this gate the ACP surface would leak chain-of-thought as
+ * 'thoughts' for a provider the rest of the codebase treats as reasoning-incapable.
+ */
+export function mapProviderEventToAcp(event, provider) {
   if (event?.type === 'reasoning_delta' && typeof event.text === 'string') {
+    if (provider && !providerSupports(provider, 'reasoning_content')) return null
     return { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: event.text } }
   }
   if (event?.type === 'content_delta' && typeof event.text === 'string') {
@@ -151,7 +162,7 @@ function makeStreamingComplete({ push, signal, state, provider }) {
     // buildRequest in runDeepSeekAgent). The event vocabulary is shared, so the
     // ACP mapping + tool-call merge below work for any provider.
     for await (const event of provider.streamQuery({ ...request, signal })) {
-      const update = mapProviderEventToAcp(event)
+      const update = mapProviderEventToAcp(event, provider)
       if (update) {
         if (event.type === 'reasoning_delta') reasoning += event.text
         else content += event.text

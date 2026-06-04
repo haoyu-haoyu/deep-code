@@ -1319,8 +1319,12 @@ test('streamDeepSeekQuery retries retryable HTTP failures before streaming', asy
 
   assert.equal(attempts, 2)
   assert.deepEqual(delays, [0])
+  // finish_reason bundled on the content chunk now yields a finish event (it was
+  // dropped before — a pure-text turn ended stop_reason:null). The retry behavior
+  // (attempts/delays) is what this test pins; finish is the corrected by-product.
   assert.deepEqual(events, [
     { type: 'content_delta', text: 'ok' },
+    { type: 'finish', finishReason: 'stop' },
     { type: 'done' },
   ])
 })
@@ -1396,8 +1400,10 @@ test('streamDeepSeekQuery retries after timeout and then succeeds', async () => 
   }
   assert.equal(attempts, 2)
   assert.equal(delays.length, 1)
+  // see the note above: a bundled finish_reason now correctly yields a finish event.
   assert.deepEqual(events, [
     { type: 'content_delta', text: 'recovered' },
+    { type: 'finish', finishReason: 'stop' },
     { type: 'done' },
   ])
 })
