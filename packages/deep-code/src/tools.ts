@@ -221,7 +221,17 @@ export function getAllBaseTools(): Tools {
     ...(CtxInspectTool ? [CtxInspectTool] : []),
     ...(TerminalCaptureTool ? [TerminalCaptureTool] : []),
     ...(isEnvTruthy(process.env.ENABLE_LSP_TOOL) ? [LSPTool] : []),
-    // CodeGraph is generally available (read-only); opt out via DEEPCODE_DISABLE_CODEGRAPH_TOOL.
+    // CodeGraph is generally available (read-only); opt OUT via
+    // DEEPCODE_DISABLE_CODEGRAPH_TOOL (it became default-on in #323, flipped from
+    // the old opt-IN ENABLE_CODEGRAPH_TOOL gate).
+    // CACHE-MOAT NOTE: CodeGraph is therefore in the DEFAULT DeepSeek tool set, so
+    // it participates in the stable-prefix tool manifest (buildDeepSeekRequest sorts
+    // tools by name; createDeepCodeStablePrefix hashes them). The #323 flip was a
+    // DELIBERATE, one-time prefix change (a single cache re-warm on upgrade, then
+    // steady-state). Flipping this gate back to opt-in — or otherwise changing the
+    // DEFAULT tool set — shifts the stable prefix and re-warms the cache, so do it
+    // knowingly. The codegraph-default-on source guard in test/p2-12-codegraph-tool
+    // fails if this silently regresses to opt-in.
     ...(isEnvTruthy(process.env.DEEPCODE_DISABLE_CODEGRAPH_TOOL) ? [] : [CodegraphTool]),
     ...(isWorktreeModeEnabled() ? [EnterWorktreeTool, ExitWorktreeTool] : []),
     RevertTurnTool,

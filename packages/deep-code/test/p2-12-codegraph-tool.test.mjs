@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import {
   MAX_FILES,
@@ -283,4 +284,37 @@ test('runCodegraphQuery list_symbols on an EMPTY file reports the empty-file not
 
 test('MAX_FILES default is the documented bound', () => {
   assert.equal(MAX_FILES, 20_000)
+})
+
+// ── CACHE-MOAT GUARD: CodeGraph is in the DEFAULT DeepSeek tool set (#323) ───
+// CodeGraph went default-ON in #323 (opt-OUT via DEEPCODE_DISABLE_CODEGRAPH_TOOL),
+// which put it in the default stable-prefix tool manifest — a DELIBERATE one-time
+// cache re-warm. getAllBaseTools() lives in a bun-only .ts (needs the bundler's
+// path resolution), so we guard the gating at the SOURCE: assert it stays default-
+// ON (opt-out), not silently reverted to the old opt-IN gate. A revert would shift
+// the DeepSeek stable prefix (collapse/re-warm the cache moat) — this makes that a
+// visible, reviewed change rather than a silent one.
+test('CodeGraph stays DEFAULT-ON in the base tool set (cache-moat regression guard)', () => {
+  const toolsSrc = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src/tools.ts'),
+    'utf8',
+  )
+  // opt-OUT semantics: CodeGraph is gated by the DISABLE flag (included UNLESS set)
+  // → default-on. Matches both the direct `DISABLE ? [] : [CodegraphTool]` and the
+  // equivalent inverted `!DISABLE ? [CodegraphTool] : []` arrangements (both
+  // default-on), and survives reformatting — but a revert to the opt-IN ENABLE
+  // gate has no DISABLE flag near CodegraphTool, so this fails.
+  assert.match(
+    toolsSrc,
+    /DEEPCODE_DISABLE_CODEGRAPH_TOOL[\s\S]{0,40}\[CodegraphTool\]/,
+    'CodeGraph must be opt-OUT (gated by DEEPCODE_DISABLE_CODEGRAPH_TOOL, default-on); a revert to opt-in shifts the DeepSeek stable prefix',
+  )
+  // the cache-moat rationale must stay documented at the gate.
+  assert.match(toolsSrc, /CACHE-MOAT NOTE/, 'the default-on cache-moat rationale must stay documented')
+  // and the old opt-IN gate must NOT have crept back in.
+  assert.doesNotMatch(
+    toolsSrc,
+    /isEnvTruthy\(process\.env\.ENABLE_CODEGRAPH_TOOL\)\s*\?\s*\[CodegraphTool\]/,
+    'must not regress to the old opt-in ENABLE_CODEGRAPH_TOOL gate',
+  )
 })
