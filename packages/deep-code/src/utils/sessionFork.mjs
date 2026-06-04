@@ -243,7 +243,9 @@ export function resolveSessionPath({ sessionDir, sessionId } = {}) {
   return join(resolveProjectSessionsDir({ sessionDir }), `${sessionId}.jsonl`)
 }
 
-function validateSessionId(sessionId, fieldName) {
+// Exported so `session show`/`rm` can validate an id BEFORE building a path — a
+// strict UUID check is what prevents path traversal from a crafted id.
+export function validateSessionId(sessionId, fieldName) {
   if (typeof sessionId !== 'string' || !UUID_PATTERN.test(sessionId)) {
     throw new Error(`${fieldName} must be a UUID session id`)
   }

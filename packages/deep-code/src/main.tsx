@@ -3233,6 +3233,56 @@ async function run(): Promise<CommanderCommand> {
       process.exitCode = 1;
     }
   });
+  sessionCmd.command('show <session-id>').description('Show details of a saved session').option('--json', 'Machine-readable JSON output').action(async (sessionId: string, options: {
+    json?: boolean;
+  }) => {
+    try {
+      const {
+        showSessionHandler
+      } = await import('./cli/handlers/sessionShow.mjs');
+      const detail = await showSessionHandler({
+        sessionId,
+        json: options.json
+      });
+      if (!detail?.exists) process.exitCode = 1;
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    }
+  });
+  sessionCmd.command('rm <session-id>').aliases(['remove']).description('Delete a saved session (its transcript and any sub-agent transcripts)').action(async (sessionId: string) => {
+    try {
+      const {
+        removeSessionHandler
+      } = await import('./cli/handlers/sessionRemove.mjs');
+      const result = await removeSessionHandler({
+        sessionId
+      });
+      if (!result?.existed) process.exitCode = 1;
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    }
+  });
+  // `session fork` mirrors the top-level `fork` command (kept for back-compat),
+  // so the whole session lifecycle lives under one namespace.
+  sessionCmd.command('fork <session-id>').description('Branch a session at a chosen turn').option('--at-turn <n>', 'Fork at turn N (default: last)').action(async (sessionId: string, options: {
+    atTurn?: string;
+  }) => {
+    try {
+      const atTurn = options.atTurn === undefined ? undefined : Number(options.atTurn);
+      const {
+        forkHandler
+      } = await import('./cli/handlers/session.mjs');
+      await forkHandler({
+        sessionId,
+        atTurn
+      });
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    }
+  });
 
   // claude server
   if (feature('DIRECT_CONNECT')) {
