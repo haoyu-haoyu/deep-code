@@ -116,6 +116,64 @@ test('streamQuery builds the request and streams normalized events', async () =>
   })
 })
 
+// --- finish_reason bundled with the final content chunk ----------------------
+// Many OpenAI-compatible servers attach finish_reason to the LAST content chunk
+// (DeepSeek uses a trailing empty-delta chunk). The shared parser used to emit a
+// finish event only when the chunk had NO content → a pure-text turn ended with
+// finishReason undefined (stop_reason:null downstream). It must now fire.
+
+test('streamQuery emits finish when finish_reason rides on the last content chunk', async () => {
+  const fetch = async () => ({
+    ok: true,
+    status: 200,
+    body: bodyOf(
+      sse({ choices: [{ delta: { content: 'Hello' } }] }),
+      sse({ choices: [{ delta: { content: ' world' }, finish_reason: 'stop' }] }), // bundled
+      'data: [DONE]\n\n',
+    ),
+  })
+  const events = []
+  for await (const e of provider().streamQuery({ messages: [], fetch })) events.push(e)
+  // a finish event is produced (after the content_delta), exactly once
+  assert.deepEqual(
+    events.map(e => e.type),
+    ['content_delta', 'content_delta', 'finish', 'done'],
+  )
+  assert.equal(events.find(e => e.type === 'finish').finishReason, 'stop')
+
+  const collected = await collectDeepSeekStreamEvents(
+    (async function* () {
+      for (const e of events) yield e
+    })(),
+  )
+  assert.equal(collected.content, 'Hello world')
+  assert.equal(collected.finishReason, 'stop') // was undefined before the fix
+})
+
+test('a tool-call chunk still carries finish on the tool_call_delta (no redundant finish event)', async () => {
+  // finish_reason on a tool-call chunk rides on the tool_call_delta event; the
+  // parser must NOT also emit a separate finish (would be redundant).
+  const fetch = async () => ({
+    ok: true,
+    status: 200,
+    body: bodyOf(
+      sse({
+        choices: [
+          {
+            delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'ls', arguments: '{}' } }] },
+            finish_reason: 'tool_calls',
+          },
+        ],
+      }),
+      'data: [DONE]\n\n',
+    ),
+  })
+  const events = []
+  for await (const e of provider().streamQuery({ messages: [], fetch })) events.push(e)
+  assert.deepEqual(events.map(e => e.type), ['tool_call_delta', 'done']) // no separate finish
+  assert.equal(events[0].finishReason, 'tool_calls')
+})
+
 // --- a malformed mid-stream line must not abort the whole stream (#317) -------
 
 test('streamQuery survives a malformed data: line and keeps streaming', async () => {
