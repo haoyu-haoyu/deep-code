@@ -99,9 +99,10 @@ export async function listSessions({ sessionDir, cwd, limit, includeSidechains =
 // least one good line (the CLI killed mid-append). A malformed line followed by
 // any further non-blank line is real mid-file corruption; a sole malformed line
 // with no valid content is also corruption.
-async function scanSessionFile(path) {
+export async function scanSessionFile(path) {
   const acc = {
     turnCount: 0,
+    messageCount: 0,
     corrupt: false,
     isSidechain: undefined,
     agentName: undefined,
@@ -110,12 +111,16 @@ async function scanSessionFile(path) {
     lastPrompt: undefined,
     summary: undefined,
     firstUserText: undefined,
+    cwd: undefined,
+    gitBranch: undefined,
+    firstTimestamp: undefined,
     lastTimestamp: undefined,
   }
   let badPending = false // a malformed line not yet known to be trailing
   let parsedCount = 0
 
-  const rl = createInterface({ input: createReadStream(path, 'utf8'), crlfDelay: Infinity })
+  const input = createReadStream(path, 'utf8')
+  const rl = createInterface({ input, crlfDelay: Infinity })
   try {
     for await (const line of rl) {
       const trimmed = line.trim()
@@ -137,7 +142,11 @@ async function scanSessionFile(path) {
       applyEntry(acc, entry)
     }
   } finally {
+    // rl.close() alone does not destroy the fd on the throw path (normal
+    // for-await completion does); destroy the stream explicitly so a mid-stream
+    // I/O error can't leak the descriptor.
     rl.close()
+    input.destroy()
   }
   // A still-pending malformed line is trailing: benign only if some good line
   // preceded it.
@@ -152,6 +161,11 @@ function applyEntry(acc, entry) {
   if (acc.isSidechain === undefined && typeof entry.isSidechain === 'boolean') {
     acc.isSidechain = entry.isSidechain
   }
+  // Richer fields for `session show` (listSessions ignores them). cwd/gitBranch
+  // from the first message that carries them (the session's origin).
+  if (acc.cwd === undefined && typeof entry.cwd === 'string') acc.cwd = entry.cwd
+  if (acc.gitBranch === undefined && typeof entry.gitBranch === 'string') acc.gitBranch = entry.gitBranch
+  if (entry.type === 'user' || entry.type === 'assistant') acc.messageCount++
   switch (entry.type) {
     case 'agent-name':
       if (typeof entry.agentName === 'string') acc.agentName = entry.agentName
@@ -168,9 +182,15 @@ function applyEntry(acc, entry) {
   }
   // Last string `summary` field from ANY entry — `summary` AND `task-summary`
   // entries both carry one, and readLiteMetadata (the app's reader) takes the last
-  // regardless of type, so /resume can surface a rolling task summary. Match it.
+  // regardless of type, so /resume can surface a rolling task summary. We scan the
+  // whole streamed file (a superset of readLiteMetadata's bounded ~64KB tail
+  // window) — identical in the common case; at worst a slightly fresher summary on
+  // a session with a >64KB trailing turn.
   if (typeof entry.summary === 'string') acc.summary = entry.summary
-  if (typeof entry.timestamp === 'string') acc.lastTimestamp = entry.timestamp
+  if (typeof entry.timestamp === 'string') {
+    if (acc.firstTimestamp === undefined) acc.firstTimestamp = entry.timestamp
+    acc.lastTimestamp = entry.timestamp
+  }
   if (isTurnStart(entry)) {
     acc.turnCount++
     // First MEANINGFUL user prompt: keep scanning past attachment-only turns
@@ -193,7 +213,7 @@ function applyEntry(acc, entry) {
 //     EMPTY-STRING field (e.g. a cleared custom-title) falls through.
 // The TUI additionally strips display-only tags / autonomous-tick prompts for
 // cosmetics; the CLI keeps the raw prompt and exposes every field in --json.
-function composeMetadata(acc) {
+export function composeMetadata(acc) {
   const resolvedTitle = acc.customTitle ?? acc.aiTitle // user rename wins (readLiteMetadata uses ??)
   const firstPrompt = acc.lastPrompt || acc.firstUserText // last-prompt wins (readLiteMetadata uses ||)
   return {
