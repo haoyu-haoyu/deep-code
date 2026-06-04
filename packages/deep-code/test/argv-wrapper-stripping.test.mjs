@@ -81,6 +81,51 @@ test('SECURITY: benign scheduler wrappers (setsid/ionice/chrt/taskset) expose th
   assert.deepEqual(stripWrappersFromArgv(['setsid', 'ionice', '-c2', 'chrt', '20', ...C]), C) // nested
 })
 
+test('SECURITY: ionice/chrt LONG flags + getopt_long prefix abbreviations strip (deny-evasion regression)', () => {
+  // Regression: the benign-scheduler strip enumerated only SHORT (then only FULL
+  // long) flags. But real ionice/chrt parse with getopt_long, which accepts ANY
+  // UNAMBIGUOUS PREFIX — so `ionice --classd N`, `ionice --ign`, `chrt --verb`,
+  // `chrt --ba` all RUN the wrapped command yet were left wrapped → baseCmd
+  // stayed 'ionice'/'chrt' (path passthrough) AND the deny matcher never reduced
+  // to the wrapped command (a Bash(rm:*) deny missed). The resolver now accepts
+  // the same prefix set real getopt does.
+  const C = ['rm', '-rf', '/etc/x']
+  for (const wrap of [
+    ['ionice', '--class', '2'], ['ionice', '--classdata', '4'],
+    ['ionice', '--class=2'], ['ionice', '--classdata=4'],
+    ['ionice', '--classd', '4'], ['ionice', '--classdat', '4'], // abbreviations
+    ['ionice', '--ign'], ['ionice', '--i'], // --ignore abbreviations (no value)
+    ['ionice', '--class', '2', '--classdata', '4'],
+    ['ionice', '-cbest-effort'], // fused class word w/ internal dash
+    ['chrt', '--verbose', '99'], ['chrt', '-v', '99'], ['chrt', '--verb', '99'],
+    ['chrt', '--fi', '99'], ['chrt', '--ba', '99'], ['chrt', '--rr', '99'],
+    ['chrt', '--re', '99'], ['chrt', '-v', '--fifo', '99'],
+  ]) {
+    assert.deepEqual(stripWrappersFromArgv([...wrap, ...C]), C, `should strip: ${wrap.join(' ')}`)
+  }
+})
+
+test('SECURITY: ambiguous / inert / bad-value ionice|chrt long flags fail closed (getopt would reject → no run)', () => {
+  // A prefix that matches MORE THAN ONE option is ambiguous → real getopt rejects
+  // → the command never runs → stripping would deny-match a no-op. Inert opts
+  // (pid/help/version/max) run no wrapped command. A dash-led/expansion value, or
+  // a value on a no-value opt, is invalid. All must leave argv UNCHANGED.
+  for (const bad of [
+    ['ionice', '--cla', '2', 'rm'], ['ionice', '--clas', '2', 'rm'], ['ionice', '--c', '2', 'rm'], // class vs classdata
+    ['chrt', '--v', '99', 'rm'], ['chrt', '--ve', '99', 'rm'], ['chrt', '--ver', '99', 'rm'], // verbose vs version
+    ['chrt', '--r', '99', 'rm'], // rr vs reset-on-fork
+    ['ionice', '--pid', '1234'], ['ionice', '--help', 'rm'], ['ionice', '--version', 'rm'], // inert
+    ['chrt', '--max', 'rm'], ['chrt', '--pid', '50', '1234'], // inert
+    ['ionice', '-c', '-evil', 'rm', '/x'], ['ionice', '-n', '-9', 'rm'], // dash-led value
+    ['ionice', '--class', '-evil', 'rm'], ['ionice', '--classd', '-1', 'rm'],
+    ['ionice', '--class=$(id)', 'rm'], // injection
+    ['ionice', '--ignore=x', 'rm'], // value on a no-value opt
+    ['chrt', '--verbose', 'rm'], ['chrt', '--verb', 'rm'], ['chrt', '-v', 'rm'], // verbose w/ NO numeric priority → inert
+  ]) {
+    assert.deepEqual(stripWrappersFromArgv(bad), bad, `should fail closed: ${bad.join(' ')}`)
+  }
+})
+
 test('SECURITY: dangerous / pid-mode / unparseable wrappers are NOT stripped (fail closed)', () => {
   // privilege/exec wrappers must NOT be transparently stripped — `sudo rm` must
   // not reduce to `rm` (that would auto-approve a root delete under Bash(rm:*)).
@@ -109,8 +154,26 @@ test('skip{Ionice,Chrt,Taskset}Flags: command index, -1 on pid-mode / missing ar
   assert.equal(skipIoniceFlags(['ionice', 'cat']), 1)
   assert.equal(skipIoniceFlags(['ionice', '-c2', 'cat']), 2)
   assert.equal(skipIoniceFlags(['ionice', '-p', '1234']), -1)
+  // long value forms (space-separated + fused `=`) + getopt prefix abbreviations
+  assert.equal(skipIoniceFlags(['ionice', '--class', '2', 'cat']), 3)
+  assert.equal(skipIoniceFlags(['ionice', '--classdata', '4', 'cat']), 3)
+  assert.equal(skipIoniceFlags(['ionice', '--class=2', 'cat']), 2)
+  assert.equal(skipIoniceFlags(['ionice', '--classd', '4', 'cat']), 3) // abbrev of classdata
+  assert.equal(skipIoniceFlags(['ionice', '--ign', 'cat']), 2) // abbrev of ignore (no value)
+  assert.equal(skipIoniceFlags(['ionice', '-cbest-effort', 'cat']), 2)
+  // dash-led / expansion value, AMBIGUOUS prefix, and inert long forms → fail closed
+  assert.equal(skipIoniceFlags(['ionice', '-c', '-evil', 'cat']), -1)
+  assert.equal(skipIoniceFlags(['ionice', '--class', '-evil', 'cat']), -1)
+  assert.equal(skipIoniceFlags(['ionice', '--cla', '2', 'cat']), -1) // class vs classdata ambiguous
+  assert.equal(skipIoniceFlags(['ionice', '--pid', '1234']), -1) // inert
   assert.equal(skipChrtFlags(['chrt', '50', 'cat']), 2)
   assert.equal(skipChrtFlags(['chrt', '-f', '50', 'cat']), 3)
+  assert.equal(skipChrtFlags(['chrt', '-v', '50', 'cat']), 3) // -v/--verbose no-value flag
+  assert.equal(skipChrtFlags(['chrt', '--verbose', '50', 'cat']), 3)
+  assert.equal(skipChrtFlags(['chrt', '--verb', '50', 'cat']), 3) // abbrev of verbose
+  assert.equal(skipChrtFlags(['chrt', '--ba', '50', 'cat']), 3) // abbrev of batch
+  assert.equal(skipChrtFlags(['chrt', '--v', '50', 'cat']), -1) // verbose vs version ambiguous
+  assert.equal(skipChrtFlags(['chrt', '-v', 'cat']), -1) // verbose but NO priority → inert
   assert.equal(skipChrtFlags(['chrt', 'cat']), -1) // no priority
   assert.equal(skipChrtFlags(['chrt', '-p', '1234']), -1)
   assert.equal(skipTasksetFlags(['taskset', '0x3', 'cat']), 2)

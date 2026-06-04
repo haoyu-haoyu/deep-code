@@ -202,13 +202,34 @@ test('stripSafeWrappers: benign scheduler wrappers strip; dangerous/injection do
   assert.equal(stripSafeWrappers('chrt -f 50 curl x'), 'curl x')
   assert.equal(stripSafeWrappers('taskset 0x3 curl x'), 'curl x')
   assert.equal(stripSafeWrappers('taskset -c 0,1 curl x'), 'curl x')
+  // LONG flag forms + getopt_long prefix ABBREVIATIONS (deny-evasion regression):
+  // real ionice/chrt accept any unambiguous prefix, so these all run the inner
+  // command — enumerating only short/full flags left them wrapped → a
+  // Bash(curl:*) deny never reduced to the inner command.
+  for (const cmd of [
+    'ionice --class 2 curl x', 'ionice --classdata 4 curl x', 'ionice --class=2 curl x',
+    'ionice --classd 4 curl x', 'ionice --ign curl x', 'ionice -cbest-effort curl x',
+    'chrt --verbose 99 curl x', 'chrt -v 99 curl x', 'chrt --verb 99 curl x',
+    'chrt --fi 99 curl x', 'chrt --ba 99 curl x', 'chrt --rr 99 curl x',
+  ]) {
+    assert.equal(stripSafeWrappers(cmd), 'curl x', `should strip: ${cmd}`)
+  }
+  // AMBIGUOUS prefixes (getopt rejects → command never runs) must NOT strip.
+  for (const cmd of ['ionice --cla 2 curl x', 'chrt --v 99 curl x', 'chrt --r 99 curl x']) {
+    assert.equal(stripSafeWrappers(cmd), cmd, `ambiguous, must not strip: ${cmd}`)
+  }
   // SECURITY: privilege/exec wrappers must NOT be stripped (would let a deny on
   // the inner command be evaded AND, worse, an allow rule auto-approve `sudo rm`)
   for (const cmd of ['sudo curl x', 'doas curl x', 'gdb curl x', 'strace curl x', 'systemd-run curl x', 'proxychains curl x']) {
     assert.match(stripSafeWrappers(cmd), new RegExp('^' + cmd.split(' ')[0]), `must not strip: ${cmd}`)
   }
-  // injection / pid-mode / missing-arg → fail closed (not stripped)
-  for (const cmd of ['setsid $(id) rm', 'ionice -c $(id) rm', 'ionice -p 1234', 'chrt -p 50 1234', 'chrt rm', 'taskset $(id) rm']) {
+  // injection / pid-mode / missing-arg / dash-led value → fail closed (not stripped)
+  for (const cmd of [
+    'setsid $(id) rm', 'ionice -c $(id) rm', 'ionice -p 1234', 'chrt -p 50 1234',
+    'chrt rm', 'taskset $(id) rm',
+    'ionice -c -evil rm', 'ionice --class -evil rm', 'ionice --class=$(id) rm',
+    'chrt -v rm', 'chrt --verbose rm', // verbose with NO numeric priority → inert
+  ]) {
     assert.equal(stripSafeWrappers(cmd), cmd, `must not strip/expose: ${cmd}`)
   }
 })
