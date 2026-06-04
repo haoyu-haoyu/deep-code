@@ -5,6 +5,36 @@
 // the "real" command is that permission/deny rules match against — a stripping
 // bug is a deny-rule bypass. Do NOT "simplify" the inline SECURITY notes.
 
+// argvWrapperStripping.mjs is import-free, so this introduces no cycle. We pull
+// the ionice/chrt long-option TABLES (the single source of truth) from there and
+// build the string-layer regexes from the SAME tables, so this layer and the
+// argv layer can never drift on which abbreviated long flags they accept.
+import { IONICE_OPTS, CHRT_OPTS, longPrefixAlternation } from './argvWrapperStripping.mjs'
+
+// Every UNAMBIGUOUS prefix of the ionice/chrt long options (getopt_long accepts
+// abbreviations like `--classd`, `--ign`, `--verb`, `--ba`), grouped by whether
+// the opt consumes a value. Built once at module load from the shared tables.
+const IONICE_NAMES = IONICE_OPTS.map(o => o.name)
+const CHRT_NAMES = CHRT_OPTS.map(o => o.name)
+const IONICE_VALUE_PREFIXES = longPrefixAlternation(IONICE_OPTS.filter(o => o.value).map(o => o.name), IONICE_NAMES) // --class/--classdata
+const IONICE_FLAG_PREFIXES = longPrefixAlternation(IONICE_OPTS.filter(o => o.value === false).map(o => o.name), IONICE_NAMES) // --ignore
+const CHRT_FLAG_PREFIXES = longPrefixAlternation(CHRT_OPTS.filter(o => o.value === false).map(o => o.name), CHRT_NAMES) // policies + --verbose
+// ionice class/level value: alphanumeric-first then [A-Za-z0-9-] (no leading
+// dash — `-evil` is an invalid class real ionice rejects). Mirrors IONICE_VALUE_RE.
+const IONICE_VAL = '[A-Za-z0-9][A-Za-z0-9-]*'
+// ionice: short -c/-n (space + fused) + long --class/--classdata (space + `=`)
+// value flags, plus -t/--ignore. No leading-dash value, no expansion can slip in.
+const IONICE_WRAPPER_RE = new RegExp(
+  `^ionice(?:[ \\t]+(?:-[cn][ \\t]+${IONICE_VAL}|-[cn]${IONICE_VAL}` +
+    `|--(?:${IONICE_VALUE_PREFIXES})[ \\t]+${IONICE_VAL}|--(?:${IONICE_VALUE_PREFIXES})=${IONICE_VAL}` +
+    `|-t|--(?:${IONICE_FLAG_PREFIXES})))*[ \\t]+(?=[A-Za-z0-9_])`,
+)
+// chrt: short policy/verbose flags + long policy/--verbose flags (no value — the
+// priority is the positional \d+), then the priority, then the command.
+const CHRT_WRAPPER_RE = new RegExp(
+  `^chrt(?:[ \\t]+(?:-f|-r|-b|-o|-i|-d|-R|-a|-v|--(?:${CHRT_FLAG_PREFIXES})))*[ \\t]+\\d+[ \\t]+(?=[A-Za-z0-9_])`,
+)
+
 /**
  * Whitelist of environment variables that are safe to strip from commands.
  * These variables CANNOT execute code or load libraries.
@@ -212,8 +242,13 @@ export function stripSafeWrappers(command) {
     // `sudo rm` as `rm`. KEEP IN SYNC with skip{Ionice,Chrt,Taskset}Flags
     // (argvWrapperStripping) + checkSemantics (ast.ts).
     /^setsid(?:[ \t]+(?:-c|-f|-w|--ctty|--fork|--wait))*[ \t]+(?=[A-Za-z0-9_])/,
-    /^ionice(?:[ \t]+(?:-[cn][ \t]+[A-Za-z0-9-]+|-[cn][A-Za-z0-9-]+|-t|--ignore))*[ \t]+(?=[A-Za-z0-9_])/,
-    /^chrt(?:[ \t]+(?:-f|-r|-b|-o|-i|-d|-R|-a|--(?:fifo|rr|batch|other|idle|deadline|reset-on-fork|all-tasks)))*[ \t]+\d+[ \t]+(?=[A-Za-z0-9_])/,
+    // ionice/chrt: built from the shared long-option tables (above) so the string
+    // and argv layers accept the SAME getopt_long prefix abbreviations (--classd,
+    // --ign, --verb, --ba, …) and can never drift. Each requires a non-dash
+    // command start (?=[A-Za-z0-9_]) so injection / pid-mode / unknown-flag forms
+    // fail closed; values use the no-leading-dash IONICE_VAL allowlist.
+    IONICE_WRAPPER_RE,
+    CHRT_WRAPPER_RE,
     /^taskset(?:[ \t]+(?:-c|--cpu-list|-a|--all-tasks))*[ \t]+(?:0x[0-9a-fA-F]+|[0-9][0-9,-]*)[ \t]+(?=[A-Za-z0-9_])/,
   ]
 
