@@ -3212,6 +3212,27 @@ async function run(): Promise<CommanderCommand> {
       process.exitCode = 1;
     }
   });
+  const sessionCmd = program.command('session').description('Manage saved sessions for the current project');
+  sessionCmd.command('list').description('List saved sessions for the current project (newest first)').option('--json', 'Machine-readable JSON output').option('--limit <n>', 'Show at most N most-recent sessions').option('--all', 'Include internal sidechain/agent sessions (hidden by default)').action(async (options: {
+    json?: boolean;
+    limit?: string;
+    all?: boolean;
+  }) => {
+    try {
+      const limit = options.limit === undefined ? undefined : Number(options.limit);
+      const {
+        listSessionsHandler
+      } = await import('./cli/handlers/sessionList.mjs');
+      await listSessionsHandler({
+        json: options.json,
+        limit,
+        all: options.all
+      });
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    }
+  });
 
   // claude server
   if (feature('DIRECT_CONNECT')) {
