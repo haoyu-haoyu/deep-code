@@ -3283,6 +3283,23 @@ async function run(): Promise<CommanderCommand> {
       process.exitCode = 1;
     }
   });
+  sessionCmd.command('export <session-id>').description('Export a session transcript to stdout (markdown or json)').addOption(new Option('--format <fmt>', 'Output format').choices(['markdown', 'json']).default('markdown')).action(async (sessionId: string, options: {
+    format?: string;
+  }) => {
+    try {
+      const {
+        exportSessionHandler
+      } = await import('./cli/handlers/sessionExport.mjs');
+      const result = await exportSessionHandler({
+        sessionId,
+        format: options.format
+      });
+      if (!result?.exists) process.exitCode = 1;
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    }
+  });
 
   // claude server
   if (feature('DIRECT_CONNECT')) {
