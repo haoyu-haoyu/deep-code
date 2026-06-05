@@ -25,9 +25,12 @@ import {
 import type {
   CacheFriendlyConfigSummary,
   EffortLevel,
+  FortressDecisionResult,
   FortressRule,
   FortressRuleset,
+  FortressViolationRecord,
   IFortressViolationDb,
+  ResourceKind,
   RulesetLayer,
   StrictnessLevel,
   ToolSandboxProfile,
@@ -37,9 +40,11 @@ export interface IFortressSandboxManager extends ISandboxManager {
   getRulesetByLayer(layer: RulesetLayer): Promise<FortressRuleset>
   setRuleset(layer: RulesetLayer, rules: FortressRule[]): Promise<void>
   resolveEffectiveRules(): Promise<FortressRule[]>
+  resolveFortressDecision(resource: ResourceKind, target: string): FortressDecisionResult
   enableDryRunMode(enabled: boolean): void
   isDryRunMode(): boolean
   getViolationDb(): IFortressViolationDb
+  recordFortressViolation(record: FortressViolationRecord): void
   setEffortLevel(effort: EffortLevel): Promise<void>
   getCurrentEffort(): EffortLevel
   setStrictnessByEffort(
@@ -280,6 +285,13 @@ export class FortressSandboxManager implements IFortressSandboxManager {
     return Promise.resolve(this.#state.resolveEffectiveRules())
   }
 
+  // The faithful per-call decision for a concrete absolute target (PR-F file-tool hook):
+  // deny-first absolute over the current rules, with the effort/strictness no-match
+  // default. Sync (no OS round-trip). The pure state method is itself fail-safe.
+  resolveFortressDecision(resource: ResourceKind, target: string): FortressDecisionResult {
+    return this.#state.resolveDecision({ resource, target })
+  }
+
   enableDryRunMode(enabled: boolean): void {
     this.#state.enableDryRunMode(enabled)
   }
@@ -290,6 +302,12 @@ export class FortressSandboxManager implements IFortressSandboxManager {
 
   getViolationDb(): IFortressViolationDb {
     return this.#state.getViolationDb()
+  }
+
+  // Record a fortress violation (PR-F file-tool deny / dry-run). Feeds BOTH the async
+  // canonical DB and the sync mirror that buildViolationFeedback reads.
+  recordFortressViolation(record: FortressViolationRecord): void {
+    this.#state.recordFortressViolation(record)
   }
 
   setEffortLevel(effort: EffortLevel): Promise<void> {

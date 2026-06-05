@@ -34,6 +34,14 @@ export interface FortressRuleset {
   rules: FortressRule[]
 }
 
+/** The result of a per-(resource,target) fortress decision (deny-first absolute + the
+ *  effort no-match default). `rule` is the matched rule (deep-copied) or null on no-match. */
+export interface FortressDecisionResult {
+  decision: RuleAction
+  rule: FortressRule | null
+  reason: string
+}
+
 export type EffortLevel = 'off' | 'high' | 'max'
 
 export type StrictnessLevel = 'lenient' | 'standard' | 'paranoid'
