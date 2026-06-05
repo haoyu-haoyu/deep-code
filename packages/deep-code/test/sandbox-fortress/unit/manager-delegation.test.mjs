@@ -49,6 +49,14 @@ export const getSandboxBaseRuntimeConfig = () => ({
 // platform stub: force 'linux' so the fortress glob-warning path is exercised.
 const PLATFORM_STUB = `export const getPlatform = () => 'linux'\n`
 
+// PR-E added imports to manager.ts (config-loading on initialize). This test does NOT
+// call initialize() — it exercises the 12 methods + wrapWithSandbox — so these are
+// inert stubs that only need to RESOLVE at module load.
+const CONFIG_LOADER_STUB = `export const applyFortressConfigFromSettings = () => []\n`
+const SETTINGS_STUB = `export const getSettings_DEPRECATED = () => ({})\n`
+const CHANGE_DETECTOR_STUB = `export const settingsChangeDetector = { subscribe: () => () => {} }\n`
+const DEBUG_STUB = `export const logForDebugging = () => {}\n`
+
 // per-tool-profiles.js stub: a marker merge so the test sees exactly what the override
 // passed (the projected delta + the base) without pulling the real tool-name deps.
 const PROFILES_STUB = `
@@ -68,6 +76,10 @@ function buildFixture() {
     ['src/sandbox-fortress/adapter/legacy.js', LEGACY_STUB],
     ['src/sandbox-fortress/adapter/per-tool-profiles.js', PROFILES_STUB],
     ['src/utils/platform.js', PLATFORM_STUB],
+    ['src/sandbox-fortress/adapter/fortressConfigLoader.js', CONFIG_LOADER_STUB],
+    ['src/utils/settings/settings.js', SETTINGS_STUB],
+    ['src/utils/settings/changeDetector.js', CHANGE_DETECTOR_STUB],
+    ['src/utils/debug.js', DEBUG_STUB],
   ]) {
     const p = join(root, rel)
     mkdirSync(dirname(p), { recursive: true })

@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import { SandboxSettingsSchema } from '../../entrypoints/sandboxTypes.js'
+import { FortressSettingsSchema, SandboxSettingsSchema } from '../../entrypoints/sandboxTypes.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { lazySchema } from '../lazySchema.js'
 import {
@@ -680,6 +680,7 @@ export const SettingsSchema = lazySchema(() =>
           'Skip the WebFetch blocklist check for enterprise environments with restrictive security policies',
         ),
       sandbox: SandboxSettingsSchema().optional(),
+      fortress: FortressSettingsSchema().optional(),
       feedbackSurveyRate: z
         .number()
         .min(0)

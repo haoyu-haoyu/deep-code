@@ -8,7 +8,11 @@ import {
   type ISandboxManager,
 } from './adapter/legacy.js'
 import { mergeFortressFsDeltaIntoConfig } from './adapter/per-tool-profiles.js'
+import { applyFortressConfigFromSettings } from './adapter/fortressConfigLoader.js'
 import { getPlatform } from '../utils/platform.js'
+import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
+import { settingsChangeDetector } from '../utils/settings/changeDetector.js'
+import { logForDebugging } from '../utils/debug.js'
 // The pure, node-tested state machine (PR-A) backing the rule-engine methods, and
 // the fs-deny projector (PR-D) that turns effective rules into OS-enforceable
 // filesystem patterns.
@@ -51,11 +55,32 @@ export class FortressSandboxManager implements IFortressSandboxManager {
   // All rule-engine state + logic lives in the pure factory; each method below is a
   // one-line delegation. The base sandbox methods still delegate to baseSandboxManager.
   readonly #state = createFortressManagerState()
+  #fortressConfigSubscribed = false
 
   initialize(
     sandboxAskCallback?: Parameters<ISandboxManager['initialize']>[0],
   ): Promise<void> {
-    return baseSandboxManager.initialize(sandboxAskCallback)
+    // After the base sandbox initializes, load the fortress rules/effort from settings
+    // (PR-E — this is what activates enforcement) and reload them on any settings
+    // change (subscribed once). Loading is best-effort: a failure never blocks init.
+    return baseSandboxManager.initialize(sandboxAskCallback).then(() => {
+      this.#loadFortressConfig()
+      if (!this.#fortressConfigSubscribed) {
+        this.#fortressConfigSubscribed = true
+        settingsChangeDetector.subscribe(() => this.#loadFortressConfig())
+      }
+    })
+  }
+
+  #loadFortressConfig(): void {
+    try {
+      const warnings = applyFortressConfigFromSettings(this, getSettings_DEPRECATED())
+      for (const warning of warnings) {
+        logForDebugging(`[fortress config] ${warning}`)
+      }
+    } catch (error) {
+      logForDebugging(`[fortress config] failed to apply settings.fortress: ${error}`)
+    }
   }
 
   isSupportedPlatform(): boolean {
