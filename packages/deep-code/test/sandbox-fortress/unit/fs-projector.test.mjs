@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  fortressLinuxUnenforcedWriteWarnings,
+  fortressUnenforcedWriteWarnings,
   fortressRulesToFsDelta,
   isEmptyFsDelta,
 } from '../../../src/sandbox-fortress/rule-engine/fsProjector.mjs'
@@ -118,7 +118,7 @@ test('C1 unenforced-write warning flags the fs-write DENIES that are NOT project
     { layer: 'org', resource: 'fs-write', pattern: '/x/*', action: 'allow' }, // allow → NOT a deny → no warn
     { layer: 'org', resource: 'fs-read', pattern: '/s/*', action: 'deny' }, // fs-read → no warn
   ]
-  assert.deepEqual(fortressLinuxUnenforcedWriteWarnings(rules), [
+  assert.deepEqual(fortressUnenforcedWriteWarnings(rules), [
     'fs-write deny /home/*/.ssh',
     'fs-write deny /a[bc].key',
     'fs-write deny secrets/**',
@@ -127,8 +127,8 @@ test('C1 unenforced-write warning flags the fs-write DENIES that are NOT project
 })
 
 test('C2 unenforced-write warning is defensive (empty/garbage/throwing → no throw, no spurious)', () => {
-  assert.deepEqual(fortressLinuxUnenforcedWriteWarnings([]), [])
-  assert.deepEqual(fortressLinuxUnenforcedWriteWarnings(undefined), [])
+  assert.deepEqual(fortressUnenforcedWriteWarnings([]), [])
+  assert.deepEqual(fortressUnenforcedWriteWarnings(undefined), [])
   const hostile = {
     layer: 'org',
     action: 'deny',
@@ -139,7 +139,7 @@ test('C2 unenforced-write warning is defensive (empty/garbage/throwing → no th
   }
   let w
   assert.doesNotThrow(() => {
-    w = fortressLinuxUnenforcedWriteWarnings([hostile, null, 42, { resource: 'fs-write', action: 'deny', pattern: '' }])
+    w = fortressUnenforcedWriteWarnings([hostile, null, 42, { resource: 'fs-write', action: 'deny', pattern: '' }])
   })
   assert.deepEqual(w, [])
 })

@@ -140,16 +140,19 @@ function runManagerProbe() {
     const inert2 = JSON.parse(await inertMgr.wrapWithSandbox('echo hi', '/bin/sh', { marker: 'orig' }, undefined, 'Bash'))
     out.inertPassThrough = inert2.customConfig
 
-    // ── PR-D Linux glob warning: a fortress fs-write GLOB deny is surfaced (not silent) ──
+    // ── unenforced-write warning: a fortress fs-write GLOB/relative deny is surfaced
+    // cross-platform via getFortressUnenforcedWriteWarnings (NOT getLinuxGlobPatternWarnings,
+    // which is base-only now). getLinuxGlobPatternWarnings stays base-only. ──
     const gm = new FortressSandboxManager()
     await gm.setRuleset('user', [
       { layer: 'user', resource: 'fs-write', pattern: '/home/*/.ssh/**', action: 'deny' }, // abs mid glob → warn
       { layer: 'user', resource: 'fs-write', pattern: 'secrets/**', action: 'deny' }, // non-absolute → warn
       { layer: 'user', resource: 'fs-write', pattern: '/etc/passwd', action: 'deny' }, // abs concrete → not warned
     ])
-    out.globWarnings = gm.getLinuxGlobPatternWarnings()
-    // the inert manager (no glob rules) returns only the base warning
+    out.globWarnings = gm.getLinuxGlobPatternWarnings() // base only (no fortress part)
+    out.fortressWarnings = gm.getFortressUnenforcedWriteWarnings() // cross-platform fortress warnings
     out.inertGlobWarnings = inertMgr.getLinuxGlobPatternWarnings()
+    out.inertFortressWarnings = inertMgr.getFortressUnenforcedWriteWarnings()
 
     // ── PR-F: resolveFortressDecision (the org fs-write deny '/secret' is set above) ──
     out.decisionSecret = m.resolveFortressDecision('fs-write', '/secret').decision // matched deny
@@ -189,15 +192,17 @@ test('FortressSandboxManager delegates rule-engine methods + enforces/passes-thr
   assert.equal(out.inertCustomConfig, null) // undefined stayed undefined (recorder maps to null)
   assert.deepEqual(out.inertPassThrough, { marker: 'orig' })
 
-  // PR-D Linux warning: base + the abs mid-glob + the non-absolute deny; abs concrete
-  // excluded. Order follows resolveEffectiveRules' canonical total-order (deterministic).
-  assert.equal(out.globWarnings[0], 'base-warning')
+  // getLinuxGlobPatternWarnings is now BASE-ONLY (the fortress part moved out)
+  assert.deepEqual(out.globWarnings, ['base-warning'])
+  assert.deepEqual(out.inertGlobWarnings, ['base-warning'])
+  // the fortress unenforced-write warnings: the abs mid-glob + the non-absolute deny;
+  // abs concrete excluded. Cross-platform (no platform gate). Canonical order → sort.
   assert.deepEqual(
-    [...out.globWarnings].slice(1).sort(),
+    [...out.fortressWarnings].sort(),
     ['fs-write deny /home/*/.ssh/**', 'fs-write deny secrets/**'].sort(),
   )
-  // no fortress rules → only the base warning (no spurious fortress entry)
-  assert.deepEqual(out.inertGlobWarnings, ['base-warning'])
+  // no fortress rules → no fortress warnings
+  assert.deepEqual(out.inertFortressWarnings, [])
 
   // PR-F: resolveFortressDecision matches the deny rule; recordFortressViolation surfaces
   assert.equal(out.decisionSecret, 'deny')

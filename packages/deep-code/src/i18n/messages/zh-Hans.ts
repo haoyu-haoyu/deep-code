@@ -2298,6 +2298,8 @@ export const ZH_HANS_MESSAGES = {
   "doctor.versions.fetchFailed": "└ 获取版本失败",
   "doctor.versions.latest": "└ 最新版本：",
   "doctor.versions.stable": "└ 稳定版本：",
+  "doctor.warning.fortressUnenforcedWrite.fix": "发现 {count} 个 Fortress 写禁止模式未对 shell 命令强制：{patternList}。glob 和相对/~ 路径只对文件工具（Read/Edit/Write）强制；要在 shell 层强制，请使用绝对、无 glob 的路径（或 \"/path/**\"）。",
+  "doctor.warning.fortressUnenforcedWrite.issue": "部分 Sandbox Fortress 写禁止规则未对 shell（Bash）命令强制",
   "doctor.warning.insufficientUpdatePerms.fix": "请执行以下任一操作：（1）不使用 sudo 重新安装 node，或（2）使用 `deepcode install` 进行原生安装",
   "doctor.warning.insufficientUpdatePerms.issue": "自动更新的权限不足",
   "doctor.warning.leftoverNpm.global.fix": "运行：{command}",
