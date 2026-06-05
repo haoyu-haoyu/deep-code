@@ -29,9 +29,10 @@ const FORTRESS_FILES = [
   'src/sandbox-fortress/rule-engine/effort.mjs',
 ]
 
-// A minimal stub of the base adapter barrel. manager.ts imports `SandboxManager` (value)
-// + `ISandboxManager` (type, erased by bun). Only isSupportedPlatform is exercised; the
-// other base delegations are never called in this probe.
+// A minimal stub of the base adapter. manager.ts imports its base `SandboxManager`
+// (value) + `ISandboxManager` (type, erased by bun) DIRECTLY from ./adapter/legacy.js
+// (PR-C rewired it off the barrel to break the runtime→barrel cycle). Only
+// isSupportedPlatform is exercised; the other base delegations are never called here.
 const ADAPTER_STUB = `export const SandboxManager = { isSupportedPlatform: () => true }\n`
 
 function buildFixture() {
@@ -41,7 +42,7 @@ function buildFixture() {
     mkdirSync(dirname(target), { recursive: true })
     copyFileSync(join(packageRoot, rel), target)
   }
-  const adapterPath = join(root, 'src/utils/sandbox/sandbox-adapter.js')
+  const adapterPath = join(root, 'src/sandbox-fortress/adapter/legacy.js')
   mkdirSync(dirname(adapterPath), { recursive: true })
   writeFileSync(adapterPath, ADAPTER_STUB)
   return root
