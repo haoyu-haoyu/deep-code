@@ -170,3 +170,33 @@ export function mergeProfileIntoConfig(
 
   return merged
 }
+
+export interface FortressFsDelta {
+  denyWrite?: readonly string[]
+}
+
+/**
+ * Union the fortress-projected filesystem DENY delta (rule-engine/fsProjector.mjs) onto
+ * a config, STARTING FROM the settings base — never replacing. The sandbox-runtime
+ * REPLACES `customConfig.filesystem.<arr>` over its own base array per field, so the
+ * customConfig handed to it must already carry base ∪ custom ∪ fortress, or the
+ * settings-derived denylist (settings.json paths, .claude/skills, bare-git, …) would
+ * be dropped — a sandbox escape. Reuses the SAME cloneConfig/mergeArrays as
+ * mergeProfileIntoConfig so network + every field is preserved identically.
+ *
+ * ONLY denyWrite receives the fortress contribution. denyWrite WINS over allowWrite in
+ * the runtime and is never cleared by a per-tool profile, so a fortress write-deny is a
+ * true floor. denyRead/allowRead/allowWrite are NEVER touched by the fortress: an
+ * fs-read deny would be fail-open (macOS allowRead wins over denyRead), and an OS
+ * allowWrite is a SUBTREE GRANT that could over-grant — both are deferred (see
+ * fsProjector.mjs). So this only ever ADDS deny floors, never grants.
+ */
+export function mergeFortressFsDeltaIntoConfig(
+  fsDelta: FortressFsDelta | undefined,
+  customConfig?: Partial<SandboxRuntimeConfig>,
+  baseConfig?: Partial<SandboxRuntimeConfig>,
+): SandboxRuntimeConfig {
+  const merged = cloneConfig(baseConfig, customConfig)
+  merged.filesystem.denyWrite = mergeArrays(merged.filesystem.denyWrite, fsDelta?.denyWrite)
+  return merged
+}

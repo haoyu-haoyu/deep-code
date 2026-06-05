@@ -510,7 +510,11 @@ export function detectLinuxGlobPatternWarnings(): Array<{
   issue: string
   fix: string
 }> {
-  if (getPlatform() !== 'linux') {
+  // bubblewrap is used on Linux AND WSL; the SandboxManager warning is gated on both,
+  // so the doctor surface must accept 'wsl' too — otherwise WSL silently drops the
+  // (base + fortress) unsupported-write-pattern warnings.
+  const platform = getPlatform()
+  if (platform !== 'linux' && platform !== 'wsl') {
     return []
   }
 
