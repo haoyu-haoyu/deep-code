@@ -2,6 +2,10 @@ import {
   SandboxManager as baseSandboxManager,
   type ISandboxManager,
 } from '../utils/sandbox/sandbox-adapter.js'
+// The pure, node-tested state machine (PR-A) backing the rule-engine methods. This
+// is the FIRST live import of the fortress cores; the class is still never
+// instantiated (PR-C), so the import remains tree-shaken and dist byte-identical.
+import { createFortressManagerState } from './rule-engine/managerState.mjs'
 import type {
   CacheFriendlyConfigSummary,
   EffortLevel,
@@ -12,12 +16,6 @@ import type {
   StrictnessLevel,
   ToolSandboxProfile,
 } from './types.js'
-
-function notImplemented(method: string): never {
-  throw new Error(
-    `FortressSandboxManager.${method} is not implemented in the F0.1 scaffold`,
-  )
-}
 
 export interface IFortressSandboxManager extends ISandboxManager {
   getRulesetByLayer(layer: RulesetLayer): Promise<FortressRuleset>
@@ -38,6 +36,10 @@ export interface IFortressSandboxManager extends ISandboxManager {
 }
 
 export class FortressSandboxManager implements IFortressSandboxManager {
+  // All rule-engine state + logic lives in the pure factory; each method below is a
+  // one-line delegation. The base sandbox methods still delegate to baseSandboxManager.
+  readonly #state = createFortressManagerState()
+
   initialize(
     sandboxAskCallback?: Parameters<ISandboxManager['initialize']>[0],
   ): Promise<void> {
@@ -191,63 +193,65 @@ export class FortressSandboxManager implements IFortressSandboxManager {
     return baseSandboxManager.reset()
   }
 
-  getRulesetByLayer(_layer: RulesetLayer): Promise<FortressRuleset> {
-    return notImplemented('getRulesetByLayer')
+  // ── rule-engine methods (delegated to the pure state machine) ───────────────
+  // Methods declared Promise<…> by the interface wrap the sync state call in
+  // Promise.resolve (the interface is async-shaped so a future persistent backend
+  // can be swapped in without a signature change).
+
+  getRulesetByLayer(layer: RulesetLayer): Promise<FortressRuleset> {
+    return Promise.resolve(this.#state.getRulesetByLayer(layer))
   }
 
-  setRuleset(
-    _layer: RulesetLayer,
-    _rules: FortressRule[],
-  ): Promise<void> {
-    return notImplemented('setRuleset')
+  setRuleset(layer: RulesetLayer, rules: FortressRule[]): Promise<void> {
+    this.#state.setRuleset(layer, rules)
+    return Promise.resolve()
   }
 
   resolveEffectiveRules(): Promise<FortressRule[]> {
-    return notImplemented('resolveEffectiveRules')
+    return Promise.resolve(this.#state.resolveEffectiveRules())
   }
 
-  enableDryRunMode(_enabled: boolean): void {
-    return notImplemented('enableDryRunMode')
+  enableDryRunMode(enabled: boolean): void {
+    this.#state.enableDryRunMode(enabled)
   }
 
   isDryRunMode(): boolean {
-    return notImplemented('isDryRunMode')
+    return this.#state.isDryRunMode()
   }
 
   getViolationDb(): IFortressViolationDb {
-    return notImplemented('getViolationDb')
+    return this.#state.getViolationDb()
   }
 
-  setEffortLevel(_effort: EffortLevel): Promise<void> {
-    return notImplemented('setEffortLevel')
+  setEffortLevel(effort: EffortLevel): Promise<void> {
+    this.#state.setEffortLevel(effort)
+    return Promise.resolve()
   }
 
   getCurrentEffort(): EffortLevel {
-    return notImplemented('getCurrentEffort')
+    return this.#state.getCurrentEffort()
   }
 
   setStrictnessByEffort(
-    _mapping: Record<EffortLevel, StrictnessLevel>,
+    mapping: Record<EffortLevel, StrictnessLevel>,
   ): Promise<void> {
-    return notImplemented('setStrictnessByEffort')
+    this.#state.setStrictnessByEffort(mapping)
+    return Promise.resolve()
   }
 
   buildViolationFeedback(): string | null {
-    return notImplemented('buildViolationFeedback')
+    return this.#state.buildViolationFeedback()
   }
 
   buildCacheFriendlyConfigSummary(): CacheFriendlyConfigSummary {
-    return notImplemented('buildCacheFriendlyConfigSummary')
+    return this.#state.buildCacheFriendlyConfigSummary()
   }
 
-  getProfileForTool(_toolName: string): ToolSandboxProfile {
-    return notImplemented('getProfileForTool')
+  getProfileForTool(toolName: string): ToolSandboxProfile {
+    return this.#state.getProfileForTool(toolName)
   }
 
-  setProfileForTool(
-    _toolName: string,
-    _profile: ToolSandboxProfile,
-  ): void {
-    return notImplemented('setProfileForTool')
+  setProfileForTool(toolName: string, profile: ToolSandboxProfile): void {
+    this.#state.setProfileForTool(toolName, profile)
   }
 }
