@@ -1,7 +1,11 @@
+// Import the BASE adapter DIRECTLY from legacy.ts, NOT via the barrel — the barrel
+// now re-exports THIS fortress instance as `SandboxManager` (PR-C), so importing the
+// base through the barrel would form a runtime→barrel→runtime self-cycle. legacy.ts
+// is the pure base and never imports manager/runtime, so this stays acyclic.
 import {
   SandboxManager as baseSandboxManager,
   type ISandboxManager,
-} from '../utils/sandbox/sandbox-adapter.js'
+} from './adapter/legacy.js'
 // The pure, node-tested state machine (PR-A) backing the rule-engine methods. This
 // is the FIRST live import of the fortress cores; the class is still never
 // instantiated (PR-C), so the import remains tree-shaken and dist byte-identical.
