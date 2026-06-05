@@ -28,6 +28,10 @@ import {
   getDirectoryForPath,
   sanitizePath,
 } from '../path.js'
+// F3 PR-F: per-call fortress decision for the file tools. Deref happens only inside the
+// permission functions below (not at module load), so the legacy↔barrel import cycle
+// stays init-safe.
+import { checkFortressFileDecision } from '../../sandbox-fortress/adapter/fileToolDecision.js'
 import { getPlanSlug, getPlansDirectory } from '../plans.js'
 import { getPlatform } from '../platform.js'
 import { getProjectDir } from '../sessionStorage.js'
@@ -1088,6 +1092,15 @@ export function checkReadPermissionForTool(
     }
   }
 
+  // 2.5. DeepCode Sandbox Fortress (F3 PR-F): a per-call fortress rule decision over the
+  // SYMLINK-RESOLVED path set (so an in-workspace symlink can't bypass a fortress deny).
+  // A fortress deny/ask blocks/prompts here; otherwise it defers to the permission flow
+  // below. Inert by default (no rules + effort 'off' → defer).
+  const fortressReadDecision = checkFortressFileDecision('fs-read', pathsToCheck, tool.name)
+  if (fortressReadDecision) {
+    return fortressReadDecision
+  }
+
   // 3. Check for READ-SPECIFIC deny rules first - check both the original path and resolved symlink path
   // SECURITY: This must come before any allow checks (including "edit access implies read access")
   // to prevent bypassing explicit read deny rules
@@ -1132,12 +1145,17 @@ export function checkReadPermissionForTool(
   }
 
   // 5. Edit access implies read access (but only if no read-specific deny/ask rules exist)
-  // We check this after read-specific rules so that explicit read restrictions take precedence
+  // We check this after read-specific rules so that explicit read restrictions take precedence.
+  // skipFortressCheck=true: this is a speculative write probe for a READ — the fortress
+  // fs-read decision already ran at step 2.5; running the fs-write hook here would record a
+  // phantom fs-write violation during a pure read (and its deny would be discarded anyway,
+  // since only an 'allow' is consumed).
   const editResult = checkWritePermissionForTool(
     tool,
     input,
     toolPermissionContext,
     pathsToCheck,
+    true,
   )
   if (editResult.behavior === 'allow') {
     return editResult
@@ -1217,6 +1235,10 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   input: z.infer<Input>,
   toolPermissionContext: ToolPermissionContext,
   precomputedPathsToCheck?: readonly string[],
+  // When true, the fortress fs-write hook is skipped. Used by the Read tool's speculative
+  // "edit access implies read" probe (it only consumes an 'allow'), so a fortress write
+  // deny/ask/record there would be wrong + record a phantom violation during a pure read.
+  skipFortressCheck = false,
 ): PermissionDecision {
   if (typeof tool.getPath !== 'function') {
     return {
@@ -1245,6 +1267,20 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
           rule: denyRule,
         },
       }
+    }
+  }
+
+  // 1.4. DeepCode Sandbox Fortress (F3 PR-F): a per-call fortress rule decision over the
+  // SYMLINK-RESOLVED write path set — enforces fs-write denies that are non-projectable
+  // to the OS (globs / relative) and can't be bypassed by an in-workspace symlink. A
+  // fortress deny/ask blocks/prompts; otherwise defers. Inert by default. Placed AFTER
+  // the host's deny rules but before the editable-internal / allow checks, so a fortress
+  // deny can't be bypassed by an internal/allow shortcut. Skipped for the Read tool's
+  // speculative implied-edit probe (which only consumes 'allow').
+  if (!skipFortressCheck) {
+    const fortressWriteDecision = checkFortressFileDecision('fs-write', pathsToCheck, tool.name)
+    if (fortressWriteDecision) {
+      return fortressWriteDecision
     }
   }
 

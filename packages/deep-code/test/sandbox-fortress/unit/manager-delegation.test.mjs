@@ -151,6 +151,12 @@ function runManagerProbe() {
     // the inert manager (no glob rules) returns only the base warning
     out.inertGlobWarnings = inertMgr.getLinuxGlobPatternWarnings()
 
+    // ── PR-F: resolveFortressDecision (the org fs-write deny '/secret' is set above) ──
+    out.decisionSecret = m.resolveFortressDecision('fs-write', '/secret').decision // matched deny
+    // recordFortressViolation feeds the sync mirror → buildViolationFeedback
+    m.recordFortressViolation({ id: 'pf', timestamp: 1, event: { line: 'pr-f test violation' }, toolName: 'Edit' })
+    out.feedbackAfterRecord = m.buildViolationFeedback()
+
     process.stdout.write(JSON.stringify(out))
   `
   const result = spawnSync('bun', ['--eval', script], { cwd: root, encoding: 'utf8' })
@@ -192,4 +198,8 @@ test('FortressSandboxManager delegates rule-engine methods + enforces/passes-thr
   )
   // no fortress rules → only the base warning (no spurious fortress entry)
   assert.deepEqual(out.inertGlobWarnings, ['base-warning'])
+
+  // PR-F: resolveFortressDecision matches the deny rule; recordFortressViolation surfaces
+  assert.equal(out.decisionSecret, 'deny')
+  assert.match(out.feedbackAfterRecord, /pr-f test violation/)
 })
