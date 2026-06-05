@@ -151,6 +151,30 @@ export const SandboxSettingsSchema = lazySchema(() =>
     .passthrough(),
 )
 
+/**
+ * Sandbox Fortress settings (F3). Accepted as RAW UNKNOWN at the schema layer ON
+ * PURPOSE: a single malformed fortress entry must NEVER fail SettingsSchema.safeParse
+ * (which would null out the WHOLE settings file). ALL validation — shape, enum
+ * membership, non-blank pattern, layer, path normalization, per-rule warnings — happens
+ * at load time in sandbox-fortress/rule-engine/configLoader.mjs (fail-safe: invalid
+ * entries are dropped with a warning).
+ *
+ * The documented user-facing shape (validated at load, not by zod):
+ *   "fortress": {
+ *     "effort": "off" | "high" | "max",
+ *     "rules": [
+ *       { "layer"?: "builtin-default"|"org"|"agent"|"user",  // default "user"
+ *         "resource": "fs-read"|"fs-write"|"net-host"|"process-exec",
+ *         "pattern": "~/.ssh/**",  // absolute path/glob, domain, or binary
+ *         "action": "allow"|"deny"|"ask",
+ *         "reason"?: string, "expiresAt"?: number }
+ *     ]
+ *   }
+ */
+export const FortressSettingsSchema = lazySchema(() =>
+  z.unknown().describe('DeepCode Sandbox Fortress rules; shape validated + path-normalized at load time'),
+)
+
 // Inferred types from schemas
 export type SandboxSettings = z.infer<ReturnType<typeof SandboxSettingsSchema>>
 export type SandboxNetworkConfig = NonNullable<
