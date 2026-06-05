@@ -277,6 +277,55 @@ test('a filtered sidechain does not consume the --limit budget', async () => {
   }
 })
 
+test('--limit scans PAST multiple leading sidechains to return N real sessions (guards a wrong scan-cap)', async () => {
+  // The newest THREE files are sidechains; the two real sessions are oldest. A
+  // correct run must read past all three sidechains to collect limit=2 real ones.
+  // A naive "stop after scanning `limit` files" optimization would return 0 here
+  // (the two newest scanned are sidechains, filtered) — this locks against that.
+  const dir = await makeDir()
+  const SC1 = '44444444-4444-4444-8444-444444444444'
+  const SC2 = '55555555-5555-4555-8555-555555555555'
+  const SC3 = '66666666-6666-4666-8666-666666666666'
+  try {
+    const sidechain = content => [{ type: 'user', message: { role: 'user', content }, isSidechain: true }]
+    await writeSession(dir, UUID_A, [userTurn('real OLD')])
+    await writeSession(dir, UUID_C, [userTurn('real NEW')])
+    await writeSession(dir, SC1, sidechain('sc1'))
+    await writeSession(dir, SC2, sidechain('sc2'))
+    await writeSession(dir, SC3, sidechain('sc3'))
+    // recency: SC3 > SC2 > SC1 > UUID_C(real) > UUID_A(real)
+    await utimes(join(dir, `${UUID_A}.jsonl`), new Date(1000), new Date(1000))
+    await utimes(join(dir, `${UUID_C}.jsonl`), new Date(2000), new Date(2000))
+    await utimes(join(dir, `${SC1}.jsonl`), new Date(3000), new Date(3000))
+    await utimes(join(dir, `${SC2}.jsonl`), new Date(4000), new Date(4000))
+    await utimes(join(dir, `${SC3}.jsonl`), new Date(5000), new Date(5000))
+    // limit 2 returns the two REAL sessions newest-first, past the 3 sidechains
+    assert.deepEqual(
+      (await listSessions({ sessionDir: dir, limit: 2 })).map(s => s.sessionId),
+      [UUID_C, UUID_A],
+    )
+    // a limit larger than the real count returns all real sessions (not padded)
+    assert.deepEqual(
+      (await listSessions({ sessionDir: dir, limit: 10 })).map(s => s.sessionId),
+      [UUID_C, UUID_A],
+    )
+    // --all (includeSidechains), no limit → EVERY file, newest-first
+    assert.deepEqual(
+      (await listSessions({ sessionDir: dir, includeSidechains: true })).map(s => s.sessionId),
+      [SC3, SC2, SC1, UUID_C, UUID_A],
+    )
+    // under --all, sidechains are NOT filtered, so they DO consume the limit budget:
+    // limit 3 returns the 3 newest (all sidechains here) — the contrast with the
+    // default path, where the same sidechains are skipped without spending budget.
+    assert.deepEqual(
+      (await listSessions({ sessionDir: dir, includeSidechains: true, limit: 3 })).map(s => s.sessionId),
+      [SC3, SC2, SC1],
+    )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('a directory named like a session file is ignored (no EISDIR crash)', async () => {
   const dir = await makeDir()
   try {

@@ -17,10 +17,15 @@ const SESSION_FILE_RE =
 // `cwd` is injectable for testing the env-based resolution; `limit` caps to the N
 // most-recent.
 //
-// Cost is bounded: candidates are ordered by cheap `stat`s and `limit` is applied
-// BEFORE any transcript is opened, and each selected transcript is STREAMED line
-// by line (never read whole into memory — sessions can be very large). So
-// `session list --limit 5` opens 5 files and holds one line at a time.
+// MEMORY is bounded: candidates are ordered by cheap `stat`s and each scanned
+// transcript is STREAMED line by line (never read whole into memory — sessions can
+// be very large), so only one line is held at a time. The NUMBER of files opened,
+// however, is bounded by `limit` only when no sidechains intervene: sidechain-ness
+// is content-derived (read from a transcript's first line — see scanSessionFile),
+// so a candidate must be OPENED to be classified, and a filtered sidechain does NOT
+// count toward `limit`. So `session list --limit 5` collects 5 NON-sidechain
+// sessions, reading PAST any leading sidechains — worst case (the newest files are
+// all sidechains / `--all`) it streams the whole store to collect them.
 export async function listSessions({ sessionDir, cwd, limit, includeSidechains = false } = {}) {
   if (limit !== undefined && (!Number.isInteger(limit) || limit < 0)) {
     throw new Error('limit must be a non-negative integer')
@@ -36,8 +41,10 @@ export async function listSessions({ sessionDir, cwd, limit, includeSidechains =
     throw error
   }
 
-  // Cheap pass: stat (no read) every session FILE so we can order by recency and
-  // apply `limit` BEFORE the expensive scan.
+  // Cheap pass: stat (no read) every session FILE so the expensive scan can run in
+  // recency order and STOP once `limit` non-sidechain results are collected. (The
+  // limit caps RESULTS, applied in the scan loop below — not the number of files
+  // opened, since a filtered sidechain is only known after reading it.)
   const candidates = []
   for (const dirent of dirents) {
     if (!dirent.isFile()) continue // a dir/symlink named `<uuid>.jsonl` is not a session
@@ -65,8 +72,11 @@ export async function listSessions({ sessionDir, cwd, limit, includeSidechains =
   // Expensive pass: STREAM-scan candidates in recency order until `limit` results
   // are collected. Internal sidechain/agent transcripts are filtered by default to
   // match the /resume picker (resume.tsx filters `!isSidechain`); `--all` keeps
-  // them. Filtered sidechains do NOT consume the limit budget, so we scan only as
-  // many files as needed (not the whole store).
+  // them. A filtered sidechain does NOT consume the limit budget — and since
+  // sidechain-ness is only known AFTER opening the file, a run reads PAST leading
+  // sidechains (up to the whole store in the worst case) to collect `limit`
+  // non-sidechain sessions. This is inherent: there is no name/stat signal for
+  // sidechain-ness, so they cannot be skipped without being read.
   const sessions = []
   for (const candidate of candidates) {
     if (limit !== undefined && sessions.length >= limit) break
