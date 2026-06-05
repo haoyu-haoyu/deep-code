@@ -6,20 +6,18 @@ import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-// ── F3 wiring PR-B: FortressSandboxManager delegates its 12 rule-engine methods to
-// the pure managerState factory (PR-A). manager.ts is TypeScript (Node 20 in CI can't
-// strip types), so — like the integration test — we exercise it via a `bun --eval`
-// subprocess (bun loads .ts natively; bun is set up in the CI Test job).
-//
-// Importing the REAL manager.ts pulls the whole app graph (legacy.ts → src/tools/…
-// path aliases bun can't resolve from a bare eval). So we assemble a minimal FIXTURE:
-// the self-contained fortress files (manager.ts + the 3 cores + violation/network) and
-// a STUB base adapter — proving the 12 stubs were replaced by working delegations.
+// ── F3 wiring PR-B/PR-D: FortressSandboxManager delegates its 12 rule-engine methods
+// to the pure managerState factory, and (PR-D) its wrapWithSandbox override projects
+// fortress rules to OS fs deltas. manager.ts is TypeScript (Node 20 in CI can't strip
+// types), so — like the integration test — we exercise it via a `bun --eval`
+// subprocess over a minimal FIXTURE: the self-contained fortress files + a STUB base
+// adapter (legacy.js: a wrapWithSandbox recorder + getSandboxBaseRuntimeConfig) and a
+// STUB per-tool-profiles.js (a marker mergeFortressFsDeltaIntoConfig). This isolates
+// the manager's branching (inert passthrough vs enforcement) from the real merge —
+// the real R5 union is tested separately in the integration test.
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 
-// fortress files to copy verbatim, relative to packageRoot (structure preserved so the
-// inter-core relative imports resolve inside the fixture).
 const FORTRESS_FILES = [
   'src/sandbox-fortress/manager.ts',
   'src/sandbox-fortress/networkDecision.mjs',
@@ -27,13 +25,37 @@ const FORTRESS_FILES = [
   'src/sandbox-fortress/rule-engine/managerState.mjs',
   'src/sandbox-fortress/rule-engine/resolveRules.mjs',
   'src/sandbox-fortress/rule-engine/effort.mjs',
+  'src/sandbox-fortress/rule-engine/fsProjector.mjs',
 ]
 
-// A minimal stub of the base adapter. manager.ts imports its base `SandboxManager`
-// (value) + `ISandboxManager` (type, erased by bun) DIRECTLY from ./adapter/legacy.js
-// (PR-C rewired it off the barrel to break the runtime→barrel cycle). Only
-// isSupportedPlatform is exercised; the other base delegations are never called here.
-const ADAPTER_STUB = `export const SandboxManager = { isSupportedPlatform: () => true }\n`
+// legacy.js stub: manager.ts imports SandboxManager (value) + getSandboxBaseRuntimeConfig
+// + the type ISandboxManager (erased by bun). wrapWithSandbox records its customConfig
+// arg so we can prove inert passthrough vs enforcement. getSandboxBaseRuntimeConfig
+// returns a base carrying a settings-derived deny (so we can prove R5: base preserved).
+const LEGACY_STUB = `
+export const SandboxManager = {
+  isSupportedPlatform: () => true,
+  isSandboxEnabledInSettings: () => true,
+  getLinuxGlobPatternWarnings: () => ['base-warning'],
+  wrapWithSandbox: (command, binShell, customConfig, abortSignal, toolName) =>
+    Promise.resolve(JSON.stringify({ customConfig: customConfig ?? null })),
+}
+export const getSandboxBaseRuntimeConfig = () => ({
+  filesystem: { denyRead: [], allowRead: [], allowWrite: ['.'], denyWrite: ['/settings-w'] },
+  network: { allowedDomains: [], deniedDomains: [] },
+})
+`
+
+// platform stub: force 'linux' so the fortress glob-warning path is exercised.
+const PLATFORM_STUB = `export const getPlatform = () => 'linux'\n`
+
+// per-tool-profiles.js stub: a marker merge so the test sees exactly what the override
+// passed (the projected delta + the base) without pulling the real tool-name deps.
+const PROFILES_STUB = `
+export const mergeFortressFsDeltaIntoConfig = (fsDelta, customConfig, baseConfig) => ({
+  __merged: true, fsDelta, customConfig: customConfig ?? null, baseConfig,
+})
+`
 
 function buildFixture() {
   const root = mkdtempSync(join(tmpdir(), 'deepcode-manager-delegation-'))
@@ -42,9 +64,15 @@ function buildFixture() {
     mkdirSync(dirname(target), { recursive: true })
     copyFileSync(join(packageRoot, rel), target)
   }
-  const adapterPath = join(root, 'src/sandbox-fortress/adapter/legacy.js')
-  mkdirSync(dirname(adapterPath), { recursive: true })
-  writeFileSync(adapterPath, ADAPTER_STUB)
+  for (const [rel, content] of [
+    ['src/sandbox-fortress/adapter/legacy.js', LEGACY_STUB],
+    ['src/sandbox-fortress/adapter/per-tool-profiles.js', PROFILES_STUB],
+    ['src/utils/platform.js', PLATFORM_STUB],
+  ]) {
+    const p = join(root, rel)
+    mkdirSync(dirname(p), { recursive: true })
+    writeFileSync(p, content)
+  }
   return root
 }
 
@@ -66,8 +94,8 @@ function runManagerProbe() {
     m.enableDryRunMode(true)
     out.dryRunAfter = m.isDryRunMode()
 
-    // rulesets (async-by-interface) + resolution
-    await m.setRuleset('org', [{ layer: 'org', resource: 'fs-read', pattern: '/secret', action: 'deny' }])
+    // rulesets (async-by-interface) + resolution — a WRITE deny so PR-D projects it
+    await m.setRuleset('org', [{ layer: 'org', resource: 'fs-write', pattern: '/secret', action: 'deny' }])
     out.rulesetLen = (await m.getRulesetByLayer('org')).rules.length
     out.effectiveLen = (await m.resolveEffectiveRules()).length
 
@@ -83,8 +111,33 @@ function runManagerProbe() {
     m.setProfileForTool('Bash', { junk: 1, fileSystemMode: 'bogus' })
     out.profile = m.getProfileForTool('Bash')
 
-    // a base-manager method still delegates to the (stubbed) base
+    // base-manager method still delegates to the (stubbed) base
     out.platformSupportedType = typeof m.isSupportedPlatform()
+
+    // ── PR-D wrapWithSandbox: ENFORCEMENT path (a fortress WRITE deny is set above) ──
+    const enforced = JSON.parse(await m.wrapWithSandbox('echo hi', '/bin/sh', undefined, undefined, 'Bash'))
+    out.enforcedMerged = enforced.customConfig && enforced.customConfig.__merged === true
+    out.enforcedDelta = enforced.customConfig && enforced.customConfig.fsDelta
+    out.enforcedBaseDeny = enforced.customConfig && enforced.customConfig.baseConfig.filesystem.denyWrite
+
+    // ── PR-D wrapWithSandbox: INERT path (no fortress fs rules → untouched customConfig) ──
+    const inertMgr = new FortressSandboxManager()
+    const inert = JSON.parse(await inertMgr.wrapWithSandbox('echo hi', '/bin/sh', undefined, undefined, 'Bash'))
+    out.inertCustomConfig = inert.customConfig // must be null (the untouched undefined → ?? null)
+    // a passed customConfig is forwarded UNTOUCHED when inert
+    const inert2 = JSON.parse(await inertMgr.wrapWithSandbox('echo hi', '/bin/sh', { marker: 'orig' }, undefined, 'Bash'))
+    out.inertPassThrough = inert2.customConfig
+
+    // ── PR-D Linux glob warning: a fortress fs-write GLOB deny is surfaced (not silent) ──
+    const gm = new FortressSandboxManager()
+    await gm.setRuleset('user', [
+      { layer: 'user', resource: 'fs-write', pattern: '/home/*/.ssh/**', action: 'deny' }, // abs mid glob → warn
+      { layer: 'user', resource: 'fs-write', pattern: 'secrets/**', action: 'deny' }, // non-absolute → warn
+      { layer: 'user', resource: 'fs-write', pattern: '/etc/passwd', action: 'deny' }, // abs concrete → not warned
+    ])
+    out.globWarnings = gm.getLinuxGlobPatternWarnings()
+    // the inert manager (no glob rules) returns only the base warning
+    out.inertGlobWarnings = inertMgr.getLinuxGlobPatternWarnings()
 
     process.stdout.write(JSON.stringify(out))
   `
@@ -93,8 +146,9 @@ function runManagerProbe() {
   return JSON.parse(result.stdout)
 }
 
-test('FortressSandboxManager delegates all 12 rule-engine methods to the state machine', () => {
+test('FortressSandboxManager delegates rule-engine methods + enforces/passes-through wrapWithSandbox', () => {
   const out = runManagerProbe()
+  // delegation
   assert.equal(out.effortDefault, 'off')
   assert.equal(out.effortAfter, 'max')
   assert.equal(out.dryRunBefore, false)
@@ -104,8 +158,26 @@ test('FortressSandboxManager delegates all 12 rule-engine methods to the state m
   assert.match(out.summaryStatic, /^rsv1/)
   assert.equal(out.feedbackEmpty, null)
   assert.equal(out.dbHasList, true)
-  // malformed profile normalized to a valid ToolSandboxProfile
   assert.deepEqual(out.profile, { toolName: 'Bash', fileSystemMode: 'workspace-write', networkMode: 'allow' })
-  // base methods are untouched (still delegate to baseSandboxManager)
   assert.equal(out.platformSupportedType, 'boolean')
+
+  // PR-D enforcement: the write-deny rule is projected + merge invoked with the base
+  assert.equal(out.enforcedMerged, true)
+  assert.deepEqual(out.enforcedDelta.denyWrite, ['/secret'])
+  // R5 signal: the settings-derived base deny is the merge's starting point
+  assert.deepEqual(out.enforcedBaseDeny, ['/settings-w'])
+
+  // PR-D inert: no fortress fs rules → customConfig forwarded UNTOUCHED (no synthesized arrays)
+  assert.equal(out.inertCustomConfig, null) // undefined stayed undefined (recorder maps to null)
+  assert.deepEqual(out.inertPassThrough, { marker: 'orig' })
+
+  // PR-D Linux warning: base + the abs mid-glob + the non-absolute deny; abs concrete
+  // excluded. Order follows resolveEffectiveRules' canonical total-order (deterministic).
+  assert.equal(out.globWarnings[0], 'base-warning')
+  assert.deepEqual(
+    [...out.globWarnings].slice(1).sort(),
+    ['fs-write deny /home/*/.ssh/**', 'fs-write deny secrets/**'].sort(),
+  )
+  // no fortress rules → only the base warning (no spurious fortress entry)
+  assert.deepEqual(out.inertGlobWarnings, ['base-warning'])
 })

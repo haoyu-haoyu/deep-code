@@ -4,12 +4,20 @@
 // is the pure base and never imports manager/runtime, so this stays acyclic.
 import {
   SandboxManager as baseSandboxManager,
+  getSandboxBaseRuntimeConfig,
   type ISandboxManager,
 } from './adapter/legacy.js'
-// The pure, node-tested state machine (PR-A) backing the rule-engine methods. This
-// is the FIRST live import of the fortress cores; the class is still never
-// instantiated (PR-C), so the import remains tree-shaken and dist byte-identical.
+import { mergeFortressFsDeltaIntoConfig } from './adapter/per-tool-profiles.js'
+import { getPlatform } from '../utils/platform.js'
+// The pure, node-tested state machine (PR-A) backing the rule-engine methods, and
+// the fs-deny projector (PR-D) that turns effective rules into OS-enforceable
+// filesystem patterns.
 import { createFortressManagerState } from './rule-engine/managerState.mjs'
+import {
+  fortressLinuxUnenforcedWriteWarnings,
+  fortressRulesToFsDelta,
+  isEmptyFsDelta,
+} from './rule-engine/fsProjector.mjs'
 import type {
   CacheFriendlyConfigSummary,
   EffortLevel,
@@ -159,10 +167,33 @@ export class FortressSandboxManager implements IFortressSandboxManager {
     abortSignal?: Parameters<ISandboxManager['wrapWithSandbox']>[3],
     toolName?: string,
   ): Promise<string> {
+    // F3 PR-D — fs-deny enforcement. Project the effective fortress rules to the
+    // OS-enforceable filesystem deltas.
+    const fsDelta = fortressRulesToFsDelta(this.#state.resolveEffectiveRules())
+    // INERT / no fortress fs rules (the default state): pass the UNTOUCHED
+    // customConfig so the wrapped command is byte-identical to the pre-fortress path.
+    // Synthesizing empty arrays here would alter the wrapped command vs `undefined`.
+    if (isEmptyFsDelta(fsDelta)) {
+      return baseSandboxManager.wrapWithSandbox(
+        command,
+        binShell,
+        customConfig,
+        abortSignal,
+        toolName,
+      )
+    }
+    // Union the fortress deltas onto the settings BASE (R5: never replace — the
+    // runtime REPLACES customConfig.filesystem.<arr> per field, so the merged config
+    // must carry base ∪ custom ∪ fortress or the settings denylist would be dropped).
+    const merged = mergeFortressFsDeltaIntoConfig(
+      fsDelta,
+      customConfig,
+      getSandboxBaseRuntimeConfig(),
+    )
     return baseSandboxManager.wrapWithSandbox(
       command,
       binShell,
-      customConfig,
+      merged,
       abortSignal,
       toolName,
     )
@@ -186,7 +217,16 @@ export class FortressSandboxManager implements IFortressSandboxManager {
   }
 
   getLinuxGlobPatternWarnings(): string[] {
-    return baseSandboxManager.getLinuxGlobPatternWarnings()
+    const base = baseSandboxManager.getLinuxGlobPatternWarnings()
+    // Surface fortress fs-write patterns bubblewrap won't enforce on Linux/WSL (an
+    // unsupported glob, or a non-absolute pattern that is never projected), so a deny
+    // is never SILENTLY treated as enforced. Gated the same way the base warning is
+    // (Linux/WSL + sandbox enabled).
+    const platform = getPlatform()
+    if ((platform === 'linux' || platform === 'wsl') && this.isSandboxEnabledInSettings()) {
+      return [...base, ...fortressLinuxUnenforcedWriteWarnings(this.#state.resolveEffectiveRules())]
+    }
+    return base
   }
 
   refreshConfig(): void {

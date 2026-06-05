@@ -415,6 +415,17 @@ export function convertToSandboxRuntimeConfig(
   }
 }
 
+/**
+ * The current OS sandbox base runtime config derived from live settings — the union
+ * starting point for fortress fs enforcement (PR-D), so projected fortress denies are
+ * ADDED to, never replace, the settings-derived denylist. Mirrors the same
+ * convertToSandboxRuntimeConfig(getSettings_DEPRECATED()) call wrapWithSandbox already
+ * uses for the per-tool profile merge.
+ */
+export function getSandboxBaseRuntimeConfig(): SandboxRuntimeConfig {
+  return convertToSandboxRuntimeConfig(getSettings_DEPRECATED())
+}
+
 // ============================================================================
 // DeepCode CLI-specific state
 // ============================================================================
