@@ -9,7 +9,6 @@ import {
 } from './adapter/legacy.js'
 import { mergeFortressFsDeltaIntoConfig } from './adapter/per-tool-profiles.js'
 import { applyFortressConfigFromSettings } from './adapter/fortressConfigLoader.js'
-import { getPlatform } from '../utils/platform.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 import { settingsChangeDetector } from '../utils/settings/changeDetector.js'
 import { logForDebugging } from '../utils/debug.js'
@@ -18,7 +17,7 @@ import { logForDebugging } from '../utils/debug.js'
 // filesystem patterns.
 import { createFortressManagerState } from './rule-engine/managerState.mjs'
 import {
-  fortressLinuxUnenforcedWriteWarnings,
+  fortressUnenforcedWriteWarnings,
   fortressRulesToFsDelta,
   isEmptyFsDelta,
 } from './rule-engine/fsProjector.mjs'
@@ -52,6 +51,7 @@ export interface IFortressSandboxManager extends ISandboxManager {
   ): Promise<void>
   buildViolationFeedback(): string | null
   buildCacheFriendlyConfigSummary(): CacheFriendlyConfigSummary
+  getFortressUnenforcedWriteWarnings(): string[]
   getProfileForTool(toolName: string): ToolSandboxProfile
   setProfileForTool(toolName: string, profile: ToolSandboxProfile): void
 }
@@ -247,16 +247,20 @@ export class FortressSandboxManager implements IFortressSandboxManager {
   }
 
   getLinuxGlobPatternWarnings(): string[] {
-    const base = baseSandboxManager.getLinuxGlobPatternWarnings()
-    // Surface fortress fs-write patterns bubblewrap won't enforce on Linux/WSL (an
-    // unsupported glob, or a non-absolute pattern that is never projected), so a deny
-    // is never SILENTLY treated as enforced. Gated the same way the base warning is
-    // (Linux/WSL + sandbox enabled).
-    const platform = getPlatform()
-    if ((platform === 'linux' || platform === 'wsl') && this.isSandboxEnabledInSettings()) {
-      return [...base, ...fortressLinuxUnenforcedWriteWarnings(this.#state.resolveEffectiveRules())]
-    }
-    return base
+    // Base Linux/WSL settings-glob warnings only. The fortress's own unenforced-write
+    // warnings are CROSS-PLATFORM (a non-projectable fs-write deny isn't enforced for
+    // shell commands on any platform), so they live in getFortressUnenforcedWriteWarnings
+    // below — not gated to Linux — and are surfaced by the doctor on every platform.
+    return baseSandboxManager.getLinuxGlobPatternWarnings()
+  }
+
+  getFortressUnenforcedWriteWarnings(): string[] {
+    // The fortress fs-write deny patterns NOT projected to the OS sandbox (glob /
+    // relative / non-absolute) → not enforced for SHELL (Bash) commands on ANY platform
+    // (they ARE enforced for the file tools via the per-call hook). Cross-platform;
+    // gated only on sandboxing being enabled (matching the base warning's enabled gate).
+    if (!this.isSandboxEnabledInSettings()) return []
+    return fortressUnenforcedWriteWarnings(this.#state.resolveEffectiveRules())
   }
 
   refreshConfig(): void {

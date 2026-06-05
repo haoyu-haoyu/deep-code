@@ -2293,6 +2293,8 @@ export const EN_MESSAGES = {
   'doctor.versions.fetchFailed': '└ Failed to fetch versions',
   'doctor.versions.latest': '└ Latest version: ',
   'doctor.versions.stable': '└ Stable version: ',
+  'doctor.warning.fortressUnenforcedWrite.fix': 'Found {count} fortress write-deny pattern(s) not enforced for shell commands: {patternList}. Globs and relative/~ paths are enforced only for file tools (Read/Edit/Write); use an absolute, glob-free path (or "/path/**") for shell-level enforcement.',
+  'doctor.warning.fortressUnenforcedWrite.issue': 'Some Sandbox Fortress write-deny rules are not enforced for shell (Bash) commands',
   'doctor.warning.insufficientUpdatePerms.fix': 'Do one of: (1) Re-install node without sudo, or (2) Use `deepcode install` for native installation',
   'doctor.warning.insufficientUpdatePerms.issue': 'Insufficient permissions for auto-updates',
   'doctor.warning.leftoverNpm.global.fix': 'Run: {command}',

@@ -540,6 +540,33 @@ export function detectLinuxGlobPatternWarnings(): Array<{
   return warnings
 }
 
+export function detectFortressUnenforcedWriteWarnings(): Array<{
+  issue: string
+  fix: string
+}> {
+  // CROSS-PLATFORM (no platform gate): a fortress fs-write deny with a glob or
+  // relative/~ pattern is not projected to the OS sandbox, so it is NOT enforced for
+  // shell (Bash) commands on ANY platform — only the file tools enforce it. Surface it
+  // everywhere so a deny is never silently treated as shell-enforced.
+  const patterns = SandboxManager.getFortressUnenforcedWriteWarnings()
+  if (patterns.length === 0) {
+    return []
+  }
+  const displayPatterns = patterns.slice(0, 3).join(', ')
+  const remaining = patterns.length - 3
+  const patternList =
+    remaining > 0 ? `${displayPatterns} (${remaining} more)` : displayPatterns
+  return [
+    {
+      issue: getMessage('doctor.warning.fortressUnenforcedWrite.issue'),
+      fix: getMessage('doctor.warning.fortressUnenforcedWrite.fix', {
+        count: patterns.length,
+        patternList,
+      }),
+    },
+  ]
+}
+
 export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
   const installationType = await getCurrentInstallationType()
   const version =
@@ -551,6 +578,10 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
 
   // Add glob pattern warnings for Linux sandboxing
   warnings.push(...detectLinuxGlobPatternWarnings())
+
+  // Add cross-platform fortress unenforced-write warnings (a fortress fs-write deny that
+  // is not OS-projected and so not enforced for shell commands on any platform)
+  warnings.push(...detectFortressUnenforcedWriteWarnings())
 
   // Add warnings for leftover npm installations when running native
   if (installationType === 'native') {

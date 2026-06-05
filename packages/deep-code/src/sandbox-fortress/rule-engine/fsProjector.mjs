@@ -114,17 +114,19 @@ export function isEmptyFsDelta(delta) {
 }
 
 /**
- * The fortress fs-write DENY rules that are NOT projected to the OS — i.e. a deny the
- * author expects to enforce but that the OS path does not (non-absolute, or carrying a
- * glob the OS grammar would compile differently / bubblewrap would drop). Surfaced via
- * the manager's getLinuxGlobPatternWarnings so a deny is never SILENTLY treated as
- * enforced (matching the project's existing settings-glob warning posture). Returned as
- * "fs-write deny <pattern>" lines. The caller gates on platform (Linux/WSL). Defensive:
- * never throws; only fs-write deny is considered (allow is a non-enforced carve-out).
+ * The fortress fs-write DENY rules that are NOT projected to the OS sandbox — i.e. a
+ * deny the author expects to enforce but that the SHELL (Bash) path does NOT, on ANY
+ * platform (non-absolute, or carrying a glob; the projector emits only absolute
+ * glob-free patterns). These ARE still enforced for the file tools (Read/Edit/Write)
+ * via the per-call hook, but a shell command writing such a path is unguarded — so the
+ * manager surfaces these CROSS-PLATFORM (getFortressUnenforcedWriteWarnings) and the
+ * doctor shows them on every platform, so a deny is never SILENTLY treated as enforced.
+ * Returned as "fs-write deny <pattern>" lines. Defensive: never throws; only fs-write
+ * deny is considered (allow is a non-enforced carve-out).
  * @param {Array<object>} effectiveRules
  * @returns {string[]}
  */
-export function fortressLinuxUnenforcedWriteWarnings(effectiveRules) {
+export function fortressUnenforcedWriteWarnings(effectiveRules) {
   const out = []
   if (!Array.isArray(effectiveRules)) return out
   for (const rule of effectiveRules) {
