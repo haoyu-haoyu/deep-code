@@ -50,9 +50,12 @@ import {
   getMessagesAfterCompactBoundary,
   createToolUseSummaryMessage,
   createMicrocompactBoundaryMessage,
+  wrapInSystemReminder,
 } from './utils/messages.js'
 import { generateToolUseSummary } from './services/toolUseSummary/toolUseSummaryGenerator.js'
 import { prependUserContext, appendSystemContext } from './utils/api.js'
+import { SandboxManager } from './utils/sandbox/sandbox-adapter.js'
+import { appendViolationFeedbackTail } from './deepcode/violation-feedback-tail.mjs'
 import {
   createAttachmentMessage,
   filterDuplicateMemoryAttachments,
@@ -270,6 +273,16 @@ async function* queryLoop(
     pendingToolUseSummary: undefined,
     transition: undefined,
   }
+  // Cross-turn dedup for the fortress violation-feedback aggregate: the count at which we
+  // last surfaced it, so within this agent loop the reminder appears once per NEW violation,
+  // not on every tool turn. Function-scoped (persists across loop iterations like `state`);
+  // NOT in the State struct so it survives every `state = {...}` continue-site without
+  // threading. It resets per query() call (per user prompt) while the fortress count lives
+  // in the process singleton — so a NEW user prompt re-grounds the model with the aggregate
+  // once even with no new violations that prompt. That's intentional (a per-turn re-ground)
+  // and moat-safe: the reminder is always a transient TAIL message, discarded from history
+  // (next turn rebuilds from messagesForQuery), so it never occupies a cacheable prefix slot.
+  let lastViolationCountSurfaced = 0
   const budgetTracker = feature('TOKEN_BUDGET') ? createBudgetTracker() : null
 
   // task_budget.remaining tracking across compaction boundaries. Undefined
@@ -633,8 +646,18 @@ async function* queryLoop(
     queryCheckpoint('query_api_loop_start')
     try {
       queryCheckpoint('query_api_streaming_start')
+      // Surface the fortress violation-feedback aggregate as a transient TAIL reminder,
+      // once per NEW violation (count-delta gated). Append-only + default-inert: with no
+      // violations it returns the same array → request byte-identical (cache moat intact).
+      const fortressFeedback = appendViolationFeedbackTail(
+        prependUserContext(messagesForQuery, userContext),
+        SandboxManager,
+        lastViolationCountSurfaced,
+        text => createUserMessage({ content: wrapInSystemReminder(text), isMeta: true }),
+      )
+      lastViolationCountSurfaced = fortressFeedback.surfacedCount
       for await (const message of deps.callModel({
-          messages: prependUserContext(messagesForQuery, userContext),
+          messages: fortressFeedback.messages,
           systemPrompt: fullSystemPrompt,
           thinkingConfig: toolUseContext.options.thinkingConfig,
           tools: toolUseContext.options.tools,

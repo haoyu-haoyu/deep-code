@@ -161,6 +161,9 @@ function runManagerProbe() {
     // recordFortressViolation feeds the sync mirror → buildViolationFeedback
     m.recordFortressViolation({ id: 'pf', timestamp: 1, event: { line: 'pr-f test violation' }, toolName: 'Edit' })
     out.feedbackAfterRecord = m.buildViolationFeedback()
+    // getViolationCount delegates to the monotonic state counter (the per-turn feedback gate
+    // reads this through the manager singleton in query.ts) — 1 after the single record above.
+    out.violationCountAfterRecord = m.getViolationCount()
 
     process.stdout.write(JSON.stringify(out))
   `
@@ -213,4 +216,5 @@ test('FortressSandboxManager delegates rule-engine methods + enforces/passes-thr
   // PR-F: resolveFortressDecision matches the deny rule; recordFortressViolation surfaces
   assert.equal(out.decisionSecret, 'deny')
   assert.match(out.feedbackAfterRecord, /pr-f test violation/)
+  assert.equal(out.violationCountAfterRecord, 1)
 })

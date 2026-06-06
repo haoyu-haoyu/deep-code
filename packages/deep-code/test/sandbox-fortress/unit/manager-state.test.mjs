@@ -174,8 +174,9 @@ test('E3 the sync mirror is bounded by maxViolations (oldest dropped)', () => {
   const s = createFortressManagerState({ now: frozen, maxViolations: 3 })
   for (let i = 0; i < 5; i++) s.recordFortressViolation({ toolName: 'Bash', event: { line: `v${i}` } })
   const fb = s.buildViolationFeedback()
-  // only the last 3 survive in the mirror; v0/v1 dropped
-  assert.match(fb, /3 violations recorded/)
+  // The mirror DETAIL is bounded to the last 3 (v0/v1 dropped), but the header reports the
+  // true monotonic total (5) — the cap bounds shown detail, not the session count.
+  assert.match(fb, /5 violations recorded this session \(showing last 3 of 5\)/)
   assert.doesNotMatch(fb, /v0|v1/)
   assert.match(fb, /v4/)
 })
@@ -474,6 +475,36 @@ test('H4 a rejecting/throwing violation backend does not break recording (best-e
   // still gets the record (the .catch guard covers a swapped persistent backend).
   assert.doesNotThrow(() => s.recordFortressViolation({ toolName: 'X', event: { line: 'e' } }))
   assert.match(s.buildViolationFeedback(), /1 violation recorded/)
+})
+
+test('I2 getViolationCount is a MONOTONIC session total (the per-turn feedback-gate signal)', () => {
+  const s = createFortressManagerState({ now: frozen })
+  assert.equal(s.getViolationCount(), 0) // default-inert → 0 → no feedback surfaced
+  s.recordFortressViolation({ toolName: 'Bash', event: { line: 'denied X' } })
+  s.recordFortressViolation({ toolName: 'Read', event: { line: 'denied Y' } })
+  assert.equal(s.getViolationCount(), 2)
+})
+
+test('I2b getViolationCount keeps advancing PAST the bounded-mirror cap (no saturation freeze)', () => {
+  // Regression: the gate signal used recentSync.length, which plateaus at maxViolations —
+  // so once the mirror saturated, new violations stopped tripping the feedback gate and the
+  // header froze at the cap. The monotonic counter must keep counting the true session total.
+  const s = createFortressManagerState({ now: frozen, maxViolations: 3 })
+  const counts = []
+  for (let i = 0; i < 5; i++) {
+    s.recordFortressViolation({ toolName: 'Bash', event: { line: `denied ${i}` } })
+    counts.push(s.getViolationCount())
+  }
+  assert.deepEqual(counts, [1, 2, 3, 4, 5]) // NOT [1,2,3,3,3]
+  // and the header reports the true total (5), not the capped mirror length (3)
+  const fb = s.buildViolationFeedback()
+  assert.match(fb, /^Sandbox policy: 5 violations recorded this session/)
+  assert.match(fb, /\(showing last 3 of 5\)/) // only the last 3 survive in the mirror detail
+  // malformed records take no slot AND don't inflate the total
+  const { proxy, revoke } = Proxy.revocable([], {})
+  revoke()
+  s.recordFortressViolation(proxy)
+  assert.equal(s.getViolationCount(), 5)
 })
 
 test('I1 resolveDecision case-folds a DENY fs rule (no case-bypass) but not an ALLOW (no over-grant)', () => {

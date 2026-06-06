@@ -52,6 +52,7 @@ export interface IFortressSandboxManager extends ISandboxManager {
     mapping: Record<EffortLevel, StrictnessLevel>,
   ): Promise<void>
   buildViolationFeedback(): string | null
+  getViolationCount(): number
   buildCacheFriendlyConfigSummary(): CacheFriendlyConfigSummary
   getFortressUnenforcedWriteWarnings(): string[]
   getProfileForTool(toolName: string): ToolSandboxProfile
@@ -340,6 +341,10 @@ export class FortressSandboxManager implements IFortressSandboxManager {
 
   buildViolationFeedback(): string | null {
     return this.#state.buildViolationFeedback()
+  }
+
+  getViolationCount(): number {
+    return this.#state.getViolationCount()
   }
 
   buildCacheFriendlyConfigSummary(): CacheFriendlyConfigSummary {
