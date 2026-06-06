@@ -54,6 +54,9 @@ export const VALID_ACTIONS = new Set(['allow', 'deny', 'ask'])
 export const VALID_RESOURCES = new Set(['fs-read', 'fs-write', 'net-host', 'process-exec'])
 
 const PATH_RESOURCES = new Set(['fs-read', 'fs-write', 'process-exec'])
+// The subset of PATH_RESOURCES that are genuine FILESYSTEM paths (subject to the OS's
+// case-(in)sensitivity). process-exec is a binary NAME, matched case-sensitively.
+const FS_PATH_RESOURCES = new Set(['fs-read', 'fs-write'])
 
 // ── (3) pattern matcher + specificity ───────────────────────────────────────
 
@@ -210,15 +213,31 @@ function compareSpecificity(a, b) {
  * @param {string} target
  * @returns {boolean}
  */
-export function patternMatches(resource, pattern, target) {
+export function patternMatches(resource, pattern, target, foldCase = false) {
   if (resource === 'net-host') return matchesDomainPattern(target, pattern)
   if (!PATH_RESOURCES.has(resource)) return false
   if (typeof pattern !== 'string' || pattern === '') return false
   // An empty/non-string target is a degenerate, meaningless access — never a
   // match (closes the `/**` ~ '' over-match). The wiring passes resolved paths.
   if (typeof target !== 'string' || target === '') return false
+  let p = pattern
+  let t = target
+  // Case-fold a fs-read/fs-write match when foldCase is set. Without folding, a deny is
+  // bypassable on a case-INSENSITIVE filesystem (macOS/Windows, or a case-insensitive
+  // mount anywhere) by a differently-cased path that resolves to the SAME on-disk file
+  // (e.g. ~/.SSH vs ~/.ssh — and fs-read denies have no OS backstop). The CALLER
+  // (resolveResourceDecision) passes foldCase=true ONLY for DENY rules: folding is
+  // unconditionally over-block-SAFE (mirroring the codebase's normalizeCaseForComparison,
+  // which always lowercases) so it needs no platform detection; folding an ALLOW, by
+  // contrast, would OVER-GRANT a genuinely-distinct file on a case-sensitive volume (a
+  // fail-open), so allow/ask are matched verbatim. process-exec (a binary name) and
+  // net-host (already domain-folded above) never fold.
+  if (foldCase && FS_PATH_RESOURCES.has(resource)) {
+    p = p.toLowerCase()
+    t = t.toLowerCase()
+  }
   try {
-    return globMatch(pattern, target)
+    return globMatch(p, t)
   } catch {
     return false
   }
@@ -404,7 +423,14 @@ export function resolveResourceDecision(rawArgs) {
       if (!isValidRule(r)) continue
       if (r.resource !== resource) continue
       if (isExpired(r, now)) continue
-      if (!patternMatches(resource, r.pattern, target)) continue
+      // Case-fold fs path matching for DENY rules ONLY, on every platform (no detection):
+      // folding is unconditionally over-block-SAFE — the worst case is denying a genuinely
+      // case-distinct path — and closes the .ssh/.SSH bypass on any case-insensitive
+      // filesystem (macOS/Windows or a case-insensitive mount), mirroring the codebase's
+      // always-on normalizeCaseForComparison. An ALLOW is NOT folded: folding it would
+      // OVER-GRANT a distinct file on a case-sensitive volume (a fail-open); a same-file
+      // differently-cased access under an allow simply falls through to the floor (safe).
+      if (!patternMatches(resource, r.pattern, target, r.action === 'deny')) continue
       if (r.action === 'deny') deny.push(r)
       else if (r.action === 'allow') allow.push(r)
       else ask.push(r)

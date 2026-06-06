@@ -1,4 +1,4 @@
-import { shellWords } from './shellTokenize.mjs'
+import { SKIP_HEAD_TOKENS, shellWords } from './shellTokenize.mjs'
 
 // Pure, node-testable extraction of the literal file/dir paths a Bash command will READ,
 // for the F3 paranoid fs-read floor (effort 'max'). Standalone — nothing imports it until
@@ -33,11 +33,6 @@ function basename(p) {
   return slash >= 0 ? s.slice(slash + 1) : s
 }
 
-// Leading shell-grammar tokens that splitCommand_DEPRECATED glues onto the first inner
-// command and that are NOT the invoked binary: a brace group (`{ cat … ; }` runs cat in
-// the CURRENT shell) and the `!` pipeline negation (`! cat …`). Skipping them reveals the
-// real reader head; otherwise the head looks like '{' / '!' and the read is missed.
-const SKIP_HEAD_TOKENS = new Set(['{', '!'])
 
 /**
  * The literal read-path argument tokens of a command, from the already-split subcommand

@@ -475,3 +475,50 @@ test('G5 `/**` does not over-match the empty target', () => {
   assert.equal(patternMatches('fs-read', '/**', ''), false)
   assert.equal(patternMatches('fs-read', '**', ''), false)
 })
+
+// ── H: case-folded fs path matching for DENY rules (audit HIGH fix) ──────────
+// A fs-read/fs-write DENY must not be bypassable by a differently-cased path resolving to
+// the same on-disk file (e.g. ~/.SSH vs ~/.ssh). patternMatches folds when its foldCase
+// arg is set; resolveResourceDecision passes foldCase=true for DENY rules on EVERY
+// platform (folding is over-block-safe + needs no platform detection, mirroring the
+// codebase's always-on normalizeCaseForComparison). ALLOW/ASK are NOT folded — folding an
+// allow would over-GRANT a distinct file on a case-sensitive volume (a fail-open).
+
+test('H1 patternMatches folds fs-read/fs-write case when foldCase is set', () => {
+  // foldCase off: a differently-cased path does NOT match
+  assert.equal(patternMatches('fs-write', '/Users/me/.ssh/**', '/Users/me/.SSH/k'), false)
+  assert.equal(patternMatches('fs-read', '/etc/Secret', '/etc/secret'), false)
+  // foldCase on: it matches (same on-disk file on a case-insensitive FS)
+  assert.equal(patternMatches('fs-write', '/Users/me/.ssh/**', '/Users/me/.SSH/k', true), true)
+  assert.equal(patternMatches('fs-read', '/etc/Secret', '/etc/secret', true), true)
+  assert.equal(patternMatches('fs-read', '/USERS/me/.ssh/id', '/Users/me/.ssh/id', true), true)
+})
+
+test('H2 process-exec (binary name) and net-host are NOT case-folded by foldCase', () => {
+  // process-exec is a binary NAME — case-sensitive even when foldCase is on
+  assert.equal(patternMatches('process-exec', 'RM', 'rm', true), false)
+  assert.equal(patternMatches('process-exec', 'rm', 'rm', true), true)
+  // net-host already folds domains regardless of foldCase
+  assert.equal(patternMatches('net-host', 'Evil.COM', 'evil.com'), true)
+})
+
+test('H3 a DENY fs rule matches case-insensitively (not case-bypassable) on every platform', () => {
+  const rules = [{ layer: 'user', resource: 'fs-write', action: 'deny', pattern: '/Users/me/.ssh/**' }]
+  const at = target => resolveResourceDecision({ resource: 'fs-write', target, rules, defaultDecision: 'ask' }).decision
+  // a differently-cased path resolving to the same file is still denied — no platform flag
+  assert.equal(at('/Users/me/.SSH/authorized_keys'), 'deny')
+  assert.equal(at('/Users/me/.ssh/authorized_keys'), 'deny')
+  assert.equal(at('/USERS/me/.ssh/authorized_keys'), 'deny')
+  // an unrelated path is unaffected
+  assert.equal(at('/Users/me/projects/x'), 'ask')
+})
+
+test('H4 an ALLOW rule is NOT case-folded — no over-grant on a case-sensitive volume', () => {
+  // Folding an allow would OVER-GRANT a genuinely case-distinct file on a case-SENSITIVE
+  // volume (a fail-open). So allow stays case-sensitive: only the exact case is allowed;
+  // a differently-cased access falls through to the default (here 'deny'), never granted.
+  const rules = [{ layer: 'user', resource: 'fs-read', action: 'allow', pattern: '/x/Secret' }]
+  const at = target => resolveResourceDecision({ resource: 'fs-read', target, rules, defaultDecision: 'deny' }).decision
+  assert.equal(at('/x/Secret'), 'allow') // exact case → allowed
+  assert.equal(at('/x/secret'), 'deny') // differently-cased → NOT over-granted (floored)
+})

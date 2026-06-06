@@ -11,6 +11,13 @@
 // `rm`. Never throws; on an unterminated quote it returns the best-effort word collected
 // so far. NOTE: it does NOT interpret bash `$'…'`/`$"…"` (ANSI-C/locale) quoting — a known
 // best-effort limit shared by every consumer.
+// Leading shell-grammar tokens that splitCommand_DEPRECATED glues onto the first inner
+// command and that are NOT the invoked binary: a brace group (`{ cat … ; }` runs the
+// command in the CURRENT shell) and the `!` pipeline negation (`! rm …`). BOTH Bash
+// extractors (process-exec binary + fs-read paths) skip these to reach the real head;
+// kept here as the single source of truth so they can't drift.
+export const SKIP_HEAD_TOKENS = new Set(['{', '!'])
+
 export function shellWords(s) {
   if (typeof s !== 'string') return []
   const words = []

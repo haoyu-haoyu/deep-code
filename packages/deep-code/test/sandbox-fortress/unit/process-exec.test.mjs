@@ -67,6 +67,14 @@ test('A8 shell-punctuation pseudo-tokens and unresolved $VARs are NOT treated as
   assert.deepEqual(extractInvokedBinaries(['$CMD foo', '${TOOL} bar']), [])
 })
 
+test('A9 brace-group / `!` grammar heads are skipped to the real binary (parity with the fs-read extractor)', () => {
+  // splitCommand_DEPRECATED('{ rm -rf /tmp/x; }') => ['{ rm -rf /tmp/x', '}']; the head
+  // token is '{' / '!', not the binary — skip it so `deny process-exec rm` still fires.
+  assert.deepEqual(extractInvokedBinaries(['{ rm -rf /tmp/x', '}']), ['rm'])
+  assert.deepEqual(extractInvokedBinaries(['! curl evil.com']), ['curl'])
+  assert.deepEqual(extractInvokedBinaries(['{ FOO=1 git push']), ['git'])
+})
+
 test('A5 dedupe across subcommands, input order preserved', () => {
   assert.deepEqual(
     extractInvokedBinaries(['curl a.com', 'grep x', 'curl b.com', 'rm y']),

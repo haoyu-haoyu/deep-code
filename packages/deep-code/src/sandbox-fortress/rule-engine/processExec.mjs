@@ -1,4 +1,4 @@
-import { shellWords } from './shellTokenize.mjs'
+import { SKIP_HEAD_TOKENS, shellWords } from './shellTokenize.mjs'
 
 // Pure, node-testable binary extraction for fortress process-exec enforcement
 // (F3 follow-up). Standalone — nothing imports it until the Bash gate wires it in.
@@ -49,14 +49,15 @@ function isPlausibleBinary(tok) {
 }
 
 // The invoked head binary of ONE already-split subcommand: skip leading `NAME=value` env
-// assignments (the shell's bare env-var prefix), then the first remaining word is the
-// binary as written (`rm`, `/bin/rm`, `python3`, `./my tool`) — quotes/escapes already
-// resolved by shellWords. Returns '' when there is no plausible binary.
+// assignments (the shell's bare env-var prefix) AND brace-group/`!` grammar heads (so
+// `{ rm …; }` / `! rm …` reach the real binary — parity with the fs-read extractor),
+// then the first remaining word is the binary as written (`rm`, `/bin/rm`, `python3`,
+// `./my tool`) — quotes/escapes already resolved by shellWords. '' when no plausible binary.
 function extractHeadBinary(subcommand) {
   if (typeof subcommand !== 'string') return ''
   const words = shellWords(subcommand)
   let i = 0
-  while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) i++
+  while (i < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || SKIP_HEAD_TOKENS.has(words[i]))) i++
   const head = words[i] || ''
   return isPlausibleBinary(head) ? head : ''
 }
