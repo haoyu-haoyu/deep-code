@@ -30,6 +30,7 @@ import type {
   FortressViolationRecord,
   IFortressViolationDb,
   ResourceKind,
+  RuleAction,
   RulesetLayer,
   StrictnessLevel,
   ToolSandboxProfile,
@@ -46,6 +47,7 @@ export interface IFortressSandboxManager extends ISandboxManager {
   recordFortressViolation(record: FortressViolationRecord): void
   setEffortLevel(effort: EffortLevel): Promise<void>
   getCurrentEffort(): EffortLevel
+  getDefaultDecision(): RuleAction
   setStrictnessByEffort(
     mapping: Record<EffortLevel, StrictnessLevel>,
   ): Promise<void>
@@ -321,6 +323,12 @@ export class FortressSandboxManager implements IFortressSandboxManager {
 
   getCurrentEffort(): EffortLevel {
     return this.#state.getCurrentEffort()
+  }
+
+  // The rule engine's no-match default decision for the current effort/strictness
+  // ('deny' at effort 'max'/paranoid). The paranoid Bash fs-read floor gates on this.
+  getDefaultDecision(): RuleAction {
+    return this.#state.getDefaultDecision()
   }
 
   setStrictnessByEffort(
