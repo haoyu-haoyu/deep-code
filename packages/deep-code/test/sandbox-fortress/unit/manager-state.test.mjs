@@ -475,3 +475,18 @@ test('H4 a rejecting/throwing violation backend does not break recording (best-e
   assert.doesNotThrow(() => s.recordFortressViolation({ toolName: 'X', event: { line: 'e' } }))
   assert.match(s.buildViolationFeedback(), /1 violation recorded/)
 })
+
+test('I1 resolveDecision case-folds a DENY fs rule (no case-bypass) but not an ALLOW (no over-grant)', () => {
+  // a fs DENY is matched case-insensitively → a differently-cased path is still denied
+  const d = createFortressManagerState({ now: frozen })
+  d.setRuleset('user', [{ layer: 'user', resource: 'fs-write', pattern: '/Users/me/.ssh/**', action: 'deny' }])
+  assert.equal(d.resolveDecision({ resource: 'fs-write', target: '/Users/me/.SSH/k' }).decision, 'deny')
+  assert.equal(d.resolveDecision({ resource: 'fs-write', target: '/Users/me/.ssh/k' }).decision, 'deny')
+  // a fs ALLOW is matched case-SENSITIVELY → a differently-cased path is NOT over-granted
+  // (falls through to the paranoid floor 'deny' at effort max)
+  const a = createFortressManagerState({ now: frozen })
+  a.setEffortLevel('max')
+  a.setRuleset('user', [{ layer: 'user', resource: 'fs-read', pattern: '/x/Secret', action: 'allow' }])
+  assert.equal(a.resolveDecision({ resource: 'fs-read', target: '/x/Secret' }).decision, 'allow')
+  assert.equal(a.resolveDecision({ resource: 'fs-read', target: '/x/secret' }).decision, 'deny')
+})
