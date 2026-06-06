@@ -80,6 +80,8 @@ import {
 export { BINARY_HIJACK_VARS, stripAllLeadingEnvVars, stripSafeWrappers }
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import { checkFortressProcessExecDecision } from '../../sandbox-fortress/adapter/processExecDecision.js'
+import { checkFortressBashReadDecision } from '../../sandbox-fortress/adapter/bashReadDecision.js'
+import { allWorkingDirectories, getResolvedWorkingDirPaths } from '../../utils/permissions/filesystem.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { windowsPathToPosixPath } from '../../utils/windowsPaths.js'
 import { BashTool } from './BashTool.js'
@@ -1538,6 +1540,27 @@ export async function bashToolHasPermission(
   // binary from static analysis; it is fail-safe (any parse/lookup error defers).
   const fortressExecDecision = checkFortressProcessExecDecision(input.command, BashTool.name)
   if (fortressExecDecision) return fortressExecDecision
+
+  // ── Fortress paranoid fs-read floor (F3 final item): at effort 'max' the no-match
+  // default is 'deny', already enforced for the Read/Edit/Write tools (PR-F); this closes
+  // the residual gap of filesystem READS done by a Bash command (`cat ~/.aws/credentials`)
+  // by enforcing per-call at the concrete target (the OS sandbox can't — reads are
+  // default-allow + macOS allowRead wins over denyRead). Fully inert below effort 'max'.
+  // System/workspace paths are allowlisted so the shell can still run; BEST-EFFORT (only
+  // direct `reader /path` forms; obfuscated/wrapped reads evade). Placed before sandbox
+  // auto-allow + host allow so a fortress read-deny can't be bypassed. Fail-safe defers.
+  const readFloorCtx = appState.toolPermissionContext
+  const fortressReadDecision = checkFortressBashReadDecision(
+    input.command,
+    BashTool.name,
+    // lazy: the SYMLINK-RESOLVED forms of the configured working dirs (originalCwd ∪
+    // additional), matching how the read target is resolved — so a project behind a
+    // symlink isn't falsely denied. Computed only if the paranoid gate passes.
+    () => [
+      ...new Set([...allWorkingDirectories(readFloorCtx)].flatMap(d => getResolvedWorkingDirPaths(d))),
+    ],
+  )
+  if (fortressReadDecision) return fortressReadDecision
 
   // Check sandbox auto-allow (which respects explicit deny/ask rules)
   // Only call this if sandboxing and auto-allow are both enabled

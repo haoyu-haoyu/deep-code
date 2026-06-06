@@ -18,6 +18,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const COPY = [
   'src/sandbox-fortress/adapter/processExecDecision.ts',
   'src/sandbox-fortress/rule-engine/processExec.mjs',
+  'src/sandbox-fortress/rule-engine/shellTokenize.mjs',
   'src/sandbox-fortress/rule-engine/fortressPermission.mjs',
 ]
 

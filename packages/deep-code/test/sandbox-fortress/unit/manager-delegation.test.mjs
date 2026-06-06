@@ -98,8 +98,10 @@ function runManagerProbe() {
 
     // effort (sync get + async-by-interface set)
     out.effortDefault = m.getCurrentEffort()
+    out.defaultDecisionOff = m.getDefaultDecision()
     await m.setEffortLevel('max')
     out.effortAfter = m.getCurrentEffort()
+    out.defaultDecisionMax = m.getDefaultDecision() // 'max' → paranoid → 'deny' (gates the read floor)
 
     // dry-run
     out.dryRunBefore = m.isDryRunMode()
@@ -172,6 +174,10 @@ test('FortressSandboxManager delegates rule-engine methods + enforces/passes-thr
   // delegation
   assert.equal(out.effortDefault, 'off')
   assert.equal(out.effortAfter, 'max')
+  // getDefaultDecision delegates to the effort core: 'max' → paranoid → 'deny' (the
+  // paranoid Bash fs-read floor gates on this); 'off' is not the paranoid 'deny'.
+  assert.equal(out.defaultDecisionMax, 'deny')
+  assert.notEqual(out.defaultDecisionOff, 'deny')
   assert.equal(out.dryRunBefore, false)
   assert.equal(out.dryRunAfter, true)
   assert.equal(out.rulesetLen, 1)

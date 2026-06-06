@@ -1,3 +1,5 @@
+import { shellWords } from './shellTokenize.mjs'
+
 // Pure, node-testable binary extraction for fortress process-exec enforcement
 // (F3 follow-up). Standalone — nothing imports it until the Bash gate wires it in.
 //
@@ -34,52 +36,8 @@
 // real (quote/escape-aware) word split, NOT a raw whitespace split: a raw split breaks
 // ordinary shell syntax such as a quoted-space env value or a quoted binary path
 // (`VAR="a b" rm …`, `"./my tool" …`), which would silently drop a matching rule. See
-// shellWords below.
-
-// Minimal POSIX-ish shell word splitter: split on UNQUOTED whitespace, honoring single
-// quotes (literal), double quotes (backslash escapes only \ " $ `), and backslash
-// escapes outside quotes. Quotes/escapes are RESOLVED (removed) so each word is the value
-// the shell would actually pass — this is what makes `VAR="a b" rm` tokenize to
-// ['VAR=a b', 'rm'] (env value intact, head = rm) and `"./my tool"` to ['./my tool'],
-// and folds `\rm`/`'rm'`/`"rm"` to `rm`. Never throws; on an unterminated quote it returns
-// the best-effort word collected so far.
-function shellWords(s) {
-  const words = []
-  let cur = ''
-  let inWord = false
-  let quote = null // "'" | '"' | null
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i]
-    if (quote === "'") {
-      if (c === "'") quote = null
-      else cur += c
-    } else if (quote === '"') {
-      if (c === '"') quote = null
-      else if (c === '\\' && i + 1 < s.length && '"\\$`'.includes(s[i + 1])) {
-        cur += s[i + 1]
-        i++
-      } else cur += c
-    } else if (c === "'" || c === '"') {
-      quote = c
-      inWord = true
-    } else if (c === '\\' && i + 1 < s.length) {
-      cur += s[i + 1]
-      i++
-      inWord = true
-    } else if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
-      if (inWord) {
-        words.push(cur)
-        cur = ''
-        inWord = false
-      }
-    } else {
-      cur += c
-      inWord = true
-    }
-  }
-  if (inWord || quote !== null) words.push(cur)
-  return words
-}
+// shellWords (the quote/escape-aware word splitter) now lives in ./shellTokenize.mjs so
+// the paranoid fs-read floor can reuse the exact same tested tokenizer.
 
 // A real invoked binary starts with an alphanumeric, path, or home char — never with
 // shell punctuation. splitCommand_DEPRECATED emits bare punctuation fragments for
