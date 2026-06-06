@@ -217,6 +217,12 @@ export function createFortressManagerState(options = {}) {
   // feeds both — the async DB (deep-cloned canonical audit, swappable for a
   // persistent backend) and this mirror (the sync source for per-turn feedback).
   const recentSync = []
+  // A MONOTONIC count of every usable violation recorded this session. recentSync is a
+  // bounded mirror (it shifts out old records past maxViolations), so its length plateaus
+  // at the cap — unusable as the per-turn feedback gate signal or the "N recorded this
+  // session" header. This counter never decrements, so getViolationCount() keeps advancing
+  // and the header reports the true session total even after the mirror saturates.
+  let totalRecorded = 0
 
   // The current effective rule corpus (deny-first absolute, expiry-filtered at the
   // clock boundary). Recomputed each call so a setRuleset/effort change is reflected.
@@ -312,11 +318,24 @@ export function createFortressManagerState(options = {}) {
         if (copy != null && typeof copy === 'object') {
           recentSync.push(copy)
           if (recentSync.length > maxViolations) recentSync.shift()
+          // Counted per USABLE record (matching what we mirror), so total ≥ mirror length
+          // always holds and a malformed-record flood can't inflate the session count.
+          totalRecorded++
         }
       }
     },
     buildViolationFeedback() {
-      return coreBuildViolationFeedback(recentSync, { dryRunActive: dryRun.isEnabled() })
+      // `total` reports the true session count even after the bounded mirror evicted old
+      // records, so the header reads "N recorded this session" (full total), not the cap.
+      return coreBuildViolationFeedback(recentSync, { dryRunActive: dryRun.isEnabled(), total: totalRecorded })
+    },
+    // The MONOTONIC count of recorded violations — an O(1), allocation-free "has anything
+    // new happened?" signal for the per-turn feedback gate (so the aggregate is surfaced
+    // once per NEW violation, not re-built/re-injected every turn). Reads the monotonic
+    // counter, NOT recentSync.length, so it keeps advancing past the mirror's cap — past
+    // maxViolations the mirror plateaus but new violations must still trip the gate.
+    getViolationCount() {
+      return totalRecorded
     },
 
     // ── effort / strictness ───────────────────────────────────────────────

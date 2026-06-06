@@ -228,13 +228,26 @@ test('C4 limit caps the shown lines and reports how many are hidden', () => {
   const many = Array.from({ length: 20 }, (_, i) => rec(i, `v${i}`))
   const fb = buildViolationFeedback(many, { limit: 5 })
   assert.equal(fb.split('\n').length, 6) // header + 5
-  assert.match(fb, /\(showing last 5\)/)
+  assert.match(fb, /\(showing last 5 of 20\)/)
   // the shown 5 are the MOST RECENT (v15..v19)
   assert.match(fb, /v19/)
   assert.doesNotMatch(fb, /v14\b/)
   // invalid limit → default 10
   assert.equal(buildViolationFeedback(many, { limit: 0 }).split('\n').length, 11)
   assert.equal(buildViolationFeedback(many, { limit: -1 }).split('\n').length, 11)
+})
+
+test('C4b a bounded-mirror caller passes the TRUE total → header reports it, not the mirror length', () => {
+  // Simulates managerState after the mirror saturated: it holds only the last 3 records
+  // but 50 were recorded this session. The header must read the true total, and the
+  // "showing last" note must reflect that more than the shown set exist.
+  const mirror = Array.from({ length: 3 }, (_, i) => rec(i, `v${i}`))
+  const fb = buildViolationFeedback(mirror, { total: 50 })
+  assert.match(fb, /^Sandbox policy: 50 violations recorded this session/)
+  assert.match(fb, /\(showing last 3 of 50\)/)
+  // a bogus/too-small total can't shrink the count below the records actually held
+  assert.match(buildViolationFeedback(mirror, { total: 1 }), /^Sandbox policy: 3 violations recorded/)
+  assert.match(buildViolationFeedback(mirror, { total: 'x' }), /^Sandbox policy: 3 violations recorded/)
 })
 
 test('C5 event summary falls back line → message → JSON, never throws', () => {

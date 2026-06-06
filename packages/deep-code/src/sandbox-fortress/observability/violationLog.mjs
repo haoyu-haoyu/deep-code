@@ -181,8 +181,10 @@ function summarizeEvent(event) {
  * is NOT for the cached prompt prefix; it is per-turn feedback. Deterministic: no
  * clock, output depends only on the records + options.
  * @param {Array<object>} records  FortressViolationRecord[] (e.g. from listViolations)
- * @param {{limit?: number, dryRunActive?: boolean}} [options]  cap the shown lines
- *   (default 10); dryRunActive notes the session is in dry-run.
+ * @param {{limit?: number, dryRunActive?: boolean, total?: number}} [options]  cap the
+ *   shown lines (default 10); dryRunActive notes the session is in dry-run; `total` is the
+ *   TRUE monotonic session count when `records` is a bounded mirror (so the header reports
+ *   the real total, not the capped mirror length — see managerState.getViolationCount).
  * @returns {string|null}
  */
 export function buildViolationFeedback(records, options = {}) {
@@ -192,12 +194,18 @@ export function buildViolationFeedback(records, options = {}) {
   const rawLimit = options?.limit
   const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? rawLimit : 10
   const shown = list.slice(-limit) // most-recent `limit`, oldest→newest
-  const hidden = list.length - shown.length
 
-  const plural = list.length === 1 ? 'violation' : 'violations'
-  const headerParts = [`Sandbox policy: ${list.length} ${plural} recorded this session`]
+  // `total` lets a bounded-mirror caller report the TRUE session count even after older
+  // records were evicted. Only honored when it's a sane integer ≥ what we actually hold
+  // (a smaller/garbage total can't shrink the count below the records in hand).
+  const rawTotal = options?.total
+  const total = Number.isInteger(rawTotal) && rawTotal >= list.length ? rawTotal : list.length
+  const hidden = total - shown.length // evicted-from-mirror + beyond-limit, both unshown
+
+  const plural = total === 1 ? 'violation' : 'violations'
+  const headerParts = [`Sandbox policy: ${total} ${plural} recorded this session`]
   if (options?.dryRunActive === true) headerParts.push('(dry-run: logged, not enforced)')
-  if (hidden > 0) headerParts.push(`(showing last ${shown.length})`)
+  if (hidden > 0) headerParts.push(`(showing last ${shown.length} of ${total})`)
 
   const lines = shown.map(r => {
     // Each record's line is wrapped so a throwing getter on any field can't escape
