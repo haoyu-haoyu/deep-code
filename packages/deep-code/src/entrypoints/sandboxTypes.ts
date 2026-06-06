@@ -170,6 +170,15 @@ export const SandboxSettingsSchema = lazySchema(() =>
  *         "reason"?: string, "expiresAt"?: number }
  *     ]
  *   }
+ *
+ * NOTE on `process-exec`: it is a BEST-EFFORT / defense-in-depth control over the Bash
+ * tool, not a hard boundary. It matches the invoked binary of a command (use a leading
+ * double-star glob to catch `rm`, `/bin/rm`, and `./rm` alike) and reliably catches
+ * direct invocations, but static shell analysis can be evaded — command substitution /
+ * `eval` / `bash -c`, leading redirections, ANSI-C quoting, and wrapper commands (a rule
+ * on `sudo rm` matches `sudo`, not `rm`). See sandbox-fortress/rule-engine/processExec.mjs
+ * for the full evasion list. fs-read/fs-write rules (enforced at the concrete path) are
+ * not subject to these limits.
  */
 export const FortressSettingsSchema = lazySchema(() =>
   z.unknown().describe('DeepCode Sandbox Fortress rules; shape validated + path-normalized at load time'),

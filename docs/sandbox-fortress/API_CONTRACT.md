@@ -68,7 +68,9 @@ Allowed values are fixed and ordered as `builtin-default < org < agent < user`. 
 export type ResourceKind = 'fs-read' | 'fs-write' | 'net-host' | 'process-exec'
 ```
 
-The resource class a rule controls. `fs-read` and `fs-write` patterns match normalized file-system paths; `net-host` patterns match hostnames, domains, or CIDR-expanded network targets; `process-exec` patterns match executable names or resolved executable paths. Adding values is a minor contract change only if the default action is implicit deny and old callers continue to compile.
+The resource class a rule controls. `fs-read` and `fs-write` patterns match normalized file-system paths; `net-host` patterns match hostnames, domains, or CIDR-expanded network targets; `process-exec` patterns match the invoked binary token **as written** in the command (`rm`, `/bin/rm`, `./tool`) — there is no `PATH` resolution, so a rule on `rm` does not by itself match `/bin/rm`; use a glob such as `**/rm` for cross-form matching. Adding values is a minor contract change only if the default action is implicit deny and old callers continue to compile.
+
+**Enforcement fidelity.** `fs-read`/`fs-write`/`net-host` rules are enforced against a concrete resolved target (path / host), so matching is faithful. `process-exec` enforcement over the Bash tool is **best-effort / defense-in-depth, not a hard boundary**: it extracts the invoked binary from the command via static analysis, which catches direct invocations but can be evaded (command substitution / `eval` / `bash -c`, leading redirections, `$'…'` quoting, and wrapper commands such as `sudo rm` matching `sudo` not `rm`). The default build also runs without the tree-sitter parser (legacy splitter), which widens these gaps. Treat `process-exec` deny/ask as a tripwire that reduces attack surface, not a guarantee. The canonical evasion list lives in `packages/deep-code/src/sandbox-fortress/rule-engine/processExec.mjs`.
 
 ### `RuleAction`
 
