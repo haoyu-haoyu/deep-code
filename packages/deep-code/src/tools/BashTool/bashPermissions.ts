@@ -79,6 +79,7 @@ import {
 } from './commandStripping.mjs'
 export { BINARY_HIJACK_VARS, stripAllLeadingEnvVars, stripSafeWrappers }
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
+import { checkFortressProcessExecDecision } from '../../sandbox-fortress/adapter/processExecDecision.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { windowsPathToPosixPath } from '../../utils/windowsPaths.js'
 import { BashTool } from './BashTool.js'
@@ -1526,6 +1527,17 @@ export async function bashToolHasPermission(
       }
     }
   }
+
+  // ── Fortress process-exec gate (F3 follow-up): block/prompt a command that invokes a
+  // binary an explicit `process-exec` rule denies/asks. Placed BEFORE sandbox auto-allow
+  // and the host allow rules so a fortress deny can't be bypassed by them. MATCHED RULES
+  // ONLY — the paranoid no-match floor (which would block every un-ruled command) is the
+  // separately-deferred item — so with no process-exec rules this is inert and the
+  // decision is byte-identical to today. BEST-EFFORT / defense-in-depth: too-complex
+  // commands already returned 'ask' above, and nested command substitution can hide a
+  // binary from static analysis; it is fail-safe (any parse/lookup error defers).
+  const fortressExecDecision = checkFortressProcessExecDecision(input.command, BashTool.name)
+  if (fortressExecDecision) return fortressExecDecision
 
   // Check sandbox auto-allow (which respects explicit deny/ask rules)
   // Only call this if sandboxing and auto-allow are both enabled
