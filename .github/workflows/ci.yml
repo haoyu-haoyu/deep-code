@@ -103,6 +103,39 @@ jobs:
         run: cd packages/deep-code && bun test test/tui-deepseek.test.mjs
         continue-on-error: true # bun harness can be flaky on CI; non-blocking
 
+  dist-check:
+    name: Verify dist is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # IMPORTANT: do NOT run `npm ci` here. packages/deep-code declares 0 runtime
+      # dependencies and `react` is an off-npm vendored fork, so the full dependency tree
+      # is VENDORED (committed under packages/deep-code/node_modules). `npm ci` would wipe
+      # that vendored tree (reinstalling only the lockfile's handful of packages), and the
+      # build could no longer resolve @modelcontextprotocol/sdk, lodash-es, the react fork,
+      # etc. The checkout already restores the vendored node_modules, so the build resolves
+      # everything directly from it.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          # Pinned: a byte-exact rebuild-and-diff needs the same bundler that built the
+          # committed dist. Bump in lockstep with the bun used for `build:full-cli` locally.
+          bun-version: 1.2.19
+
+      - name: Rebuild the tracked full-CLI bundle (from the vendored node_modules)
+        run: cd packages/deep-code && bun run build:full-cli
+
+      - name: Assert dist/deepcode-full.mjs matches a fresh build
+        shell: bash
+        run: |
+          if ! git diff --exit-code -- packages/deep-code/dist/deepcode-full.mjs; then
+            echo "::error::dist/deepcode-full.mjs is stale. Run 'bun run build:full-cli' in packages/deep-code (with the pinned bun) and commit the rebuilt bundle."
+            exit 1
+          fi
+          echo "dist/deepcode-full.mjs is up to date."
+
   perf-baseline:
     name: Perf baseline + regression gate
     runs-on: ubuntu-latest
