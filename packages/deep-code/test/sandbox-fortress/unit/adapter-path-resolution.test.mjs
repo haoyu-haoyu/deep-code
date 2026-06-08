@@ -31,6 +31,11 @@ const networkDecisionSourcePath = resolve(
   packageRoot,
   'src/sandbox-fortress/networkDecision.mjs',
 )
+// legacy.ts shares hasUnfaithfulGlob from the pure projector (../rule-engine/fsProjector.mjs).
+const fsProjectorSourcePath = resolve(
+  packageRoot,
+  'src/sandbox-fortress/rule-engine/fsProjector.mjs',
+)
 const harnessSourcePath = resolve(
   packageRoot,
   'test/sandbox-fortress/harness.mjs',
@@ -62,6 +67,11 @@ function writeLegacyFixture(root) {
     networkDecisionSourcePath,
     join(root, 'src/sandbox-fortress/networkDecision.mjs'),
   )
+  // The pure projector legacy.ts shares hasUnfaithfulGlob from (a leaf, no deps). Its dir
+  // (rule-engine/) is new to the fixture, so create it before copyFileSync (which won't).
+  const fsProjectorTarget = join(root, 'src/sandbox-fortress/rule-engine/fsProjector.mjs')
+  mkdirSync(dirname(fsProjectorTarget), { recursive: true })
+  copyFileSync(fsProjectorSourcePath, fsProjectorTarget)
 
   const harnessTarget = join(root, 'test/sandbox-fortress/harness.mjs')
   mkdirSync(dirname(harnessTarget), { recursive: true })
