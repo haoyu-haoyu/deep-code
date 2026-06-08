@@ -146,6 +146,9 @@ function runProbe() {
     out.dryRunMatchedDeny = C('cat /etc/userdeny')       // matched deny dry-run → defer (null) but record would-deny
     out.recordedAfterDry = __recorded.length
     out.recordedLast = __recorded[__recorded.length - 1]
+    out.dryRunMatchedAsk = C('cat ~/userask/x')          // matched ask dry-run → defer (null) but record as ASK
+    out.recordedAfterDryAsk = __recorded.length
+    out.recordedLastAsk = __recorded[__recorded.length - 1]
     process.stdout.write(JSON.stringify(out))
   `
   const result = spawnSync('bun', ['--eval', script], { cwd: root, encoding: 'utf8' })
@@ -209,4 +212,11 @@ test('checkFortressBashReadDecision: paranoid floor (live-cwd, symlink-resolved,
   assert.equal(out.recordedAfterDry, 3)
   assert.equal(out.recordedLast.dryRun, true)
   assert.match(out.recordedLast.event.line, /would deny/)
+
+  // DRY-RUN matched ASK: defers (no prompt) but records — labeled an ASK, not a deny.
+  assert.equal(out.dryRunMatchedAsk, null)
+  assert.equal(out.recordedAfterDryAsk, 4)
+  assert.equal(out.recordedLastAsk.dryRun, true)
+  assert.match(out.recordedLastAsk.event.line, /would require confirmation for fs-read/)
+  assert.doesNotMatch(out.recordedLastAsk.event.line, /denied|would deny/)
 })

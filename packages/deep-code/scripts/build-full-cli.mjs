@@ -652,10 +652,15 @@ if (!outputPath) {
   process.exit(1)
 }
 
-const source = (await readFile(outputPath, 'utf8')).replace(
-  /^\/\/ src\/entrypoints\/cli\.tsx\n/gm,
-  '',
-)
+const source = (await readFile(outputPath, 'utf8'))
+  .replace(/^\/\/ src\/entrypoints\/cli\.tsx\n/gm, '')
+  // Make the bundle MACHINE-INDEPENDENT + REPRODUCIBLE: the bundler stamps virtual text
+  // modules with a `/* deepcode-text:<absolute path> */` provenance comment, which would
+  // otherwise (a) leak the builder's home dir into the tracked dist and (b) differ by
+  // checkout path across machines — defeating the dist-staleness CI guard. Rewrite the
+  // absolute package root to a package-relative path (the comments are non-functional).
+  .split(`deepcode-text:${packageRoot}/`)
+  .join('deepcode-text:')
 const header = '#!/usr/bin/env node\n// Deep Code full CLI bundled artifact\n'
 await writeFile(outFile, source.startsWith('#!') ? source : `${header}${source}`)
 await rm(buildOutDir, { recursive: true, force: true })

@@ -94,6 +94,9 @@ function runProbe() {
     out.dryRunDeny = C('rm -rf /x')                     // defers (no block) but records would-deny
     out.recordedAfterDry = __recorded.length
     out.recordedDry = __recorded[__recorded.length - 1]
+    out.dryRunAsk = C('ask-bin foo')                    // dry-run matched ask → defers (no prompt) but records as ASK
+    out.recordedAfterDryAsk = __recorded.length
+    out.recordedDryAsk = __recorded[__recorded.length - 1]
     process.stdout.write(JSON.stringify(out))
   `
   const result = spawnSync('bun', ['--eval', script], { cwd: root, encoding: 'utf8' })
@@ -157,4 +160,11 @@ test('checkFortressProcessExecDecision: matched deny→deny, matched ask→ask, 
   assert.equal(out.recordedAfterDry, 6)
   assert.equal(out.recordedDry.dryRun, true)
   assert.match(out.recordedDry.event.line, /would deny/)
+
+  // DRY-RUN matched ASK: defers (no prompt) but records — labeled an ASK, not a deny.
+  assert.equal(out.dryRunAsk, null)
+  assert.equal(out.recordedAfterDryAsk, 7)
+  assert.equal(out.recordedDryAsk.dryRun, true)
+  assert.match(out.recordedDryAsk.event.line, /would require confirmation for process-exec/)
+  assert.doesNotMatch(out.recordedDryAsk.event.line, /denied|would deny/)
 })

@@ -90,6 +90,11 @@ function runProbe() {
     out.memberResolveError = checkFortressFileDecision('fs-read', ['/deny/x', '/THROW/y'], 'Read')
     out.lookupError = checkFortressFileDecision('fs-read', '/errlookup/x', 'Read')
     out.recordedFinal = __recorded.length // unchanged: error paths defer before recording
+    // DRY-RUN matched ASK: defers (does NOT prompt — that would be a behavior change) but
+    // records, labeled as an ASK (never mislogged as a deny).
+    out.dryRunAsk = checkFortressFileDecision('fs-write', '/ask/z', 'Edit')
+    out.recordedAfterDryRunAsk = __recorded.length
+    out.recordedDryRunAsk = __recorded[__recorded.length - 1]
     process.stdout.write(JSON.stringify(out))
   `
   const result = spawnSync('bun', ['--eval', script], { cwd: root, encoding: 'utf8' })
@@ -136,4 +141,13 @@ test('checkFortressFileDecision: deny→deny, matched-ask→ask, no-match→defe
   assert.equal(out.memberResolveError, null) // /deny/x would deny, but /THROW resolution error → defer
   assert.equal(out.lookupError, null) // reason 'error:fail-safe' → defer
   assert.equal(out.recordedFinal, 4) // no new records from the error paths
+
+  // DRY-RUN matched ASK: defers (no prompt) but records — and the record is labeled an ASK,
+  // not a deny. This closes the dry-run ask asymmetry (previously a matched ask still
+  // prompted in dry-run AND was never recorded).
+  assert.equal(out.dryRunAsk, null) // deferred, not prompted
+  assert.equal(out.recordedAfterDryRunAsk, 5) // the would-be ask is recorded
+  assert.equal(out.recordedDryRunAsk.dryRun, true)
+  assert.match(out.recordedDryRunAsk.event.line, /would require confirmation for fs-write/)
+  assert.doesNotMatch(out.recordedDryRunAsk.event.line, /denied|would deny/)
 })
