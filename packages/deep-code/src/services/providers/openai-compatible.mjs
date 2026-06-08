@@ -6,6 +6,7 @@ import {
   // format-neutral name here.
   streamDeepSeekResponseBody as streamChatCompletionsBody,
 } from './deepseek.mjs'
+import { byteCompare } from '../../cache/byte-order.mjs'
 import { mapMessagesToDeepSeek } from '../../messages/deepseek-normalizer.mjs'
 import { toolToDeepSeekFunctionSchema } from '../../tools/deepseek-schema.mjs'
 import { assertModelProvider } from './types.mjs'
@@ -98,7 +99,9 @@ export function createOpenAICompatibleProvider({
     const functionTools = tools.length
       ? await Promise.all(
           [...tools]
-            .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+            // byteCompare (NOT localeCompare): this manifest rides the cached prefix, so
+            // its order must be locale-independent (see cache/byte-order.mjs).
+            .sort((a, b) => byteCompare(a.name, b.name))
             .map(tool =>
               toolToDeepSeekFunctionSchema(tool, {
                 ...toolSchemaOptions,

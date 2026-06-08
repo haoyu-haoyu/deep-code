@@ -1,7 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { fortressDecisionDirective } from '../../../src/sandbox-fortress/rule-engine/fortressPermission.mjs'
+import {
+  fortressDecisionDirective,
+  fortressRecordVerb,
+} from '../../../src/sandbox-fortress/rule-engine/fortressPermission.mjs'
 
 // ── F3 PR-F: fortress decision → file-tool enforcement directive (pure) ──────────
 
@@ -13,6 +16,7 @@ test('A1 a MATCHED deny → block + record', () => {
   assert.equal(d.record, true)
   assert.equal(d.dryRun, false)
   assert.equal(d.matched, true)
+  assert.equal(d.action, 'deny')
 })
 
 test('A2 a no-match (paranoid) deny → block but do NOT record (effort posture, not a breach)', () => {
@@ -26,6 +30,7 @@ test('A3 a MATCHED ask rule → prompt (ask), no record', () => {
   const d = fortressDecisionDirective({ decision: 'ask', rule: { ...matchedRule, action: 'ask' }, reason: 'match' })
   assert.equal(d.enforce, 'ask')
   assert.equal(d.record, false)
+  assert.equal(d.action, 'ask')
 })
 
 test('A4 the no-match ask default (effort off/standard) → DEFER (inert; host decides)', () => {
@@ -57,5 +62,33 @@ test('A7 garbage / missing decision → DEFER (fail-safe, never enforces a block
     const d = fortressDecisionDirective(bad)
     assert.equal(d.enforce, 'defer', `bad=${JSON.stringify(bad)}`)
     assert.equal(d.record, false)
+    assert.equal(d.action, undefined)
   }
+})
+
+test('V1 fortressRecordVerb labels every (action, dryRun) — the single source of truth all 3 adapters share', () => {
+  // The ask verbs (esp. the normal-mode "requires confirmation for") are not reachable via
+  // the adapters today (a live ask is not recorded), so pin them directly here so the shared
+  // label can never silently regress to a deny verb.
+  assert.equal(fortressRecordVerb('deny', false), 'denied')
+  assert.equal(fortressRecordVerb('deny', true), 'would deny')
+  assert.equal(fortressRecordVerb('ask', false), 'requires confirmation for')
+  assert.equal(fortressRecordVerb('ask', true), 'would require confirmation for')
+  // an unknown/undefined action falls back to the deny verbs (defensive; only ever hit on
+  // non-recording defer paths) — never throws.
+  assert.equal(fortressRecordVerb(undefined, false), 'denied')
+  assert.equal(fortressRecordVerb(undefined, true), 'would deny')
+})
+
+test('A8 DRY-RUN: a would-be (matched) ask does NOT prompt (defer) but IS recorded with dryRun', () => {
+  const d = fortressDecisionDirective({ decision: 'ask', rule: { ...matchedRule, action: 'ask' } }, { dryRun: true })
+  assert.equal(d.enforce, 'defer') // not actually prompted in dry-run (no behavior change)
+  assert.equal(d.record, true) // but surfaced so the model/UI sees what WOULD have prompted
+  assert.equal(d.dryRun, true)
+  assert.equal(d.matched, true)
+  assert.equal(d.action, 'ask') // labeled ask, so a recorder never mislogs it as a deny
+  // a no-match ask default (inert) in dry-run stays a plain defer, unrecorded
+  const noMatch = fortressDecisionDirective({ decision: 'ask', rule: null }, { dryRun: true })
+  assert.equal(noMatch.enforce, 'defer')
+  assert.equal(noMatch.record, false)
 })

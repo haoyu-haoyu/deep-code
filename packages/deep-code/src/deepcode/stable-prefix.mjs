@@ -3,6 +3,7 @@ import {
   createStableHash,
   stableJsonStringify,
 } from '../cache/deepseek-cache.mjs'
+import { byteCompare } from '../cache/byte-order.mjs'
 import { toolToDeepSeekFunctionSchema } from '../tools/deepseek-schema.mjs'
 import { providerSupports } from './provider-capabilities.mjs'
 
@@ -58,9 +59,9 @@ export async function createDeepCodeStablePrefix({
   const stableSkills = skills
     .map(skill => stableSkillManifest(skill))
     .sort((a, b) => {
-      const nameOrder = String(a.name).localeCompare(String(b.name))
+      const nameOrder = byteCompare(a.name, b.name)
       if (nameOrder !== 0) return nameOrder
-      return String(a.path ?? '').localeCompare(String(b.path ?? ''))
+      return byteCompare(a.path ?? '', b.path ?? '')
     })
   const prefixHash = createDeepSeekPrefixHash({
     systemPrompt,
@@ -120,7 +121,7 @@ async function createStableToolManifest(tools, toolSchemaOptions = {}) {
     manifest.push(stableTool)
   }
 
-  return manifest.sort((a, b) => a.name.localeCompare(b.name))
+  return manifest.sort((a, b) => byteCompare(a.name, b.name))
 }
 
 function stableSkillManifest(skill) {

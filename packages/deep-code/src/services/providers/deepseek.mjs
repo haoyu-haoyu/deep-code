@@ -5,6 +5,7 @@ import {
 import {
   createDeepSeekCacheUserId,
 } from '../../cache/deepseek-cache.mjs'
+import { byteCompare } from '../../cache/byte-order.mjs'
 import {
   mapMessagesToDeepSeek,
   normalizeToolCalls,
@@ -171,7 +172,9 @@ export async function buildDeepSeekRequest({
       tools.length > 0
         ? await Promise.all(
             [...tools]
-              .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+              // byteCompare (NOT localeCompare): this manifest rides the DeepSeek cached
+              // prefix, so its order must be locale-independent (see cache/byte-order.mjs).
+              .sort((a, b) => byteCompare(a.name, b.name))
               .map(tool =>
                 toolToDeepSeekFunctionSchema(tool, {
                   ...toolSchemaOptions,

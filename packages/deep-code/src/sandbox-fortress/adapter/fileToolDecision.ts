@@ -1,16 +1,24 @@
 import { expandPath } from '../../utils/path.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import type { PermissionDecision } from '../../types/permissions.js'
-import { fortressDecisionDirective } from '../rule-engine/fortressPermission.mjs'
+import { fortressDecisionDirective, fortressRecordVerb } from '../rule-engine/fortressPermission.mjs'
 import type { FortressViolationEvent, ResourceKind } from '../types.js'
 
 // A monotonically increasing violation id (process-local; uniqueness only needs to be
 // per-session for the violation log).
 let violationSeq = 0
 
-function recordFortressDeny(resource: ResourceKind, target: string, toolName: string, dryRun: boolean): void {
+function recordFortressDecision(
+  resource: ResourceKind,
+  target: string,
+  toolName: string,
+  dryRun: boolean,
+  action: 'deny' | 'ask' | undefined,
+): void {
   try {
-    const verb = dryRun ? 'would deny' : 'denied'
+    // Label by the matched action (shared verb) so a would-be ASK (recorded only in
+    // dry-run) is never mislogged as a deny.
+    const verb = fortressRecordVerb(action, dryRun)
     SandboxManager.recordFortressViolation({
       id: `fortress-file-${++violationSeq}`,
       timestamp: Date.now(),
@@ -81,10 +89,12 @@ export function checkFortressFileDecision(
   }
   if (evaluated.length === 0) return null
 
-  // Record the matched-deny that blocks (or, in dry-run, the would-be deny). One record
-  // per operation — recording across every resolved path would be noisy.
+  // Record the matched event that blocks/prompts (or, in dry-run, the would-be deny OR
+  // would-be ask). One record per operation — recording across every resolved path would
+  // be noisy.
   const recordHit = evaluated.find(e => e.directive.record)
-  if (recordHit) recordFortressDeny(resource, recordHit.target, toolName, recordHit.directive.dryRun)
+  if (recordHit)
+    recordFortressDecision(resource, recordHit.target, toolName, recordHit.directive.dryRun, recordHit.directive.action)
 
   // deny-first across the resolved set: a deny on ANY resolved path blocks.
   const denyHit = evaluated.find(e => e.directive.enforce === 'deny')

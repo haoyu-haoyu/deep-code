@@ -5,16 +5,22 @@ import { expandPath } from '../../utils/path.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import type { PermissionDecision } from '../../types/permissions.js'
 import { extractBashReadPaths } from '../rule-engine/bashReadPaths.mjs'
-import { fortressDecisionDirective } from '../rule-engine/fortressPermission.mjs'
+import { fortressDecisionDirective, fortressRecordVerb } from '../rule-engine/fortressPermission.mjs'
 import { isAllowlistedRead } from '../rule-engine/systemReadAllowlist.mjs'
 import type { FortressViolationEvent } from '../types.js'
 
 // A monotonically increasing violation id (process-local; per-session uniqueness only).
 let violationSeq = 0
 
-function recordFortressDeny(target: string, toolName: string, dryRun: boolean): void {
+function recordFortressDecision(
+  target: string,
+  toolName: string,
+  dryRun: boolean,
+  action: 'deny' | 'ask' | undefined,
+): void {
   try {
-    const verb = dryRun ? 'would deny' : 'denied'
+    // Shared verb so a would-be ASK (recorded only in dry-run) is never mislogged as a deny.
+    const verb = fortressRecordVerb(action, dryRun)
     SandboxManager.recordFortressViolation({
       id: `fortress-read-${++violationSeq}`,
       timestamp: Date.now(),
@@ -158,10 +164,10 @@ export function checkFortressBashReadDecision(
   }
   if (evaluated.length === 0) return null
 
-  // Record the matched-deny that blocks (or, in dry-run, the would-be deny). One record
-  // per command. The no-match paranoid floor is intentionally not recorded (no spam).
+  // Record the matched event that blocks (or, in dry-run, the would-be deny OR would-be
+  // ask). One record per command. The no-match paranoid floor is not recorded (no spam).
   const recordHit = evaluated.find(e => e.directive.record)
-  if (recordHit) recordFortressDeny(recordHit.target, toolName, recordHit.directive.dryRun)
+  if (recordHit) recordFortressDecision(recordHit.target, toolName, recordHit.directive.dryRun, recordHit.directive.action)
 
   // deny-first across the read paths + their resolved forms: a deny on ANY blocks the
   // whole command (hard-DENY).

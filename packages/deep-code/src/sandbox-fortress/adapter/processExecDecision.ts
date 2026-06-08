@@ -1,7 +1,7 @@
 import { splitCommand_DEPRECATED } from '../../utils/bash/commands.js'
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
 import type { PermissionDecision } from '../../types/permissions.js'
-import { fortressDecisionDirective } from '../rule-engine/fortressPermission.mjs'
+import { fortressDecisionDirective, fortressRecordVerb } from '../rule-engine/fortressPermission.mjs'
 import { extractInvokedBinaries } from '../rule-engine/processExec.mjs'
 import type { FortressViolationEvent } from '../types.js'
 
@@ -9,9 +9,15 @@ import type { FortressViolationEvent } from '../types.js'
 // per-session for the violation log).
 let violationSeq = 0
 
-function recordFortressDeny(target: string, toolName: string, dryRun: boolean): void {
+function recordFortressDecision(
+  target: string,
+  toolName: string,
+  dryRun: boolean,
+  action: 'deny' | 'ask' | undefined,
+): void {
   try {
-    const verb = dryRun ? 'would deny' : 'denied'
+    // Shared verb so a would-be ASK (recorded only in dry-run) is never mislogged as a deny.
+    const verb = fortressRecordVerb(action, dryRun)
     SandboxManager.recordFortressViolation({
       id: `fortress-exec-${++violationSeq}`,
       timestamp: Date.now(),
@@ -77,10 +83,10 @@ export function checkFortressProcessExecDecision(command: string, toolName: stri
   }
   if (evaluated.length === 0) return null
 
-  // Record the matched-deny that blocks (or, in dry-run, the would-be deny). One record
-  // per command — recording every denied binary would be noisy.
+  // Record the matched event that blocks (or, in dry-run, the would-be deny OR would-be
+  // ask). One record per command — recording every denied binary would be noisy.
   const recordHit = evaluated.find(e => e.directive.record)
-  if (recordHit) recordFortressDeny(recordHit.target, toolName, recordHit.directive.dryRun)
+  if (recordHit) recordFortressDecision(recordHit.target, toolName, recordHit.directive.dryRun, recordHit.directive.action)
 
   // deny-first across the invoked binaries: a deny on ANY blocks the whole command.
   const denyHit = evaluated.find(e => e.directive.enforce === 'deny')
