@@ -43,6 +43,44 @@ function matchesAny(host, patterns) {
 }
 
 /**
+ * The fortress net-host rules that are PARSED-BUT-INERT — i.e. accepted by the config
+ * loader and resolvable via resolveFortressDecision('net-host', …), but enforced by NO
+ * sandbox layer. Unlike fs-write (a non-projectable deny is still enforced for the file
+ * tools), net-host has no consumer at all: there is no network projector, and all network
+ * enforcement (the sandbox-runtime config seeded with sandbox.network allowed/denied
+ * domains + WebFetch domain rules, plus the session-global deny callback in legacy.ts) is
+ * driven by SETTINGS — never by fortress net-host rules. So EVERY
+ * net-host rule (deny / ask / allow) is silently a no-op, and the doctor surfaces them
+ * (getFortressUnenforcedNetHostWarnings → detectFortressUnenforcedNetHostWarnings) so a
+ * rule is never mistaken for an active network control. Returned as
+ * "net-host <action> <pattern>" lines. Defensive: never throws.
+ * @param {Array<object>} effectiveRules
+ * @returns {string[]}
+ */
+export function fortressUnenforcedNetHostWarnings(effectiveRules) {
+  const out = []
+  if (!Array.isArray(effectiveRules)) return out
+  for (const rule of effectiveRules) {
+    if (rule == null || typeof rule !== 'object') continue
+    let resource
+    let action
+    let pattern
+    try {
+      ;({ resource, action, pattern } = rule)
+    } catch {
+      continue
+    }
+    if (resource !== 'net-host') continue
+    if (typeof pattern !== 'string' || pattern === '') continue
+    // action defaults to a readable placeholder if absent/garbage, so a malformed rule
+    // still surfaces (its pattern is the actionable part) rather than being dropped.
+    const act = typeof action === 'string' && action !== '' ? action : '?'
+    out.push(`net-host ${act} ${pattern}`)
+  }
+  return out
+}
+
+/**
  * Resolve the network decision for a host, deny-before-allow (the runtime's
  * ordering), then the allowManagedDomainsOnly global block, else defer ('ask').
  * @param {object} args

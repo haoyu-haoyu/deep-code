@@ -567,6 +567,33 @@ export function detectFortressUnenforcedWriteWarnings(): Array<{
   ]
 }
 
+export function detectFortressUnenforcedNetHostWarnings(): Array<{
+  issue: string
+  fix: string
+}> {
+  // CROSS-PLATFORM: fortress net-host rules are parsed + resolvable but enforced by NO
+  // sandbox layer (there is no network projector; session network policy comes from
+  // settings.deniedDomains / managed-domains, not fortress rules). Surface them so a
+  // net-host rule is never mistaken for an active network control.
+  const patterns = SandboxManager.getFortressUnenforcedNetHostWarnings()
+  if (patterns.length === 0) {
+    return []
+  }
+  const displayPatterns = patterns.slice(0, 3).join(', ')
+  const remaining = patterns.length - 3
+  const patternList =
+    remaining > 0 ? `${displayPatterns} (${remaining} more)` : displayPatterns
+  return [
+    {
+      issue: getMessage('doctor.warning.fortressUnenforcedNetHost.issue'),
+      fix: getMessage('doctor.warning.fortressUnenforcedNetHost.fix', {
+        count: patterns.length,
+        patternList,
+      }),
+    },
+  ]
+}
+
 export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
   const installationType = await getCurrentInstallationType()
   const version =
@@ -582,6 +609,10 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
   // Add cross-platform fortress unenforced-write warnings (a fortress fs-write deny that
   // is not OS-projected and so not enforced for shell commands on any platform)
   warnings.push(...detectFortressUnenforcedWriteWarnings())
+
+  // Add cross-platform fortress unenforced-net-host warnings (net-host rules are parsed
+  // but enforced by no sandbox layer)
+  warnings.push(...detectFortressUnenforcedNetHostWarnings())
 
   // Add warnings for leftover npm installations when running native
   if (installationType === 'native') {

@@ -2298,6 +2298,8 @@ export const ZH_HANS_MESSAGES = {
   "doctor.versions.fetchFailed": "└ 获取版本失败",
   "doctor.versions.latest": "└ 最新版本：",
   "doctor.versions.stable": "└ 稳定版本：",
+  "doctor.warning.fortressUnenforcedNetHost.fix": "发现 {count} 个未被任何沙箱层强制的 Fortress net-host 规则：{patternList}。net-host（网络）规则会被解析但未接入强制；会话网络策略来自设置（deniedDomains / allowedDomains / 受管域名），而非 Fortress 规则。在 net-host 强制落地前，请使用这些设置进行网络控制。",
+  "doctor.warning.fortressUnenforcedNetHost.issue": "部分 Sandbox Fortress net-host 规则已被解析，但未被任何沙箱层强制",
   "doctor.warning.fortressUnenforcedWrite.fix": "发现 {count} 个 Fortress 写禁止模式未对 shell 命令强制：{patternList}。glob 和相对/~ 路径只对文件工具（Read/Edit/Write）强制；要在 shell 层强制，请使用绝对、无 glob 的路径（或 \"/path/**\"）。",
   "doctor.warning.fortressUnenforcedWrite.issue": "部分 Sandbox Fortress 写禁止规则未对 shell（Bash）命令强制",
   "doctor.warning.insufficientUpdatePerms.fix": "请执行以下任一操作：（1）不使用 sudo 重新安装 node，或（2）使用 `deepcode install` 进行原生安装",
