@@ -37,6 +37,7 @@ import {
   sandboxUnavailableReason,
 } from '../sandboxAvailability.mjs'
 import { resolveNetworkDecision } from '../networkDecision.mjs'
+import { hasUnfaithfulGlob } from '../rule-engine/fsProjector.mjs'
 import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import { SETTING_SOURCES, type SettingSource } from '../../utils/settings/constants.js'
 import { getManagedSettingsDropInDir } from '../../utils/settings/managedPath.js'
@@ -630,13 +631,9 @@ function getLinuxGlobPatternWarnings(): string[] {
     const permissions = settings?.permissions || {}
     const warnings: string[] = []
 
-    // Helper to check if a path has glob characters (excluding trailing /**)
-    const hasGlobs = (path: string): boolean => {
-      const stripped = path.replace(/\/\*\*$/, '')
-      return /[*?[\]]/.test(stripped)
-    }
-
-    // Check all permission rules
+    // Check all permission rules. hasUnfaithfulGlob is the SINGLE source of truth shared with
+    // the fortress projector (fsProjector.mjs) — both must classify a glob identically or one
+    // path would warn/project on a pattern the other treated as plain (a cross-platform skew).
     for (const ruleString of [
       ...(permissions.allow || []),
       ...(permissions.deny || []),
@@ -646,7 +643,7 @@ function getLinuxGlobPatternWarnings(): string[] {
         (rule.toolName === FILE_EDIT_TOOL_NAME ||
           rule.toolName === FILE_READ_TOOL_NAME) &&
         rule.ruleContent &&
-        hasGlobs(rule.ruleContent)
+        hasUnfaithfulGlob(rule.ruleContent)
       ) {
         warnings.push(ruleString)
       }

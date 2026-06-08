@@ -51,10 +51,12 @@ function isAbsolutePattern(pattern) {
 
 // True when a pattern still contains an OS glob metacharacter (*, ?, [, ]) AFTER a
 // trailing /** is stripped — i.e. a glob the fortress and OS grammars would compile
-// differently. Mirrors legacy.ts getLinuxGlobPatternWarnings' hasGlobs and the runtime's
-// containsGlobChars(removeTrailingGlobSuffix(p)). A trailing /** alone is faithful (the
-// runtime strips it to a plain subtree), so it is NOT flagged.
-function hasUnfaithfulGlob(pattern) {
+// differently. The runtime's containsGlobChars(removeTrailingGlobSuffix(p)) is a third
+// mirror (external, can't be shared). A trailing /** alone is faithful (the runtime strips
+// it to a plain subtree), so it is NOT flagged. Exported as the SINGLE source of truth so
+// legacy.ts's getLinuxGlobPatternWarnings shares it — a divergence here would let one path
+// warn/project on a glob the other treated as plain (a silent cross-platform skew).
+export function hasUnfaithfulGlob(pattern) {
   const stripped = pattern.replace(/\/\*\*$/, '')
   return /[*?[\]]/.test(stripped)
 }

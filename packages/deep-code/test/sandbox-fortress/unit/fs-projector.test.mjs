@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   fortressUnenforcedWriteWarnings,
   fortressRulesToFsDelta,
+  hasUnfaithfulGlob,
   isEmptyFsDelta,
 } from '../../../src/sandbox-fortress/rule-engine/fsProjector.mjs'
 
@@ -142,4 +143,22 @@ test('C2 unenforced-write warning is defensive (empty/garbage/throwing → no th
     w = fortressUnenforcedWriteWarnings([hostile, null, 42, { resource: 'fs-write', action: 'deny', pattern: '' }])
   })
   assert.deepEqual(w, [])
+})
+
+// ── hasUnfaithfulGlob: the SINGLE source of truth for "is this an OS-unfaithful glob",
+// shared by the projector (fortressRulesToFsDelta / fortressUnenforcedWriteWarnings) AND
+// legacy.ts getLinuxGlobPatternWarnings. Pinned directly so the two consumers can never
+// silently diverge on glob classification (a cross-platform enforcement skew).
+test('D1 hasUnfaithfulGlob: a glob metachar survives the trailing /** strip → true; plain paths → false', () => {
+  // a bare trailing /** is FAITHFUL (the OS strips it to a plain subtree) → NOT a glob
+  assert.equal(hasUnfaithfulGlob('/etc/secrets/**'), false)
+  assert.equal(hasUnfaithfulGlob('/etc/passwd'), false)
+  assert.equal(hasUnfaithfulGlob('/a/b/c'), false)
+  // a glob metachar ANYWHERE before the trailing /** → unfaithful
+  assert.equal(hasUnfaithfulGlob('/home/*/.ssh/**'), true) // mid-path *
+  assert.equal(hasUnfaithfulGlob('/a/b?/c'), true) // ?
+  assert.equal(hasUnfaithfulGlob('/a[bc].key'), true) // bracket class
+  assert.equal(hasUnfaithfulGlob('/logs/*.log'), true) // * not at the strip position
+  assert.equal(hasUnfaithfulGlob('secrets/**'), false) // relative + only-trailing-** → no metachar after strip
+  assert.equal(hasUnfaithfulGlob('**/.env'), true) // leading ** leaves a * after the trailing-only strip
 })
