@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
+  fortressUnenforcedNetHostWarnings,
   matchesDomainPattern,
   resolveNetworkDecision,
 } from '../../../src/sandbox-fortress/networkDecision.mjs'
@@ -199,4 +200,42 @@ test('the network-isolation parity doc states the honest invariants (regression 
   for (const [re, why] of required) {
     assert.match(doc, re, `parity doc must ${why} (/${re.source}/)`)
   }
+})
+
+// ── fortressUnenforcedNetHostWarnings: net-host is parsed-but-inert (no consumer), so
+// EVERY net-host rule is surfaced by the doctor so it's never mistaken for enforcement.
+test('N1 flags EVERY net-host rule (any action) and nothing else', () => {
+  const rules = [
+    { layer: 'org', resource: 'net-host', pattern: 'evil.com', action: 'deny' },
+    { layer: 'user', resource: 'net-host', pattern: '*.tracker.io', action: 'ask' },
+    { layer: 'user', resource: 'net-host', pattern: 'api.allowed.com', action: 'allow' }, // inert allow still surfaced
+    { layer: 'org', resource: 'fs-write', pattern: '/etc/**', action: 'deny' }, // not net-host → ignored
+    { layer: 'org', resource: 'fs-read', pattern: '/s/*', action: 'deny' }, // not net-host → ignored
+    { layer: 'org', resource: 'process-exec', pattern: 'rm', action: 'deny' }, // not net-host → ignored
+  ]
+  assert.deepEqual(fortressUnenforcedNetHostWarnings(rules), [
+    'net-host deny evil.com',
+    'net-host ask *.tracker.io',
+    'net-host allow api.allowed.com',
+  ])
+})
+
+test('N2 defensive: empty/garbage/throwing rules → no throw, no spurious output', () => {
+  assert.deepEqual(fortressUnenforcedNetHostWarnings([]), [])
+  assert.deepEqual(fortressUnenforcedNetHostWarnings(undefined), [])
+  assert.deepEqual(fortressUnenforcedNetHostWarnings(null), [])
+  assert.deepEqual(fortressUnenforcedNetHostWarnings('nope'), [])
+  // a throwing-getter rule is skipped, not propagated; empty/non-string patterns dropped;
+  // a missing action still surfaces (the pattern is the actionable part) with a '?' marker.
+  const hostile = { get resource() { throw new Error('boom') } }
+  assert.deepEqual(
+    fortressUnenforcedNetHostWarnings([
+      hostile,
+      null,
+      42,
+      { resource: 'net-host', action: 'deny', pattern: '' }, // empty pattern → dropped
+      { resource: 'net-host', pattern: 'x.com' }, // missing action → '?' marker
+    ]),
+    ['net-host ? x.com'],
+  )
 })

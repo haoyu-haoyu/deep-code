@@ -150,11 +150,15 @@ function runManagerProbe() {
       { layer: 'user', resource: 'fs-write', pattern: '/home/*/.ssh/**', action: 'deny' }, // abs mid glob → warn
       { layer: 'user', resource: 'fs-write', pattern: 'secrets/**', action: 'deny' }, // non-absolute → warn
       { layer: 'user', resource: 'fs-write', pattern: '/etc/passwd', action: 'deny' }, // abs concrete → not warned
+      { layer: 'user', resource: 'net-host', pattern: 'evil.com', action: 'deny' }, // net-host → unenforced
+      { layer: 'user', resource: 'net-host', pattern: '*.ok.com', action: 'allow' }, // net-host (any action) → unenforced
     ])
     out.globWarnings = gm.getLinuxGlobPatternWarnings() // base only (no fortress part)
-    out.fortressWarnings = gm.getFortressUnenforcedWriteWarnings() // cross-platform fortress warnings
+    out.fortressWarnings = gm.getFortressUnenforcedWriteWarnings() // cross-platform fortress warnings (fs-write only)
+    out.netHostWarnings = gm.getFortressUnenforcedNetHostWarnings() // cross-platform net-host warnings (parsed-but-inert)
     out.inertGlobWarnings = inertMgr.getLinuxGlobPatternWarnings()
     out.inertFortressWarnings = inertMgr.getFortressUnenforcedWriteWarnings()
+    out.inertNetHostWarnings = inertMgr.getFortressUnenforcedNetHostWarnings()
 
     // ── PR-F: resolveFortressDecision (the org fs-write deny '/secret' is set above) ──
     out.decisionSecret = m.resolveFortressDecision('fs-write', '/secret').decision // matched deny
@@ -212,6 +216,15 @@ test('FortressSandboxManager delegates rule-engine methods + enforces/passes-thr
   )
   // no fortress rules → no fortress warnings
   assert.deepEqual(out.inertFortressWarnings, [])
+
+  // the net-host unenforced warnings: EVERY net-host rule (deny AND allow) is surfaced
+  // (parsed-but-inert — no consumer), and fs-write rules don't leak into this list.
+  assert.deepEqual(
+    [...out.netHostWarnings].sort(),
+    ['net-host allow *.ok.com', 'net-host deny evil.com'].sort(),
+  )
+  // no fortress rules → no net-host warnings
+  assert.deepEqual(out.inertNetHostWarnings, [])
 
   // PR-F: resolveFortressDecision matches the deny rule; recordFortressViolation surfaces
   assert.equal(out.decisionSecret, 'deny')

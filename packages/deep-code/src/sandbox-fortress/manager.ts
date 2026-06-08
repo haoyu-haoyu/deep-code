@@ -21,6 +21,7 @@ import {
   fortressRulesToFsDelta,
   isEmptyFsDelta,
 } from './rule-engine/fsProjector.mjs'
+import { fortressUnenforcedNetHostWarnings } from './networkDecision.mjs'
 import type {
   CacheFriendlyConfigSummary,
   EffortLevel,
@@ -55,6 +56,7 @@ export interface IFortressSandboxManager extends ISandboxManager {
   getViolationCount(): number
   buildCacheFriendlyConfigSummary(): CacheFriendlyConfigSummary
   getFortressUnenforcedWriteWarnings(): string[]
+  getFortressUnenforcedNetHostWarnings(): string[]
   getProfileForTool(toolName: string): ToolSandboxProfile
   setProfileForTool(toolName: string, profile: ToolSandboxProfile): void
 }
@@ -264,6 +266,16 @@ export class FortressSandboxManager implements IFortressSandboxManager {
     // gated only on sandboxing being enabled (matching the base warning's enabled gate).
     if (!this.isSandboxEnabledInSettings()) return []
     return fortressUnenforcedWriteWarnings(this.#state.resolveEffectiveRules())
+  }
+
+  getFortressUnenforcedNetHostWarnings(): string[] {
+    // Fortress net-host rules are PARSED-BUT-INERT: resolvable, but no sandbox layer
+    // enforces them (no network projector; session network policy comes from settings,
+    // not fortress rules). Surface every net-host rule so it is never mistaken for an
+    // active network control. Cross-platform; gated only on sandboxing being enabled
+    // (matching the unenforced-write warning's gate).
+    if (!this.isSandboxEnabledInSettings()) return []
+    return fortressUnenforcedNetHostWarnings(this.#state.resolveEffectiveRules())
   }
 
   refreshConfig(): void {

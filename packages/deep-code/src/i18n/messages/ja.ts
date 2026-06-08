@@ -2298,6 +2298,8 @@ export const JA_MESSAGES = {
   "doctor.versions.fetchFailed": "└ バージョンの取得に失敗しました",
   "doctor.versions.latest": "└ 最新バージョン: ",
   "doctor.versions.stable": "└ 安定版バージョン: ",
+  "doctor.warning.fortressUnenforcedNetHost.fix": "どのサンドボックス層にも適用されない Fortress net-host ルールが {count} 件見つかりました：{patternList}。net-host（ネットワーク）ルールは解析されますが適用には接続されていません。セッションのネットワークポリシーは Fortress ルールではなく設定（deniedDomains / allowedDomains / 管理対象ドメイン）から来ます。net-host の適用が実装されるまでは、これらの設定でネットワークを制御してください。",
+  "doctor.warning.fortressUnenforcedNetHost.issue": "一部の Sandbox Fortress net-host ルールは解析されますが、どのサンドボックス層にも適用されません",
   "doctor.warning.fortressUnenforcedWrite.fix": "シェルコマンドに適用されない Fortress 書き込み拒否パターンが {count} 件見つかりました：{patternList}。glob や相対/~ パスはファイルツール（Read/Edit/Write）でのみ適用されます。シェルレベルで適用するには、絶対かつ glob なしのパス（または \"/path/**\"）を使用してください。",
   "doctor.warning.fortressUnenforcedWrite.issue": "一部の Sandbox Fortress 書き込み拒否ルールはシェル（Bash）コマンドに適用されません",
   "doctor.warning.insufficientUpdatePerms.fix": "次のいずれかを行ってください：(1) sudo を使わずに node を再インストールする、または (2) ネイティブインストールには `deepcode install` を使用する",
