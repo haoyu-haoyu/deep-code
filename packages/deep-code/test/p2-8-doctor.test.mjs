@@ -8,6 +8,7 @@ import {
   runDoctorChecks,
   summarizeDoctorChecks,
 } from '../src/cli/handlers/doctorChecks.mjs'
+import { summarizeWarningPatterns } from '../src/utils/doctorWarningFormat.mjs'
 
 const OK_ENV = Object.freeze({
   DEEPCODE_CONFIG_FILE: join(tmpdir(), 'deepcode-doctor-test-missing-config.json'),
@@ -160,3 +161,22 @@ function okCheckOptions(overrides = {}) {
     ...overrides,
   }
 }
+
+// ── summarizeWarningPatterns: the shared truncation/count used by the fortress
+// unenforced-* doctor warnings (detectFortressUnenforcedWriteWarnings / *NetHostWarnings).
+// Extracted to a leaf so the two detectors can't drift; pinned here directly.
+test('summarizeWarningPatterns truncates to the first N + "(K more)" and counts the whole set', () => {
+  // empty → count 0, empty list
+  assert.deepEqual(summarizeWarningPatterns([]), { count: 0, patternList: '' })
+  // <= limit (default 3) → just the joined list, no "(more)"
+  assert.deepEqual(summarizeWarningPatterns(['a']), { count: 1, patternList: 'a' })
+  assert.deepEqual(summarizeWarningPatterns(['a', 'b', 'c']), { count: 3, patternList: 'a, b, c' })
+  // > limit → first 3 + "(K more)", where count is the FULL length
+  assert.deepEqual(summarizeWarningPatterns(['a', 'b', 'c', 'd']), { count: 4, patternList: 'a, b, c (1 more)' })
+  assert.deepEqual(summarizeWarningPatterns(['a', 'b', 'c', 'd', 'e', 'f']), { count: 6, patternList: 'a, b, c (3 more)' })
+  // a custom limit is honored
+  assert.deepEqual(summarizeWarningPatterns(['a', 'b', 'c'], 1), { count: 3, patternList: 'a (2 more)' })
+  // defensive: a non-array (or bad limit) → treated as empty / default limit, never throws
+  assert.deepEqual(summarizeWarningPatterns(undefined), { count: 0, patternList: '' })
+  assert.deepEqual(summarizeWarningPatterns(['a', 'b', 'c', 'd'], 0), { count: 4, patternList: 'a, b, c (1 more)' })
+})
