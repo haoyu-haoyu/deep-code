@@ -49,6 +49,13 @@ export function mapDeepSeekFinishReason(finishReason) {
   }
 }
 
+// Transient gateway / timeout statuses that a CDN or reverse-proxy in front of the API
+// returns routinely on a long-running CLI agent — retry with backoff rather than abort
+// the turn on the first hit. Deliberately an EXPLICIT set, NOT a blanket `status >= 500`:
+// 501 (Not Implemented) and 505 (HTTP Version Not Supported) are not transient and must
+// fail fast. 429/503 keep their own dedicated branches above (distinct retryStrategy).
+const TRANSIENT_HTTP_STATUSES = new Set([408, 500, 502, 504])
+
 export function mapDeepSeekHttpError({
   status,
   code,
@@ -75,6 +82,17 @@ export function mapDeepSeekHttpError({
       retryable: true,
       retryAfterSeconds,
       retryStrategy: 'exponential_backoff_or_flash',
+    }
+  }
+
+  if (TRANSIENT_HTTP_STATUSES.has(status)) {
+    return {
+      status,
+      code,
+      message,
+      retryable: true,
+      retryAfterSeconds,
+      retryStrategy: 'exponential_backoff',
     }
   }
 

@@ -473,12 +473,36 @@ function createDeepSeekTimeoutError(url, timeoutMs) {
 export function calculateDeepSeekRetryDelayMs(
   recovery,
   attempt,
-  { retryBaseDelayMs = 500, retryMaxDelayMs = 8000 } = {},
+  {
+    retryBaseDelayMs = 500,
+    retryMaxDelayMs = 8000,
+    retryAfterMaxMs = 60000,
+    random = Math.random,
+  } = {},
 ) {
+  // An explicit Retry-After is authoritative (no jitter — the server told us exactly when
+  // to retry), and a sane value is honored VERBATIM: clamping a server-requested 30s down
+  // to our 8s backoff ceiling would make us retry 22s early and re-collide on the very
+  // 429 it was pacing us off of. It is bounded only against a misconfigured/hostile
+  // upstream sending an absurd `Retry-After: 86400` (a day-long freeze) — by a SEPARATE,
+  // larger ceiling (retryAfterMaxMs, default 60s) distinct from the exponential backoff
+  // cap — and floored at 0 so a negative value can't yield a negative sleep.
   if (recovery.retryAfterSeconds !== undefined) {
-    return recovery.retryAfterSeconds * 1000
+    return Math.min(retryAfterMaxMs, Math.max(0, recovery.retryAfterSeconds * 1000))
   }
-  return Math.min(retryMaxDelayMs, retryBaseDelayMs * 2 ** attempt)
+  // Exponential backoff with equal jitter (delay in [ceiling/2, ceiling]). Without
+  // jitter, concurrent requests that share one schedule (parallel subagents / a Task
+  // fan-out) retry in lockstep and re-collide on the same 429/503 boundary every round,
+  // amplifying the overload (thundering herd). Equal jitter decorrelates the retries
+  // while keeping a sane minimum backoff, and still decorrelates once the delay is
+  // capped at retryMaxDelayMs. `random` is injectable so tests can pin exact bounds; it is
+  // coerced to its documented [0, 1) domain (a misbehaving injected rng — negative, NaN,
+  // or >= 1 — can never produce a negative or over-cap sleep), so the bound is unconditional.
+  const ceiling = Math.min(retryMaxDelayMs, retryBaseDelayMs * 2 ** attempt)
+  const half = ceiling / 2
+  const raw = random()
+  const r = raw >= 0 ? Math.min(1, raw) : 0
+  return Math.round(half + r * half)
 }
 
 export async function* streamDeepSeekResponseBody(body) {
