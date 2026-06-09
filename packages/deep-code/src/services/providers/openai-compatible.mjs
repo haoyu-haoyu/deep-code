@@ -282,7 +282,17 @@ export function parseOpenAICompatibleStreamChunk(chunk) {
     const payload = trimmed.slice('data:'.length).trim()
     if (payload === '[DONE]') return null
     if (!payload) return null
-    return JSON.parse(payload)
+    // ROBUSTNESS: mirror parseDeepSeekSSELines — a single malformed / truncated `data:`
+    // line (network glitch, proxy interference, or a connection dropped mid-message so a
+    // final-buffer flush sees partial JSON) must NOT throw and abort the caller. Skip it
+    // and keep scanning; return null if no valid chunk is found. (The live streaming path
+    // already goes through the guarded shared body parser; this is the parseStreamChunk
+    // entry point, which was the last unguarded JSON.parse on a stream payload.)
+    try {
+      return JSON.parse(payload)
+    } catch {
+      continue
+    }
   }
 
   return null
