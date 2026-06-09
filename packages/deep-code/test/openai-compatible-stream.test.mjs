@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   createOpenAICompatibleProvider,
+  parseOpenAICompatibleStreamChunk,
   streamOpenAICompatibleQuery,
 } from '../src/services/providers/openai-compatible.mjs'
 import { collectDeepSeekStreamEvents } from '../src/services/providers/deepseek.mjs'
@@ -191,6 +192,33 @@ test('streamQuery survives a malformed data: line and keeps streaming', async ()
     provider().streamQuery({ messages: [], fetch }),
   )
   assert.equal(collected.content, 'AB')
+})
+
+test('parseOpenAICompatibleStreamChunk fail-softs a malformed data: line instead of throwing', () => {
+  // a well-formed data line parses to its object
+  assert.deepEqual(
+    parseOpenAICompatibleStreamChunk('data: {"choices":[{"delta":{"content":"hi"}}]}\n'),
+    { choices: [{ delta: { content: 'hi' } }] },
+  )
+  // [DONE], empty payload, and a chunk with no data: line all yield null
+  assert.equal(parseOpenAICompatibleStreamChunk('data: [DONE]\n'), null)
+  assert.equal(parseOpenAICompatibleStreamChunk('data:\n'), null)
+  assert.equal(parseOpenAICompatibleStreamChunk(': keepalive\n\n'), null)
+
+  // a malformed / truncated JSON payload must NOT throw — it returns null (matching the
+  // DeepSeek twin's fail-soft contract; previously this was an unguarded JSON.parse).
+  assert.doesNotThrow(() => parseOpenAICompatibleStreamChunk('data: {not valid json\n'))
+  assert.equal(parseOpenAICompatibleStreamChunk('data: {truncated'), null)
+
+  // and a malformed line followed by a valid one skips the bad line and returns the valid
+  // chunk, rather than aborting on the first failure
+  assert.deepEqual(
+    parseOpenAICompatibleStreamChunk('data: {bad\ndata: {"choices":[]}\n'),
+    { choices: [] },
+  )
+
+  // the public provider.parseStreamChunk method (which delegates here) also no longer throws
+  assert.doesNotThrow(() => provider().parseStreamChunk('data: {still bad\n'))
 })
 
 // --- providers without an API key send no Authorization header ----------------
