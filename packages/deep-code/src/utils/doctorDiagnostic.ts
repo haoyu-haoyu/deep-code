@@ -15,6 +15,7 @@ import { isEnvTruthy } from './envUtils.js'
 import { execFileNoThrow } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import { getMessage } from '../i18n/index.js'
+import { summarizeWarningPatterns } from './doctorWarningFormat.mjs'
 import {
   getShellType,
   isRunningFromLocalInstallation,
@@ -522,18 +523,10 @@ export function detectLinuxGlobPatternWarnings(): Array<{
   const globPatterns = SandboxManager.getLinuxGlobPatternWarnings()
 
   if (globPatterns.length > 0) {
-    // Show first 3 patterns, then indicate if there are more
-    const displayPatterns = globPatterns.slice(0, 3).join(', ')
-    const remaining = globPatterns.length - 3
-    const patternList =
-      remaining > 0 ? `${displayPatterns} (${remaining} more)` : displayPatterns
-
+    const { count, patternList } = summarizeWarningPatterns(globPatterns)
     warnings.push({
       issue: getMessage('doctor.warning.linuxGlob.issue'),
-      fix: getMessage('doctor.warning.linuxGlob.fix', {
-        count: globPatterns.length,
-        patternList,
-      }),
+      fix: getMessage('doctor.warning.linuxGlob.fix', { count, patternList }),
     })
   }
 
@@ -552,17 +545,11 @@ export function detectFortressUnenforcedWriteWarnings(): Array<{
   if (patterns.length === 0) {
     return []
   }
-  const displayPatterns = patterns.slice(0, 3).join(', ')
-  const remaining = patterns.length - 3
-  const patternList =
-    remaining > 0 ? `${displayPatterns} (${remaining} more)` : displayPatterns
+  const { count, patternList } = summarizeWarningPatterns(patterns)
   return [
     {
       issue: getMessage('doctor.warning.fortressUnenforcedWrite.issue'),
-      fix: getMessage('doctor.warning.fortressUnenforcedWrite.fix', {
-        count: patterns.length,
-        patternList,
-      }),
+      fix: getMessage('doctor.warning.fortressUnenforcedWrite.fix', { count, patternList }),
     },
   ]
 }
@@ -579,17 +566,11 @@ export function detectFortressUnenforcedNetHostWarnings(): Array<{
   if (patterns.length === 0) {
     return []
   }
-  const displayPatterns = patterns.slice(0, 3).join(', ')
-  const remaining = patterns.length - 3
-  const patternList =
-    remaining > 0 ? `${displayPatterns} (${remaining} more)` : displayPatterns
+  const { count, patternList } = summarizeWarningPatterns(patterns)
   return [
     {
       issue: getMessage('doctor.warning.fortressUnenforcedNetHost.issue'),
-      fix: getMessage('doctor.warning.fortressUnenforcedNetHost.fix', {
-        count: patterns.length,
-        patternList,
-      }),
+      fix: getMessage('doctor.warning.fortressUnenforcedNetHost.fix', { count, patternList }),
     },
   ]
 }
