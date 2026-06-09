@@ -7,6 +7,7 @@ import {
 import { createDeepSeekCacheDiagnostics } from '../cache/deepseek-cache.mjs'
 import { createDeepCodeStablePrefix } from './stable-prefix.mjs'
 import { providerSupports } from './provider-capabilities.mjs'
+import { omitUndefined } from '../utils/omitUndefined.mjs'
 
 export async function compactDeepCodeConversation({
   messages = [],
@@ -105,10 +106,4 @@ function buildCompactPrompt(messages) {
     'Conversation tail:',
     JSON.stringify(messages, null, 2),
   ].join('\n')
-}
-
-function omitUndefined(object) {
-  return Object.fromEntries(
-    Object.entries(object).filter(([, value]) => value !== undefined),
-  )
 }

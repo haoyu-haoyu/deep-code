@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { providerSupports } from './provider-capabilities.mjs'
+import { omitUndefined } from '../utils/omitUndefined.mjs'
 
 export function resolveDeepSeekCacheStatsPath({
   env = process.env,
@@ -157,12 +158,6 @@ function preservePrefixFields(prior) {
     lastStablePrefixHash: prior.lastStablePrefixHash,
     lastStablePrefixComponentHashes: prior.lastStablePrefixComponentHashes,
   })
-}
-
-function omitUndefined(object) {
-  return Object.fromEntries(
-    Object.entries(object).filter(([, value]) => value !== undefined),
-  )
 }
 
 function sanitizeCacheStatsName(name) {

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { atomicWriteFile } from '../src/utils/atomicWrite.mjs'
+import { omitUndefined } from '../src/utils/omitUndefined.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -2822,6 +2823,23 @@ async function countTmpSiblings(dir, baseName) {
   const names = await readdir(dir)
   return names.filter(n => n.startsWith(`${baseName}.`) && n.endsWith('.tmp')).length
 }
+
+test('omitUndefined drops only undefined values and preserves key order', () => {
+  // only `undefined` is dropped — null/false/0/'' are kept (the request builders rely on
+  // this to send an explicit null/0 while omitting an absent optional field).
+  assert.deepEqual(
+    omitUndefined({ a: 1, b: undefined, c: null, d: false, e: 0, f: '' }),
+    { a: 1, c: null, d: false, e: 0, f: '' },
+  )
+  // an empty / all-undefined object collapses to {}
+  assert.deepEqual(omitUndefined({}), {})
+  assert.deepEqual(omitUndefined({ x: undefined, y: undefined }), {})
+  // key order of the kept entries is preserved (moat-relevant: a kept key never moves)
+  assert.deepEqual(
+    Object.keys(omitUndefined({ z: 1, m: undefined, a: 2, k: 3 })),
+    ['z', 'a', 'k'],
+  )
+})
 
 test('atomicWriteFile writes via temp+rename, preserves an existing file mode, and leaves no temp', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'deepcode-atomic-'))

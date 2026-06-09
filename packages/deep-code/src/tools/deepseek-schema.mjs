@@ -1,3 +1,5 @@
+import { omitUndefined } from '../utils/omitUndefined.mjs'
+
 const UNSUPPORTED_STRICT_SCHEMA_KEYS = new Set([
   'minLength',
   'maxLength',
@@ -94,12 +96,6 @@ async function resolveToolDescription(tool, options) {
 
 function emptyObjectSchema() {
   return { type: 'object', properties: {}, required: [] }
-}
-
-function omitUndefined(object) {
-  return Object.fromEntries(
-    Object.entries(object).filter(([, value]) => value !== undefined),
-  )
 }
 
 function stableClone(value) {
