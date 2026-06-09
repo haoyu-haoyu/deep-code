@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { FORTRESS_LAYERS, parseFortressSettings } from '../../../src/sandbox-fortress/rule-engine/configLoader.mjs'
+import { LAYER_RANK } from '../../../src/sandbox-fortress/rule-engine/resolveRules.mjs'
 
 // ── F3 PR-E: parse settings.fortress → validated rulesets + effort (pure, fail-safe) ─
 
@@ -223,4 +224,23 @@ test('A13 a revoked-proxy / hostile rules value never throws (dropped + warned)'
 
 test('B1 FORTRESS_LAYERS lists every layer (so the wiring can clear emptied layers)', () => {
   assert.deepEqual(FORTRESS_LAYERS, ['builtin-default', 'org', 'agent', 'user'])
+})
+
+test('B1b FORTRESS_LAYERS is DERIVED from LAYER_RANK (single source of truth — cannot drift)', () => {
+  // The layer SET must equal LAYER_RANK's keys exactly: a layer in one but not the other
+  // would silently break either the precedence sort (LAYER_RANK[layer] → undefined → NaN)
+  // or the per-layer reload-clear. Pinning equality here is what makes the derivation safe.
+  assert.deepEqual([...FORTRESS_LAYERS].sort(), Object.keys(LAYER_RANK).sort())
+  // EVERY layer has a defined numeric rank (a missing/undefined rank → NaN compare in
+  // resolveRules' precedence sort, the exact drift this derivation prevents).
+  for (const layer of FORTRESS_LAYERS) {
+    assert.equal(typeof LAYER_RANK[layer], 'number', `layer '${layer}' must have a numeric LAYER_RANK`)
+  }
+  // …and ordered by ASCENDING rank (lowest trust → highest), which the wiring relies on.
+  for (let i = 1; i < FORTRESS_LAYERS.length; i++) {
+    assert.ok(
+      LAYER_RANK[FORTRESS_LAYERS[i - 1]] < LAYER_RANK[FORTRESS_LAYERS[i]],
+      `FORTRESS_LAYERS must be ascending by LAYER_RANK (${FORTRESS_LAYERS[i - 1]} before ${FORTRESS_LAYERS[i]})`,
+    )
+  }
 })

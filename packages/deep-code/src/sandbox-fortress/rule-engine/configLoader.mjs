@@ -18,7 +18,7 @@
 // pure — the wiring passes the same expandPath-based normalizer the sandbox adapter uses,
 // turning '~'/relative patterns into the absolute form the OS projector can enforce.
 
-import { VALID_ACTIONS, VALID_LAYERS, VALID_RESOURCES } from './resolveRules.mjs'
+import { LAYER_RANK, VALID_ACTIONS, VALID_LAYERS, VALID_RESOURCES } from './resolveRules.mjs'
 import { EFFORT_LEVELS } from './effort.mjs'
 
 const VALID_EFFORT = new Set(EFFORT_LEVELS)
@@ -190,5 +190,9 @@ export function parseFortressSettings(fortress, options = {}) {
 }
 
 /** The fortress layers, in apply order (lowest trust → highest). Exposed so the wiring
- *  can setRuleset every layer (clearing a layer whose rules were all removed). */
-export const FORTRESS_LAYERS = ['builtin-default', 'org', 'agent', 'user']
+ *  can setRuleset every layer (clearing a layer whose rules were all removed). DERIVED
+ *  from LAYER_RANK (the SINGLE source of truth for the layer set + precedence) so the two
+ *  can never drift — a layer present in one but not the other would silently break either
+ *  the precedence sort (LAYER_RANK[layer] → undefined → NaN compare) or the per-layer
+ *  reload-clear. Ordered by ascending rank (lowest trust first), matching the old literal. */
+export const FORTRESS_LAYERS = Object.keys(LAYER_RANK).sort((a, b) => LAYER_RANK[a] - LAYER_RANK[b])
