@@ -9,6 +9,7 @@ import {
 import { byteCompare } from '../../cache/byte-order.mjs'
 import { mapMessagesToDeepSeek } from '../../messages/deepseek-normalizer.mjs'
 import { toolToDeepSeekFunctionSchema } from '../../tools/deepseek-schema.mjs'
+import { omitUndefined } from '../../utils/omitUndefined.mjs'
 import { assertModelProvider } from './types.mjs'
 
 export const OPENAI_COMPATIBLE_PROVIDER_DEFAULTS = Object.freeze({
@@ -313,10 +314,4 @@ function systemPromptToMessages(systemPrompt) {
     return content ? [{ role: 'system', content }] : []
   }
   return systemPrompt ? [{ role: 'system', content: String(systemPrompt) }] : []
-}
-
-function omitUndefined(value) {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, entry]) => entry !== undefined),
-  )
 }

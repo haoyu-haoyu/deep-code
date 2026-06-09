@@ -1,3 +1,5 @@
+import { omitUndefined } from '../utils/omitUndefined.mjs'
+
 export function mapMessagesToDeepSeek(messages, options = {}) {
   // reasoningReplay: whether to re-send assistant reasoning_content on tool-call
   // turns. Default true preserves DeepSeek's reasoning-trajectory continuation
@@ -201,10 +203,4 @@ function stringifyTextContent(content) {
     .filter(block => block?.type === 'text')
     .map(block => block.text ?? '')
     .join('\n')
-}
-
-function omitUndefined(object) {
-  return Object.fromEntries(
-    Object.entries(object).filter(([, value]) => value !== undefined),
-  )
 }

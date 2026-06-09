@@ -6,6 +6,7 @@ import {
   createDeepSeekCacheUserId,
 } from '../../cache/deepseek-cache.mjs'
 import { byteCompare } from '../../cache/byte-order.mjs'
+import { omitUndefined } from '../../utils/omitUndefined.mjs'
 import {
   mapMessagesToDeepSeek,
   normalizeToolCalls,
@@ -700,12 +701,6 @@ function ensureBetaBaseUrl(baseUrl) {
 
 function stripTrailingSlash(value) {
   return String(value).replace(/\/+$/, '')
-}
-
-function omitUndefined(object) {
-  return Object.fromEntries(
-    Object.entries(object).filter(([, value]) => value !== undefined),
-  )
 }
 
 function sleepMs(ms) {

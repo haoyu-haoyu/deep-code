@@ -4,6 +4,7 @@ import {
   isDeepSeekProvider,
   resolveRuntimeModelProvider,
 } from '../services/providers/runtime-provider.mjs'
+import { omitUndefined } from '../utils/omitUndefined.mjs'
 
 // Mirrors AUTO_MODEL_SETTING in src/utils/model/model.ts (a .ts, not
 // node-loadable). 'auto' is DeepSeek-specific routing; it is never a literal
@@ -459,10 +460,4 @@ function parseToolArguments(rawArguments) {
   } catch {
     return { _raw: rawArguments }
   }
-}
-
-function omitUndefined(object) {
-  return Object.fromEntries(
-    Object.entries(object).filter(([, value]) => value !== undefined),
-  )
 }
