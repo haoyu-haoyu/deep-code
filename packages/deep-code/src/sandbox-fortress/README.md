@@ -24,13 +24,35 @@ from implementation subdirectories.
 
 ## Current Scope
 
-F0.1 establishes the directory tree and type contract only. Fortress-specific
-methods intentionally throw a not-implemented error until later plan tasks add
-the adapter, rule engine, observability store, and DeepSeek-native features.
+`FortressSandboxManager` is live and enforcing — it is the production sandbox
+manager, not a stub. The implemented layers:
+
+- **Rule engine (Layer 3):** a four-layer ruleset (BuiltinDefault < Org < Agent
+  < User) with deny-first, specificity-ranked conflict resolution over the
+  `fs-read`, `fs-write`, `net-host`, and `process-exec` resources.
+- **Enforcement:** `fs-write` (projected into the OS sandbox for Bash and
+  enforced by the file tools), `fs-read` (file-tool hook plus a paranoid Bash
+  read floor), and `process-exec` (Bash command gate). `net-host` rules are
+  parsed and resolvable but enforced by no sandbox layer; `deepcode doctor`
+  surfaces them as parsed-but-inert.
+- **Observability (Layer 4):** dry-run mode and a violation log
+  (`observability/violationLog.mjs`).
+- **DeepSeek-native (Layer 5):** effort → strictness coupling, a model-facing
+  violation-feedback string, and a cache-friendly config summary that keeps the
+  default request's stable prefix byte-identical.
+
+Configuration is driven from `settings.fortress` via
+`adapter/fortressConfigLoader.ts`; with no fortress block the manager is
+default-inert and behaves like the base sandbox.
 
 ## Directory Map
 
-- `adapter/`: F1 hardened adapter integration
-- `rule-engine/`: F2 layered ruleset model and conflict resolution
-- `observability/`: F3 violation database, stats, dry-run, and replay
-- `deepseek/`: F4 effort coupling, context feedback, and cache summaries
+- `adapter/`: hardened adapter integration, per-tool sandbox profiles, the
+  per-resource decision points (file-tool / Bash-read / process-exec), and the
+  `settings.fortress` config loader.
+- `rule-engine/`: the layered ruleset model, conflict resolution, effort
+  coupling, manager state, and the OS-projection of fs rules.
+- `observability/`: the violation log and dry-run support.
+- `deepseek/`: reserved for future DeepSeek-native modules; the effort coupling,
+  violation feedback, and cache-summary features currently live in the rule
+  engine and manager state.

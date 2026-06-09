@@ -110,7 +110,7 @@ function runIntegrationProbe() {
   return JSON.parse(result.stdout)
 }
 
-test('FileRead profile rejects workspace writes while Bash keeps baseline writes', async () => {
+test('FileRead profile produces an empty allowWrite while Bash keeps the baseline workspace write', async () => {
   const manager = createMockBaseSandboxManager()
   const { fileReadConfig, bashConfig } = runIntegrationProbe()
 
@@ -135,7 +135,7 @@ test('FileRead profile rejects workspace writes while Bash keeps baseline writes
   )
 })
 
-test('WebFetch profile rejects project file reads and writes', async () => {
+test('WebFetch profile produces a config that denies all reads and writes (denyRead /, empty allow lists)', async () => {
   const manager = createMockBaseSandboxManager()
   const { webFetchConfig } = runIntegrationProbe()
 
