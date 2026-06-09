@@ -6,6 +6,12 @@ import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 
 import { startHttpServer } from '../src/cli/serve/http.mjs'
+import { encodeSseEvent } from '../src/cli/serve/sse.mjs'
+import {
+  readBearerToken,
+  timingSafeTokenEquals,
+  validateBearerToken,
+} from '../src/cli/serve/auth.mjs'
 
 const TOKEN = 'testtoken123'
 const WRONG_TOKEN = 'wrongtoken456'
@@ -463,3 +469,69 @@ async function getUnusedPort() {
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+// ── encodeSseEvent: the SSE wire-format encoder. Its multiline / CRLF / id:0
+// branches are exercised only indirectly via the HTTP server; pin them directly.
+test('encodeSseEvent emits one data: line per payload line and always ends with a blank line', () => {
+  // single-line string: just one data: line + the terminating blank line
+  assert.equal(encodeSseEvent({ data: 'hello' }), 'data: hello\n\n')
+
+  // event + id are emitted before the data, in order
+  assert.equal(
+    encodeSseEvent({ data: 'x', event: 'ping', id: 7 }),
+    'event: ping\nid: 7\ndata: x\n\n',
+  )
+
+  // id === 0 is INCLUDED (the guard is `id !== undefined`, not truthiness) — a 0 sequence
+  // number must still be wire-encoded.
+  assert.equal(encodeSseEvent({ data: 'x', id: 0 }), 'id: 0\ndata: x\n\n')
+
+  // a multiline payload becomes one `data:` line per line (SSE requires this; a raw
+  // newline inside a single data field would otherwise terminate the event early).
+  assert.equal(encodeSseEvent({ data: 'a\nb\nc' }), 'data: a\ndata: b\ndata: c\n\n')
+
+  // CRLF is normalized to per-line data: fields with no stray '\r' (split is /\r?\n/).
+  assert.equal(encodeSseEvent({ data: 'a\r\nb' }), 'data: a\ndata: b\n\n')
+
+  // a non-string payload is JSON-stringified (single line for compact JSON)
+  assert.equal(encodeSseEvent({ data: { x: 1, y: 'z' } }), 'data: {"x":1,"y":"z"}\n\n')
+
+  // a falsy/absent event is omitted (only `if (event)` adds the line)
+  assert.equal(encodeSseEvent({ data: 'x', event: '' }), 'data: x\n\n')
+})
+
+// ── auth helpers: the Bearer-token reader and constant-time comparison. The
+// length-mismatch padding branch and the empty/format edges are not covered by the
+// integration tests; pin them directly.
+test('readBearerToken extracts only a well-formed Bearer token', () => {
+  assert.equal(readBearerToken({ headers: { authorization: 'Bearer abc123' } }), 'abc123')
+  // everything after the first 'Bearer ' is the token (including spaces)
+  assert.equal(readBearerToken({ headers: { authorization: 'Bearer a b' } }), 'a b')
+  // missing / non-string / wrong scheme / empty token → null
+  assert.equal(readBearerToken({ headers: {} }), null)
+  assert.equal(readBearerToken({ headers: { authorization: 123 } }), null)
+  assert.equal(readBearerToken({ headers: { authorization: 'Basic abc' } }), null)
+  assert.equal(readBearerToken({ headers: { authorization: 'bearer abc' } }), null) // case-sensitive
+  assert.equal(readBearerToken({ headers: { authorization: 'Bearer ' } }), null) // empty token
+})
+
+test('timingSafeTokenEquals is true only for an exact match, false on any length/content mismatch', () => {
+  assert.equal(timingSafeTokenEquals('secret', 'secret'), true)
+  assert.equal(timingSafeTokenEquals('secret', 'secres'), false) // same length, different content
+  // length mismatch (the padding branch) — both orderings, and the empty-vs-nonempty edge
+  assert.equal(timingSafeTokenEquals('short', 'longer-token'), false)
+  assert.equal(timingSafeTokenEquals('longer-token', 'short'), false)
+  assert.equal(timingSafeTokenEquals('', 'x'), false)
+  assert.equal(timingSafeTokenEquals('', ''), true)
+})
+
+test('validateBearerToken gates on a configured token matching the request Bearer', () => {
+  const reqWith = token => ({ headers: { authorization: `Bearer ${token}` } })
+  // no configured token → always false (never accept when the server has no token set)
+  assert.equal(validateBearerToken(reqWith('anything'), { env: {} }), false)
+  // configured token, matching / wrong / missing request token
+  const env = { DEEPCODE_HTTP_TOKEN: 'sk-serve-123' }
+  assert.equal(validateBearerToken(reqWith('sk-serve-123'), { env }), true)
+  assert.equal(validateBearerToken(reqWith('sk-wrong'), { env }), false)
+  assert.equal(validateBearerToken({ headers: {} }, { env }), false)
+})
