@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFile } from 'node:fs/promises'
+import { atomicWriteFile } from '../src/utils/atomicWrite.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -2815,6 +2816,143 @@ test('createDeepSeekLocalTools rejects paths outside cwd and unsafe bash command
     () => bash.execute({ command: 'rm -rf sample.txt' }, { cwd }),
     /not allowed/,
   )
+})
+
+async function countTmpSiblings(dir, baseName) {
+  const names = await readdir(dir)
+  return names.filter(n => n.startsWith(`${baseName}.`) && n.endsWith('.tmp')).length
+}
+
+test('atomicWriteFile writes via temp+rename, preserves an existing file mode, and leaves no temp', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-atomic-'))
+
+  // new file: content lands, no leftover temp, and the mode is IDENTICAL to what a direct
+  // writeFile would produce (proves we did not force a restrictive state-file mode).
+  const fresh = join(dir, 'fresh.txt')
+  await atomicWriteFile(fresh, 'hello')
+  assert.equal(await readFile(fresh, 'utf8'), 'hello')
+  assert.equal(await countTmpSiblings(dir, 'fresh.txt'), 0)
+  const direct = join(dir, 'direct.txt')
+  await writeFile(direct, 'hello')
+  assert.equal((await stat(fresh)).mode, (await stat(direct)).mode)
+
+  // overwrite preserves the existing file's mode (rename installs a new inode, so the
+  // permission bits must be copied — a direct writeFile O_TRUNC would have kept them).
+  const script = join(dir, 'run.sh')
+  await writeFile(script, 'echo old')
+  await chmod(script, 0o755)
+  const inoBefore = (await stat(script)).ino
+  await atomicWriteFile(script, 'echo new')
+  assert.equal(await readFile(script, 'utf8'), 'echo new')
+  assert.equal((await stat(script)).mode & 0o777, 0o755)
+  assert.equal(await countTmpSiblings(dir, 'run.sh'), 0)
+  // The inode CHANGED — proof the write went through temp+rename, not an in-place
+  // O_TRUNC overwrite (this assertion fails against the old direct-writeFile code, so it
+  // discriminates the atomic mechanism, not just the end state).
+  assert.notEqual((await stat(script)).ino, inoBefore)
+
+  // a 0o600 secret keeps its restrictive mode through an overwrite
+  const secret = join(dir, 'secret.env')
+  await writeFile(secret, 'A=1')
+  await chmod(secret, 0o600)
+  await atomicWriteFile(secret, 'A=2')
+  assert.equal((await stat(secret)).mode & 0o777, 0o600)
+})
+
+test('atomicWriteFile leaves the original intact and cleans the temp when the rename fails', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-atomic-fail-'))
+  // target is a directory: write to temp succeeds, rename onto a dir fails → the catch
+  // must remove the temp and rethrow the ORIGINAL rename error (EISDIR), and the original
+  // (the dir) must be untouched.
+  const target = join(dir, 'busy')
+  await mkdir(target)
+  await assert.rejects(
+    () => atomicWriteFile(target, 'data'),
+    error => error.code === 'EISDIR' || error.code === 'ENOTEMPTY' || error.code === 'EPERM',
+  )
+  assert.equal((await stat(target)).isDirectory(), true)
+  assert.equal(await countTmpSiblings(dir, 'busy'), 0)
+})
+
+test('atomicWriteFile follows a symlink target (writes through, keeps the link)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-atomic-link-'))
+  const real = join(dir, 'real.txt')
+  const link = join(dir, 'link.txt')
+  await writeFile(real, 'original')
+  await symlink(real, link)
+
+  await atomicWriteFile(link, 'updated')
+
+  // the symlink is preserved (NOT replaced by a regular file) and its target got the write
+  assert.equal((await lstat(link)).isSymbolicLink(), true)
+  assert.equal(await readFile(real, 'utf8'), 'updated')
+  assert.equal(await readFile(link, 'utf8'), 'updated')
+  // the temp landed next to the REAL file, and none leaked
+  assert.equal(await countTmpSiblings(dir, 'real.txt'), 0)
+  assert.equal(await countTmpSiblings(dir, 'link.txt'), 0)
+})
+
+test('atomicWriteFile follows a DANGLING symlink (creates the target, keeps the link)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-atomic-dangling-'))
+  const missing = join(dir, 'not-yet.txt')
+  const link = join(dir, 'pending.txt')
+  await symlink(missing, link) // points at a file that does not exist yet
+
+  await atomicWriteFile(link, 'created')
+
+  // the old writeFile would follow the link and create the target; we must too — write
+  // through to the target and preserve the symlink, rather than replacing the link.
+  assert.equal((await lstat(link)).isSymbolicLink(), true)
+  assert.equal(await readFile(missing, 'utf8'), 'created')
+  assert.equal(await readFile(link, 'utf8'), 'created')
+  assert.equal(await countTmpSiblings(dir, 'not-yet.txt'), 0)
+})
+
+test('atomicWriteFile throws ENOENT for a missing parent dir and EACCES for a read-only target', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-atomic-edge-'))
+
+  // missing parent directory is NOT created (matches a direct write)
+  await assert.rejects(
+    () => atomicWriteFile(join(dir, 'nope', 'f.txt'), 'x'),
+    error => error.code === 'ENOENT',
+  )
+  assert.deepEqual(await readdir(dir), [])
+
+  // a read-only existing file is NOT silently replaced — rename is gated on the parent dir,
+  // so without the W_OK guard a 0o444 file the old writeFile rejected would be overwritten.
+  // (skip under root, which bypasses permission checks.)
+  if (!(process.getuid && process.getuid() === 0)) {
+    const ro = join(dir, 'readonly.txt')
+    await writeFile(ro, 'locked')
+    await chmod(ro, 0o444)
+    await assert.rejects(
+      () => atomicWriteFile(ro, 'overwrite'),
+      error => error.code === 'EACCES',
+    )
+    assert.equal(await readFile(ro, 'utf8'), 'locked')
+    assert.equal(await countTmpSiblings(dir, 'readonly.txt'), 0)
+  }
+})
+
+test('local Edit/Write tools persist atomically and preserve the edited file mode', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'deepcode-toolchain-atomic-'))
+  const tools = createDeepSeekLocalTools({ cwd })
+  const edit = tools.find(tool => tool.name === 'Edit')
+  const write = tools.find(tool => tool.name === 'Write')
+
+  // Write then Edit a file whose mode was tightened — the edit must keep the mode and
+  // leave no temp sibling behind.
+  await write.execute({ file_path: 'app.txt', content: 'value=1\n' }, { cwd })
+  assert.equal(await readFile(join(cwd, 'app.txt'), 'utf8'), 'value=1\n')
+
+  await chmod(join(cwd, 'app.txt'), 0o640)
+  await edit.execute(
+    { file_path: 'app.txt', old_string: 'value=1', new_string: 'value=2' },
+    { cwd },
+  )
+  assert.equal(await readFile(join(cwd, 'app.txt'), 'utf8'), 'value=2\n')
+  assert.equal((await stat(join(cwd, 'app.txt')).then(s => s.mode & 0o777)), 0o640)
+  assert.equal(await countTmpSiblings(cwd, 'app.txt'), 0)
 })
 
 function sseBody(lines) {

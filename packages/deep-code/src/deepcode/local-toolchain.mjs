@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process'
 import { realpathSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { dirname, resolve, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
+import { atomicWriteFile } from '../utils/atomicWrite.mjs'
 import {
   createDeepSeekCacheDiagnostics,
   runDeepSeekAgent,
@@ -92,7 +93,7 @@ export function createDeepSeekLocalTools({ cwd = process.cwd() } = {}) {
         if (!current.includes(oldString)) {
           throw new Error(`old_string not found in ${input.file_path}`)
         }
-        await writeFile(filePath, current.replace(oldString, newString))
+        await atomicWriteFile(filePath, current.replace(oldString, newString))
         return `Updated ${input.file_path}`
       },
     },
@@ -110,7 +111,7 @@ export function createDeepSeekLocalTools({ cwd = process.cwd() } = {}) {
       },
       async execute(input) {
         const filePath = resolveWorkspacePath(workspaceRoot, input.file_path)
-        await writeFile(filePath, String(input.content ?? ''))
+        await atomicWriteFile(filePath, String(input.content ?? ''))
         return `Wrote ${input.file_path}`
       },
     },
