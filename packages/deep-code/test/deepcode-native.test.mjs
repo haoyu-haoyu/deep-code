@@ -1282,8 +1282,63 @@ test('DeepSeek HTTP errors map to retry strategies', () => {
 
   assert.equal(mapDeepSeekHttpError({ status: 503 }).retryable, true)
   assert.equal(mapDeepSeekHttpError({ status: 400 }).retryable, false)
+
+  // Transient gateway / timeout statuses retry with backoff (a CDN/proxy blip must not
+  // abort the turn on the first hit). Explicit set, so the non-transient 5xx fail fast.
+  for (const status of [408, 500, 502, 504]) {
+    const recovery = mapDeepSeekHttpError({ status })
+    assert.equal(recovery.retryable, true, `status ${status} should be retryable`)
+    assert.equal(recovery.retryStrategy, 'exponential_backoff', `status ${status} strategy`)
+  }
+  for (const status of [400, 401, 403, 404, 501, 505]) {
+    assert.equal(
+      mapDeepSeekHttpError({ status }).retryable,
+      false,
+      `status ${status} should be fatal (not transient)`,
+    )
+  }
+
+  // A sane Retry-After is honored VERBATIM — including a value larger than our 8s backoff
+  // ceiling (the server is authoritative; retrying earlier than it asked re-collides on
+  // the 429). 7s and 30s both pass through unclamped.
   assert.equal(calculateDeepSeekRetryDelayMs({ retryAfterSeconds: 7 }, 0), 7000)
-  assert.equal(calculateDeepSeekRetryDelayMs({}, 2, { retryBaseDelayMs: 100 }), 400)
+  assert.equal(calculateDeepSeekRetryDelayMs({ retryAfterSeconds: 30 }, 0), 30000)
+  // Only an ABSURD Retry-After is clamped — by the separate retryAfterMaxMs ceiling
+  // (default 60s), NOT the 8s backoff cap — so a hostile `Retry-After: 86400` can't freeze
+  // the agent for a day; and a negative value floors at 0 (never a negative sleep).
+  assert.equal(calculateDeepSeekRetryDelayMs({ retryAfterSeconds: 86400 }, 0), 60000)
+  assert.equal(
+    calculateDeepSeekRetryDelayMs({ retryAfterSeconds: 86400 }, 0, { retryAfterMaxMs: 8000 }),
+    8000,
+  )
+  assert.equal(calculateDeepSeekRetryDelayMs({ retryAfterSeconds: -5 }, 0), 0)
+
+  // Exponential backoff now carries equal jitter in [ceiling/2, ceiling]. random()=>1
+  // yields the full ceiling (the old deterministic value — behavior-identity anchor),
+  // random()=>0 yields the floor; every draw stays within the band.
+  assert.equal(
+    calculateDeepSeekRetryDelayMs({}, 2, { retryBaseDelayMs: 100, random: () => 1 }),
+    400,
+  )
+  assert.equal(
+    calculateDeepSeekRetryDelayMs({}, 2, { retryBaseDelayMs: 100, random: () => 0 }),
+    200,
+  )
+  for (const r of [0, 0.13, 0.5, 0.87, 0.999]) {
+    const delay = calculateDeepSeekRetryDelayMs({}, 2, { retryBaseDelayMs: 100, random: () => r })
+    assert.ok(delay >= 200 && delay <= 400, `jitter ${r} -> ${delay} out of [200,400]`)
+  }
+  // The [ceiling/2, ceiling] bound holds UNCONDITIONALLY: a misbehaving injected rng that
+  // returns out of [0,1) (negative, >= 1, or NaN) is coerced to the domain, so it can never
+  // yield a negative sleep or one above the cap (random is reachable via context.random).
+  assert.equal(calculateDeepSeekRetryDelayMs({}, 2, { retryBaseDelayMs: 100, random: () => -2 }), 200)
+  assert.equal(calculateDeepSeekRetryDelayMs({}, 2, { retryBaseDelayMs: 100, random: () => 2 }), 400)
+  assert.equal(calculateDeepSeekRetryDelayMs({}, 2, { retryBaseDelayMs: 100, random: () => NaN }), 200)
+  // Jitter is preserved even once the delay is capped (decorrelates at the boundary).
+  assert.equal(
+    calculateDeepSeekRetryDelayMs({}, 10, { retryBaseDelayMs: 500, retryMaxDelayMs: 8000, random: () => 0 }),
+    4000,
+  )
 })
 
 test('streamDeepSeekQuery retries retryable HTTP failures before streaming', async () => {
