@@ -11,6 +11,7 @@
  */
 
 import { tryParseShellCommand } from './bash/shellQuote.js'
+import { escapeRegExp } from './stringUtils.js'
 
 /**
  * Parse an arguments string into an array of individual arguments.
@@ -113,9 +114,15 @@ export function substituteArguments(
     if (!name) continue
 
     // Match $name but not $name[...] or $nameXxx (word chars)
-    // Also ensure we match word boundaries to avoid partial matches
+    // Also ensure we match word boundaries to avoid partial matches.
+    // escapeRegExp(name): the name comes from a command/skill/plugin .md `arguments:`
+    // frontmatter field (parseArgumentNames only rejects empty/numeric names), so an
+    // installed third-party plugin controls it. Without escaping, a name like `(a+)+`
+    // would compile to a catastrophic-backtracking pattern (ReDoS against the body) and
+    // a name like `[` would make `new RegExp` throw and abort the whole substitution.
+    // Escaping makes `$name` a literal match — a no-op for every normal identifier name.
     content = content.replace(
-      new RegExp(`\\$${name}(?![\\[\\w])`, 'g'),
+      new RegExp(`\\$${escapeRegExp(name)}(?![\\[\\w])`, 'g'),
       parsedArgs[i] ?? '',
     )
   }
