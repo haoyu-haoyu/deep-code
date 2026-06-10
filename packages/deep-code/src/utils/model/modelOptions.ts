@@ -31,6 +31,11 @@ import { has1mContext } from '../context.js'
 import { getGlobalConfig } from '../config.js'
 import { getResolvedDeepSeekModelCatalog } from '../../services/providers/deepseek-config-store.mjs'
 import { resolveModelCatalogEntry } from '../../services/providers/model-catalog.mjs'
+import { getMessage } from '../../i18n/index.js'
+import {
+  deepseekModelI18n,
+  DEEPSEEK_CUSTOM_MODEL_DESCRIPTION_KEY,
+} from './deepseekModelI18n.mjs'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
 
@@ -48,8 +53,11 @@ export function getDefaultOptionForUser(fastMode = false): ModelOption {
     )
     return {
       value: null,
-      label: 'Default (recommended)',
-      description: `Use the DeepSeek default for Deep Code (currently ${currentModel})`,
+      label: getMessage('model.deepseek.default.label'),
+      description: getMessage('model.deepseek.default.description', {
+        model: currentModel,
+      }),
+      // model-facing → kept English (locale-stable)
       descriptionForModel: `DeepSeek default model (currently ${currentModel})`,
     }
   }
@@ -93,45 +101,34 @@ function getCustomSonnetOption(): ModelOption | undefined {
   }
 }
 
+// ENGLISH label, sourced from the deepseekModelI18n leaf. Used for `descriptionForModel`
+// (the model-facing ConfigTool prompt), which must NOT vary by UI locale (locale-stable
+// model input + cache prefix). The DISPLAYED label is localized separately, below.
 function getDeepSeekModelLabel(model: string): string {
-  const normalized = model.toLowerCase()
-  if (normalized === AUTO_MODEL_SETTING) return 'Auto'
-  if (normalized === 'deepseek-chat') return 'DeepSeek Chat'
-  if (normalized === 'deepseek-coder') return 'DeepSeek Coder'
-  if (normalized === 'deepseek-reasoner') return 'DeepSeek Reasoner'
-  if (normalized === 'deepseek-v4-pro') return 'DeepSeek V4 Pro'
-  if (normalized === 'deepseek-v4-flash') return 'DeepSeek V4 Flash'
-  return model
+  return deepseekModelI18n(model)?.englishLabel ?? model
 }
 
+// LOCALIZED label for DISPLAY (the /model picker, --print). Falls through to the raw id for a
+// model the catalog doesn't recognize.
+function getDeepSeekModelDisplayLabel(model: string): string {
+  const i18n = deepseekModelI18n(model)
+  return i18n ? getMessage(i18n.labelKey) : model
+}
+
+// LOCALIZED description for DISPLAY only (never fed to the model), so it can localize fully.
 function getDeepSeekModelDescription(model: string): string {
-  const normalized = model.toLowerCase()
-  if (normalized === AUTO_MODEL_SETTING) {
-    return 'Route each turn to DeepSeek Flash or Pro automatically'
-  }
-  if (normalized === 'deepseek-chat') {
-    return 'Balanced DeepSeek model for everyday chat and coding tasks'
-  }
-  if (normalized === 'deepseek-coder') {
-    return 'Code-focused DeepSeek model for implementation work'
-  }
-  if (normalized === 'deepseek-reasoner') {
-    return 'Reasoning-focused DeepSeek model for complex tasks'
-  }
-  if (normalized === 'deepseek-v4-pro') {
-    return '1M context · strongest Deep Code model for complex engineering work'
-  }
-  if (normalized === 'deepseek-v4-flash') {
-    return '1M context · fast lightweight model for small edits, summaries, and subagents'
-  }
-  return 'Custom DeepSeek-compatible model'
+  const i18n = deepseekModelI18n(model)
+  return i18n
+    ? getMessage(i18n.descriptionKey)
+    : getMessage(DEEPSEEK_CUSTOM_MODEL_DESCRIPTION_KEY)
 }
 
 function getAutoModelOption(): ModelOption {
   return {
     value: AUTO_MODEL_SETTING,
-    label: 'Auto',
-    description: 'Route each turn to DeepSeek Flash or Pro automatically',
+    label: getMessage('model.deepseek.auto.label'),
+    description: getMessage('model.deepseek.auto.description'),
+    // model-facing → kept English (locale-stable)
     descriptionForModel: 'Auto route each turn to DeepSeek Flash or Pro',
   }
 }
@@ -156,12 +153,16 @@ function getDeepSeekNativeModelOptions(): ModelOption[] {
 
   for (const entry of catalog) {
     if (options.some(opt => opt.value === entry.id)) continue
-    const label = entry.label ?? getDeepSeekModelLabel(entry.id)
+    // descriptionForModel (model-facing) uses the ENGLISH label so it stays locale-stable;
+    // the displayed label is localized. A config-provided entry.label overrides BOTH
+    // (unchanged behavior).
+    const englishLabel = entry.label ?? getDeepSeekModelLabel(entry.id)
+    const displayLabel = entry.label ?? getDeepSeekModelDisplayLabel(entry.id)
     options.push({
       value: entry.id,
-      label,
+      label: displayLabel,
       description: entry.description ?? getDeepSeekModelDescription(entry.id),
-      descriptionForModel: `${label} (${entry.id})`,
+      descriptionForModel: `${englishLabel} (${entry.id})`,
     })
   }
 
@@ -489,8 +490,13 @@ export function getModelOptions(fastMode = false): ModelOption[] {
     ) {
       options.push({
         value: customModel,
-        label: getDeepSeekModelLabel(customModel),
+        label: getDeepSeekModelDisplayLabel(customModel),
         description: getDeepSeekModelDescription(customModel),
+        // descriptionForModel (model-facing, via the ConfigTool prompt's
+        // `descriptionForModel ?? description` fallback) MUST be English — without it the
+        // now-localized `description` above would leak to the model and shift the cache
+        // prefix by UI locale. English label, mirroring the catalog branch.
+        descriptionForModel: `${getDeepSeekModelLabel(customModel)} (${customModel})`,
       })
     }
 

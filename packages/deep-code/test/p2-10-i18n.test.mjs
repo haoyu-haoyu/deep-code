@@ -18,6 +18,7 @@ function runI18nExpression(expression) {
         import { EN_MESSAGES } from './src/i18n/messages/en.ts'
         import { ZH_HANS_MESSAGES } from './src/i18n/messages/zh-Hans.ts'
         import { JA_MESSAGES } from './src/i18n/messages/ja.ts'
+        import { deepseekModelI18nEntries } from './src/utils/model/deepseekModelI18n.mjs'
         const placeholders = s => (String(s).match(/\\{[A-Za-z0-9_.-]+\\}/g) || []).sort().join(',')
         const result = await (${expression})
         process.stdout.write(JSON.stringify(result))
@@ -44,6 +45,38 @@ test('translate interpolates named placeholders', () => {
       "translate('en', 'restore.snapshot.count', { count: 3 })",
     ),
     '3 snapshots',
+  )
+})
+
+test('DeepSeek model picker keys: en catalog mirrors the leaf (en display is byte-identical)', () => {
+  // The English values in en.ts MUST equal the canonical strings in the deepseekModelI18n
+  // leaf — otherwise an en-locale user would see a string different from the old hardcoded
+  // picker. Asserting parity here pins en-display-unchanged.
+  const mismatches = runI18nExpression(
+    `deepseekModelI18nEntries()
+      .filter(e => EN_MESSAGES[e.labelKey] !== e.englishLabel || EN_MESSAGES[e.descriptionKey] !== e.englishDescription)
+      .map(e => e.seg)`,
+  )
+  assert.deepEqual(mismatches, [])
+})
+
+test('DeepSeek model picker keys: descriptions localize, brand labels stay English', () => {
+  // zh-Hans translates the description sentence ...
+  assert.equal(
+    runI18nExpression("translate('zh-Hans', 'model.deepseek.v4Pro.description')"),
+    '1M 上下文 · 最强的 Deep Code 模型，适合复杂工程任务',
+  )
+  // ... but the brand/model-name label stays English in every locale.
+  assert.equal(
+    runI18nExpression("translate('zh-Hans', 'model.deepseek.v4Pro.label')"),
+    'DeepSeek V4 Pro',
+  )
+  // the 'Auto' mode label IS translated (it's a generic word, not a brand name)
+  assert.equal(runI18nExpression("translate('zh-Hans', 'model.deepseek.auto.label')"), '自动')
+  // the default description keeps the {model} placeholder and interpolates it per locale
+  assert.equal(
+    runI18nExpression("translate('zh-Hans', 'model.deepseek.default.description', { model: 'deepseek-v4-pro' })"),
+    '使用 Deep Code 的 DeepSeek 默认模型（当前为 deepseek-v4-pro）',
   )
 })
 

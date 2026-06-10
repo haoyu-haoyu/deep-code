@@ -11,6 +11,33 @@ import {
   sanitizeModelCatalogEntries,
 } from '../src/services/providers/model-catalog.mjs'
 import {
+  deepseekModelI18n,
+  deepseekModelI18nEntries,
+} from '../src/utils/model/deepseekModelI18n.mjs'
+
+test('deepseekModelI18n maps a known id (case-insensitively) to its keys + English strings', () => {
+  assert.deepEqual(deepseekModelI18n('deepseek-v4-pro'), {
+    labelKey: 'model.deepseek.v4Pro.label',
+    descriptionKey: 'model.deepseek.v4Pro.description',
+    englishLabel: 'DeepSeek V4 Pro',
+    englishDescription: '1M context · strongest Deep Code model for complex engineering work',
+  })
+  // case-insensitive + the 'auto' sentinel
+  assert.equal(deepseekModelI18n('DeepSeek-V4-Pro').labelKey, 'model.deepseek.v4Pro.label')
+  assert.equal(deepseekModelI18n('auto').englishLabel, 'Auto')
+  // an unknown / custom id → null (caller shows the raw id + the custom description)
+  assert.equal(deepseekModelI18n('my-custom-model'), null)
+  assert.equal(deepseekModelI18n(undefined), null)
+  // every entry exposes both keys derived from its segment
+  for (const e of deepseekModelI18nEntries()) {
+    assert.equal(e.labelKey, `model.deepseek.${e.seg}.label`)
+    assert.equal(e.descriptionKey, `model.deepseek.${e.seg}.description`)
+    assert.equal(typeof e.englishLabel, 'string')
+    assert.equal(typeof e.englishDescription, 'string')
+  }
+  assert.equal(deepseekModelI18nEntries().length, 6)
+})
+import {
   getResolvedDeepSeekModelCatalog,
   loadDeepSeekConfigFile,
   saveDeepSeekConfigFile,
