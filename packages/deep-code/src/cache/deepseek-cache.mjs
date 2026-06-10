@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import { cacheHitRatio } from './hitRate.mjs'
+
 const liveTurns = []
 let totalHit = 0
 let totalMiss = 0
@@ -13,10 +15,10 @@ export function createDeepSeekCacheUserId(workspacePath) {
 }
 
 export function calculateDeepSeekCacheHitRate(usage = {}) {
-  const hit = usage.prompt_cache_hit_tokens ?? 0
-  const miss = usage.prompt_cache_miss_tokens ?? 0
-  const total = hit + miss
-  return total === 0 ? 0 : hit / total
+  return cacheHitRatio(
+    usage.prompt_cache_hit_tokens ?? 0,
+    usage.prompt_cache_miss_tokens ?? 0,
+  )
 }
 
 export function createDeepSeekCacheDiagnostics(usage = {}) {
@@ -44,7 +46,7 @@ export function recordTurn({
     turnId: String(turnId || `turn-${liveTurns.length + 1}`),
     hitTokens,
     missTokens,
-    hitRate: calculateHitRate(hitTokens, missTokens),
+    hitRate: cacheHitRatio(hitTokens, missTokens),
     prefixHash: String(prefixHash || ''),
     componentHashes: cloneComponentHashes(componentHashes),
     timestamp,
@@ -61,7 +63,7 @@ export function getSessionTotals() {
   return {
     totalHit,
     totalMiss,
-    hitRate: calculateHitRate(totalHit, totalMiss),
+    hitRate: cacheHitRatio(totalHit, totalMiss),
     turnCount: liveTurns.length,
   }
 }
@@ -112,11 +114,6 @@ export function sortJsonValue(value) {
     out[key] = sortJsonValue(value[key])
   }
   return out
-}
-
-function calculateHitRate(hit, miss) {
-  const total = hit + miss
-  return total === 0 ? 0 : hit / total
 }
 
 function normalizeTokenCount(value) {

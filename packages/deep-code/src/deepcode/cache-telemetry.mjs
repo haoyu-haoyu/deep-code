@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { cacheHitRatio } from '../cache/hitRate.mjs'
 import { providerSupports } from './provider-capabilities.mjs'
 import { omitUndefined } from '../utils/omitUndefined.mjs'
 
@@ -111,9 +112,11 @@ export function formatDeepSeekCacheStatus(stats, { provider, stablePrefix } = {}
   ].filter(Boolean).join('\n')
 }
 
+// The persisted telemetry rate rounds to 4 dp for compact, stable storage — an explicit
+// presentation wrapper over the shared ratio (the rounding is the only intended difference
+// from the live diagnostics rate).
 function cacheHitRate(hit, miss) {
-  const total = hit + miss
-  return total === 0 ? 0 : Number((hit / total).toFixed(4))
+  return Number(cacheHitRatio(hit, miss).toFixed(4))
 }
 
 function formatRate(rate) {
