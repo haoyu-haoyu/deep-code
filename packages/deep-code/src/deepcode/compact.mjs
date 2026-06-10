@@ -8,6 +8,7 @@ import { createDeepSeekCacheDiagnostics } from '../cache/deepseek-cache.mjs'
 import { createDeepCodeStablePrefix } from './stable-prefix.mjs'
 import { providerSupports } from './provider-capabilities.mjs'
 import { omitUndefined } from '../utils/omitUndefined.mjs'
+import { parsePositiveIntOr } from '../utils/configValue.mjs'
 
 export async function compactDeepCodeConversation({
   messages = [],
@@ -32,11 +33,14 @@ export async function compactDeepCodeConversation({
     env,
     cwd,
     model: config.smallModel,
-    maxTokens: Number(
+    // parsePositiveIntOr (not bare Number): Number('') === 0 and Number('lots') === NaN would
+    // reach the request as a broken max_tokens; a non-positive-integer env value falls back to
+    // 1024 instead. Unset env → 1024, identical to the old `?? 1024` default.
+    maxTokens: parsePositiveIntOr(
       maxTokens ??
         env.DEEPCODE_COMPACT_MAX_TOKENS ??
-        env.DEEPSEEK_COMPACT_MAX_TOKENS ??
-        1024,
+        env.DEEPSEEK_COMPACT_MAX_TOKENS,
+      1024,
     ),
     thinking: providerSupports(modelProvider, 'extended_thinking')
       ? 'disabled'

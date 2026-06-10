@@ -97,9 +97,17 @@ function parseEnvOption(args, index, arg) {
   if (!envKey) return null
 
   if (equalsIndex !== -1) {
+    const value = arg.slice(equalsIndex + 1)
+    // Reject `--flag=` with an empty value, mirroring the space-form's missing-value guard
+    // below — an empty env override (DEEPSEEK_MODEL='') is never meaningful and would slip
+    // past it. A `-`-prefixed value IS allowed here (it's explicit, e.g. `--flag=-x`),
+    // unlike the ambiguous space form.
+    if (value === '') {
+      throw new Error(`${flag} requires a value`)
+    }
     return {
       envKey,
-      value: arg.slice(equalsIndex + 1),
+      value,
       nextIndex: index,
     }
   }

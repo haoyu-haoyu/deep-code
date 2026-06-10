@@ -109,6 +109,7 @@ import {
   saveDeepSeekConfigFile,
 } from '../src/services/providers/deepseek-config-store.mjs'
 import { resolveDeepSeekConfig } from '../src/services/providers/deepseek.mjs'
+import { firstNonEmpty, parsePositiveIntOr } from '../src/utils/configValue.mjs'
 
 test('buildDeepSeekRequest emits native DeepSeek chat-completions body without Anthropic fields', async () => {
   const request = await buildDeepSeekRequest({
@@ -259,6 +260,54 @@ test('parseDeepCodeArgs recognizes print mode and DeepSeek-native CLI overrides'
     DEEPSEEK_REASONING_EFFORT: 'max',
     DEEPCODE_CACHE_USER_ID: 'dc_workspace',
   })
+})
+
+test('configValue.firstNonEmpty skips undefined/null/empty-or-whitespace, keeps the first real value', () => {
+  assert.equal(firstNonEmpty(undefined, null, '', '  ', 'x'), 'x')
+  assert.equal(firstNonEmpty('', 'a', 'b'), 'a') // empty string is treated as absent
+  assert.equal(firstNonEmpty(undefined, undefined, 'DEFAULT'), 'DEFAULT') // unset → default
+  assert.equal(firstNonEmpty('', '   '), undefined) // nothing real → undefined
+  assert.equal(firstNonEmpty('first'), 'first')
+})
+
+test('configValue.parsePositiveIntOr coerces a positive integer else falls back', () => {
+  assert.equal(parsePositiveIntOr('512', 1024), 512)
+  assert.equal(parsePositiveIntOr(512, 1024), 512)
+  assert.equal(parsePositiveIntOr(undefined, 1024), 1024) // unset → fallback
+  assert.equal(parsePositiveIntOr('', 1024), 1024) // Number('') === 0 would have been wrong
+  assert.equal(parsePositiveIntOr('lots', 1024), 1024) // NaN
+  assert.equal(parsePositiveIntOr('0', 1024), 1024) // non-positive
+  assert.equal(parsePositiveIntOr('-5', 1024), 1024)
+  assert.equal(parsePositiveIntOr('3.5', 1024), 1024) // non-integer
+})
+
+test('resolveDeepSeekConfig treats an EMPTY model/baseUrl env var as unset (falls back to default)', () => {
+  // an empty string is not nullish, so the old `?? DEFAULT` chain produced model:'' here —
+  // a broken request. firstNonEmpty falls through to the default instead.
+  const withEmpty = resolveDeepSeekConfig({
+    env: { DEEPSEEK_MODEL: '', DEEPSEEK_SMALL_MODEL: '', DEEPSEEK_BASE_URL: '' },
+    fileConfig: null,
+  })
+  assert.equal(withEmpty.model, 'deepseek-v4-pro')
+  assert.equal(withEmpty.smallModel, 'deepseek-v4-flash')
+  assert.equal(withEmpty.baseUrl, 'https://api.deepseek.com')
+  // a real value still wins (behavior-identical)
+  const withValue = resolveDeepSeekConfig({ env: { DEEPSEEK_MODEL: 'deepseek-v4-flash' }, fileConfig: null })
+  assert.equal(withValue.model, 'deepseek-v4-flash')
+  // the all-unset default path is unchanged (the cache-prefix default)
+  const defaults = resolveDeepSeekConfig({ env: {}, fileConfig: null })
+  assert.equal(defaults.model, 'deepseek-v4-pro')
+  assert.equal(defaults.baseUrl, 'https://api.deepseek.com')
+})
+
+test('parseDeepCodeArgs rejects an empty =-form flag value', () => {
+  // `--model=` (empty) is never meaningful and previously slipped through as DEEPSEEK_MODEL=''
+  assert.throws(() => parseDeepCodeArgs(['--model=']), /requires a value/)
+  // an explicit value (even a -prefixed one, which the space form forbids) is still accepted
+  assert.deepEqual(
+    parseDeepCodeArgs(['--model=deepseek-v4-flash']).envOverrides,
+    { DEEPSEEK_MODEL: 'deepseek-v4-flash' },
+  )
 })
 
 test('parseDeepCodeArgs gives commands precedence over print mode', () => {
