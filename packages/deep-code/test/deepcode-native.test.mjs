@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { atomicWriteFile } from '../src/utils/atomicWrite.mjs'
 import { omitUndefined } from '../src/utils/omitUndefined.mjs'
+import { byteCompare } from '../src/cache/byte-order.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -957,6 +958,88 @@ test('sanitizeSchemaForDeepSeekStrict removes unsupported constraints and closes
     required: ['query', 'tags'],
     additionalProperties: false,
   })
+})
+
+test('sanitizeSchemaForDeepSeekStrict recurses into anyOf and $defs (untested branches)', () => {
+  // anyOf: each member is sanitized independently — an object member is closed
+  // (required + additionalProperties), a scalar member just drops unsupported keys.
+  assert.deepEqual(
+    sanitizeSchemaForDeepSeekStrict({
+      anyOf: [
+        { type: 'object', properties: { a: { type: 'string', minLength: 2 } } },
+        { type: 'string', maxLength: 5 },
+      ],
+    }),
+    {
+      anyOf: [
+        {
+          type: 'object',
+          properties: { a: { type: 'string' } },
+          required: ['a'],
+          additionalProperties: false,
+        },
+        { type: 'string' },
+      ],
+    },
+  )
+
+  // $defs: every def is recursed, a supported constraint (minimum) is kept, and the def
+  // NAMES are sorted (Apple before Zebra) so the output is order-stable.
+  const defs = sanitizeSchemaForDeepSeekStrict({
+    $defs: {
+      Zebra: { type: 'object', properties: { z: { type: 'integer', minimum: 0 } } },
+      Apple: { type: 'string', minLength: 1 },
+    },
+  })
+  assert.deepEqual(Object.keys(defs.$defs), ['Apple', 'Zebra'])
+  assert.deepEqual(defs, {
+    $defs: {
+      Apple: { type: 'string' },
+      Zebra: {
+        type: 'object',
+        properties: { z: { type: 'integer', minimum: 0 } },
+        required: ['z'],
+        additionalProperties: false,
+      },
+    },
+  })
+})
+
+test('sanitizeSchemaForDeepSeekStrict is order-stable for the cache moat', () => {
+  // The sanitized schema rides the DeepSeek cached prefix, so two inputs that differ only
+  // in key insertion order must serialize to BYTE-IDENTICAL JSON (keys are sorted at every
+  // level). This is what keeps the tool manifest from reordering across runs.
+  const a = sanitizeSchemaForDeepSeekStrict({
+    type: 'object',
+    properties: { b: { type: 'string' }, a: { type: 'number' } },
+    description: 'x',
+  })
+  const b = sanitizeSchemaForDeepSeekStrict({
+    description: 'x',
+    properties: { a: { type: 'number' }, b: { type: 'string' } },
+    type: 'object',
+  })
+  assert.equal(JSON.stringify(a), JSON.stringify(b))
+})
+
+test('byteCompare orders by UTF-16 code unit, locale-independently, and never throws', () => {
+  // total order: -1 / 0 / 1
+  assert.equal(byteCompare('a', 'b'), -1)
+  assert.equal(byteCompare('b', 'a'), 1)
+  assert.equal(byteCompare('a', 'a'), 0)
+  // CODE-UNIT, not locale: 'Z' (0x5A) sorts before 'a' (0x61). localeCompare would
+  // typically put 'a' first — this is the property that keeps the cached prefix stable
+  // across machines/ICU builds.
+  assert.equal(byteCompare('Z', 'a'), -1)
+  // lexicographic over the String() coercion (NOT numeric): '10' < '9' by first code unit
+  assert.equal(byteCompare(10, 9), -1)
+  // non-strings are coerced, never throw (null/undefined/objects)
+  assert.equal(byteCompare(null, undefined), -1) // 'null' < 'undefined'
+  assert.doesNotThrow(() => byteCompare({}, []))
+  // antisymmetry on distinct inputs
+  for (const [x, y] of [['apple', 'banana'], ['Tool', 'tool'], ['1', '2']]) {
+    assert.equal(byteCompare(x, y), -byteCompare(y, x))
+  }
 })
 
 test('toolToDeepSeekFunctionSchema supports strict and stable JSON schema output', async () => {
