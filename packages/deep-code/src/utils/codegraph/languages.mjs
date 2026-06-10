@@ -216,6 +216,19 @@ const JS_IMPORT_OPEN = /^\s*import\b(?!\s*[.(])/
 // Resolves a multi-line import's tail: `} from 'x'` / `from 'x'`.
 const JS_FROM_CLAUSE = /\bfrom\s+['"]([^'"]+)['"]/
 
+// Class-body member detectors, compiled ONCE (they were rebuilt per line inside the
+// extractJsTs loop). Both are static — `ID` is a constant — and are used with
+// String.match (no `g` flag, so no shared lastIndex state), so a single instance is
+// behavior-identical to a per-line `new RegExp`.
+//   JS_CLASS_MEMBER_RE: a `name(...)` / `name<...>` method member, after any modifier run.
+//   JS_CLASS_FIELD_ARROW_RE: a `name = (...) =>` / `name = arg =>` field arrow.
+const JS_CLASS_MEMBER_RE = new RegExp(
+  `^\\s*(?:public\\s+|private\\s+|protected\\s+|readonly\\s+|static\\s+|abstract\\s+|override\\s+|declare\\s+|accessor\\s+|async\\s+|get\\s+|set\\s+|\\*\\s*)*(${ID})\\s*[(<]`,
+)
+const JS_CLASS_FIELD_ARROW_RE = new RegExp(
+  `^\\s*(?:public\\s+|private\\s+|protected\\s+|readonly\\s+|static\\s+)*(${ID})\\s*=\\s*(?:async\\s+)?(?:\\([^)]*\\)|${ID})\\s*=>`,
+)
+
 const JS_KEYWORDS = new Set([
   'if', 'for', 'while', 'switch', 'catch', 'return', 'function', 'class',
   'else', 'do', 'try', 'with', 'await', 'yield', 'typeof', 'new', 'in', 'of',
@@ -297,8 +310,8 @@ export function extractJsTs(text) {
     // Class methods: a method-like line directly inside a class body — either a
     // `name(...)` / `name<...>` member, or a `name = (...) =>` field arrow.
     if (!matchedDecl && classStack.length && depth === classStack[classStack.length - 1].depth + 1) {
-      const member = line.match(new RegExp(`^\\s*(?:public\\s+|private\\s+|protected\\s+|readonly\\s+|static\\s+|abstract\\s+|override\\s+|declare\\s+|accessor\\s+|async\\s+|get\\s+|set\\s+|\\*\\s*)*(${ID})\\s*[(<]`))
-      const fieldArrow = line.match(new RegExp(`^\\s*(?:public\\s+|private\\s+|protected\\s+|readonly\\s+|static\\s+)*(${ID})\\s*=\\s*(?:async\\s+)?(?:\\([^)]*\\)|${ID})\\s*=>`))
+      const member = line.match(JS_CLASS_MEMBER_RE)
+      const fieldArrow = line.match(JS_CLASS_FIELD_ARROW_RE)
       const mm = member ?? fieldArrow
       if (mm && !JS_KEYWORDS.has(mm[1])) {
         symbols.push({ name: mm[1], kind: 'method', line: lineNo, exported: false, scope: enclosing })
