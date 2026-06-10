@@ -93,6 +93,19 @@ test('truncateToBoundary word: keeps trailing separators and punctuation', () =>
   assert.equal(trailingMulti, 'hi! how?', 'trailing question mark dropped')
 })
 
+test('truncateToBoundary word: segments non-whitespace scripts (CJK / emoji) via the last segment', () => {
+  // Intl.Segmenter word-splits CJK with no whitespace; the in-flight trailing word is
+  // rewound to its start. This exercises the last-segment path that the perf change reads
+  // via Segments.containing(text.length - 1) instead of materializing the whole array.
+  assert.equal(truncateToBoundary('你好世界', 'word'), '你好')
+  assert.equal(truncateToBoundary('我在想', 'word'), '我在')
+  // a trailing non-word-like piece (space, emoji) is complete and kept
+  assert.equal(truncateToBoundary('你好 ', 'word'), '你好 ')
+  assert.equal(truncateToBoundary('hello 😀', 'word'), 'hello 😀')
+  // a trailing word-like run after an emoji is still in flight → rewound
+  assert.equal(truncateToBoundary('test😀more', 'word'), 'test😀')
+})
+
 test('truncateToBoundary word: rewinds when last segment is mid-word', () => {
   // Middle of a word — should rewind to before that word.
   assert.equal(truncateToBoundary('hello wor', 'word'), 'hello ')
