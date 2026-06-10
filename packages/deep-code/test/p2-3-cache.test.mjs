@@ -12,6 +12,17 @@ import {
 } from '../src/components/cacheStatusChipData.mjs'
 import { executeCacheCommand } from '../src/commands/cache/cache-command.mjs'
 import { createDeepSeekCallModel } from '../src/query/deepseek-call-model.mjs'
+import { cacheHitRatio } from '../src/cache/hitRate.mjs'
+
+test('cacheHitRatio is hit/(hit+miss), and 0 (not NaN) when there are no tokens', () => {
+  assert.equal(cacheHitRatio(0, 0), 0) // no 0/0 = NaN
+  assert.equal(cacheHitRatio(1, 0), 1)
+  assert.equal(cacheHitRatio(0, 5), 0)
+  assert.equal(cacheHitRatio(3, 1), 0.75)
+  assert.equal(cacheHitRatio(1, 3), 0.25)
+  // full precision (the telemetry caller rounds separately); 6/7 is the canonical case
+  assert.equal(cacheHitRatio(6, 1), 6 / 7)
+})
 
 test('recordTurn updates session totals and hit rate', () => {
   clear()
