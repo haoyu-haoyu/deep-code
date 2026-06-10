@@ -2747,6 +2747,21 @@ export const JA_MESSAGES = {
   "spinner.compact.runningSessionStartHooks": "SessionStart フックを実行中…",
   "stats.unit.second": "秒",
   "stats.unit.seconds": "秒",
+  "model.deepseek.auto.label": "自動",
+  "model.deepseek.auto.description": "各ターンを DeepSeek Flash または Pro へ自動でルーティング",
+  "model.deepseek.chat.label": "DeepSeek Chat",
+  "model.deepseek.chat.description": "日常のチャットとコーディング作業に適したバランス型 DeepSeek モデル",
+  "model.deepseek.coder.label": "DeepSeek Coder",
+  "model.deepseek.coder.description": "実装作業向けのコード特化 DeepSeek モデル",
+  "model.deepseek.reasoner.label": "DeepSeek Reasoner",
+  "model.deepseek.reasoner.description": "複雑なタスク向けの推論特化 DeepSeek モデル",
+  "model.deepseek.v4Pro.label": "DeepSeek V4 Pro",
+  "model.deepseek.v4Pro.description": "1M コンテキスト · 複雑なエンジニアリング作業向けの最強 Deep Code モデル",
+  "model.deepseek.v4Flash.label": "DeepSeek V4 Flash",
+  "model.deepseek.v4Flash.description": "1M コンテキスト · 小さな編集・要約・サブエージェント向けの高速軽量モデル",
+  "model.deepseek.custom.description": "カスタム DeepSeek 互換モデル",
+  "model.deepseek.default.label": "デフォルト（推奨）",
+  "model.deepseek.default.description": "Deep Code の DeepSeek デフォルトモデルを使用（現在は {model}）",
 } as const satisfies MessageCatalog
 
 export type JapaneseMessageKey = keyof typeof JA_MESSAGES

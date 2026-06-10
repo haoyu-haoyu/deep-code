@@ -2742,6 +2742,24 @@ export const EN_MESSAGES = {
   'spinner.compact.runningSessionStartHooks': 'Running SessionStart hooks…',
   'stats.unit.second': 'second',
   'stats.unit.seconds': 'seconds',
+  // DeepSeek-native /model picker. Labels are brand/model names (kept English in every
+  // locale); the descriptions are the translatable sentences. These mirror the canonical
+  // strings in utils/model/deepseekModelI18n.mjs (parity-asserted) so an en user sees no change.
+  'model.deepseek.auto.label': 'Auto',
+  'model.deepseek.auto.description': 'Route each turn to DeepSeek Flash or Pro automatically',
+  'model.deepseek.chat.label': 'DeepSeek Chat',
+  'model.deepseek.chat.description': 'Balanced DeepSeek model for everyday chat and coding tasks',
+  'model.deepseek.coder.label': 'DeepSeek Coder',
+  'model.deepseek.coder.description': 'Code-focused DeepSeek model for implementation work',
+  'model.deepseek.reasoner.label': 'DeepSeek Reasoner',
+  'model.deepseek.reasoner.description': 'Reasoning-focused DeepSeek model for complex tasks',
+  'model.deepseek.v4Pro.label': 'DeepSeek V4 Pro',
+  'model.deepseek.v4Pro.description': '1M context · strongest Deep Code model for complex engineering work',
+  'model.deepseek.v4Flash.label': 'DeepSeek V4 Flash',
+  'model.deepseek.v4Flash.description': '1M context · fast lightweight model for small edits, summaries, and subagents',
+  'model.deepseek.custom.description': 'Custom DeepSeek-compatible model',
+  'model.deepseek.default.label': 'Default (recommended)',
+  'model.deepseek.default.description': 'Use the DeepSeek default for Deep Code (currently {model})',
 } as const satisfies MessageCatalog
 
 export type EnglishMessageKey = keyof typeof EN_MESSAGES

@@ -430,8 +430,28 @@ test('/model options include auto routing', async () => {
   const source = await readFile(modelOptionsSource, 'utf8')
 
   assert.match(source, /value:\s*AUTO_MODEL_SETTING/)
-  assert.match(source, /label:\s*'Auto'/)
-  assert.match(source, /Route each turn/)
+  // The picker labels/descriptions migrated to the i18n catalog (model.deepseek.*); the
+  // Auto option now renders the keys, with the English values living in en.ts.
+  assert.match(source, /getMessage\('model\.deepseek\.auto\.label'\)/)
+  assert.match(source, /getMessage\('model\.deepseek\.auto\.description'\)/)
+  const enCatalog = await readFile(
+    join(packageRoot, 'src/i18n/messages/en.ts'),
+    'utf8',
+  )
+  assert.match(enCatalog, /'model\.deepseek\.auto\.label':\s*'Auto'/)
+  assert.match(enCatalog, /'model\.deepseek\.auto\.description':\s*'Route each turn/)
+})
+
+test('the DeepSeek custom-model picker option sets an English descriptionForModel (no locale leak)', async () => {
+  // The custom (non-catalog) model append feeds the model-facing ConfigTool prompt via its
+  // `descriptionForModel ?? description` fallback. Since `description` is now localized, the
+  // push MUST set an English `descriptionForModel` or the model's input (and cache prefix)
+  // would shift by UI locale.
+  const source = await readFile(modelOptionsSource, 'utf8')
+  assert.match(
+    source,
+    /value:\s*customModel,[\s\S]*?descriptionForModel:\s*`\$\{getDeepSeekModelLabel\(customModel\)\} \(\$\{customModel\}\)`/,
+  )
 })
 
 test('/model auto is accepted without remote validation', async () => {

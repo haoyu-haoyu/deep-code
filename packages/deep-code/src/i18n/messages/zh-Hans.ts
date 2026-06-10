@@ -2747,6 +2747,21 @@ export const ZH_HANS_MESSAGES = {
   "spinner.compact.runningSessionStartHooks": "正在运行 SessionStart 钩子…",
   "stats.unit.second": "秒",
   "stats.unit.seconds": "秒",
+  "model.deepseek.auto.label": "自动",
+  "model.deepseek.auto.description": "每轮自动在 DeepSeek Flash 与 Pro 之间路由",
+  "model.deepseek.chat.label": "DeepSeek Chat",
+  "model.deepseek.chat.description": "均衡型 DeepSeek 模型，适合日常对话与编码任务",
+  "model.deepseek.coder.label": "DeepSeek Coder",
+  "model.deepseek.coder.description": "专注代码的 DeepSeek 模型，适合实现工作",
+  "model.deepseek.reasoner.label": "DeepSeek Reasoner",
+  "model.deepseek.reasoner.description": "专注推理的 DeepSeek 模型，适合复杂任务",
+  "model.deepseek.v4Pro.label": "DeepSeek V4 Pro",
+  "model.deepseek.v4Pro.description": "1M 上下文 · 最强的 Deep Code 模型，适合复杂工程任务",
+  "model.deepseek.v4Flash.label": "DeepSeek V4 Flash",
+  "model.deepseek.v4Flash.description": "1M 上下文 · 快速轻量模型，适合小改动、摘要与子代理",
+  "model.deepseek.custom.description": "自定义 DeepSeek 兼容模型",
+  "model.deepseek.default.label": "默认（推荐）",
+  "model.deepseek.default.description": "使用 Deep Code 的 DeepSeek 默认模型（当前为 {model}）",
 } as const satisfies MessageCatalog
 
 export type SimplifiedChineseMessageKey = keyof typeof ZH_HANS_MESSAGES
