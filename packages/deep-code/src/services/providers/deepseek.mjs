@@ -7,6 +7,7 @@ import {
 } from '../../cache/deepseek-cache.mjs'
 import { byteCompare } from '../../cache/byte-order.mjs'
 import { omitUndefined } from '../../utils/omitUndefined.mjs'
+import { firstNonEmpty } from '../../utils/configValue.mjs'
 import {
   mapMessagesToDeepSeek,
   normalizeToolCalls,
@@ -72,25 +73,32 @@ export function resolveDeepSeekConfig({
       env.DEEPCODE_API_KEY ??
       env.API_KEY ??
       file?.apiKey,
+    // firstNonEmpty (not ??): an empty-string env var (DEEPSEEK_MODEL="") must fall through
+    // to the default, not become a broken model:''/baseUrl:'' in the request. Unset env →
+    // the default, byte-identical to the old `?? ` chain (the cache-prefix default path).
     baseUrl: stripTrailingSlash(
-      overrides.baseUrl ??
-        env.DEEPSEEK_BASE_URL ??
-        env.DEEPCODE_BASE_URL ??
-        file?.baseUrl ??
+      firstNonEmpty(
+        overrides.baseUrl,
+        env.DEEPSEEK_BASE_URL,
+        env.DEEPCODE_BASE_URL,
+        file?.baseUrl,
         DEFAULT_DEEPSEEK_BASE_URL,
+      ),
     ),
-    model:
-      overrides.model ??
-      env.DEEPSEEK_MODEL ??
-      env.DEEPCODE_MODEL ??
-      file?.model ??
+    model: firstNonEmpty(
+      overrides.model,
+      env.DEEPSEEK_MODEL,
+      env.DEEPCODE_MODEL,
+      file?.model,
       DEFAULT_DEEPSEEK_MODEL,
-    smallModel:
-      overrides.smallModel ??
-      env.DEEPSEEK_SMALL_MODEL ??
-      env.DEEPCODE_SMALL_MODEL ??
-      file?.smallModel ??
+    ),
+    smallModel: firstNonEmpty(
+      overrides.smallModel,
+      env.DEEPSEEK_SMALL_MODEL,
+      env.DEEPCODE_SMALL_MODEL,
+      file?.smallModel,
       DEFAULT_DEEPSEEK_SMALL_MODEL,
+    ),
     thinking: thinkingEnabled ? 'enabled' : 'disabled',
     reasoningEffort: normalizeDeepSeekEffort(
       overrides.reasoningEffort ??
