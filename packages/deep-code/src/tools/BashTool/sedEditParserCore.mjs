@@ -10,6 +10,23 @@
 // Extracted VERBATIM (behavior-preserving); sedEditParser.ts imports them back.
 
 import { randomBytes } from 'crypto'
+import vm from 'node:vm'
+
+// Hard timeout for the substitution. applySedSubstitution renders the diff preview
+// SYNCHRONOUSLY in the permission dialog's single-threaded Ink render path over a
+// MODEL-supplied pattern, so a catastrophic-backtracking (ReDoS) pattern would otherwise
+// hang the UI indefinitely — before the user can even deny. The budget bounds that.
+//
+// A timeout returns the content UNCHANGED, and on timeout the caller
+// (SedEditPermissionRequest) sees the no-change result and falls back to running the REAL
+// shell `sed -i` — so a timed-out edit is NEVER silently dropped. That fallback is what makes
+// "return unchanged" safe here even though the budget is reachable not only by pathological
+// patterns but also, in principle, by a legitimate-but-heavy linear replace on a very large
+// file: such an edit still applies for real (via shell sed, in an interruptible subprocess),
+// while the synchronous UI preview stays bounded. (A file-SIZE cap was NOT safe because it
+// short-circuited the same path with the unchanged content and no real-sed fallback.) 2 s is
+// generous for the preview — a typical replace finishes in well under 100 ms even at 10 MB.
+const SED_SUBSTITUTION_TIMEOUT_MS = 2000
 
 // BRE→ERE conversion placeholders (null-byte sentinels, never appear in user input)
 const BACKSLASH_PLACEHOLDER = '\x00BACKSLASH\x00'
@@ -101,7 +118,11 @@ export function parseSedSubstitutionExpression(expression) {
  * Apply a sed substitution to file content
  * Returns the new content after applying the substitution
  */
-export function applySedSubstitution(content, sedInfo) {
+export function applySedSubstitution(
+  content,
+  sedInfo,
+  { timeoutMs = SED_SUBSTITUTION_TIMEOUT_MS } = {},
+) {
   // Convert sed pattern to JavaScript regex
   let regexFlags = ''
 
@@ -169,11 +190,25 @@ export function applySedSubstitution(content, sedInfo) {
     // Convert placeholder back to literal &
     .replace(new RegExp(ESCAPED_AMP_PLACEHOLDER, 'g'), '&')
 
+  let regex
   try {
-    const regex = new RegExp(jsPattern, regexFlags)
-    return content.replace(regex, jsReplacement)
+    regex = new RegExp(jsPattern, regexFlags)
   } catch {
-    // If regex is invalid, return original content
+    // Invalid regex → no edit applies → original content unchanged.
+    return content
+  }
+
+  // Run the replace under a hard timeout (see SED_SUBSTITUTION_TIMEOUT_MS). node:vm's
+  // timeout is the only synchronous way to interrupt an otherwise-uninterruptible
+  // String.replace; it aborts a backtracking regex. A timeout is treated as not-applied
+  // (original content returned) rather than hanging the UI forever; the caller then falls
+  // back to the real shell `sed -i` so no edit is silently lost (see the note above).
+  try {
+    const context = vm.createContext({ content, regex, jsReplacement })
+    return vm.runInContext('content.replace(regex, jsReplacement)', context, {
+      timeout: timeoutMs,
+    })
+  } catch {
     return content
   }
 }

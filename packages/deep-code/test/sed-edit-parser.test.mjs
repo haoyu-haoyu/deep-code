@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 import {
   parseSedSubstitutionExpression,
@@ -100,4 +102,54 @@ test('a replacement that mimics the internal salt placeholder is still safe', ()
   // containing the placeholder text; & / \& must still resolve correctly.
   const r = apply('cat', 's/cat/___ESCAPED_AMPERSAND_deadbeef___ & \\&/')
   assert.equal(r, '___ESCAPED_AMPERSAND_deadbeef___ cat &')
+})
+
+test('a catastrophic (ReDoS) pattern is bounded by the timeout, not an infinite hang', () => {
+  // This preview runs SYNCHRONOUSLY in the permission render path over a model-supplied
+  // pattern. `(a+)+$` over a long run of `a` with no terminator is exponential backtracking;
+  // without the vm timeout it would hang the UI forever. With a short injected timeout it
+  // returns within the budget, leaving the content unchanged (no edit applied).
+  const evil = 'a'.repeat(60) + '!'
+  const start = Date.now()
+  const result = applySedSubstitution(
+    evil,
+    { pattern: '(a+)+$', replacement: 'X', flags: '', filePath: 'f', extendedRegex: true },
+    { timeoutMs: 150 },
+  )
+  const elapsed = Date.now() - start
+  assert.equal(result, evil) // unchanged — the pathological edit is not applied
+  assert.ok(elapsed < 2000, `expected the timeout to bound the run, took ${elapsed}ms`)
+})
+
+test('a normal edit completes well under the timeout', () => {
+  // A non-catastrophic replace finishes in microseconds, so even a tiny timeout applies it.
+  const result = applySedSubstitution(
+    'the cat sat',
+    { pattern: 'cat', replacement: 'dog', flags: 'g', filePath: 'f', extendedRegex: true },
+    { timeoutMs: 50 },
+  )
+  assert.equal(result, 'the dog sat')
+})
+
+test('the permission dialog falls back to real sed on a no-change preview (no silent no-op)', () => {
+  // When the preview returns content UNCHANGED — a genuine no-match OR a timed-out heavy/
+  // catastrophic pattern — the dialog must NOT short-circuit to writing that unchanged
+  // content (which would silently drop a legitimate-but-timed-out edit). It must let the
+  // real shell `sed -i` run. Guard the source so this can't regress (the .tsx is React-
+  // compiler output, not node-loadable, so we pin the invariant by source text).
+  const src = readFileSync(
+    fileURLToPath(
+      new URL(
+        '../src/components/permissions/SedEditPermissionRequest/SedEditPermissionRequest.tsx',
+        import.meta.url,
+      ),
+    ),
+    'utf8',
+  )
+  // the parseInput closure short-circuits (returns the parsed input, NO _simulatedSedEdit)
+  // when newContent === oldContent, before attaching the precomputed edit.
+  assert.match(
+    src,
+    /if \(newContent === oldContent\) \{[\s\S]*?return parsed;[\s\S]*?\}[\s\S]*?_simulatedSedEdit/,
+  )
 })
