@@ -71,9 +71,14 @@ export function truncateToBoundary(text, granularity) {
       //     rewind to its start (the last completed boundary).
       // This keeps trailing periods, commas, and spaces visible while
       // hiding mid-word state (`hello wor` → `hello `, not `hello wor`).
-      const segments = [...wordSegmenter.segment(text)]
-      if (segments.length === 0) return null
-      const last = segments[segments.length - 1]
+      // Read ONLY the last segment via containing(text.length - 1) — equivalent to the
+      // last element of [...segment(text)] but without materializing (and GC-ing) the
+      // whole segment array on every render. The preview re-truncates the growing stream
+      // text on each frame, so spreading the full iterator made it O(n^2) over a turn;
+      // containing() seeks the boundary local to the end. text is non-empty here (guarded
+      // above), so the last code unit — and thus its segment — always exists.
+      const last = wordSegmenter.segment(text).containing(text.length - 1)
+      if (!last) return null
       if (last.isWordLike === false) {
         // Trailing separator / punctuation — include it.
         return text
