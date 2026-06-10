@@ -157,6 +157,16 @@ function SedEditPermissionRequestInner(t0) {
   if ($[11] !== filePath || $[12] !== newContent) {
     t4 = input => {
       const parsed = BashTool.inputSchema.parse(input);
+      // Only short-circuit to the precomputed in-process edit when the preview produced an
+      // ACTUAL change. When newContent === oldContent — a genuine no-match, OR a preview that
+      // hit the ReDoS timeout in applySedSubstitution (which returns the content unchanged) —
+      // fall through to the real shell `sed -i` instead. That way a legitimate edit whose
+      // preview merely exceeded the timeout (e.g. a high-match-count replace on a very large
+      // file) is still applied for real (in an interruptible subprocess), never silently
+      // no-oped by writing the unchanged content back.
+      if (newContent === oldContent) {
+        return parsed;
+      }
       return {
         ...parsed,
         _simulatedSedEdit: {
