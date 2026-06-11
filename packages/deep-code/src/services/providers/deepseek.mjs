@@ -8,6 +8,7 @@ import {
 import { byteCompare } from '../../cache/byte-order.mjs'
 import { omitUndefined } from '../../utils/omitUndefined.mjs'
 import { firstNonEmpty } from '../../utils/configValue.mjs'
+import { abortableDelay, abortReason } from '../../utils/abortableDelay.mjs'
 import {
   mapMessagesToDeepSeek,
   normalizeToolCalls,
@@ -397,7 +398,11 @@ export async function* streamDeepSeekQuery(context = {}) {
         if (attempt === maxRetries) {
           throw createDeepSeekTimeoutError(request.url, requestTimeoutMs)
         }
-        await sleep(calculateDeepSeekRetryDelayMs({}, attempt, context))
+        await abortableDelay(
+          calculateDeepSeekRetryDelayMs({}, attempt, context),
+          context.signal,
+          sleep,
+        )
         continue
       }
       throw error
@@ -423,7 +428,11 @@ export async function* streamDeepSeekQuery(context = {}) {
         if (attempt === maxRetries) {
           throw createDeepSeekTimeoutError(request.url, requestTimeoutMs)
         }
-        await sleep(calculateDeepSeekRetryDelayMs({}, attempt, context))
+        await abortableDelay(
+          calculateDeepSeekRetryDelayMs({}, attempt, context),
+          context.signal,
+          sleep,
+        )
         continue
       }
       throw error
@@ -440,7 +449,11 @@ export async function* streamDeepSeekQuery(context = {}) {
       throw createDeepSeekApiError(response.status, text, recovery)
     }
 
-    await sleep(calculateDeepSeekRetryDelayMs(recovery, attempt, context))
+    await abortableDelay(
+      calculateDeepSeekRetryDelayMs(recovery, attempt, context),
+      context.signal,
+      sleep,
+    )
   }
 
   throw new Error(`DeepSeek API exhausted retries`)
@@ -711,8 +724,29 @@ function stripTrailingSlash(value) {
   return String(value).replace(/\/+$/, '')
 }
 
-function sleepMs(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+// Cancellable backoff sleep. On abort it CLEARS the timer (rather than unref'ing
+// it — unref could let a one-shot/print-mode run exit mid-retry and silently
+// drop a legitimate backoff) and rejects with the abort reason, so a cancelled
+// query both unwinds promptly and stops pinning the event loop for the full
+// wait. `timers` is injectable for tests.
+export function sleepMs(ms, signal, timers = {}) {
+  const setTimer = timers.setTimer ?? setTimeout
+  const clearTimer = timers.clearTimer ?? clearTimeout
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortReason(signal))
+      return
+    }
+    const timer = setTimer(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    function onAbort() {
+      clearTimer(timer)
+      reject(abortReason(signal))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 function createDeepSeekApiError(status, message, recovery) {
