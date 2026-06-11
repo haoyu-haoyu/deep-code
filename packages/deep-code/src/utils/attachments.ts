@@ -19,6 +19,10 @@ import { FileTooLargeError, readFileInRange } from './readFileInRange.js'
 import { expandPath } from './path.js'
 import { countCharInString } from './stringUtils.js'
 import { count, uniq } from './array.js'
+import {
+  extractAtMentionedFiles,
+  extractMcpResourceMentions,
+} from './atMentionParsing.mjs'
 import { getFsImplementation } from './fsOperations.js'
 import { readdir, stat } from 'fs/promises'
 import type { IDESelection } from '../hooks/useIdeSelection.js'
@@ -2738,50 +2742,11 @@ async function getSkillListingAttachments(
 // getTurnZeroSkillDiscovery — keeps the 'skill_discovery' string literal inside
 // a feature-gated module so it doesn't leak into external builds.
 
-export function extractAtMentionedFiles(content: string): string[] {
-  // Extract filenames mentioned with @ symbol, including line range syntax: @file.txt#L10-20
-  // Also supports quoted paths for files with spaces: @"my/file with spaces.txt"
-  // Example: "foo bar @baz moo" would extract "baz"
-  // Example: 'check @"my file.txt" please' would extract "my file.txt"
-
-  // Two patterns: quoted paths and regular paths
-  const quotedAtMentionRegex = /(^|\s)@"([^"]+)"/g
-  const regularAtMentionRegex = /(^|\s)@([^\s]+)\b/g
-
-  const quotedMatches: string[] = []
-  const regularMatches: string[] = []
-
-  // Extract quoted mentions first (skip agent mentions like @"code-reviewer (agent)")
-  let match
-  while ((match = quotedAtMentionRegex.exec(content)) !== null) {
-    if (match[2] && !match[2].endsWith(' (agent)')) {
-      quotedMatches.push(match[2]) // The content inside quotes
-    }
-  }
-
-  // Extract regular mentions
-  const regularMatchArray = content.match(regularAtMentionRegex) || []
-  regularMatchArray.forEach(match => {
-    const filename = match.slice(match.indexOf('@') + 1)
-    // Don't include if it starts with a quote (already handled as quoted)
-    if (!filename.startsWith('"')) {
-      regularMatches.push(filename)
-    }
-  })
-
-  // Combine and deduplicate
-  return uniq([...quotedMatches, ...regularMatches])
-}
-
-export function extractMcpResourceMentions(content: string): string[] {
-  // Extract MCP resources mentioned with @ symbol in format @server:uri
-  // Example: "@server1:resource/path" would extract "server1:resource/path"
-  const atMentionRegex = /(^|\s)@([^\s]+:[^\s]+)\b/g
-  const matches = content.match(atMentionRegex) || []
-
-  // Remove the prefix (everything before @) from each match
-  return uniq(matches.map(match => match.slice(match.indexOf('@') + 1)))
-}
+// extractAtMentionedFiles / extractMcpResourceMentions live in a pure leaf
+// (atMentionParsing.mjs) so the @-mention parsing can be unit tested without
+// attachments.ts's bun:bundle import, and so the char set stays in sync with the
+// typeahead (Unicode-aware: the old ASCII \b dropped CJK/Unicode final chars).
+export { extractAtMentionedFiles, extractMcpResourceMentions }
 
 export function extractAgentMentions(content: string): string[] {
   // Extract agent mentions in two formats:
