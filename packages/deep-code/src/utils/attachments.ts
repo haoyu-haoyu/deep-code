@@ -22,6 +22,7 @@ import { count, uniq } from './array.js'
 import {
   extractAtMentionedFiles,
   extractMcpResourceMentions,
+  parseAtMentionedFileLines,
 } from './atMentionParsing.mjs'
 import { getFsImplementation } from './fsOperations.js'
 import { readdir, stat } from 'fs/promises'
@@ -2776,29 +2777,10 @@ export function extractAgentMentions(content: string): string[] {
   return uniq(results)
 }
 
-interface AtMentionedFileLines {
-  filename: string
-  lineStart?: number
-  lineEnd?: number
-}
-
-export function parseAtMentionedFileLines(
-  mention: string,
-): AtMentionedFileLines {
-  // Parse mentions like "file.txt#L10-20", "file.txt#heading", or just "file.txt"
-  // Supports line ranges (#L10, #L10-20) and strips non-line-range fragments (#heading)
-  const match = mention.match(/^([^#]+)(?:#L(\d+)(?:-(\d+))?)?(?:#[^#]*)?$/)
-
-  if (!match) {
-    return { filename: mention }
-  }
-
-  const [, filename, lineStartStr, lineEndStr] = match
-  const lineStart = lineStartStr ? parseInt(lineStartStr, 10) : undefined
-  const lineEnd = lineEndStr ? parseInt(lineEndStr, 10) : lineStart
-
-  return { filename: filename ?? mention, lineStart, lineEnd }
-}
+// parseAtMentionedFileLines lives in the atMentionParsing.mjs leaf (with the
+// other @-mention parsers) so its #L range handling — including the inverted-
+// range normalization — can be unit tested without attachments.ts's bun:bundle.
+export { parseAtMentionedFileLines }
 
 async function getDiagnosticAttachments(
   toolUseContext: ToolUseContext,

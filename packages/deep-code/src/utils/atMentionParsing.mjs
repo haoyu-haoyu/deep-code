@@ -68,3 +68,35 @@ export function extractMcpResourceMentions(content) {
   const matches = content.match(mcpMentionRegex()) || []
   return uniq(matches.map(full => full.slice(full.indexOf('@') + 1)))
 }
+
+/**
+ * Split an @-mentioned file into its path and optional #L line range:
+ * "file.txt#L10-20" -> { filename, lineStart: 10, lineEnd: 20 }. A bare
+ * "file.txt#L10" sets lineEnd = lineStart; a non-line-range fragment
+ * ("file.txt#heading") is stripped.
+ *
+ * @param {string} mention
+ * @returns {{ filename: string, lineStart?: number, lineEnd?: number }}
+ */
+export function parseAtMentionedFileLines(mention) {
+  const match = mention.match(/^([^#]+)(?:#L(\d+)(?:-(\d+))?)?(?:#[^#]*)?$/)
+  if (!match) {
+    return { filename: mention }
+  }
+
+  const [, filename, lineStartStr, lineEndStr] = match
+  let lineStart = lineStartStr ? parseInt(lineStartStr, 10) : undefined
+  let lineEnd = lineEndStr ? parseInt(lineEndStr, 10) : lineStart
+
+  // Normalize an inverted range (a fat-fingered #L20-10) to lines 10-20 instead
+  // of flowing a negative limit (lineEnd - lineStart + 1) downstream into a
+  // silently-blank attachment. Mirrors the sibling PDF page-range path, which
+  // already treats last < first as invalid.
+  if (lineStart !== undefined && lineEnd !== undefined && lineEnd < lineStart) {
+    const swap = lineStart
+    lineStart = lineEnd
+    lineEnd = swap
+  }
+
+  return { filename: filename ?? mention, lineStart, lineEnd }
+}

@@ -16,6 +16,7 @@ import { abortableDelay } from '../src/utils/abortableDelay.mjs'
 import {
   extractAtMentionedFiles,
   extractMcpResourceMentions,
+  parseAtMentionedFileLines,
 } from '../src/utils/atMentionParsing.mjs'
 import {
   computeWheelStep,
@@ -1166,6 +1167,42 @@ test('computeHighlightSpans splits text into ordered runs, marking case-insensit
   for (const [t, q] of [['aXaXa', 'x'], ['MixedCase', 'c'], ['  pad  ', ' ']]) {
     assert.equal(computeHighlightSpans(t, q).map(s => s.text).join(''), t)
   }
+})
+
+test('parseAtMentionedFileLines normalizes an inverted #L range instead of a blank attachment', () => {
+  assert.deepEqual(parseAtMentionedFileLines('file.txt#L10-20'), {
+    filename: 'file.txt',
+    lineStart: 10,
+    lineEnd: 20,
+  })
+  // the fix: a fat-fingered inverted range is swapped to 10-20 (not lineStart=20,
+  // lineEnd=10 -> a negative limit -> a silently-blank file attachment)
+  assert.deepEqual(parseAtMentionedFileLines('file.txt#L20-10'), {
+    filename: 'file.txt',
+    lineStart: 10,
+    lineEnd: 20,
+  })
+  // unchanged: single line, no range, non-line-range fragment, equal endpoints
+  assert.deepEqual(parseAtMentionedFileLines('file.txt#L5'), {
+    filename: 'file.txt',
+    lineStart: 5,
+    lineEnd: 5,
+  })
+  assert.deepEqual(parseAtMentionedFileLines('file.txt#L7-7'), {
+    filename: 'file.txt',
+    lineStart: 7,
+    lineEnd: 7,
+  })
+  assert.deepEqual(parseAtMentionedFileLines('file.txt'), {
+    filename: 'file.txt',
+    lineStart: undefined,
+    lineEnd: undefined,
+  })
+  assert.deepEqual(parseAtMentionedFileLines('file.txt#heading'), {
+    filename: 'file.txt',
+    lineStart: undefined,
+    lineEnd: undefined,
+  })
 })
 
 test('extractAtMentionedFiles matches Unicode/CJK paths and trims trailing prose punctuation', () => {
