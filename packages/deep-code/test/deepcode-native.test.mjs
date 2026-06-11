@@ -34,6 +34,7 @@ import {
   readStdinWithTimeout,
   STDIN_PEEK_TIMEOUT_MS,
 } from '../src/deepcode/stdin.mjs'
+import { relativeNamespace } from '../src/utils/plugins/commandNamespace.mjs'
 
 import {
   buildDeepSeekRequest,
@@ -4333,4 +4334,32 @@ test('streamDeepSeekQuery: a 401 surfaces the raw body AND the actionable hint',
   // …and the actionable hint is appended
   assert.match(thrown.message, /Authentication failed/)
   assert.match(thrown.message, /\/login|DEEPSEEK_API_KEY/)
+})
+
+// --- relativeNamespace: plugin command namespace from a path (cross-platform) -
+test('relativeNamespace: POSIX paths derive the colon namespace (unchanged behavior)', () => {
+  const opts = { platform: 'linux' }
+  assert.equal(relativeNamespace('/x/commands/foo/bar', '/x/commands', opts), 'foo:bar')
+  assert.equal(relativeNamespace('/x/commands/foo', '/x/commands', opts), 'foo')
+  assert.equal(relativeNamespace('/x/commands', '/x/commands', opts), '') // top-level
+  assert.equal(relativeNamespace('/other/dir', '/x/commands', opts), '') // not under base
+  // a POSIX path component may legitimately contain a backslash — it must NOT be
+  // treated as a separator on non-win32 (byte-identical to the old inline logic)
+  assert.equal(relativeNamespace('/x/commands/we\\ird', '/x/commands', opts), 'we\\ird')
+})
+
+test('relativeNamespace: Windows backslash paths derive the namespace (the fix)', () => {
+  const opts = { platform: 'win32' }
+  // before the fix the leading "\foo" was never stripped/split → "\foo:bar"
+  assert.equal(
+    relativeNamespace('C:\\x\\commands\\foo\\bar', 'C:\\x\\commands', opts),
+    'foo:bar',
+  )
+  assert.equal(relativeNamespace('C:\\x\\commands\\foo', 'C:\\x\\commands', opts), 'foo')
+  assert.equal(relativeNamespace('C:\\x\\commands', 'C:\\x\\commands', opts), '') // top-level
+})
+
+test('relativeNamespace: non-string inputs return "" (defensive)', () => {
+  assert.equal(relativeNamespace(undefined, '/x', { platform: 'linux' }), '')
+  assert.equal(relativeNamespace('/x/y', undefined, { platform: 'linux' }), '')
 })

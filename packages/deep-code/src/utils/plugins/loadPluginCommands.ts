@@ -19,6 +19,7 @@ import {
   parseShellFrontmatter,
 } from '../frontmatterParser.js'
 import { getFsImplementation, isDuplicatePath } from '../fsOperations.js'
+import { relativeNamespace } from './commandNamespace.mjs'
 import {
   extractDescriptionFromMarkdown,
   parseSlashCommandToolsFromFrontmatter,
@@ -71,10 +72,7 @@ function getCommandNameFromFile(
     const commandBaseName = basename(skillDirectory)
 
     // Build namespace from parent of skill directory
-    const relativePath = parentOfSkillDir.startsWith(baseDir)
-      ? parentOfSkillDir.slice(baseDir.length).replace(/^\//, '')
-      : ''
-    const namespace = relativePath ? relativePath.split('/').join(':') : ''
+    const namespace = relativeNamespace(parentOfSkillDir, baseDir)
 
     return namespace
       ? `${pluginName}:${namespace}:${commandBaseName}`
@@ -85,10 +83,7 @@ function getCommandNameFromFile(
     const commandBaseName = basename(filePath).replace(/\.md$/, '')
 
     // Build namespace from file directory
-    const relativePath = fileDirectory.startsWith(baseDir)
-      ? fileDirectory.slice(baseDir.length).replace(/^\//, '')
-      : ''
-    const namespace = relativePath ? relativePath.split('/').join(':') : ''
+    const namespace = relativeNamespace(fileDirectory, baseDir)
 
     return namespace
       ? `${pluginName}:${namespace}:${commandBaseName}`
