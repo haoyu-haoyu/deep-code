@@ -25,6 +25,11 @@ import {
 } from '../src/components/wheelAccel.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { EventEmitter } from 'node:events'
+import {
+  readStdinWithTimeout,
+  STDIN_PEEK_TIMEOUT_MS,
+} from '../src/deepcode/stdin.mjs'
 
 import {
   buildDeepSeekRequest,
@@ -4121,4 +4126,116 @@ test('reasoningReplay knob controls re-sending reasoning_content on tool turns (
 
   // The ONLY difference is the reasoning bytes — tool_calls are identical.
   assert.deepEqual(offAssistant.tool_calls, onAssistant.tool_calls)
+})
+
+// --- readStdinWithTimeout: the native --compact / single-turn stdin guard -----
+// An inherited-but-idle non-TTY stdin used to hang the native entrypoint forever
+// (unbounded `for await … of process.stdin`). The leaf gives up after a peek
+// timeout so the caller's empty-input branch fires a clear error instead.
+function makeFakeTimers() {
+  let nextId = 0
+  const timers = new Map()
+  return {
+    timers,
+    setTimer: cb => {
+      const id = ++nextId
+      timers.set(id, cb)
+      return id
+    },
+    clearTimer: id => timers.delete(id),
+    fireAll: () => {
+      for (const [id, cb] of [...timers]) {
+        timers.delete(id)
+        cb()
+      }
+    },
+  }
+}
+
+test('readStdinWithTimeout: idle stream gives up after the peek timeout (returns "" + warns)', async () => {
+  const stream = new EventEmitter()
+  const ft = makeFakeTimers()
+  let warned = 0
+  const p = readStdinWithTimeout(stream, 3000, {
+    onTimeout: () => {
+      warned += 1
+    },
+    setTimer: ft.setTimer,
+    clearTimer: ft.clearTimer,
+  })
+  ft.fireAll() // simulate the 3s idle timeout firing with no data
+  assert.equal(await p, '')
+  assert.equal(warned, 1)
+  assert.equal(ft.timers.size, 0)
+})
+
+test('readStdinWithTimeout: a real producer (data then end) returns the trimmed input, no warning', async () => {
+  const stream = new EventEmitter()
+  const ft = makeFakeTimers()
+  let warned = 0
+  const p = readStdinWithTimeout(stream, 3000, {
+    onTimeout: () => {
+      warned += 1
+    },
+    setTimer: ft.setTimer,
+    clearTimer: ft.clearTimer,
+  })
+  stream.emit('data', Buffer.from('  hello '))
+  // first chunk cancels the idle timeout
+  assert.equal(ft.timers.size, 0)
+  stream.emit('data', Buffer.from('world  '))
+  stream.emit('end')
+  assert.equal(await p, 'hello world')
+  assert.equal(warned, 0)
+})
+
+test('readStdinWithTimeout: a closed empty pipe ends immediately ("" without warning)', async () => {
+  const stream = new EventEmitter()
+  const ft = makeFakeTimers()
+  let warned = 0
+  const p = readStdinWithTimeout(stream, 3000, {
+    onTimeout: () => {
+      warned += 1
+    },
+    setTimer: ft.setTimer,
+    clearTimer: ft.clearTimer,
+  })
+  stream.emit('end')
+  assert.equal(await p, '')
+  assert.equal(warned, 0) // ended, did not time out
+  assert.equal(ft.timers.size, 0)
+})
+
+test('readStdinWithTimeout: a late timer fire after data has arrived is a no-op', async () => {
+  const stream = new EventEmitter()
+  // keep the timer registered so we can fire it AFTER data (simulating a race)
+  let captured
+  const setTimer = cb => {
+    captured = cb
+    return 1
+  }
+  const p = readStdinWithTimeout(stream, 3000, {
+    setTimer,
+    clearTimer: () => {}, // do NOT remove the timer, to exercise the receivedData guard
+  })
+  stream.emit('data', Buffer.from('x'))
+  captured() // stray timeout fires after data — must NOT resolve to ''
+  stream.emit('end')
+  assert.equal(await p, 'x')
+})
+
+test('readStdinWithTimeout: stream error rejects', async () => {
+  const stream = new EventEmitter()
+  const ft = makeFakeTimers()
+  const p = readStdinWithTimeout(stream, 3000, {
+    setTimer: ft.setTimer,
+    clearTimer: ft.clearTimer,
+  })
+  stream.emit('error', new Error('boom'))
+  await assert.rejects(p, /boom/)
+  assert.equal(ft.timers.size, 0)
+})
+
+test('STDIN_PEEK_TIMEOUT_MS mirrors the full-CLI 3s peek', () => {
+  assert.equal(STDIN_PEEK_TIMEOUT_MS, 3000)
 })
