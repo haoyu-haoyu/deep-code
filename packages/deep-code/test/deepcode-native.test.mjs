@@ -8,6 +8,7 @@ import { computeHighlightSpans } from '../src/utils/highlightSpans.mjs'
 import { parseAgentMetadata } from '../src/utils/agentMetadata.mjs'
 import { withCronFileLock } from '../src/utils/cronFileStore.mjs'
 import { finalizePendingHooks } from '../src/utils/hooks/finalizePendingHooks.mjs'
+import { formatFileSize } from '../src/utils/fileSize.mjs'
 import {
   computeWheelStep,
   initWheelAccel,
@@ -1156,6 +1157,23 @@ test('computeHighlightSpans splits text into ordered runs, marking case-insensit
   for (const [t, q] of [['aXaXa', 'x'], ['MixedCase', 'c'], ['  pad  ', ' ']]) {
     assert.equal(computeHighlightSpans(t, q).map(s => s.text).join(''), t)
   }
+})
+
+test('formatFileSize promotes a just-under-threshold value to the next unit instead of "1024KB"', () => {
+  // the band must be chosen AFTER rounding: 1 MiB - 1 byte is 1023.999 KB which
+  // rounds to 1024.0 — never render "1024KB" (KB tops out at 1024)
+  assert.equal(formatFileSize(1048575), '1MB') // 1 MiB - 1
+  assert.equal(formatFileSize(1048525), '1MB') // first byte count that rounds up
+  assert.equal(formatFileSize(1073741823), '1GB') // 1 GiB - 1 (was "1024MB")
+
+  // unchanged for everything that wasn't at a band edge
+  assert.equal(formatFileSize(1023), '1023 bytes')
+  assert.equal(formatFileSize(1024), '1KB')
+  assert.equal(formatFileSize(1536), '1.5KB')
+  assert.equal(formatFileSize(262144), '256KB') // the moat-prompt size constant
+  assert.equal(formatFileSize(1047527), '1023KB') // just below the round-up edge
+  assert.equal(formatFileSize(5242880), '5MB')
+  assert.equal(formatFileSize(2147483648), '2GB')
 })
 
 test('parseAgentMetadata returns the object for valid metadata and null for corruption', () => {
