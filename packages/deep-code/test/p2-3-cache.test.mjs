@@ -4,6 +4,7 @@ import {
   clear,
   getRecentTurns,
   getSessionTotals,
+  MAX_LIVE_TURNS,
   recordTurn,
 } from '../src/cache/deepseek-cache.mjs'
 import {
@@ -110,6 +111,31 @@ test('getRecentTurns returns the most recent records capped by count', () => {
       'turn-12',
     ],
   )
+})
+
+test('liveTurns is bounded while turnCount and totals stay lifetime-accurate', () => {
+  clear()
+
+  const total = MAX_LIVE_TURNS + 5
+  for (let index = 1; index <= total; index += 1) {
+    // no explicit turnId -> exercises the default-id path
+    recordTurn({ hit: 1, miss: 1, timestamp: index })
+  }
+
+  // the retained window is capped...
+  assert.equal(getRecentTurns(total).length, MAX_LIVE_TURNS)
+  // ...but the lifetime count and token totals reflect EVERY turn
+  assert.deepEqual(getSessionTotals(), {
+    totalHit: total,
+    totalMiss: total,
+    hitRate: 0.5,
+    turnCount: total,
+  })
+  // the window holds the most-recent MAX_LIVE_TURNS, and default ids stay
+  // monotonic past the cap (not a plateaued turn-50)
+  const recent = getRecentTurns(MAX_LIVE_TURNS)
+  assert.equal(recent[0].turnId, `turn-${total - MAX_LIVE_TURNS + 1}`)
+  assert.equal(recent[recent.length - 1].turnId, `turn-${total}`)
 })
 
 test('clear resets live cache session state', () => {
