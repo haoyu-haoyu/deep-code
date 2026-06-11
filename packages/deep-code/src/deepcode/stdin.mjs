@@ -26,6 +26,14 @@ export function readStdinWithTimeout(
   timeoutMs,
   { onTimeout, setTimer = setTimeout, clearTimer = clearTimeout } = {},
 ) {
+  // Decode bytes to UTF-8 as they arrive. Flowing 'data' events emit one chunk
+  // per producer write, so without a StringDecoder a multibyte character split
+  // across two writes (e.g. '€' as [0xE2] then [0x82,0xAC]) would be stringified
+  // independently and corrupted. setEncoding installs a StringDecoder that holds
+  // incomplete sequences across chunks — matching the full CLI's
+  // process.stdin.setEncoding('utf8') and the old paused-iteration behavior.
+  stream.setEncoding?.('utf8')
+
   return new Promise((resolve, reject) => {
     let input = ''
     let settled = false
