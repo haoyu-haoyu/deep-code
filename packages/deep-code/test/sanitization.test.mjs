@@ -111,10 +111,16 @@ test('recursivelySanitizeUnicode: deeply-nested input does NOT overflow the stac
   for (let i = 0; i < 40000; i++) cur = cur.n
   assert.equal(cur.leaf, 'deepval')
 
-  // same for deep array nesting
-  let arrDeep = ['x' + zw]
+  // same for deep array nesting — and confirm the innermost string IS sanitized
+  let arrDeep = ['x' + zw + 'y']
   for (let i = 0; i < 40000; i++) arrDeep = [arrDeep]
-  assert.doesNotThrow(() => recursivelySanitizeUnicode(arrDeep))
+  let resultArr
+  assert.doesNotThrow(() => {
+    resultArr = recursivelySanitizeUnicode(arrDeep)
+  })
+  let curArr = resultArr
+  for (let i = 0; i < 40000; i++) curArr = curArr[0]
+  assert.equal(curArr[0], 'xy')
 })
 
 // --- behavior-identity edge cases the iterative rewrite must preserve ----------
@@ -140,4 +146,24 @@ test('recursivelySanitizeUnicode: keys colliding after sanitization keep first p
   const out = recursivelySanitizeUnicode({ ['a' + zw]: 'first', a: 'second' })
   assert.deepEqual(Object.keys(out), ['a'])
   assert.equal(out.a, 'second')
+})
+
+test('recursivelySanitizeUnicode: a __proto__ data key (JSON.parse can produce one) assigns via live [[Set]] like the recursion', () => {
+  const zw = cp(0x200b)
+  // JSON.parse yields an OWN "__proto__" data property; the sanitizer re-assigns
+  // each key with a live `obj[key] = …`, so an object-valued __proto__ sets the
+  // prototype (no own "__proto__" key) — characterizing parity with the previous
+  // recursive `sanitized[key] = val` walk, the reachable malicious-MCP data case.
+  const single = recursivelySanitizeUnicode(JSON.parse('{"__proto__": {"a": 1}}'))
+  assert.deepEqual(Object.keys(single), [])
+  assert.equal(Object.getPrototypeOf(single).a, 1)
+  // colliding __proto__ keys (object then primitive) — last (primitive) is a
+  // setter no-op, so the object-valued first assignment determines the prototype.
+  const collide = recursivelySanitizeUnicode(
+    JSON.parse('{"__proto__": {"a": 1}, "__proto__' + zw + '": 0}'),
+  )
+  assert.deepEqual(Object.keys(collide), [])
+  assert.equal(Object.getPrototypeOf(collide).a, 1)
+  // never mutates the global prototype
+  assert.equal({}.a, undefined)
 })

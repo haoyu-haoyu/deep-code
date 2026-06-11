@@ -87,57 +87,60 @@ export function recursivelySanitizeUnicode(value) {
     return value
   }
 
-  // Iterative (explicit heap-stack) post-order tree transform. The previous
-  // version recursed on the NATIVE call stack, so a deeply-nested value — e.g. a
-  // hostile or pathological MCP server's `tools/list` inputSchema — overflowed
-  // the stack with a RangeError. In fetchToolsForClient that RangeError is caught
-  // and the WHOLE server's tools are silently dropped (`return []`). JSON.parse is
-  // iterative and survives such depth, so the recursive sanitizer was the weakest
-  // link. A heap work-stack walks arbitrary depth (bounded only by the already-
-  // bounded input size) while producing a byte-identical result: same key
-  // insertion order, sparse-array holes, and key-collision last-wins semantics.
+  // Iterative explicit-stack walk that FAITHFULLY simulates the previous native
+  // recursion, only without the native call stack — so a deeply-nested value
+  // (e.g. a hostile or pathological MCP server's `tools/list` inputSchema) can no
+  // longer overflow the stack with a RangeError. In fetchToolsForClient that
+  // RangeError is caught and the WHOLE server's tools are silently dropped
+  // (`return []`); JSON.parse is iterative and survives such depth, so the
+  // recursive sanitizer was the weakest link.
+  //
+  // Byte-identical to the recursion for every finite input. The fidelity details
+  // that matter (a malicious MCP server controls this data):
+  //  • objects read all values up front in key order via Object.entries (matching
+  //    the previous `for…of Object.entries(value)` getter-read timing);
+  //  • arrays read each element lazily at processing time, holes skipped, so a
+  //    getter's sibling-mutation side effects are observed exactly like .map;
+  //  • children are pushed in REVERSE so they pop in source order (left-to-right,
+  //    depth-first), and each (sanitized key, value) is assigned with a LIVE
+  //    `obj[key] = …` in source order — so duplicate sanitized keys overwrite
+  //    last-wins at the first slot, every colliding value is still sanitized, and
+  //    `__proto__`/setter semantics are unchanged.
+  const HOLE = Symbol('hole')
   const root = { out: undefined }
-  const stack = [{ src: value, assign: v => (root.out = v) }]
+  const stack = [{ read: () => value, assign: v => (root.out = v) }]
   while (stack.length > 0) {
-    const { src, assign } = stack.pop()
+    const { read, assign } = stack.pop()
+    const src = read()
+    if (src === HOLE) continue
 
     if (typeof src === 'string') {
       assign(partiallySanitizeUnicode(src))
+    } else if (src === null || typeof src !== 'object') {
+      // numbers, booleans, null, undefined, bigint, symbol — unchanged
+      assign(src)
     } else if (Array.isArray(src)) {
       const arr = new Array(src.length)
       assign(arr)
-      for (let i = 0; i < src.length; i++) {
-        // Preserve holes exactly like Array.prototype.map (the previous impl).
-        if (!(i in src)) continue
+      for (let i = src.length - 1; i >= 0; i--) {
         const index = i
-        stack.push({ src: src[index], assign: v => (arr[index] = v) })
-      }
-    } else if (src !== null && typeof src === 'object') {
-      const obj = {}
-      assign(obj)
-      // Keys returned by Object.keys are always strings → sanitize directly
-      // (recursivelySanitizeUnicode(string) === partiallySanitizeUnicode(string)).
-      // Reserve each sanitized slot in the original iteration order so the output
-      // key order is identical regardless of the stack's LIFO processing order; a
-      // later key that sanitizes to an existing slot overwrites the source value
-      // (last-write-wins) while keeping the first slot's position — matching the
-      // recursive `sanitized[key] = val` assignment exactly.
-      const orderedKeys = []
-      const srcByKey = new Map()
-      for (const key of Object.keys(src)) {
-        const sanitizedKey = partiallySanitizeUnicode(key)
-        if (!srcByKey.has(sanitizedKey)) {
-          obj[sanitizedKey] = undefined
-          orderedKeys.push(sanitizedKey)
-        }
-        srcByKey.set(sanitizedKey, src[key])
-      }
-      for (const sanitizedKey of orderedKeys) {
-        const slot = sanitizedKey
-        stack.push({ src: srcByKey.get(slot), assign: v => (obj[slot] = v) })
+        // Defer the element read to processing time and skip holes (like .map).
+        stack.push({
+          read: () => (index in src ? src[index] : HOLE),
+          assign: v => (arr[index] = v),
+        })
       }
     } else {
-      assign(src)
+      const obj = {}
+      assign(obj)
+      // Keys are always strings here → sanitize directly
+      // (recursivelySanitizeUnicode(string) === partiallySanitizeUnicode(string)).
+      const entries = Object.entries(src)
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const sanitizedKey = partiallySanitizeUnicode(entries[i][0])
+        const val = entries[i][1]
+        stack.push({ read: () => val, assign: v => (obj[sanitizedKey] = v) })
+      }
     }
   }
   return root.out
