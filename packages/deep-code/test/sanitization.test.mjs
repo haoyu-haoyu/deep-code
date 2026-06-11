@@ -89,3 +89,55 @@ test('recursivelySanitizeUnicode: leaves non-string primitives unchanged', () =>
   assert.equal(recursivelySanitizeUnicode(undefined), undefined)
   assert.deepEqual(recursivelySanitizeUnicode([1, 'a', null, false]), [1, 'a', null, false])
 })
+
+// --- deep-input DoS: a hostile/pathological MCP tools/list inputSchema --------
+// A deeply-nested value used to recurse on the NATIVE call stack and throw
+// RangeError; in fetchToolsForClient that throw is caught and the WHOLE server's
+// tools are dropped (return []). JSON.parse is iterative and survives this depth,
+// so the sanitizer was the weakest link. The iterative (heap-stack) walk must
+// handle arbitrary depth without throwing, while still sanitizing every leaf.
+test('recursivelySanitizeUnicode: deeply-nested input does NOT overflow the stack', () => {
+  const zw = cp(0x200b)
+  // 40k of object nesting — well past the ~5k native-call-stack limit, modeling a
+  // malicious server whose JSON.parse-able wire payload reaches the sanitizer.
+  let objDeep = { leaf: 'deep' + zw + 'val' }
+  for (let i = 0; i < 40000; i++) objDeep = { ['n' + zw]: objDeep }
+  let resultObj
+  assert.doesNotThrow(() => {
+    resultObj = recursivelySanitizeUnicode(objDeep)
+  })
+  // descend and confirm the deep leaf string was still sanitized + the key cleaned
+  let cur = resultObj
+  for (let i = 0; i < 40000; i++) cur = cur.n
+  assert.equal(cur.leaf, 'deepval')
+
+  // same for deep array nesting
+  let arrDeep = ['x' + zw]
+  for (let i = 0; i < 40000; i++) arrDeep = [arrDeep]
+  assert.doesNotThrow(() => recursivelySanitizeUnicode(arrDeep))
+})
+
+// --- behavior-identity edge cases the iterative rewrite must preserve ----------
+test('recursivelySanitizeUnicode: preserves object key INSERTION ORDER', () => {
+  const out = recursivelySanitizeUnicode({ b: 1, a: 2, c: 3 })
+  assert.deepEqual(Object.keys(out), ['b', 'a', 'c'])
+})
+
+test('recursivelySanitizeUnicode: preserves ARRAY HOLES (sparse arrays) like .map', () => {
+  const sparse = ['a']
+  sparse[3] = 'b' // indices 1,2 are holes
+  const out = recursivelySanitizeUnicode(sparse)
+  assert.equal(out.length, 4)
+  assert.equal(1 in out, false)
+  assert.equal(2 in out, false)
+  assert.deepEqual([out[0], out[3]], ['a', 'b'])
+})
+
+test('recursivelySanitizeUnicode: keys colliding after sanitization keep first position, last value wins', () => {
+  const zw = cp(0x200b)
+  // 'a​' and 'a' both sanitize to 'a'; the recursive impl assigned in
+  // iteration order so the LAST source value wins at the FIRST key's position.
+  const out = recursivelySanitizeUnicode({ ['a' + zw]: 'first', a: 'second' })
+  assert.deepEqual(Object.keys(out), ['a'])
+  assert.equal(out.a, 'second')
+})

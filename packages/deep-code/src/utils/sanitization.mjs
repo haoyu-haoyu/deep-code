@@ -77,23 +77,68 @@ export function partiallySanitizeUnicode(prompt) {
  * @returns {unknown}
  */
 export function recursivelySanitizeUnicode(value) {
+  // Fast path for the overwhelmingly common scalar inputs (a single string, or a
+  // primitive) — return without allocating a work stack.
   if (typeof value === 'string') {
     return partiallySanitizeUnicode(value)
   }
-
-  if (Array.isArray(value)) {
-    return value.map(recursivelySanitizeUnicode)
+  if (value === null || typeof value !== 'object') {
+    // numbers, booleans, null, undefined, bigint, symbol — returned unchanged
+    return value
   }
 
-  if (value !== null && typeof value === 'object') {
-    const sanitized = {}
-    for (const [key, val] of Object.entries(value)) {
-      sanitized[recursivelySanitizeUnicode(key)] =
-        recursivelySanitizeUnicode(val)
+  // Iterative (explicit heap-stack) post-order tree transform. The previous
+  // version recursed on the NATIVE call stack, so a deeply-nested value — e.g. a
+  // hostile or pathological MCP server's `tools/list` inputSchema — overflowed
+  // the stack with a RangeError. In fetchToolsForClient that RangeError is caught
+  // and the WHOLE server's tools are silently dropped (`return []`). JSON.parse is
+  // iterative and survives such depth, so the recursive sanitizer was the weakest
+  // link. A heap work-stack walks arbitrary depth (bounded only by the already-
+  // bounded input size) while producing a byte-identical result: same key
+  // insertion order, sparse-array holes, and key-collision last-wins semantics.
+  const root = { out: undefined }
+  const stack = [{ src: value, assign: v => (root.out = v) }]
+  while (stack.length > 0) {
+    const { src, assign } = stack.pop()
+
+    if (typeof src === 'string') {
+      assign(partiallySanitizeUnicode(src))
+    } else if (Array.isArray(src)) {
+      const arr = new Array(src.length)
+      assign(arr)
+      for (let i = 0; i < src.length; i++) {
+        // Preserve holes exactly like Array.prototype.map (the previous impl).
+        if (!(i in src)) continue
+        const index = i
+        stack.push({ src: src[index], assign: v => (arr[index] = v) })
+      }
+    } else if (src !== null && typeof src === 'object') {
+      const obj = {}
+      assign(obj)
+      // Keys returned by Object.keys are always strings → sanitize directly
+      // (recursivelySanitizeUnicode(string) === partiallySanitizeUnicode(string)).
+      // Reserve each sanitized slot in the original iteration order so the output
+      // key order is identical regardless of the stack's LIFO processing order; a
+      // later key that sanitizes to an existing slot overwrites the source value
+      // (last-write-wins) while keeping the first slot's position — matching the
+      // recursive `sanitized[key] = val` assignment exactly.
+      const orderedKeys = []
+      const srcByKey = new Map()
+      for (const key of Object.keys(src)) {
+        const sanitizedKey = partiallySanitizeUnicode(key)
+        if (!srcByKey.has(sanitizedKey)) {
+          obj[sanitizedKey] = undefined
+          orderedKeys.push(sanitizedKey)
+        }
+        srcByKey.set(sanitizedKey, src[key])
+      }
+      for (const sanitizedKey of orderedKeys) {
+        const slot = sanitizedKey
+        stack.push({ src: srcByKey.get(slot), assign: v => (obj[slot] = v) })
+      }
+    } else {
+      assign(src)
     }
-    return sanitized
   }
-
-  // Return other primitive values (numbers, booleans, null, undefined) unchanged
-  return value
+  return root.out
 }
