@@ -70,15 +70,36 @@ export async function loadDeepSeekCacheStats(path) {
   }
 }
 
-export async function recordDeepSeekCacheUsage({
-  path,
-  usage,
-  now,
-  provider,
-  stablePrefix,
-} = {}) {
+// Serialize the read-modify-write per resolved stats path. Concurrent turns and
+// Task-tool subagents in the same workspace share a cacheUserId — hence the same
+// stats file — so an unsynchronized load -> increment -> write interleaves
+// read-before-write and silently drops one side's increment, under-counting the
+// /status request and token totals. Each call chains onto the previous one for
+// its path; the chain advances even when a prior write failed, so one failure
+// cannot wedge the queue.
+const cacheStatsWriteQueues = new Map()
+
+export async function recordDeepSeekCacheUsage(options = {}) {
+  const { path, usage, provider } = options
   if (!providerSupports(provider, 'cache_breakpoint')) return null
   if (!path || !usage) return null
+
+  const run = (cacheStatsWriteQueues.get(path) ?? Promise.resolve())
+    .catch(() => {})
+    .then(() => writeDeepSeekCacheStats(options))
+  cacheStatsWriteQueues.set(path, run)
+  try {
+    return await run
+  } finally {
+    // Drop the entry once this call is the queue tail so the Map does not grow
+    // unbounded across many distinct paths over a long session.
+    if (cacheStatsWriteQueues.get(path) === run) {
+      cacheStatsWriteQueues.delete(path)
+    }
+  }
+}
+
+async function writeDeepSeekCacheStats({ path, usage, now, provider, stablePrefix }) {
   try {
     const previous = await loadDeepSeekCacheStats(path)
     const stats = createDeepSeekCacheStats(previous, usage, {
