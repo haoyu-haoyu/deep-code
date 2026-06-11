@@ -35,6 +35,7 @@ import {
   STDIN_PEEK_TIMEOUT_MS,
 } from '../src/deepcode/stdin.mjs'
 import { relativeNamespace } from '../src/utils/plugins/commandNamespace.mjs'
+import { formatDeepSeekLoginResult } from '../src/commands/login/loginResult.mjs'
 
 import {
   buildDeepSeekRequest,
@@ -4362,4 +4363,24 @@ test('relativeNamespace: Windows backslash paths derive the namespace (the fix)'
 test('relativeNamespace: non-string inputs return "" (defensive)', () => {
   assert.equal(relativeNamespace(undefined, '/x', { platform: 'linux' }), '')
   assert.equal(relativeNamespace('/x/y', undefined, { platform: 'linux' }), '')
+})
+
+// --- formatDeepSeekLoginResult: distinguish a cancel from a save failure ------
+test('formatDeepSeekLoginResult: a save FAILURE reports the cause, not "Login cancelled"', () => {
+  // success
+  assert.equal(formatDeepSeekLoginResult(true), 'DeepSeek credentials configured')
+  // success wins even if an (irrelevant) error is somehow passed
+  assert.equal(formatDeepSeekLoginResult(true, 'x'), 'DeepSeek credentials configured')
+  // a real cancel (no error) — unchanged message
+  assert.equal(formatDeepSeekLoginResult(false), 'Login cancelled')
+  assert.equal(formatDeepSeekLoginResult(false, ''), 'Login cancelled') // empty reason = cancel
+  // a save failure carries the reason + an actionable hint, NOT "Login cancelled"
+  const failure = formatDeepSeekLoginResult(
+    false,
+    "EACCES: permission denied, open '/home/me/.deepcode/config.json'",
+  )
+  assert.match(failure, /Login failed/)
+  assert.match(failure, /EACCES: permission denied/)
+  assert.match(failure, /write permissions/)
+  assert.doesNotMatch(failure, /Login cancelled/)
 })
