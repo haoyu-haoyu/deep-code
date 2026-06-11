@@ -7,6 +7,7 @@ import { byteCompare } from '../src/cache/byte-order.mjs'
 import { computeHighlightSpans } from '../src/utils/highlightSpans.mjs'
 import { parseAgentMetadata } from '../src/utils/agentMetadata.mjs'
 import { withCronFileLock } from '../src/utils/cronFileStore.mjs'
+import { finalizePendingHooks } from '../src/utils/hooks/finalizePendingHooks.mjs'
 import {
   computeWheelStep,
   initWheelAccel,
@@ -1210,6 +1211,79 @@ test('withCronFileLock serializes concurrent read-modify-writes (no lost update)
   assert.deepEqual((await readdir(join(dir, '.claude'))).sort(), [
     'scheduled_tasks.json',
   ])
+})
+
+test('finalizePendingHooks isolates a failing hook and finalizes the rest', async () => {
+  let killed = 0
+  const mkHook = (id, status, code) => ({
+    id,
+    shellCommand:
+      status === null
+        ? undefined
+        : {
+            status,
+            result: Promise.resolve({ code }),
+            kill() {
+              killed += 1
+            },
+          },
+  })
+  const hooks = [
+    mkHook('A', 'completed', 0), // -> success
+    mkHook('B', 'completed', 2), // -> error, and its finalizeHook throws
+    mkHook('C', 'running', undefined), // not completed, not killed -> kill + cancelled
+    mkHook('D', 'killed', undefined), // not completed but already killed -> no kill, cancelled
+    mkHook('E', null, undefined), // no shellCommand -> no kill, cancelled
+  ]
+
+  const calls = []
+  const errors = []
+  await finalizePendingHooks(hooks, {
+    finalizeHook: async (hook, code, statusLabel) => {
+      calls.push(`${hook.id}:${code}:${statusLabel}`)
+      if (hook.id === 'B') throw new Error('boom B')
+    },
+    onError: reason => errors.push(String(reason?.message ?? reason)),
+  })
+
+  // every hook is finalized despite B throwing (allSettled isolation), the
+  // running hook is killed, the already-killed and shellCommand-less ones are
+  // not, the single failure is reported, and the call RESOLVES (so the caller's
+  // unconditional clear() always runs).
+  assert.deepEqual(calls.sort(), [
+    'A:0:success',
+    'B:2:error',
+    'C:1:cancelled',
+    'D:1:cancelled',
+    'E:1:cancelled',
+  ])
+  assert.equal(killed, 1)
+  assert.deepEqual(errors, ['boom B'])
+})
+
+test('finalizePendingHooks resolves even when onError itself throws', async () => {
+  // The production onError (logForDebugging) can throw in immediate-debug mode
+  // (synchronous file append). A throwing reporter must NOT reject the settle,
+  // or the caller's unconditional clear() would be skipped — the exact leak the
+  // fix closes.
+  let finalized = 0
+  const hooks = [
+    { id: 'A', shellCommand: { status: 'completed', result: Promise.resolve({ code: 0 }), kill() {} } },
+    { id: 'B', shellCommand: { status: 'completed', result: Promise.resolve({ code: 0 }), kill() {} } },
+  ]
+  await assert.doesNotReject(
+    finalizePendingHooks(hooks, {
+      finalizeHook: async () => {
+        finalized += 1
+        throw new Error('finalize failed')
+      },
+      onError: () => {
+        throw new Error('reporter blew up')
+      },
+    }),
+  )
+  // both hooks were still attempted despite every finalize + every onError throwing
+  assert.equal(finalized, 2)
 })
 
 test('withCronFileLock acquires the cross-process lock around fn and releases it', async () => {

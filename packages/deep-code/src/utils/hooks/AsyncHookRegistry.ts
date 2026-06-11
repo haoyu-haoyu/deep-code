@@ -8,6 +8,7 @@ import type { ShellCommand } from '../ShellCommand.js'
 import { invalidateSessionEnvCache } from '../sessionEnvironment.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
 import { emitHookResponse, startHookProgressInterval } from './hookEvents.js'
+import { finalizePendingHooks } from './finalizePendingHooks.mjs'
 
 export type PendingAsyncHook = {
   processId: string
@@ -279,25 +280,24 @@ export function removeDeliveredAsyncHooks(processIds: string[]): void {
 }
 
 export async function finalizePendingAsyncHooks(): Promise<void> {
-  const hooks = Array.from(pendingHooks.values())
-  await Promise.all(
-    hooks.map(async hook => {
-      if (hook.shellCommand?.status === 'completed') {
-        const result = await hook.shellCommand.result
-        await finalizeHook(
-          hook,
-          result.code,
-          result.code === 0 ? 'success' : 'error',
-        )
-      } else {
-        if (hook.shellCommand && hook.shellCommand.status !== 'killed') {
-          hook.shellCommand.kill()
-        }
-        await finalizeHook(hook, 1, 'cancelled')
-      }
-    }),
-  )
-  pendingHooks.clear()
+  // allSettled (via finalizePendingHooks) so one hook whose finalization
+  // rejects can't abort the rest or skip the clear() below — a Promise.all
+  // rejection here used to propagate out and leak the registry plus orphan
+  // every hook's progress interval. Mirrors checkForAsyncHookResponses.
+  // The clear() is in a finally as a second layer: even if the await rejects
+  // unexpectedly, the registry is still emptied.
+  try {
+    await finalizePendingHooks(Array.from(pendingHooks.values()), {
+      finalizeHook,
+      onError: reason =>
+        logForDebugging(
+          `Hooks: failed to finalize a pending async hook: ${reason}`,
+          { level: 'error' },
+        ),
+    })
+  } finally {
+    pendingHooks.clear()
+  }
 }
 
 // Test utility function to clear all hooks
