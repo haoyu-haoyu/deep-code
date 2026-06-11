@@ -18,6 +18,7 @@ import {
   getSnapshotStoreSize,
 } from '../src/services/snapshot/diskCap.mjs'
 import { acquireLock } from '../src/services/snapshot/lock.mjs'
+import { runSideGit } from '../src/services/snapshot/storeInit.mjs'
 import {
   appendManifest,
   readManifest,
@@ -175,6 +176,40 @@ test('manifest writes are atomic and ignore leftover tmp files', async () => {
   )
 })
 
+test('readManifest degrades a corrupt manifest to [] then self-heals on the next append', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-corrupt-'))
+  const manifestPath = join(dir, 'manifest.json')
+  await writeFile(manifestPath, '[{"turnId":"t1","commitSha":"a')
+
+  // Degrades instead of throwing. The bad file is left in place (not renamed):
+  // an unlocked reader must never move a file a concurrent writer may be
+  // healing — the atomic append below is what heals.
+  assert.deepEqual(await readManifest(manifestPath), [])
+  assert.equal(existsSync(manifestPath), true)
+
+  // The next append atomically overwrites the corrupt file: a fresh manifest
+  // with only the new entry.
+  const entry = {
+    turnId: 'turn-heal',
+    phase: 'pre',
+    timestamp: 7,
+    commitSha: 'b'.repeat(40),
+    workspaceRoot: dir,
+    hashVersion: 1,
+    changedFiles: [],
+  }
+  await appendManifest(manifestPath, entry)
+  assert.deepEqual(await readManifest(manifestPath), [entry])
+})
+
+test('readManifest degrades a non-array manifest to []', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-nonarray-'))
+  const manifestPath = join(dir, 'manifest.json')
+  await writeFile(manifestPath, '{"not":"an array"}')
+
+  assert.deepEqual(await readManifest(manifestPath), [])
+})
+
 test('checkAndPrune removes oldest snapshots when side-git exceeds cap', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-cap-'))
@@ -222,6 +257,111 @@ test('checkAndPrune is a no-op when snapshot store is under cap', async () => {
 
     assert.deepEqual(result, { prunedCount: 0, finalBytes: beforeBytes })
     assert.equal((await listSnapshots({ workspaceRoot })).length, 1)
+  })
+})
+
+const listSnapshotRefShas = async (store, workspaceRoot) =>
+  (
+    await runSideGit(store.gitDir, workspaceRoot, [
+      'for-each-ref',
+      '--format=%(refname)',
+      'refs/deepcode/snapshots/',
+    ])
+  )
+    .split('\n')
+    .map(ref => ref.trim())
+    .filter(Boolean)
+    .map(ref => ref.slice('refs/deepcode/snapshots/'.length))
+
+const gitObjectExists = async (store, workspaceRoot, sha) => {
+  try {
+    await runSideGit(store.gitDir, workspaceRoot, ['cat-file', '-e', sha])
+    return true
+  } catch {
+    return false
+  }
+}
+
+test('checkAndPrune reclaims orphaned refs left by a healed manifest before evicting live snapshots', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(
+      join(tmpdir(), 'deepcode-snapshot-orphan-'),
+    )
+    for (let index = 1; index <= 3; index += 1) {
+      await writeFile(
+        join(workspaceRoot, 'large.txt'),
+        `${index}:${'x'.repeat(200_000)}\n`,
+      )
+      await createSnapshot({ workspaceRoot, turnId: `turn-${index}`, phase: 'post' })
+    }
+
+    const store = resolveSnapshotStore({ workspaceRoot })
+    const allEntries = await readManifest(store.manifestPath)
+    assert.equal(allEntries.length, 3)
+    assert.equal((await listSnapshotRefShas(store, workspaceRoot)).length, 3)
+
+    // Simulate a corrupt -> heal: the rebuilt manifest lists only the newest
+    // snapshot, while turn-1/turn-2 refs are stranded in the store.
+    const liveEntry = allEntries.at(-1)
+    const orphanShas = allEntries.slice(0, -1).map(entry => entry.commitSha)
+    await writeFile(
+      store.manifestPath,
+      `${JSON.stringify([liveEntry], null, 2)}\n`,
+    )
+
+    const beforeBytes = await getSnapshotStoreSize(store.storePath)
+    const result = await checkAndPrune({ workspaceRoot, capBytes: beforeBytes - 1 })
+
+    // The two orphaned refs are reclaimed; the live one survives, and no LIVE
+    // snapshot was evicted (reclaiming orphans alone got us back under cap).
+    assert.deepEqual(await listSnapshotRefShas(store, workspaceRoot), [
+      liveEntry.commitSha,
+    ])
+    assert.equal(result.prunedCount, 0)
+    assert.ok(result.finalBytes < beforeBytes)
+    assert.ok(result.finalBytes <= beforeBytes - 1)
+    assert.deepEqual(
+      (await listSnapshots({ workspaceRoot })).map(entry => entry.turnId),
+      [liveEntry.turnId],
+    )
+
+    // Real object-store reclamation, not just ref-file deletion: the orphaned
+    // commit objects are pruned from the store, while the live one is intact.
+    // (git compresses the blobs, so a byte-size delta alone would be a weak,
+    // near-false-green signal — assert the objects themselves are gone.)
+    for (const sha of orphanShas) {
+      assert.equal(await gitObjectExists(store, workspaceRoot, sha), false)
+    }
+    assert.equal(
+      await gitObjectExists(store, workspaceRoot, liveEntry.commitSha),
+      true,
+    )
+  })
+})
+
+test('checkAndPrune never wipes refs when the manifest read is empty (corrupt-degraded)', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(
+      join(tmpdir(), 'deepcode-snapshot-orphan-guard-'),
+    )
+    for (let index = 1; index <= 2; index += 1) {
+      await writeFile(
+        join(workspaceRoot, 'large.txt'),
+        `${index}:${'x'.repeat(200_000)}\n`,
+      )
+      await createSnapshot({ workspaceRoot, turnId: `turn-${index}`, phase: 'post' })
+    }
+
+    const store = resolveSnapshotStore({ workspaceRoot })
+    // A still-corrupt manifest degrades readManifest to []. The empty read must
+    // NOT be treated as "every ref is an orphan" and wipe the whole store.
+    await writeFile(store.manifestPath, 'not json{')
+
+    const beforeBytes = await getSnapshotStoreSize(store.storePath)
+    const result = await checkAndPrune({ workspaceRoot, capBytes: beforeBytes - 1 })
+
+    assert.equal((await listSnapshotRefShas(store, workspaceRoot)).length, 2)
+    assert.equal(result.prunedCount, 0)
   })
 })
 

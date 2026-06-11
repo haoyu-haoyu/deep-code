@@ -26,6 +26,28 @@ export async function checkAndPrune({
   if (finalBytes <= capBytes) return { prunedCount: 0, finalBytes }
 
   let entries = await readManifest(store.manifestPath)
+
+  // Reclaim snapshot refs the manifest no longer lists before evicting live
+  // snapshots. Orphans arise two ways: the manifest was healed from corruption
+  // (the pre-corruption refs survive in the store but drop out of the rebuilt
+  // manifest), or a crash landed between createSnapshot's update-ref and its
+  // manifest append. Their refs keep them reachable, so git prune can never
+  // collect them — without this the cap would evict good snapshots while the
+  // orphans leak forever. Guard on a non-empty manifest: an empty read is
+  // ambiguous (a corrupt manifest degrades to [] too), and we must never treat
+  // every ref as an orphan and wipe the whole store.
+  if (entries.length > 0) {
+    const reclaimed = await reclaimOrphanedRefs(
+      store.gitDir,
+      normalizedWorkspaceRoot,
+      entries,
+    )
+    if (reclaimed) {
+      finalBytes = await getSnapshotStoreSize(store.storePath)
+      if (finalBytes <= capBytes) return { prunedCount: 0, finalBytes }
+    }
+  }
+
   const pruneOrder = entries
     .map((entry, index) => ({ entry, index }))
     .sort((left, right) => left.entry.timestamp - right.entry.timestamp)
@@ -59,6 +81,43 @@ export async function getSnapshotStoreSize(path) {
     }
   }
   return total
+}
+
+async function reclaimOrphanedRefs(gitDir, workTree, entries) {
+  const live = new Set(
+    entries.map(entry => entry?.commitSha).filter(Boolean),
+  )
+  let raw
+  try {
+    raw = await runSideGit(gitDir, workTree, [
+      'for-each-ref',
+      '--format=%(refname)',
+      'refs/deepcode/snapshots/',
+    ])
+  } catch {
+    // Older stores without per-snapshot refs (or a transient git failure):
+    // nothing to reconcile, fall through to the normal manifest-based prune.
+    return false
+  }
+  const orphanRefs = raw
+    .split('\n')
+    .map(ref => ref.trim())
+    .filter(Boolean)
+    .filter(ref => {
+      const commitSha = ref.slice('refs/deepcode/snapshots/'.length)
+      return commitSha.length > 0 && !live.has(commitSha)
+    })
+  if (orphanRefs.length === 0) return false
+
+  for (const ref of orphanRefs) {
+    try {
+      await runSideGit(gitDir, workTree, ['update-ref', '-d', ref])
+    } catch {
+      // Best-effort: a ref deleted concurrently is already reclaimed.
+    }
+  }
+  await pruneUnreachableObjects(gitDir, workTree)
+  return true
 }
 
 async function deleteSnapshotRef(gitDir, workTree, entry) {
