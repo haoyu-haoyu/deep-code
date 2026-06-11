@@ -749,8 +749,25 @@ export function sleepMs(ms, signal, timers = {}) {
   })
 }
 
+// An actionable next step for the recognizable, common DeepSeek failures so the
+// user sees what to DO instead of only a raw provider JSON body. '' for statuses
+// with no specific guidance (the raw status + body still shows either way).
+export function deepSeekApiErrorHint(status) {
+  switch (status) {
+    case 401:
+      return 'Authentication failed — check your DeepSeek API key (run /login, or set DEEPSEEK_API_KEY).'
+    case 402:
+      return 'Insufficient balance — top up your DeepSeek account at https://platform.deepseek.com.'
+    default:
+      return ''
+  }
+}
+
 function createDeepSeekApiError(status, message, recovery) {
-  const error = new Error(`DeepSeek API ${status}: ${message}`)
+  const hint = deepSeekApiErrorHint(status)
+  const error = new Error(
+    `DeepSeek API ${status}: ${message}${hint ? `\n${hint}` : ''}`,
+  )
   error.status = status
   error.recovery = recovery
   return error

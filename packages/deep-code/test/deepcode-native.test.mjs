@@ -44,6 +44,7 @@ import {
   createDeepSeekProvider,
   createDeepSeekCacheUserId,
   createDeepSeekPrefixHash,
+  deepSeekApiErrorHint,
   DEEPSEEK_FINISH_ACTIONS,
   formatDeepSeekWarmupResult,
   mapMessagesToDeepSeek,
@@ -4293,4 +4294,43 @@ test('deepcode --compact self-exits on an idle non-TTY stdin pipe (no hang)', as
   assert.equal(result.code, 1)
   assert.match(result.stderr, /no stdin data received in 3s/)
   assert.match(result.stderr, /requires transcript text or piped stdin/)
+})
+
+// --- deepSeekApiErrorHint: actionable next step for recognizable failures ------
+test('deepSeekApiErrorHint: 401/402 give an actionable hint, others give none', () => {
+  assert.match(deepSeekApiErrorHint(401), /Authentication failed/)
+  assert.match(deepSeekApiErrorHint(401), /\/login|DEEPSEEK_API_KEY/)
+  assert.match(deepSeekApiErrorHint(402), /Insufficient balance/)
+  assert.equal(deepSeekApiErrorHint(500), '')
+  assert.equal(deepSeekApiErrorHint(404), '')
+  assert.equal(deepSeekApiErrorHint(undefined), '')
+})
+
+test('streamDeepSeekQuery: a 401 surfaces the raw body AND the actionable hint', async () => {
+  const body =
+    '{"error":{"message":"Authentication Fails, Your api key is invalid","type":"authentication_error"}}'
+  let thrown
+  try {
+    for await (const _ of streamDeepSeekQuery({
+      url: 'https://api.deepseek.com/chat/completions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { model: 'deepseek-v4-pro', messages: [] },
+      maxRetries: 0,
+      async fetch() {
+        return new Response(body, { status: 401 })
+      },
+    })) {
+      // no events expected — the 401 throws before streaming
+    }
+  } catch (error) {
+    thrown = error
+  }
+  assert.ok(thrown, 'a 401 must throw')
+  assert.equal(thrown.status, 401)
+  // raw provider body is preserved (no information loss)
+  assert.match(thrown.message, /authentication_error/)
+  // …and the actionable hint is appended
+  assert.match(thrown.message, /Authentication failed/)
+  assert.match(thrown.message, /\/login|DEEPSEEK_API_KEY/)
 })
