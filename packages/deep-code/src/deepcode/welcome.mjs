@@ -1,4 +1,5 @@
 import { shouldUseColor } from './colorSupport.mjs'
+import { displayWidth, truncateToWidth } from './displayWidth.mjs'
 
 const RESET = '\x1b[0m'
 const BOLD = '\x1b[1m'
@@ -95,7 +96,7 @@ export function formatDeepCodeInfoPanel(
   const normalizedRows = rows.map(row => normalizePanelRow(row))
   const labelWidth = Math.min(
     22,
-    Math.max(10, ...normalizedRows.map(row => stripAnsi(row.label).length)),
+    Math.max(10, ...normalizedRows.map(row => displayWidth(row.label))),
   )
   const valueWidth = Math.max(10, width - labelWidth - 7)
   return [
@@ -152,7 +153,7 @@ export function formatDeepCodeSlashPalette(
   } = {},
 ) {
   const width = clamp(Number(columns) || 80, 54, 96)
-  const commandWidth = Math.max(12, ...commands.map(command => command.name.length))
+  const commandWidth = Math.max(12, ...commands.map(command => displayWidth(command.name)))
   const descriptionWidth = Math.max(18, width - commandWidth - 7)
   const rule = c('─'.repeat(width), 'blue', color)
   return [
@@ -262,7 +263,7 @@ function normalizePanelRow(row) {
 
 function topBorder(title, width, color) {
   const label = title.trim() ? `─${title}` : '─'
-  const rest = '─'.repeat(Math.max(0, width - stripAnsi(label).length - 2))
+  const rest = '─'.repeat(Math.max(0, width - displayWidth(label) - 2))
   return c(`╭${label}${rest}╮`, 'blue', color)
 }
 
@@ -272,9 +273,9 @@ function bottomBorder(width, color) {
 
 function center(value, width) {
   const text = String(value ?? '')
-  const visible = stripAnsi(text)
-  if (visible.length >= width) return text
-  const left = Math.floor((width - visible.length) / 2)
+  const visible = displayWidth(text)
+  if (visible >= width) return text
+  const left = Math.floor((width - visible) / 2)
   return `${' '.repeat(left)}${text}`
 }
 
@@ -314,13 +315,16 @@ function abbreviateHome(path, env = {}) {
 }
 
 function padVisible(value, width) {
-  const text = stripAnsi(String(value ?? ''))
-  const truncated = text.length > width ? `${text.slice(0, Math.max(0, width - 3))}...` : text
   const original = String(value ?? '')
-  const visible = stripAnsi(original)
-  const content = visible.length > width ? truncated : original
-  const contentLength = stripAnsi(content).length
-  return `${content}${' '.repeat(Math.max(0, width - contentLength))}`
+  const text = stripAnsi(original)
+  // Measure and truncate by terminal-cell width, not code-unit length, so a CJK
+  // label/path pads to the right column instead of overflowing it (and an
+  // over-long value is cut on a char boundary, never mid-wide-char).
+  const content =
+    displayWidth(text) > width
+      ? `${truncateToWidth(text, Math.max(0, width - 3))}...`
+      : original
+  return `${content}${' '.repeat(Math.max(0, width - displayWidth(content)))}`
 }
 
 function stripAnsi(value) {

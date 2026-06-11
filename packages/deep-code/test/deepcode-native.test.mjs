@@ -11,6 +11,7 @@ import { finalizePendingHooks } from '../src/utils/hooks/finalizePendingHooks.mj
 import { formatFileSize } from '../src/utils/fileSize.mjs'
 import { shouldUseColor } from '../src/deepcode/colorSupport.mjs'
 import { formatDeepCodeWelcome } from '../src/deepcode/welcome.mjs'
+import { displayWidth, truncateToWidth } from '../src/deepcode/displayWidth.mjs'
 import { abortableDelay } from '../src/utils/abortableDelay.mjs'
 import {
   extractAtMentionedFiles,
@@ -1320,6 +1321,53 @@ test('shouldUseColor honors NO_COLOR (non-empty) and FORCE_COLOR precedence', ()
     shouldUseColor({ isTTY: true }, { NO_COLOR: '1', DEEPCODE_FORCE_COLOR: '1' }),
     true,
   )
+})
+
+test('displayWidth counts CJK/emoji as 2 cells and truncateToWidth never splits a wide char', () => {
+  assert.equal(displayWidth('hello'), 5)
+  assert.equal(displayWidth('中文'), 4) // 2 wide chars
+  assert.equal(displayWidth('a中b'), 4)
+  assert.equal(displayWidth('😀'), 2)
+  assert.equal(displayWidth('\x1b[31m中\x1b[0m'), 2) // SGR colour stripped
+  // non-SGR ANSI is also stripped (matches the repo's bundle string-width stub,
+  // not just /\x1b\[...m/): a CSI clear-screen and an OSC set-title sequence
+  assert.equal(displayWidth('\x1b[2Jhi'), 2) // CSI (non-'m' final byte)
+  assert.equal(displayWidth('\x1b]0;t\x07ok'), 2) // OSC, BEL-terminated
+  // OSC-8 hyperlink whose URL payload contains '/' ':' '?' is fully stripped
+  // (the canonical ansi-regex handles it; the bundle stub's narrower OSC class
+  // would not), so only the visible link text counts
+  assert.equal(
+    displayWidth('\x1b]8;;https://example.com/p?q=1\x07link\x1b]8;;\x07'),
+    4,
+  )
+  // a literal "[1m]" with NO escape byte must NOT be stripped
+  assert.equal(displayWidth('claude-opus-4-8[1m]'), 19)
+  assert.equal(displayWidth('á'), 1) // combining mark is zero-width
+  assert.equal(displayWidth('~/项目/深度代码'), 15) // 2 + 6 CJK chars * 2 + 1
+
+  // truncates by display width, on a char boundary (never half a wide char)
+  assert.equal(truncateToWidth('中文字符', 4), '中文')
+  assert.equal(truncateToWidth('中文字符', 5), '中文') // 5 can't fit a 3rd wide char
+  assert.equal(truncateToWidth('hello', 3), 'hel')
+  assert.equal(truncateToWidth('a中b', 2), 'a') // 中 would overflow
+})
+
+test('the native welcome box stays aligned with CJK cwd/username (display-width aware)', () => {
+  const banner = formatDeepCodeWelcome({
+    cwd: '/Users/张三/项目/深度代码',
+    env: { HOME: '/Users/张三', USER: '张三' },
+    columns: 100,
+    color: false,
+  })
+  // every box-border line must occupy the same number of terminal cells — with
+  // code-unit .length the CJK rows overflowed and desynced the right border
+  const boxWidths = banner
+    .split('\n')
+    .filter(line => /^[╭│╰]/.test(line))
+    .map(line => displayWidth(line))
+  assert.ok(boxWidths.length >= 5)
+  assert.equal(new Set(boxWidths).size, 1)
+  assert.equal(boxWidths[0], 100)
 })
 
 test('the native welcome banner emits no ANSI under NO_COLOR (FORCE_COLOR still wins)', () => {
