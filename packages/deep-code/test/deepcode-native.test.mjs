@@ -5,6 +5,11 @@ import { atomicWriteFile } from '../src/utils/atomicWrite.mjs'
 import { omitUndefined } from '../src/utils/omitUndefined.mjs'
 import { byteCompare } from '../src/cache/byte-order.mjs'
 import { computeHighlightSpans } from '../src/utils/highlightSpans.mjs'
+import {
+  computeWheelStep,
+  initWheelAccel,
+  readScrollSpeedBase,
+} from '../src/components/wheelAccel.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -1123,6 +1128,75 @@ test('computeHighlightSpans splits text into ordered runs, marking case-insensit
   // the spans always reconstruct the input verbatim
   for (const [t, q] of [['aXaXa', 'x'], ['MixedCase', 'c'], ['  pad  ', ' ']]) {
     assert.equal(computeHighlightSpans(t, q).map(s => s.text).join(''), t)
+  }
+})
+
+test('initWheelAccel returns the documented initial accel state', () => {
+  assert.deepEqual(initWheelAccel(false, 1), {
+    time: 0, mult: 1, dir: 0, xtermJs: false, frac: 0, base: 1,
+    pendingFlip: false, wheelMode: false, burstCount: 0,
+  })
+  assert.deepEqual(initWheelAccel(true, 3), {
+    time: 0, mult: 3, dir: 0, xtermJs: true, frac: 0, base: 3,
+    pendingFlip: false, wheelMode: false, burstCount: 0,
+  })
+})
+
+test('computeWheelStep native path: fast same-dir events ramp, an idle gap resets', () => {
+  const s = initWheelAccel(false, 1)
+  // mult ramps +0.3 per sub-40ms event (1.3,1.6,1.9,2.2,2.5,2.8 → floored)
+  const steps = []
+  let t = 0
+  for (let i = 0; i < 6; i++) { steps.push(computeWheelStep(s, 1, t)); t += 10 }
+  assert.deepEqual(steps, [1, 1, 1, 2, 2, 2])
+  // a gap beyond the 40ms accel window resets the multiplier to base
+  assert.equal(computeWheelStep(s, 1, t + 100), 1)
+})
+
+test('computeWheelStep native path: an encoder bounce (flip + quick flip-back) engages wheel mode', () => {
+  const s = initWheelAccel(false, 1)
+  computeWheelStep(s, 1, 0) // establish dir = 1
+  // a direction flip is DEFERRED (returns 0, no scroll) pending bounce-vs-reversal
+  assert.equal(computeWheelStep(s, -1, 100), 0)
+  assert.equal(s.pendingFlip, true)
+  // flip-back to the original dir within the bounce window → confirmed bounce → wheel mode
+  computeWheelStep(s, 1, 150)
+  assert.equal(s.wheelMode, true)
+  assert.equal(s.pendingFlip, false)
+})
+
+test('computeWheelStep native path: a persisted reversal commits (not a bounce)', () => {
+  const s = initWheelAccel(false, 1)
+  computeWheelStep(s, 1, 0)
+  assert.equal(computeWheelStep(s, -1, 100), 0) // defer
+  // the SAME new direction again → real reversal: commit, reset mult, do NOT engage wheelMode
+  computeWheelStep(s, -1, 150)
+  assert.equal(s.dir, -1)
+  assert.equal(s.wheelMode, false)
+})
+
+test('computeWheelStep xterm.js path: initial kick is 2, a same-dir sub-5ms burst is 1', () => {
+  const s = initWheelAccel(true, 1)
+  assert.equal(computeWheelStep(s, 1, 0), 2) // reversal-from-rest kick
+  assert.equal(computeWheelStep(s, 1, 2), 1) // same-batch burst (gap < 5ms) → 1 row
+})
+
+test('readScrollSpeedBase reads + clamps the scroll-speed env var', () => {
+  const orig = process.env.CLAUDE_CODE_SCROLL_SPEED
+  try {
+    delete process.env.CLAUDE_CODE_SCROLL_SPEED
+    assert.equal(readScrollSpeedBase(), 1) // unset → default 1
+    process.env.CLAUDE_CODE_SCROLL_SPEED = '3'
+    assert.equal(readScrollSpeedBase(), 3)
+    process.env.CLAUDE_CODE_SCROLL_SPEED = 'abc'
+    assert.equal(readScrollSpeedBase(), 1) // non-numeric → 1
+    process.env.CLAUDE_CODE_SCROLL_SPEED = '-5'
+    assert.equal(readScrollSpeedBase(), 1) // <= 0 → 1
+    process.env.CLAUDE_CODE_SCROLL_SPEED = '50'
+    assert.equal(readScrollSpeedBase(), 20) // clamp to 20
+  } finally {
+    if (orig === undefined) delete process.env.CLAUDE_CODE_SCROLL_SPEED
+    else process.env.CLAUDE_CODE_SCROLL_SPEED = orig
   }
 })
 
