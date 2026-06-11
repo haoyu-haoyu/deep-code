@@ -25,6 +25,15 @@ import {
 } from '../src/components/wheelAccel.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+import { spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import { dirname } from 'node:path'
+import {
+  readStdinWithTimeout,
+  STDIN_PEEK_TIMEOUT_MS,
+} from '../src/deepcode/stdin.mjs'
 
 import {
   buildDeepSeekRequest,
@@ -4121,4 +4130,167 @@ test('reasoningReplay knob controls re-sending reasoning_content on tool turns (
 
   // The ONLY difference is the reasoning bytes — tool_calls are identical.
   assert.deepEqual(offAssistant.tool_calls, onAssistant.tool_calls)
+})
+
+// --- readStdinWithTimeout: the native --compact / single-turn stdin guard -----
+// An inherited-but-idle non-TTY stdin used to hang the native entrypoint forever
+// (unbounded `for await … of process.stdin`). The leaf gives up after a peek
+// timeout so the caller's empty-input branch fires a clear error instead.
+function makeFakeTimers() {
+  let nextId = 0
+  const timers = new Map()
+  return {
+    timers,
+    setTimer: cb => {
+      const id = ++nextId
+      timers.set(id, cb)
+      return id
+    },
+    clearTimer: id => timers.delete(id),
+    fireAll: () => {
+      for (const [id, cb] of [...timers]) {
+        timers.delete(id)
+        cb()
+      }
+    },
+  }
+}
+
+test('readStdinWithTimeout: idle stream gives up after the peek timeout (returns "" + warns)', async () => {
+  const stream = new EventEmitter()
+  const ft = makeFakeTimers()
+  let warned = 0
+  const p = readStdinWithTimeout(stream, 3000, {
+    onTimeout: () => {
+      warned += 1
+    },
+    setTimer: ft.setTimer,
+    clearTimer: ft.clearTimer,
+  })
+  ft.fireAll() // simulate the 3s idle timeout firing with no data
+  assert.equal(await p, '')
+  assert.equal(warned, 1)
+  assert.equal(ft.timers.size, 0)
+})
+
+test('readStdinWithTimeout: a real producer (data then end) returns the trimmed input, no warning', async () => {
+  const stream = new EventEmitter()
+  const ft = makeFakeTimers()
+  let warned = 0
+  const p = readStdinWithTimeout(stream, 3000, {
+    onTimeout: () => {
+      warned += 1
+    },
+    setTimer: ft.setTimer,
+    clearTimer: ft.clearTimer,
+  })
+  stream.emit('data', Buffer.from('  hello '))
+  // first chunk cancels the idle timeout
+  assert.equal(ft.timers.size, 0)
+  stream.emit('data', Buffer.from('world  '))
+  stream.emit('end')
+  assert.equal(await p, 'hello world')
+  assert.equal(warned, 0)
+})
+
+test('readStdinWithTimeout: a closed empty pipe ends immediately ("" without warning)', async () => {
+  const stream = new EventEmitter()
+  const ft = makeFakeTimers()
+  let warned = 0
+  const p = readStdinWithTimeout(stream, 3000, {
+    onTimeout: () => {
+      warned += 1
+    },
+    setTimer: ft.setTimer,
+    clearTimer: ft.clearTimer,
+  })
+  stream.emit('end')
+  assert.equal(await p, '')
+  assert.equal(warned, 0) // ended, did not time out
+  assert.equal(ft.timers.size, 0)
+})
+
+test('readStdinWithTimeout: a late timer fire after data has arrived is a no-op', async () => {
+  const stream = new EventEmitter()
+  // keep the timer registered so we can fire it AFTER data (simulating a race)
+  let captured
+  const setTimer = cb => {
+    captured = cb
+    return 1
+  }
+  const p = readStdinWithTimeout(stream, 3000, {
+    setTimer,
+    clearTimer: () => {}, // do NOT remove the timer, to exercise the receivedData guard
+  })
+  stream.emit('data', Buffer.from('x'))
+  captured() // stray timeout fires after data — must NOT resolve to ''
+  stream.emit('end')
+  assert.equal(await p, 'x')
+})
+
+test('readStdinWithTimeout: stream error rejects', async () => {
+  const stream = new EventEmitter()
+  const ft = makeFakeTimers()
+  const p = readStdinWithTimeout(stream, 3000, {
+    setTimer: ft.setTimer,
+    clearTimer: ft.clearTimer,
+  })
+  stream.emit('error', new Error('boom'))
+  await assert.rejects(p, /boom/)
+  assert.equal(ft.timers.size, 0)
+})
+
+test('STDIN_PEEK_TIMEOUT_MS mirrors the full-CLI 3s peek', () => {
+  assert.equal(STDIN_PEEK_TIMEOUT_MS, 3000)
+})
+
+test('readStdinWithTimeout: a multibyte char split across chunks decodes intact (UTF-8)', async () => {
+  // '€' = bytes [0xE2,0x82,0xAC]; emit it across two separate flowing chunks. A
+  // raw per-chunk Buffer.toString() would corrupt it ("���"); setEncoding('utf8')
+  // installs a StringDecoder that holds the incomplete sequence across chunks.
+  const stream = new PassThrough()
+  const p = readStdinWithTimeout(stream, 3000)
+  stream.write(Buffer.from([0xe2]))
+  await new Promise(r => setTimeout(r, 10))
+  stream.write(Buffer.from([0x82, 0xac]))
+  stream.end()
+  assert.equal(await p, '€')
+
+  const stream2 = new PassThrough()
+  const p2 = readStdinWithTimeout(stream2, 3000)
+  const buf = Buffer.from('héllo 名前 🎉', 'utf8')
+  stream2.write(buf.subarray(0, 3))
+  await new Promise(r => setTimeout(r, 5))
+  stream2.write(buf.subarray(3, 10))
+  await new Promise(r => setTimeout(r, 5))
+  stream2.write(buf.subarray(10))
+  stream2.end()
+  assert.equal(await p2, 'héllo 名前 🎉')
+})
+
+// Integration: the actual `deepcode --compact` hang the leaf + unref fix resolves.
+// An open-but-idle non-TTY stdin pipe must self-exit (not hang) — this exercises
+// BOTH halves (the peek timeout in the leaf AND process.stdin.unref() at exit).
+test('deepcode --compact self-exits on an idle non-TTY stdin pipe (no hang)', async () => {
+  const entry = `${dirname(dirname(fileURLToPath(import.meta.url)))}/deepcode.js`
+  const child = spawn(process.execPath, [entry, '--compact'], {
+    stdio: ['pipe', 'ignore', 'pipe'],
+  })
+  let stderr = ''
+  child.stderr.on('data', d => (stderr += d))
+  // deliberately never write or close child.stdin — the idle-pipe repro
+  const result = await new Promise((resolve, reject) => {
+    const kill = setTimeout(() => {
+      child.kill('SIGKILL')
+      reject(new Error('deepcode --compact hung on idle stdin (did not self-exit)'))
+    }, 8000)
+    child.on('exit', code => {
+      clearTimeout(kill)
+      resolve({ code, stderr })
+    })
+    child.on('error', reject)
+  })
+  assert.equal(result.code, 1)
+  assert.match(result.stderr, /no stdin data received in 3s/)
+  assert.match(result.stderr, /requires transcript text or piped stdin/)
 })

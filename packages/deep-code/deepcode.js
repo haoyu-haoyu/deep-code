@@ -63,6 +63,7 @@ import {
 } from './src/deepcode/cli-args.mjs'
 import { runDeepCodeAgentRuntimeE2E } from './src/deepcode/agent-runtime-e2e.mjs'
 import { runDeepSeekLocalToolChain } from './src/deepcode/local-toolchain.mjs'
+import { readStdinWithTimeout, STDIN_PEEK_TIMEOUT_MS } from './src/deepcode/stdin.mjs'
 import { resolveModelProvider } from './src/services/providers/index.mjs'
 
 const VERSION = '0.1.0-deepseek-native'
@@ -401,11 +402,23 @@ async function resolvePrompt(args, env = process.env) {
 }
 
 async function readStdin() {
-  let input = ''
-  for await (const chunk of process.stdin) {
-    input += chunk
+  // Guard against an inherited-but-idle non-TTY stdin: without a peek timeout an
+  // unbounded drain hangs the process forever (e.g. `deepcode --compact` spawned
+  // with an open-but-idle stdin pipe). Mirrors the full-CLI peekForStdinData.
+  try {
+    return await readStdinWithTimeout(process.stdin, STDIN_PEEK_TIMEOUT_MS, {
+      onTimeout: () =>
+        process.stderr.write(
+          'Warning: no stdin data received in 3s, proceeding without it. ' +
+            'If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.\n',
+        ),
+    })
+  } finally {
+    // Release stdin's hold on the event loop so an open-but-idle pipe can't keep
+    // the process alive after we're done reading (the error/exit path sets
+    // process.exitCode and returns rather than calling process.exit).
+    process.stdin.unref?.()
   }
-  return input.trim()
 }
 
 function resolveSettingsPath(env = process.env) {
