@@ -1,3 +1,5 @@
+import { shouldUseColor } from './colorSupport.mjs'
+
 const RESET = '\x1b[0m'
 const BOLD = '\x1b[1m'
 const DIM = '\x1b[2m'
@@ -19,7 +21,7 @@ export function formatDeepCodeWelcome({
   cwd = process.cwd(),
   env = process.env,
   columns = process.stdout.columns,
-  color = process.stdout.isTTY || env.DEEPCODE_FORCE_COLOR === '1',
+  color = shouldUseColor(process.stdout, env),
 } = {}) {
   const width = clamp(Number(columns) || 100, 82, 120)
   const innerWidth = width - 4
@@ -67,7 +69,7 @@ export function formatDeepCodeWelcome({
 }
 
 export function formatDeepCodePrompt({
-  color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+  color = shouldUseColor(process.stdout),
 } = {}) {
   return `${c('›', 'blueLightBold', color)} `
 }
@@ -75,7 +77,7 @@ export function formatDeepCodePrompt({
 export function formatDeepCodeAssistantChunk(
   text,
   {
-    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+    color = shouldUseColor(process.stdout),
   } = {},
 ) {
   return c(text, 'white', color)
@@ -86,7 +88,7 @@ export function formatDeepCodeInfoPanel(
   rows,
   {
     columns = process.stdout.columns,
-    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+    color = shouldUseColor(process.stdout),
   } = {},
 ) {
   const width = clamp(Number(columns) || 80, 54, 88)
@@ -108,7 +110,7 @@ export function formatDeepCodeTextPanel(
   text,
   {
     columns = process.stdout.columns,
-    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+    color = shouldUseColor(process.stdout),
   } = {},
 ) {
   const rows = String(text ?? '')
@@ -131,7 +133,7 @@ export function formatDeepCodeTextPanel(
 export function formatDeepCodeCacheUsage(
   usage,
   {
-    color = process.stderr.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+    color = shouldUseColor(process.stderr),
   } = {},
 ) {
   if (!usage) return ''
@@ -146,7 +148,7 @@ export function formatDeepCodeSlashPalette(
   {
     selectedIndex = 0,
     columns = process.stdout.columns,
-    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+    color = shouldUseColor(process.stdout),
   } = {},
 ) {
   const width = clamp(Number(columns) || 80, 54, 96)
@@ -180,7 +182,7 @@ export function formatDeepCodeModelPicker(
   },
   {
     columns = process.stdout.columns,
-    color = process.stdout.isTTY || process.env.DEEPCODE_FORCE_COLOR === '1',
+    color = shouldUseColor(process.stdout),
   } = {},
 ) {
   const width = clamp(Number(columns) || 88, 70, 112)

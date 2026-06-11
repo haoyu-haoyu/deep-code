@@ -9,6 +9,8 @@ import { parseAgentMetadata } from '../src/utils/agentMetadata.mjs'
 import { withCronFileLock } from '../src/utils/cronFileStore.mjs'
 import { finalizePendingHooks } from '../src/utils/hooks/finalizePendingHooks.mjs'
 import { formatFileSize } from '../src/utils/fileSize.mjs'
+import { shouldUseColor } from '../src/deepcode/colorSupport.mjs'
+import { formatDeepCodeWelcome } from '../src/deepcode/welcome.mjs'
 import {
   computeWheelStep,
   initWheelAccel,
@@ -1157,6 +1159,40 @@ test('computeHighlightSpans splits text into ordered runs, marking case-insensit
   for (const [t, q] of [['aXaXa', 'x'], ['MixedCase', 'c'], ['  pad  ', ' ']]) {
     assert.equal(computeHighlightSpans(t, q).map(s => s.text).join(''), t)
   }
+})
+
+test('shouldUseColor honors NO_COLOR (non-empty) and FORCE_COLOR precedence', () => {
+  // color follows the stream's TTY-ness by default
+  assert.equal(shouldUseColor({ isTTY: true }, {}), true)
+  assert.equal(shouldUseColor({ isTTY: false }, {}), false)
+  assert.equal(shouldUseColor(undefined, {}), false)
+  // any NON-EMPTY NO_COLOR suppresses color, even on a TTY (the fix)
+  assert.equal(shouldUseColor({ isTTY: true }, { NO_COLOR: '1' }), false)
+  assert.equal(shouldUseColor({ isTTY: true }, { NO_COLOR: '0' }), false)
+  // an empty NO_COLOR is NOT "set" per the spec
+  assert.equal(shouldUseColor({ isTTY: true }, { NO_COLOR: '' }), true)
+  // FORCE_COLOR=1 overrides both a non-TTY and NO_COLOR
+  assert.equal(shouldUseColor({ isTTY: false }, { DEEPCODE_FORCE_COLOR: '1' }), true)
+  assert.equal(
+    shouldUseColor({ isTTY: true }, { NO_COLOR: '1', DEEPCODE_FORCE_COLOR: '1' }),
+    true,
+  )
+})
+
+test('the native welcome banner emits no ANSI under NO_COLOR (FORCE_COLOR still wins)', () => {
+  const plain = formatDeepCodeWelcome({
+    env: { NO_COLOR: '1' },
+    cwd: '/x',
+    columns: 100,
+  })
+  assert.equal(plain.includes('\x1b'), false)
+
+  const forced = formatDeepCodeWelcome({
+    env: { NO_COLOR: '1', DEEPCODE_FORCE_COLOR: '1' },
+    cwd: '/x',
+    columns: 100,
+  })
+  assert.equal(forced.includes('\x1b'), true)
 })
 
 test('formatFileSize promotes a just-under-threshold value to the next unit instead of "1024KB"', () => {

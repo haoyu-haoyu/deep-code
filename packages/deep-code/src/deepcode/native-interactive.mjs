@@ -1,4 +1,5 @@
 import readline from 'node:readline/promises'
+import { shouldUseColor } from './colorSupport.mjs'
 import {
   formatDeepCodeModelPicker,
   formatDeepCodePrompt,
@@ -505,7 +506,7 @@ function parseKeyTokens(chunk) {
 }
 
 function shouldColor(output, env) {
-  return Boolean(output.isTTY) || env.DEEPCODE_FORCE_COLOR === '1'
+  return shouldUseColor(output, env)
 }
 
 function formatDeepCodeGlimmerMessage({
