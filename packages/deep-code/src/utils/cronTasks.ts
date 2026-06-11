@@ -11,8 +11,10 @@
 
 import { randomUUID } from 'crypto'
 import { readFileSync } from 'fs'
-import { mkdir, writeFile } from 'fs/promises'
+import { mkdir } from 'fs/promises'
 import { join } from 'path'
+import { atomicWriteFile } from './atomicWrite.mjs'
+import { withCronFileLock } from './cronFileStore.mjs'
 import {
   addSessionCronTask,
   getProjectRoot,
@@ -174,11 +176,11 @@ export async function writeCronTasks(
   const body: CronFile = {
     tasks: tasks.map(({ durable: _durable, ...rest }) => rest),
   }
-  await writeFile(
-    getCronFilePath(root),
-    jsonStringify(body, null, 2) + '\n',
-    'utf-8',
-  )
+  // Atomic tmp+rename: a SIGKILL / ENOSPC mid-write leaves the original file
+  // fully intact instead of truncating it (readCronTasks degrades a truncated
+  // file to [], silently dropping every scheduled task). Callers serialize the
+  // surrounding read-modify-write via withCronFileLock.
+  await atomicWriteFile(getCronFilePath(root), jsonStringify(body, null, 2) + '\n')
 }
 
 /**
@@ -212,9 +214,13 @@ export async function addCronTask(
     addSessionCronTask({ ...task, ...(agentId ? { agentId } : {}) })
     return id
   }
-  const tasks = await readCronTasks()
-  tasks.push(task)
-  await writeCronTasks(tasks)
+  // Lock the whole read-modify-write so a concurrent session's add/remove/
+  // mark-fired on the same file can't clobber this append (or vice versa).
+  await withCronFileLock(getCronFilePath(), async () => {
+    const tasks = await readCronTasks()
+    tasks.push(task)
+    await writeCronTasks(tasks)
+  })
   return id
 }
 
@@ -240,11 +246,17 @@ export async function removeCronTasks(
   if (dir === undefined && removeSessionCronTasks(ids) === ids.length) {
     return
   }
-  const idSet = new Set(ids)
-  const tasks = await readCronTasks(dir)
-  const remaining = tasks.filter(t => !idSet.has(t.id))
-  if (remaining.length === tasks.length) return
-  await writeCronTasks(remaining, dir)
+  // No durable file means nothing to remove: skip the lock so a no-op delete
+  // doesn't materialize an empty .claude/ (parity with the prior path, where
+  // readCronTasks returned [] and the unchanged guard short-circuited).
+  if (!getFsImplementation().existsSync(getCronFilePath(dir))) return
+  await withCronFileLock(getCronFilePath(dir), async () => {
+    const idSet = new Set(ids)
+    const tasks = await readCronTasks(dir)
+    const remaining = tasks.filter(t => !idSet.has(t.id))
+    if (remaining.length === tasks.length) return
+    await writeCronTasks(remaining, dir)
+  })
 }
 
 /**
@@ -264,17 +276,22 @@ export async function markCronTasksFired(
   dir?: string,
 ): Promise<void> {
   if (ids.length === 0) return
-  const idSet = new Set(ids)
-  const tasks = await readCronTasks(dir)
-  let changed = false
-  for (const t of tasks) {
-    if (idSet.has(t.id)) {
-      t.lastFiredAt = firedAt
-      changed = true
+  // No durable file means no file-backed task to stamp: skip the lock so this
+  // no-op doesn't materialize an empty .claude/ (parity with the prior path).
+  if (!getFsImplementation().existsSync(getCronFilePath(dir))) return
+  await withCronFileLock(getCronFilePath(dir), async () => {
+    const idSet = new Set(ids)
+    const tasks = await readCronTasks(dir)
+    let changed = false
+    for (const t of tasks) {
+      if (idSet.has(t.id)) {
+        t.lastFiredAt = firedAt
+        changed = true
+      }
     }
-  }
-  if (!changed) return
-  await writeCronTasks(tasks, dir)
+    if (!changed) return
+    await writeCronTasks(tasks, dir)
+  })
 }
 
 /**
