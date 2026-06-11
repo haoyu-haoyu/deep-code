@@ -988,6 +988,30 @@ test('recordDeepSeekCacheUsage is best-effort when stats path cannot be written'
   assert.equal(result, null)
 })
 
+test('recordDeepSeekCacheUsage serializes concurrent writes to the same path (no lost update)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-cache-race-'))
+  const path = join(dir, 'stats.json')
+
+  // Fire N record calls at the SAME path concurrently. Without serialization
+  // they all load the same (initial) stats before any write lands, so the
+  // increments clobber each other and the final requestCount is far below N;
+  // serialized, every increment is applied on top of the previous write.
+  const N = 8
+  await Promise.all(
+    Array.from({ length: N }, () =>
+      recordDeepSeekCacheUsage({
+        path,
+        usage: { prompt_cache_hit_tokens: 1, prompt_cache_miss_tokens: 2 },
+      }),
+    ),
+  )
+
+  const stats = JSON.parse(await readFile(path, 'utf8'))
+  assert.equal(stats.requestCount, N)
+  assert.equal(stats.totalPromptCacheHitTokens, N)
+  assert.equal(stats.totalPromptCacheMissTokens, N * 2)
+})
+
 test('sanitizeSchemaForDeepSeekStrict removes unsupported constraints and closes objects', () => {
   const schema = sanitizeSchemaForDeepSeekStrict({
     type: 'object',
