@@ -138,20 +138,25 @@ async function maybeShowDeepSeekSetupWizard(root: Root): Promise<void> {
   const { resolveDeepSeekConfig } = await import('./services/providers/deepseek.mjs');
   const config = resolveDeepSeekConfig({});
   const { DeepSeekSetupDialog } = await import('./components/DeepSeekSetupDialog.js');
+  const { formatDeepSeekSetupAbort } = await import('./commands/login/loginResult.mjs');
+  let saveError: string | undefined;
   const saved = await showSetupDialog<boolean>(root, done => (
     <DeepSeekSetupDialog
       defaultBaseUrl={config.baseUrl}
       defaultModel={config.model}
       initialEffort={(config.reasoningEffort ?? 'max') as 'max' | 'high'}
-      onDone={result => done(result)}
+      onDone={(result, error) => {
+        saveError = error;
+        done(result);
+      }}
     />
   ), { onChangeAppState });
   if (!saved) {
     logForDebugging('DeepSeek setup wizard was cancelled or failed to save — aborting startup');
-    await exitWithError(
-      root,
-      'Deep Code requires a DeepSeek API key to run. Set DEEPSEEK_API_KEY, write ~/.deepcode/deepseek-config.json, or re-run and complete the setup wizard.',
-    );
+    // A save FAILURE surfaces the real reason; the generic key-required message's
+    // "write ~/.deepcode/deepseek-config.json" advice is wrong when that write is
+    // exactly what just failed.
+    await exitWithError(root, formatDeepSeekSetupAbort(saveError));
   }
 }
 

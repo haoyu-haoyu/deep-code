@@ -33,7 +33,9 @@ type Props = {
   initialBaseUrl?: string
   initialModel?: string
   initialEffort?: WizardState['reasoningEffort']
-  onDone: (saved: boolean) => void
+  // `error` carries the save-failure reason so a disk write failure can be
+  // reported as a failure rather than an indistinguishable cancel.
+  onDone: (saved: boolean, error?: string) => void
 }
 
 const MODEL_OPTIONS = [
@@ -204,7 +206,9 @@ export function DeepSeekSetupDialog({
         logForDebugging(`DeepSeek setup save failed: ${reason}`, {
           level: 'error',
         })
-        onDone(false)
+        // Forward the reason so this is reported as a save FAILURE, not a cancel
+        // (the debug log above is suppressed for normal users).
+        onDone(false, reason)
       }
     },
     [onDone, state.apiKey, state.baseUrl, state.model, state.reasoningEffort],
