@@ -1318,7 +1318,7 @@ async function run(): Promise<CommanderCommand> {
           blocked
         } = filterMcpServersByPolicy(scopedConfigs);
         if (blocked.length > 0) {
-          process.stderr.write(getMessage('cli.warning.mcpServersBlockedByPolicy', { servers: plural(blocked.length, 'server'), names: blocked.join(', ') }) + '\n');
+          process.stderr.write(getMessage('cli.warning.mcpServersBlockedByPolicy', { names: blocked.join(', ') }) + '\n');
         }
         dynamicMcpConfig = {
           ...dynamicMcpConfig,
@@ -1433,7 +1433,7 @@ async function run(): Promise<CommanderCommand> {
         blocked
       } = filterMcpServersByPolicy(configs);
       if (blocked.length > 0) {
-        process.stderr.write(getMessage('cli.warning.claudeAiMcpServersBlockedByPolicy', { servers: plural(blocked.length, 'server'), names: blocked.join(', ') }) + '\n');
+        process.stderr.write(getMessage('cli.warning.claudeAiMcpServersBlockedByPolicy', { names: blocked.join(', ') }) + '\n');
       }
       return allowed;
     }) : Promise.resolve({});
