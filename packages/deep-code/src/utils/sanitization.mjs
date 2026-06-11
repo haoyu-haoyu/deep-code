@@ -95,8 +95,8 @@ export function recursivelySanitizeUnicode(value) {
   // (`return []`); JSON.parse is iterative and survives such depth, so the
   // recursive sanitizer was the weakest link.
   //
-  // Byte-identical to the recursion for every finite input. The fidelity details
-  // that matter (a malicious MCP server controls this data):
+  // Byte-identical to the recursion for every finite ACYCLIC input. The fidelity
+  // details that matter (a malicious MCP server controls this data):
   //  • objects read all values up front in key order via Object.entries (matching
   //    the previous `for…of Object.entries(value)` getter-read timing);
   //  • arrays read each element lazily at processing time, holes skipped, so a
@@ -106,40 +106,67 @@ export function recursivelySanitizeUnicode(value) {
   //    `obj[key] = …` in source order — so duplicate sanitized keys overwrite
   //    last-wins at the first slot, every colliding value is still sanitized, and
   //    `__proto__`/setter semantics are unchanged.
+  //
+  // A circular reference makes the recursion infinitely recurse → RangeError. The
+  // explicit stack would instead loop forever (a worse, hang/OOM failure), so we
+  // track the ancestors on the current DFS path and throw a RangeError on a
+  // back-edge — terminating like the recursion. Sibling-shared references are NOT
+  // ancestors, so a DAG is still duplicated exactly like `map`/`Object.entries`.
+  // (The JSON-sourced MCP inputs are always acyclic; this only hardens the generic
+  // exported API against a hand-built cyclic argument.)
   const HOLE = Symbol('hole')
+  const onPath = new Set()
   const root = { out: undefined }
   const stack = [{ read: () => value, assign: v => (root.out = v) }]
   while (stack.length > 0) {
-    const { read, assign } = stack.pop()
-    const src = read()
+    const task = stack.pop()
+    // Exit marker: every descendant of `task.leave` has been processed, so it
+    // is no longer on the current path. (Pushed before a container's children,
+    // it pops after them — and after their descendants' own exit markers.)
+    if (task.leave !== undefined) {
+      onPath.delete(task.leave)
+      continue
+    }
+
+    const src = task.read()
     if (src === HOLE) continue
 
     if (typeof src === 'string') {
-      assign(partiallySanitizeUnicode(src))
+      task.assign(partiallySanitizeUnicode(src))
     } else if (src === null || typeof src !== 'object') {
       // numbers, booleans, null, undefined, bigint, symbol — unchanged
-      assign(src)
-    } else if (Array.isArray(src)) {
-      const arr = new Array(src.length)
-      assign(arr)
-      for (let i = src.length - 1; i >= 0; i--) {
-        const index = i
-        // Defer the element read to processing time and skip holes (like .map).
-        stack.push({
-          read: () => (index in src ? src[index] : HOLE),
-          assign: v => (arr[index] = v),
-        })
-      }
+      task.assign(src)
     } else {
-      const obj = {}
-      assign(obj)
-      // Keys are always strings here → sanitize directly
-      // (recursivelySanitizeUnicode(string) === partiallySanitizeUnicode(string)).
-      const entries = Object.entries(src)
-      for (let i = entries.length - 1; i >= 0; i--) {
-        const sanitizedKey = partiallySanitizeUnicode(entries[i][0])
-        const val = entries[i][1]
-        stack.push({ read: () => val, assign: v => (obj[sanitizedKey] = v) })
+      if (onPath.has(src)) {
+        throw new RangeError(
+          'recursivelySanitizeUnicode: cannot sanitize a circular structure',
+        )
+      }
+      onPath.add(src)
+      stack.push({ leave: src })
+
+      if (Array.isArray(src)) {
+        const arr = new Array(src.length)
+        task.assign(arr)
+        for (let i = src.length - 1; i >= 0; i--) {
+          const index = i
+          // Defer the element read to processing time and skip holes (like .map).
+          stack.push({
+            read: () => (index in src ? src[index] : HOLE),
+            assign: v => (arr[index] = v),
+          })
+        }
+      } else {
+        const obj = {}
+        task.assign(obj)
+        // Keys are always strings here → sanitize directly
+        // (recursivelySanitizeUnicode(string) === partiallySanitizeUnicode(string)).
+        const entries = Object.entries(src)
+        for (let i = entries.length - 1; i >= 0; i--) {
+          const sanitizedKey = partiallySanitizeUnicode(entries[i][0])
+          const val = entries[i][1]
+          stack.push({ read: () => val, assign: v => (obj[sanitizedKey] = v) })
+        }
       }
     }
   }

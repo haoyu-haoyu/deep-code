@@ -148,6 +148,33 @@ test('recursivelySanitizeUnicode: keys colliding after sanitization keep first p
   assert.equal(out.a, 'second')
 })
 
+test('recursivelySanitizeUnicode: a circular reference throws RangeError (terminates like the recursion, never hangs)', () => {
+  const selfObj = {}
+  selfObj.self = selfObj
+  assert.throws(() => recursivelySanitizeUnicode(selfObj), RangeError)
+
+  const selfArr = []
+  selfArr[0] = selfArr
+  assert.throws(() => recursivelySanitizeUnicode(selfArr), RangeError)
+
+  // mutual 2-cycle
+  const a = {}
+  const b = {}
+  a.b = b
+  b.a = a
+  assert.throws(() => recursivelySanitizeUnicode(a), RangeError)
+})
+
+test('recursivelySanitizeUnicode: a shared (sibling) reference is NOT a cycle — duplicated like the recursion', () => {
+  const zw = cp(0x200b)
+  const shared = { x: 'v' + zw }
+  const out = recursivelySanitizeUnicode({ a: shared, b: shared })
+  assert.deepEqual(out, { a: { x: 'v' }, b: { x: 'v' } })
+  // duplicated into two independent objects (sharing is not preserved, matching
+  // the recursive `value.map(rec)` / `sanitized[key] = rec(val)` walk)
+  assert.notEqual(out.a, out.b)
+})
+
 test('recursivelySanitizeUnicode: a __proto__ data key (JSON.parse can produce one) assigns via live [[Set]] like the recursion', () => {
   const zw = cp(0x200b)
   // JSON.parse yields an OWN "__proto__" data property; the sanitizer re-assigns
