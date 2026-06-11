@@ -11,6 +11,7 @@ import { finalizePendingHooks } from '../src/utils/hooks/finalizePendingHooks.mj
 import { formatFileSize } from '../src/utils/fileSize.mjs'
 import { shouldUseColor } from '../src/deepcode/colorSupport.mjs'
 import { formatDeepCodeWelcome } from '../src/deepcode/welcome.mjs'
+import { abortableDelay } from '../src/utils/abortableDelay.mjs'
 import {
   computeWheelStep,
   initWheelAccel,
@@ -36,6 +37,7 @@ import {
   parseDeepSeekSSELines,
   runDeepSeekAgent,
   sanitizeSchemaForDeepSeekStrict,
+  sleepMs,
   stableJsonStringify,
   streamDeepSeekQuery,
   streamDeepSeekResponseBody,
@@ -1159,6 +1161,115 @@ test('computeHighlightSpans splits text into ordered runs, marking case-insensit
   for (const [t, q] of [['aXaXa', 'x'], ['MixedCase', 'c'], ['  pad  ', ' ']]) {
     assert.equal(computeHighlightSpans(t, q).map(s => s.text).join(''), t)
   }
+})
+
+test('abortableDelay rejects promptly when the signal aborts and resolves otherwise', async () => {
+  // no signal -> just sleeps
+  let slept = 0
+  await abortableDelay(5, undefined, async () => {
+    slept += 1
+  })
+  assert.equal(slept, 1)
+
+  // already aborted -> throws AbortError, sleep never runs
+  const pre = new AbortController()
+  pre.abort()
+  let preCalls = 0
+  await assert.rejects(
+    abortableDelay(
+      5,
+      pre.signal,
+      async () => {
+        preCalls += 1
+      },
+    ),
+    e => e?.name === 'AbortError',
+  )
+  assert.equal(preCalls, 0)
+
+  // aborts mid-wait -> throws AbortError
+  const mid = new AbortController()
+  await assert.rejects(
+    abortableDelay(5, mid.signal, async () => {
+      mid.abort()
+    }),
+    e => e?.name === 'AbortError',
+  )
+
+  // a live, never-aborted signal resolves normally
+  const live = new AbortController()
+  await abortableDelay(1, live.signal, async () => {})
+})
+
+test('sleepMs clears its timer and rejects on abort (no abandoned timer pinning the loop)', async () => {
+  // injected timers: an abort must CLEAR the pending timer, not leave it to keep
+  // the event loop alive for the full backoff
+  let cleared = null
+  const setTimer = () => 'timer-1'
+  const clearTimer = id => {
+    cleared = id
+  }
+  const ac = new AbortController()
+  const pending = sleepMs(1000, ac.signal, { setTimer, clearTimer })
+  ac.abort()
+  await assert.rejects(pending, e => e?.name === 'AbortError')
+  assert.equal(cleared, 'timer-1')
+
+  // already aborted: rejects without ever arming a timer
+  const pre = new AbortController()
+  pre.abort()
+  let setCalls = 0
+  await assert.rejects(
+    sleepMs(1000, pre.signal, {
+      setTimer: () => {
+        setCalls += 1
+        return 0
+      },
+      clearTimer,
+    }),
+    e => e?.name === 'AbortError',
+  )
+  assert.equal(setCalls, 0)
+
+  // normal completion still resolves (real short timer, no signal)
+  await sleepMs(1, undefined)
+})
+
+test('streamDeepSeekQuery abandons the retry backoff when the signal aborts (no doomed retry)', async () => {
+  const controller = new AbortController()
+  let attempts = 0
+  let threw
+  try {
+    for await (const _event of streamDeepSeekQuery({
+      url: 'https://api.deepseek.com/chat/completions',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { model: 'deepseek-v4-pro', messages: [] },
+      maxRetries: 3,
+      signal: controller.signal,
+      // the user presses Ctrl-C during the backoff: the wait aborts the signal
+      sleep() {
+        controller.abort()
+        return Promise.resolve()
+      },
+      async fetch() {
+        attempts += 1
+        return new Response('limited', {
+          status: 429,
+          headers: { 'retry-after': '30' },
+        })
+      },
+    })) {
+      // no events expected before the abort
+    }
+  } catch (error) {
+    threw = error
+  }
+
+  // only the first request was made — aborting during the backoff stops the
+  // loop instead of sleeping the full 30s and firing more doomed requests
+  assert.equal(attempts, 1)
+  assert.equal(threw?.name, 'AbortError')
 })
 
 test('shouldUseColor honors NO_COLOR (non-empty) and FORCE_COLOR precedence', () => {
