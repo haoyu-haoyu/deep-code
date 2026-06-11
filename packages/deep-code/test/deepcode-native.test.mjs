@@ -13,6 +13,10 @@ import { shouldUseColor } from '../src/deepcode/colorSupport.mjs'
 import { formatDeepCodeWelcome } from '../src/deepcode/welcome.mjs'
 import { abortableDelay } from '../src/utils/abortableDelay.mjs'
 import {
+  extractAtMentionedFiles,
+  extractMcpResourceMentions,
+} from '../src/utils/atMentionParsing.mjs'
+import {
   computeWheelStep,
   initWheelAccel,
   readScrollSpeedBase,
@@ -1161,6 +1165,34 @@ test('computeHighlightSpans splits text into ordered runs, marking case-insensit
   for (const [t, q] of [['aXaXa', 'x'], ['MixedCase', 'c'], ['  pad  ', ' ']]) {
     assert.equal(computeHighlightSpans(t, q).map(s => s.text).join(''), t)
   }
+})
+
+test('extractAtMentionedFiles matches Unicode/CJK paths and trims trailing prose punctuation', () => {
+  // the fix: Unicode/CJK filenames are no longer dropped by the ASCII \b anchor
+  assert.deepEqual(extractAtMentionedFiles('see @中文 please'), ['中文'])
+  assert.deepEqual(extractAtMentionedFiles('read @项目/深度代码.txt now'), [
+    '项目/深度代码.txt',
+  ])
+
+  // unchanged ASCII behavior, incl. the \b-equivalent trailing trim
+  assert.deepEqual(extractAtMentionedFiles('check @file.txt please'), ['file.txt'])
+  assert.deepEqual(extractAtMentionedFiles('see @config.json, then'), ['config.json'])
+  assert.deepEqual(extractAtMentionedFiles('end of @config.json.'), ['config.json'])
+  assert.deepEqual(extractAtMentionedFiles('dir @src/ here'), ['src'])
+  assert.deepEqual(extractAtMentionedFiles('range @file.txt#L10-20 x'), [
+    'file.txt#L10-20',
+  ])
+  assert.deepEqual(extractAtMentionedFiles('quoted @"my file.txt" ok'), [
+    'my file.txt',
+  ])
+  assert.deepEqual(extractAtMentionedFiles('agent @"code-reviewer (agent)" x'), [])
+
+  // MCP @server:uri still requires the colon, and now matches Unicode too
+  assert.deepEqual(extractMcpResourceMentions('use @server1:resource/path x'), [
+    'server1:resource/path',
+  ])
+  assert.deepEqual(extractMcpResourceMentions('cjk @服务器:资源 x'), ['服务器:资源'])
+  assert.deepEqual(extractMcpResourceMentions('nocolon @plainfile x'), [])
 })
 
 test('abortableDelay rejects promptly when the signal aborts and resolves otherwise', async () => {

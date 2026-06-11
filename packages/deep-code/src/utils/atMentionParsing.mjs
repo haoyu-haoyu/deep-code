@@ -1,0 +1,70 @@
+// @-mention extraction (file paths and MCP resources), split out so it can be
+// unit tested without pulling in attachments.ts's bun:bundle import.
+//
+// The character set mirrors the typeahead's accepted @-mention chars
+// (useTypeahead.tsx: \p{L}\p{N}\p{M} plus the path punctuation _ - . / \ ( ) [ ] ~ :)
+// so the extractor accepts exactly what autocomplete suggests. The match must
+// END on a Unicode WORD char (letter/number/mark/underscore) — the Unicode-aware
+// equivalent of the old ASCII \b. That trims trailing prose punctuation and
+// slashes ("see @config.json, then" -> "config.json", "@dir/" -> "dir") while no
+// longer dropping a CJK/Unicode final char: the old /([^\s]+)\b/ only ended after
+// an ASCII [A-Za-z0-9_], so "@中文" matched nothing and "@x😀"/"@a." truncated.
+
+const PATH_CHARS = '\\p{L}\\p{N}\\p{M}_\\-./\\\\()\\[\\]~:'
+const WORD_CHARS = '\\p{L}\\p{N}\\p{M}_'
+
+// Files additionally allow '#' for the #L<start>-<end> line-range suffix.
+function fileMentionRegex() {
+  return new RegExp(`(^|\\s)@[${PATH_CHARS}#]*[${WORD_CHARS}]`, 'gu')
+}
+
+// MCP resources are @server:uri — require a ':' separating two path runs.
+function mcpMentionRegex() {
+  return new RegExp(`(^|\\s)@[${PATH_CHARS}]+:[${PATH_CHARS}]*[${WORD_CHARS}]`, 'gu')
+}
+
+function uniq(values) {
+  return [...new Set(values)]
+}
+
+/**
+ * Extract @-mentioned file paths, including quoted paths (@"my file.txt") and
+ * the #L line-range suffix (@file.txt#L10-20). Agent mentions (@"x (agent)") are
+ * skipped.
+ *
+ * @param {string} content
+ * @returns {string[]}
+ */
+export function extractAtMentionedFiles(content) {
+  const quotedAtMentionRegex = /(^|\s)@"([^"]+)"/g
+  const quotedMatches = []
+  let match
+  while ((match = quotedAtMentionRegex.exec(content)) !== null) {
+    if (match[2] && !match[2].endsWith(' (agent)')) {
+      quotedMatches.push(match[2])
+    }
+  }
+
+  const regularMatches = []
+  for (const full of content.match(fileMentionRegex()) || []) {
+    const filename = full.slice(full.indexOf('@') + 1)
+    // Quoted forms are handled above; the regular class excludes '"' so this is
+    // belt-and-suspenders.
+    if (!filename.startsWith('"')) {
+      regularMatches.push(filename)
+    }
+  }
+
+  return uniq([...quotedMatches, ...regularMatches])
+}
+
+/**
+ * Extract @-mentioned MCP resources in @server:uri form.
+ *
+ * @param {string} content
+ * @returns {string[]}
+ */
+export function extractMcpResourceMentions(content) {
+  const matches = content.match(mcpMentionRegex()) || []
+  return uniq(matches.map(full => full.slice(full.indexOf('@') + 1)))
+}
