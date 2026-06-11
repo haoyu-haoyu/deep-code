@@ -35,7 +35,10 @@ import {
   STDIN_PEEK_TIMEOUT_MS,
 } from '../src/deepcode/stdin.mjs'
 import { relativeNamespace } from '../src/utils/plugins/commandNamespace.mjs'
-import { formatDeepSeekLoginResult } from '../src/commands/login/loginResult.mjs'
+import {
+  formatDeepSeekLoginResult,
+  formatDeepSeekSetupAbort,
+} from '../src/commands/login/loginResult.mjs'
 
 import {
   buildDeepSeekRequest,
@@ -4383,4 +4386,20 @@ test('formatDeepSeekLoginResult: a save FAILURE reports the cause, not "Login ca
   assert.match(failure, /EACCES: permission denied/)
   assert.match(failure, /write permissions/)
   assert.doesNotMatch(failure, /Login cancelled/)
+})
+
+test('formatDeepSeekSetupAbort: a save FAILURE surfaces the reason, not the generic write-the-file advice', () => {
+  // no error → the generic key-required guidance (unchanged)
+  const generic = formatDeepSeekSetupAbort()
+  assert.match(generic, /requires a DeepSeek API key/)
+  assert.match(generic, /DEEPSEEK_API_KEY/)
+  // a save failure → the real reason + write-permission hint, and it must NOT tell
+  // the user to write the very file the write just failed on
+  const failure = formatDeepSeekSetupAbort(
+    "ENOSPC: no space left on device, write '/home/me/.deepcode/deepseek-config.json'",
+  )
+  assert.match(failure, /could not save/)
+  assert.match(failure, /ENOSPC: no space left/)
+  assert.match(failure, /write permissions/)
+  assert.doesNotMatch(failure, /requires a DeepSeek API key/)
 })

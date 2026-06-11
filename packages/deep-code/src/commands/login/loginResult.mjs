@@ -21,3 +21,17 @@ export function formatDeepSeekLoginResult(saved, error) {
   }
   return 'Login cancelled'
 }
+
+/**
+ * The startup-wizard abort message when DeepSeek setup did not complete. On a save
+ * FAILURE the generic "write ~/.deepcode/deepseek-config.json" guidance is actively
+ * wrong (writing there is exactly what failed), so surface the real reason instead.
+ * @param {string} [saveError] the save-failure reason (error.message); absent on a cancel
+ * @returns {string}
+ */
+export function formatDeepSeekSetupAbort(saveError) {
+  if (saveError) {
+    return `Deep Code could not save your DeepSeek config: ${saveError}. Check write permissions for ~/.deepcode, then re-run.`
+  }
+  return 'Deep Code requires a DeepSeek API key to run. Set DEEPSEEK_API_KEY, write ~/.deepcode/deepseek-config.json, or re-run and complete the setup wizard.'
+}
