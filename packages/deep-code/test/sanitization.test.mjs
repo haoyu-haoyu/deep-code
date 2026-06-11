@@ -89,3 +89,108 @@ test('recursivelySanitizeUnicode: leaves non-string primitives unchanged', () =>
   assert.equal(recursivelySanitizeUnicode(undefined), undefined)
   assert.deepEqual(recursivelySanitizeUnicode([1, 'a', null, false]), [1, 'a', null, false])
 })
+
+// --- deep-input DoS: a hostile/pathological MCP tools/list inputSchema --------
+// A deeply-nested value used to recurse on the NATIVE call stack and throw
+// RangeError; in fetchToolsForClient that throw is caught and the WHOLE server's
+// tools are dropped (return []). JSON.parse is iterative and survives this depth,
+// so the sanitizer was the weakest link. The iterative (heap-stack) walk must
+// handle arbitrary depth without throwing, while still sanitizing every leaf.
+test('recursivelySanitizeUnicode: deeply-nested input does NOT overflow the stack', () => {
+  const zw = cp(0x200b)
+  // 40k of object nesting — well past the ~5k native-call-stack limit, modeling a
+  // malicious server whose JSON.parse-able wire payload reaches the sanitizer.
+  let objDeep = { leaf: 'deep' + zw + 'val' }
+  for (let i = 0; i < 40000; i++) objDeep = { ['n' + zw]: objDeep }
+  let resultObj
+  assert.doesNotThrow(() => {
+    resultObj = recursivelySanitizeUnicode(objDeep)
+  })
+  // descend and confirm the deep leaf string was still sanitized + the key cleaned
+  let cur = resultObj
+  for (let i = 0; i < 40000; i++) cur = cur.n
+  assert.equal(cur.leaf, 'deepval')
+
+  // same for deep array nesting — and confirm the innermost string IS sanitized
+  let arrDeep = ['x' + zw + 'y']
+  for (let i = 0; i < 40000; i++) arrDeep = [arrDeep]
+  let resultArr
+  assert.doesNotThrow(() => {
+    resultArr = recursivelySanitizeUnicode(arrDeep)
+  })
+  let curArr = resultArr
+  for (let i = 0; i < 40000; i++) curArr = curArr[0]
+  assert.equal(curArr[0], 'xy')
+})
+
+// --- behavior-identity edge cases the iterative rewrite must preserve ----------
+test('recursivelySanitizeUnicode: preserves object key INSERTION ORDER', () => {
+  const out = recursivelySanitizeUnicode({ b: 1, a: 2, c: 3 })
+  assert.deepEqual(Object.keys(out), ['b', 'a', 'c'])
+})
+
+test('recursivelySanitizeUnicode: preserves ARRAY HOLES (sparse arrays) like .map', () => {
+  const sparse = ['a']
+  sparse[3] = 'b' // indices 1,2 are holes
+  const out = recursivelySanitizeUnicode(sparse)
+  assert.equal(out.length, 4)
+  assert.equal(1 in out, false)
+  assert.equal(2 in out, false)
+  assert.deepEqual([out[0], out[3]], ['a', 'b'])
+})
+
+test('recursivelySanitizeUnicode: keys colliding after sanitization keep first position, last value wins', () => {
+  const zw = cp(0x200b)
+  // 'a​' and 'a' both sanitize to 'a'; the recursive impl assigned in
+  // iteration order so the LAST source value wins at the FIRST key's position.
+  const out = recursivelySanitizeUnicode({ ['a' + zw]: 'first', a: 'second' })
+  assert.deepEqual(Object.keys(out), ['a'])
+  assert.equal(out.a, 'second')
+})
+
+test('recursivelySanitizeUnicode: a circular reference throws RangeError (terminates like the recursion, never hangs)', () => {
+  const selfObj = {}
+  selfObj.self = selfObj
+  assert.throws(() => recursivelySanitizeUnicode(selfObj), RangeError)
+
+  const selfArr = []
+  selfArr[0] = selfArr
+  assert.throws(() => recursivelySanitizeUnicode(selfArr), RangeError)
+
+  // mutual 2-cycle
+  const a = {}
+  const b = {}
+  a.b = b
+  b.a = a
+  assert.throws(() => recursivelySanitizeUnicode(a), RangeError)
+})
+
+test('recursivelySanitizeUnicode: a shared (sibling) reference is NOT a cycle — duplicated like the recursion', () => {
+  const zw = cp(0x200b)
+  const shared = { x: 'v' + zw }
+  const out = recursivelySanitizeUnicode({ a: shared, b: shared })
+  assert.deepEqual(out, { a: { x: 'v' }, b: { x: 'v' } })
+  // duplicated into two independent objects (sharing is not preserved, matching
+  // the recursive `value.map(rec)` / `sanitized[key] = rec(val)` walk)
+  assert.notEqual(out.a, out.b)
+})
+
+test('recursivelySanitizeUnicode: a __proto__ data key (JSON.parse can produce one) assigns via live [[Set]] like the recursion', () => {
+  const zw = cp(0x200b)
+  // JSON.parse yields an OWN "__proto__" data property; the sanitizer re-assigns
+  // each key with a live `obj[key] = …`, so an object-valued __proto__ sets the
+  // prototype (no own "__proto__" key) — characterizing parity with the previous
+  // recursive `sanitized[key] = val` walk, the reachable malicious-MCP data case.
+  const single = recursivelySanitizeUnicode(JSON.parse('{"__proto__": {"a": 1}}'))
+  assert.deepEqual(Object.keys(single), [])
+  assert.equal(Object.getPrototypeOf(single).a, 1)
+  // colliding __proto__ keys (object then primitive) — last (primitive) is a
+  // setter no-op, so the object-valued first assignment determines the prototype.
+  const collide = recursivelySanitizeUnicode(
+    JSON.parse('{"__proto__": {"a": 1}, "__proto__' + zw + '": 0}'),
+  )
+  assert.deepEqual(Object.keys(collide), [])
+  assert.equal(Object.getPrototypeOf(collide).a, 1)
+  // never mutates the global prototype
+  assert.equal({}.a, undefined)
+})
