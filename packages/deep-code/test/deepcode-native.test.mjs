@@ -4,6 +4,7 @@ import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFi
 import { atomicWriteFile } from '../src/utils/atomicWrite.mjs'
 import { omitUndefined } from '../src/utils/omitUndefined.mjs'
 import { byteCompare } from '../src/cache/byte-order.mjs'
+import { computeHighlightSpans } from '../src/utils/highlightSpans.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -1088,6 +1089,40 @@ test('byteCompare orders by UTF-16 code unit, locale-independently, and never th
   // antisymmetry on distinct inputs
   for (const [x, y] of [['apple', 'banana'], ['Tool', 'tool'], ['1', '2']]) {
     assert.equal(byteCompare(x, y), -byteCompare(y, x))
+  }
+})
+
+test('computeHighlightSpans splits text into ordered runs, marking case-insensitive matches', () => {
+  // the concatenated span text always reconstructs the input; highlighted runs are the exact
+  // (case-insensitive) matches in left-to-right, non-overlapping order (the testable logic
+  // behind highlightMatch's inverse-highlight rendering).
+  assert.deepEqual(computeHighlightSpans('Hello World', 'o'), [
+    { text: 'Hell', highlighted: false },
+    { text: 'o', highlighted: true },
+    { text: ' W', highlighted: false },
+    { text: 'o', highlighted: true },
+    { text: 'rld', highlighted: false },
+  ])
+  // case-insensitive: 'bc' matches both 'bc' and 'BC', preserving original casing
+  assert.deepEqual(computeHighlightSpans('abcABC', 'bc'), [
+    { text: 'a', highlighted: false },
+    { text: 'bc', highlighted: true },
+    { text: 'A', highlighted: false },
+    { text: 'BC', highlighted: true },
+  ])
+  // a match at the very start has no leading unhighlighted run
+  assert.deepEqual(computeHighlightSpans('startX', 'start'), [
+    { text: 'start', highlighted: true },
+    { text: 'X', highlighted: false },
+  ])
+  // empty query / no match / empty text → a single unhighlighted whole-text run (the
+  // renderer short-circuits this to the raw string, == the old `return text`)
+  assert.deepEqual(computeHighlightSpans('abc', ''), [{ text: 'abc', highlighted: false }])
+  assert.deepEqual(computeHighlightSpans('abc', 'zz'), [{ text: 'abc', highlighted: false }])
+  assert.deepEqual(computeHighlightSpans('', 'x'), [{ text: '', highlighted: false }])
+  // the spans always reconstruct the input verbatim
+  for (const [t, q] of [['aXaXa', 'x'], ['MixedCase', 'c'], ['  pad  ', ' ']]) {
+    assert.equal(computeHighlightSpans(t, q).map(s => s.text).join(''), t)
   }
 })
 
