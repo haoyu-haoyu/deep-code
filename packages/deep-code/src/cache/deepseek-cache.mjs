@@ -2,7 +2,16 @@ import { createHash } from 'node:crypto'
 
 import { cacheHitRatio } from './hitRate.mjs'
 
+// DeepSeek is the native default provider and supports cache_breakpoint, so
+// recordTurn fires on EVERY model turn. Each record holds only SHA-256 hashes
+// and token counts (no raw prompt/message content), but the array was never
+// trimmed — a long agentic session accumulated thousands of dead records that
+// nothing reads (every consumer reads at most the last 10 via getRecentTurns).
+// Cap the window; the lifetime turn count is tracked separately so
+// getSessionTotals().turnCount stays a true count rather than a capped length.
+export const MAX_LIVE_TURNS = 50
 const liveTurns = []
+let recordedTurnCount = 0
 let totalHit = 0
 let totalMiss = 0
 
@@ -42,8 +51,11 @@ export function recordTurn({
 } = {}) {
   const hitTokens = normalizeTokenCount(hit)
   const missTokens = normalizeTokenCount(miss)
+  recordedTurnCount += 1
   const record = {
-    turnId: String(turnId || `turn-${liveTurns.length + 1}`),
+    // Default id from the lifetime count, not liveTurns.length, so it stays
+    // monotonic past the cap (liveTurns.length would plateau and repeat).
+    turnId: String(turnId || `turn-${recordedTurnCount}`),
     hitTokens,
     missTokens,
     hitRate: cacheHitRatio(hitTokens, missTokens),
@@ -53,6 +65,7 @@ export function recordTurn({
   }
 
   liveTurns.push(record)
+  if (liveTurns.length > MAX_LIVE_TURNS) liveTurns.shift()
   totalHit += hitTokens
   totalMiss += missTokens
 
@@ -64,7 +77,7 @@ export function getSessionTotals() {
     totalHit,
     totalMiss,
     hitRate: cacheHitRatio(totalHit, totalMiss),
-    turnCount: liveTurns.length,
+    turnCount: recordedTurnCount,
   }
 }
 
@@ -76,6 +89,7 @@ export function getRecentTurns(n = 10) {
 
 export function clear() {
   liveTurns.length = 0
+  recordedTurnCount = 0
   totalHit = 0
   totalMiss = 0
 }
