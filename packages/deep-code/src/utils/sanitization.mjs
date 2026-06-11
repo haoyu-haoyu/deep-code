@@ -95,8 +95,15 @@ export function recursivelySanitizeUnicode(value) {
   // (`return []`); JSON.parse is iterative and survives such depth, so the
   // recursive sanitizer was the weakest link.
   //
-  // Byte-identical to the recursion for every finite ACYCLIC input. The fidelity
-  // details that matter (a malicious MCP server controls this data):
+  // Byte-identical to the recursion for every finite acyclic plain (JSON-shaped)
+  // value — which is all the reachable input: result.tools / result.prompts come
+  // from JSON.parse, and the other caller passes a string. Containers are rebuilt
+  // as a plain Array / plain object exactly like the recursion's `value.map(…)` /
+  // `{}` (a non-plain object already collapses to a plain `{}` of its enumerable
+  // own keys under Object.entries); the lone non-reachable gap is an Array
+  // SUBCLASS, whose species/overridden `.map` the recursion would honor but this
+  // walk cannot — JSON never produces one. The fidelity details that matter (a
+  // malicious MCP server controls this data):
   //  • objects read all values up front in key order via Object.entries (matching
   //    the previous `for…of Object.entries(value)` getter-read timing);
   //  • arrays read each element lazily at processing time, holes skipped, so a
