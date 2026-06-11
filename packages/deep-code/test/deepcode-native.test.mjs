@@ -6,6 +6,7 @@ import { omitUndefined } from '../src/utils/omitUndefined.mjs'
 import { byteCompare } from '../src/cache/byte-order.mjs'
 import { computeHighlightSpans } from '../src/utils/highlightSpans.mjs'
 import { parseAgentMetadata } from '../src/utils/agentMetadata.mjs'
+import { withCronFileLock } from '../src/utils/cronFileStore.mjs'
 import {
   computeWheelStep,
   initWheelAccel,
@@ -1176,6 +1177,67 @@ test('parseAgentMetadata returns the object for valid metadata and null for corr
   assert.equal(parseAgentMetadata('42'), null)
   assert.equal(parseAgentMetadata('"a string"'), null)
   assert.equal(parseAgentMetadata('[1,2,3]'), null)
+})
+
+test('withCronFileLock serializes concurrent read-modify-writes (no lost update)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-cronlock-'))
+  const filePath = join(dir, '.claude', 'scheduled_tasks.json')
+
+  // Inject a no-op lock so the IN-PROCESS promise chain is the only serializer
+  // under test (the cross-process proper-lockfile wrapping is covered by the
+  // injected-order test below, and proper-lockfile is not resolvable on CI
+  // runners). Each unit: read the counter (0 if absent) -> increment ->
+  // atomic-write. Fire N concurrently; without the chain the interleaved
+  // read-before-write clobbers and the final count is < N.
+  const lockImpl = { lock: async () => async () => {} }
+  const N = 6
+  const bump = () =>
+    withCronFileLock(
+      filePath,
+      async () => {
+        let n = 0
+        try {
+          n = JSON.parse(await readFile(filePath, 'utf8')).n
+        } catch {}
+        await atomicWriteFile(filePath, JSON.stringify({ n: n + 1 }))
+      },
+      { lockImpl },
+    )
+  await Promise.all(Array.from({ length: N }, bump))
+
+  assert.equal(JSON.parse(await readFile(filePath, 'utf8')).n, N)
+  // the data file is written under .claude (no real lock sentinel with the mock)
+  assert.deepEqual((await readdir(join(dir, '.claude'))).sort(), [
+    'scheduled_tasks.json',
+  ])
+})
+
+test('withCronFileLock acquires the cross-process lock around fn and releases it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-cronlock-mock-'))
+  const filePath = join(dir, '.claude', 'scheduled_tasks.json')
+  const events = []
+  const lockImpl = {
+    lock: async (_path, opts) => {
+      events.push(`lock:${opts.realpath}:${opts.stale}`)
+      return async () => {
+        events.push('release')
+      }
+    },
+  }
+
+  const result = await withCronFileLock(
+    filePath,
+    async () => {
+      events.push('fn')
+      return 'value'
+    },
+    { lockImpl },
+  )
+
+  assert.equal(result, 'value')
+  // the file lock (realpath:false so it never requires the data file to exist,
+  // stale:10000 to break a crashed holder) wraps fn and is always released
+  assert.deepEqual(events, ['lock:false:10000', 'fn', 'release'])
 })
 
 test('initWheelAccel returns the documented initial accel state', () => {
