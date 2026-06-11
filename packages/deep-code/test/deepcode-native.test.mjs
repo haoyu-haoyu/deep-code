@@ -5,6 +5,7 @@ import { atomicWriteFile } from '../src/utils/atomicWrite.mjs'
 import { omitUndefined } from '../src/utils/omitUndefined.mjs'
 import { byteCompare } from '../src/cache/byte-order.mjs'
 import { computeHighlightSpans } from '../src/utils/highlightSpans.mjs'
+import { parseAgentMetadata } from '../src/utils/agentMetadata.mjs'
 import {
   computeWheelStep,
   initWheelAccel,
@@ -1129,6 +1130,28 @@ test('computeHighlightSpans splits text into ordered runs, marking case-insensit
   for (const [t, q] of [['aXaXa', 'x'], ['MixedCase', 'c'], ['  pad  ', ' ']]) {
     assert.equal(computeHighlightSpans(t, q).map(s => s.text).join(''), t)
   }
+})
+
+test('parseAgentMetadata returns the object for valid metadata and null for corruption', () => {
+  // valid object metadata round-trips verbatim
+  assert.deepEqual(
+    parseAgentMetadata('{"agentType":"general-purpose","worktreePath":"/w"}'),
+    { agentType: 'general-purpose', worktreePath: '/w' },
+  )
+  assert.deepEqual(parseAgentMetadata('{}'), {})
+
+  // a truncated/garbled sidecar (crash mid-write) degrades to null — the same
+  // signal a missing file gives — instead of throwing and aborting the resume
+  assert.equal(parseAgentMetadata('{"agentType":"general'), null)
+  assert.equal(parseAgentMetadata(''), null)
+  assert.equal(parseAgentMetadata('not json at all'), null)
+
+  // non-object JSON payloads are never valid metadata → null (so resumeAgent's
+  // meta?.agentType fallback applies rather than a type-confused read)
+  assert.equal(parseAgentMetadata('null'), null)
+  assert.equal(parseAgentMetadata('42'), null)
+  assert.equal(parseAgentMetadata('"a string"'), null)
+  assert.equal(parseAgentMetadata('[1,2,3]'), null)
 })
 
 test('initWheelAccel returns the documented initial accel state', () => {

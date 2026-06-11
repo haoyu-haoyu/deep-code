@@ -70,6 +70,7 @@ import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { isFsInaccessible } from './errors.js'
+import { parseAgentMetadata } from './agentMetadata.mjs'
 import type { FileHistorySnapshot } from './fileHistory.js'
 import { formatFileSize } from './format.js'
 import { getFsImplementation } from './fsOperations.js'
@@ -294,7 +295,11 @@ export async function readAgentMetadata(
   const path = getAgentMetadataPath(agentId)
   try {
     const raw = await readFile(path, 'utf-8')
-    return JSON.parse(raw) as AgentMetadata
+    // A corrupt-but-present sidecar (non-atomic writeAgentMetadata can be
+    // truncated by a crash mid-write) degrades to null — the same signal a
+    // missing file produces — so resumeAgent's null-safe fallbacks apply
+    // instead of the whole resume aborting on a SyntaxError.
+    return parseAgentMetadata(raw) as AgentMetadata | null
   } catch (e) {
     if (isFsInaccessible(e)) return null
     throw e
