@@ -103,7 +103,11 @@ export function checkFortressBashReadDecision(
   if (readTokens.length === 0) return null
 
   const cwd = getCwd() // LIVE shell cwd (mutated by `cd`) — resolve relative tokens here
-  const evaluated: Array<{ target: string; directive: ReturnType<typeof fortressDecisionDirective> }> = []
+  const evaluated: Array<{
+    target: string
+    shown: string
+    directive: ReturnType<typeof fortressDecisionDirective>
+  }> = []
   try {
     const dryRun = SandboxManager.isDryRunMode()
     // The symlink-RESOLVED workspace dirs (the read target is symlink-resolved too, so a
@@ -156,7 +160,11 @@ export function checkFortressBashReadDecision(
         ) {
           continue
         }
-        evaluated.push({ target, directive })
+        // For a `~user` token the cwd-joined `target` is only the DECISION basis —
+        // expandPath can't do login-name expansion, so it is not the path the shell
+        // would actually read. Show the user the token they typed, not the bogus
+        // `/<cwd>/~alice/…` literal.
+        evaluated.push({ target, shown: tildeUser ? tok : target, directive })
       }
     }
   } catch {
@@ -175,7 +183,7 @@ export function checkFortressBashReadDecision(
   if (denyHit) {
     return {
       behavior: 'deny',
-      message: `Blocked by a DeepCode Sandbox Fortress rule: reading '${denyHit.target}' is denied at this effort level.`,
+      message: `Blocked by a DeepCode Sandbox Fortress rule: reading '${denyHit.shown}' is denied at this effort level.`,
       decisionReason: { type: 'other', reason: 'fortress:fs-read:deny' },
     }
   }
@@ -183,7 +191,7 @@ export function checkFortressBashReadDecision(
   if (askHit) {
     return {
       behavior: 'ask',
-      message: `A DeepCode Sandbox Fortress rule requires confirmation to read '${askHit.target}'.`,
+      message: `A DeepCode Sandbox Fortress rule requires confirmation to read '${askHit.shown}'.`,
       decisionReason: { type: 'other', reason: 'fortress:fs-read:ask' },
     }
   }

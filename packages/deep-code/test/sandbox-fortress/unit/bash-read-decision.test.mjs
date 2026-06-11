@@ -191,6 +191,14 @@ test('checkFortressBashReadDecision: paranoid floor (live-cwd, symlink-resolved,
   // do NOT second-guess the login name, so this never fail-opens on an exotic username).
   assert.equal(out.tildeUser.behavior, 'deny')
   assert.equal(out.bareTildeUser.behavior, 'deny')
+  // the ~user deny message shows the token the user TYPED — the cwd-joined form
+  // (`/work/proj/~alice/…`) is only the decision basis, not what the shell reads
+  assert.match(out.tildeUser.message, /'~alice\/\.ssh\/id_rsa'/)
+  assert.ok(!out.tildeUser.message.includes('/work/proj/~alice'))
+  assert.match(out.bareTildeUser.message, /'~root'/)
+  // non-~user denies keep showing the RESOLVED target (e.g. a symlink's real destination)
+  assert.match(out.homeSecret.message, /'\/home\/me\/\.aws\/credentials'/)
+  assert.match(out.symlinkToHome.message, /'\/home\/me\/\.aws\/credentials'/)
   assert.equal(out.tildeLiteralOverblock.behavior, 'deny') // a literal ~file is a SAFE over-block, never a fail-open
   assert.equal(out.bareTilde.behavior, 'deny') // plain '~' resolves to the real home and floors as a non-workspace read
   // symlinked-workspace read is exempt when the RESOLVED workspace dirs are supplied
