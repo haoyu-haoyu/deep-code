@@ -1,3 +1,5 @@
+import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { checkAndPrune } from './diskCap.mjs'
 import { acquireLock } from './lock.mjs'
 import { appendManifest, readManifest } from './manifest.mjs'
@@ -92,21 +94,18 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
       throw new Error(`Snapshot not found: ${snapshotId}`)
     }
 
-    // Reset the side-git index to the snapshot tree so the prune below (and the
-    // added-files listing) reckon "not in the snapshot" against the snapshot
-    // itself, never a stale post-turn `add -A` index that may have staged the very
-    // files the turn created.
+    // Reset the side-git index to the snapshot tree so everything below reckons
+    // "in the snapshot" against the snapshot itself, never a stale post-turn
+    // `add -A` index that may have staged the very files the turn created. `-z`
+    // gives raw NUL-separated paths so non-ASCII / spaced filenames aren't
+    // C-quoted in the reported set.
     await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
       'read-tree',
       snapshotId,
     ])
 
-    // What the restore will change: tracked modifications + deletions (a
-    // content-accurate diff against the snapshot commit) UNION untracked,
-    // non-ignored files absent from the snapshot (exactly what `clean -fd`
-    // removes below, since both reckon against the same live .gitignore). `-z`
-    // gives raw NUL-separated paths so non-ASCII / spaced filenames aren't
-    // C-quoted. The previous `git diff <commit>` alone under-reported added files.
+    // Tracked modifications + deletions, captured BEFORE the worktree is restored
+    // (afterwards the diff would be empty). Content-accurate, .gitignore-independent.
     const trackedChanges = normalizeNulFileList(
       await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
         'diff',
@@ -117,6 +116,40 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
         '.',
       ]),
     )
+
+    // Worktree paths that conflict by TYPE with a snapshot path (a turn replaced a
+    // tracked directory `dir/` with a file `dir`, or vice versa). checkout-index
+    // would error on these, leaving a half-restored workspace, so remove them
+    // first. `ls-files --killed` reckons file/dir conflicts against the index (just
+    // reset to the snapshot) and is independent of .gitignore.
+    const killedPaths = normalizeNulFileList(
+      await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+        'ls-files',
+        '--killed',
+        '-z',
+      ]),
+    )
+    for (const killed of killedPaths) {
+      await rm(join(normalizedWorkspaceRoot, killed), {
+        recursive: true,
+        force: true,
+      })
+    }
+
+    // Materialize every snapshot path — re-creating files deleted during the turn
+    // into any needed subdirectories, AND restoring the snapshot's own .gitignore —
+    // BEFORE the prune, so `clean` reckons "ignored" against the SNAPSHOT's ignore
+    // rules. (If a turn broadened .gitignore and created files under the new rule,
+    // pruning against the live .gitignore would wrongly preserve them.)
+    await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+      'checkout-index',
+      '-f',
+      '-a',
+    ])
+
+    // Untracked, non-ignored (per the now-restored snapshot .gitignore) files
+    // absent from the snapshot — exactly what `clean -fd` removes next. Ignored
+    // artifacts (node_modules/build) survive, symmetric with capture's `add -A`.
     const addedFiles = normalizeNulFileList(
       await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
         'ls-files',
@@ -125,27 +158,13 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
         '-z',
       ]),
     )
-    const affectedFiles = [...new Set([...trackedChanges, ...addedFiles])].sort()
-
-    // Make the worktree exactly match the snapshot tree. `git checkout <commit>
-    // -- .` alone could not delete files the turn CREATED, so the workspace was
-    // left as the snapshot UNION everything added since — revert_turn/restore
-    // silently kept the model's new files.
-    //   1. `clean -fd` removes worktree files absent from the snapshot FIRST, so a
-    //      turn that replaced a tracked directory with a file (or vice versa)
-    //      can't block the materialization below with a file/directory conflict.
-    //      It respects .gitignore, so ignored artifacts (node_modules/build)
-    //      survive — symmetric with capture's `add -A`.
-    //   2. `checkout-index -f -a` then writes every snapshot path, re-creating
-    //      files deleted during the turn into any needed subdirectories.
     // All commands run through the side-git (--git-dir/--work-tree), never the
     // user's .git.
     await runSideGit(store.gitDir, normalizedWorkspaceRoot, ['clean', '-fd'])
-    await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
-      'checkout-index',
-      '-f',
-      '-a',
-    ])
+
+    const affectedFiles = [
+      ...new Set([...trackedChanges, ...killedPaths, ...addedFiles]),
+    ].sort()
 
     return {
       snapshotId,

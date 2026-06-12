@@ -644,6 +644,35 @@ test('restoreSnapshot resolves a file/directory conflict (turn replaced a dir wi
   })
 })
 
+test('restoreSnapshot prunes against the snapshot .gitignore, not a broadened in-turn one', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-ignore-broaden-'))
+    await writeFile(join(workspaceRoot, '.gitignore'), '*.log\n')
+    await writeFile(join(workspaceRoot, 'app.js'), 'orig\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-ignore-broaden',
+      phase: 'pre',
+    })
+    // the turn BROADENS .gitignore to also ignore build/, then creates build/junk.txt
+    await writeFile(join(workspaceRoot, '.gitignore'), '*.log\nbuild/\n')
+    await mkdir(join(workspaceRoot, 'build'))
+    await writeFile(join(workspaceRoot, 'build', 'junk.txt'), 'junk\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    // the SNAPSHOT's .gitignore does not ignore build/, so the file (created after
+    // the snapshot) must be removed — the prune runs after the snapshot .gitignore
+    // is restored, not against the live broadened one.
+    assert.equal(existsSync(join(workspaceRoot, 'build', 'junk.txt')), false)
+    assert.equal(readFileSync(join(workspaceRoot, '.gitignore'), 'utf8'), '*.log\n')
+    assert.ok(result.affectedFiles.includes('build/junk.txt'))
+  })
+})
+
 test('restoreSnapshot reports non-ASCII affected filenames intact (not C-quoted)', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-cjk-'))
