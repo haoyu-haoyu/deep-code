@@ -243,6 +243,46 @@ test('LSP manager re-sends didOpen to a restarted server instead of trusting sta
   }
 })
 
+test('LSP manager reports a crashed server file as not open so callers re-send didOpen first', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-lsp-staleopen-'))
+  const filePath = join(workspaceRoot, 'demo.ts')
+  const server = await createFakeLspServer({ behavior: 'crash-on-didsave' })
+  const manager = createTestManager({
+    'fake-ts': serverConfig(server, workspaceRoot),
+  })
+
+  try {
+    await manager.initialize()
+    await manager.openFile(filePath, 'const value = 1\n')
+    await server.waitForMethod('notification:textDocument/didOpen')
+    assert.equal(manager.isFileOpen(filePath), true)
+
+    const instance = manager.getAllServers().get('fake-ts')
+    await manager.saveFile(filePath)
+    await waitFor(() => instance.state === 'error')
+
+    // LSPTool consults isFileOpen BEFORE sendRequest to decide whether to send
+    // didOpen. A stale true here would skip the re-open and aim the first
+    // post-restart request at a process that never saw the document.
+    assert.equal(manager.isFileOpen(filePath), false)
+
+    // changeFile must likewise fall back to a full re-open (didOpen #2), not
+    // didChange a document the fresh process never saw.
+    await manager.changeFile(filePath, 'const value = 2\n')
+    await waitFor(async () => {
+      const methods = await server.methods()
+      return (
+        methods.filter(
+          method => method === 'notification:textDocument/didOpen',
+        ).length === 2
+      )
+    })
+    assert.equal(manager.isFileOpen(filePath), true)
+  } finally {
+    await manager.shutdown().catch(() => {})
+  }
+})
+
 test('LSP client shutdown sends shutdown and exit then clears state', async () => {
   const server = await createFakeLspServer()
   const client = createTestClient('fake-ts')
