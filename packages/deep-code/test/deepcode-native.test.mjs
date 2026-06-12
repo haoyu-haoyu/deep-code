@@ -139,7 +139,9 @@ import {
 import {
   hasDeepSeekConfigFile,
   loadDeepSeekConfigFile,
+  loadProviderConfigFile,
   mergeDeepSeekConfigPartial,
+  mergeProviderConfigPartial,
   resolveDeepSeekConfigPath,
   saveDeepSeekConfigFile,
 } from '../src/services/providers/deepseek-config-store.mjs'
@@ -3830,6 +3832,62 @@ test('mergeDeepSeekConfigPartial preserves existing keys not touched by the wiza
   assert.equal(merged.reasoningEffort, 'high')
   assert.equal(merged.smallModel, 'deepseek-v4-flash')
   assert.equal(merged.thinking, 'enabled')
+})
+
+// The setup wizard now saves through mergeProviderConfigPartial (the nested provider
+// store), NOT the flat saveDeepSeekConfigFile path. The flat path overwrote the whole
+// file, silently erasing a sibling provider (e.g. one set via /provider) and resetting
+// activeProvider to 'deepseek'. The nested deep-merge preserves both.
+test('wizard save (mergeProviderConfigPartial) preserves a sibling provider; the old flat path clobbered it', async () => {
+  // --- the FIX path: a sibling provider survives the wizard save ---
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-prov-'))
+  const env = { DEEPCODE_CONFIG_FILE: join(dir, 'deepseek.json') }
+
+  mergeProviderConfigPartial(
+    'openai-compatible',
+    { apiKey: 'oai-key', baseUrl: 'https://my-llm' },
+    { env },
+  )
+  // simulate the wizard's confirm save
+  mergeProviderConfigPartial(
+    'deepseek',
+    {
+      apiKey: 'ds-key',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-pro',
+      reasoningEffort: 'max',
+    },
+    { env },
+  )
+  const after = loadProviderConfigFile({ env })
+  assert.ok(
+    after.providers['openai-compatible'],
+    'sibling openai-compatible provider must survive the DeepSeek wizard save',
+  )
+  assert.equal(after.providers['openai-compatible'].baseUrl, 'https://my-llm')
+  assert.equal(after.providers.deepseek.apiKey, 'ds-key')
+  assert.equal(after.activeProvider, 'deepseek')
+
+  // --- non-vacuity: the OLD flat path DID clobber the sibling ---
+  const dir2 = await mkdtemp(join(tmpdir(), 'deepseek-prov-old-'))
+  const env2 = { DEEPCODE_CONFIG_FILE: join(dir2, 'deepseek.json') }
+  mergeProviderConfigPartial(
+    'openai-compatible',
+    { apiKey: 'oai-key', baseUrl: 'https://my-llm' },
+    { env: env2 },
+  )
+  const flatMerged = mergeDeepSeekConfigPartial(
+    { apiKey: 'ds-key', baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-pro' },
+    { env: env2 },
+  )
+  saveDeepSeekConfigFile(flatMerged, { env: env2 })
+  const afterOld = loadProviderConfigFile({ env: env2 })
+  assert.equal(
+    afterOld.providers['openai-compatible'],
+    undefined,
+    'the old flat save path erased the sibling provider (the bug this fix resolves)',
+  )
+  assert.equal(afterOld.activeProvider, 'deepseek')
 })
 
 test('saveDeepSeekConfigFile writes file with 0600 permissions on POSIX systems', async () => {
