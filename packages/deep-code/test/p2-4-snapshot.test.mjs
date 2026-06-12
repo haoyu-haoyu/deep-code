@@ -673,6 +673,70 @@ test('restoreSnapshot prunes against the snapshot .gitignore, not a broadened in
   })
 })
 
+test('restoreSnapshot prunes files hidden by an untracked nested .gitignore the turn created', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-nested-ignore-'))
+    await writeFile(join(workspaceRoot, '.gitignore'), '*.log\n')
+    await writeFile(join(workspaceRoot, 'app.js'), 'orig\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-nested-ignore',
+      phase: 'pre',
+    })
+    // The turn creates a brand-new build/ dir whose OWN untracked .gitignore hides
+    // build/junk.txt. A single `clean -fd` would skip junk.txt (ignored by the live
+    // nested .gitignore) and only remove the .gitignore, leaving junk.txt behind.
+    await mkdir(join(workspaceRoot, 'build'))
+    await writeFile(join(workspaceRoot, 'build', '.gitignore'), 'junk.txt\n')
+    await writeFile(join(workspaceRoot, 'build', 'junk.txt'), 'junk\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    // The iterative prune strips the .gitignore first, un-hiding junk.txt next pass.
+    assert.equal(existsSync(join(workspaceRoot, 'build', 'junk.txt')), false)
+    assert.equal(existsSync(join(workspaceRoot, 'build')), false)
+    assert.ok(result.affectedFiles.includes('build/.gitignore'))
+    assert.ok(result.affectedFiles.includes('build/junk.txt'))
+  })
+})
+
+test('restoreSnapshot converges on a deep chain of nested untracked .gitignore files', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-deep-ignore-'))
+    await writeFile(join(workspaceRoot, 'keep.txt'), 'keep\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-deep-ignore',
+      phase: 'pre',
+    })
+    // a/.gitignore hides the whole b/ subtree; a/b/.gitignore hides secret.txt.
+    await mkdir(join(workspaceRoot, 'a', 'b'), { recursive: true })
+    await writeFile(join(workspaceRoot, 'a', '.gitignore'), 'b/\n')
+    await writeFile(join(workspaceRoot, 'a', 'b', '.gitignore'), 'secret.txt\n')
+    await writeFile(join(workspaceRoot, 'a', 'b', 'secret.txt'), 'secret\n')
+    await writeFile(join(workspaceRoot, 'a', 'b', 'visible.txt'), 'visible\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    assert.equal(existsSync(join(workspaceRoot, 'a')), false)
+    assert.equal(existsSync(join(workspaceRoot, 'keep.txt')), true)
+    for (const path of [
+      'a/.gitignore',
+      'a/b/.gitignore',
+      'a/b/secret.txt',
+      'a/b/visible.txt',
+    ]) {
+      assert.ok(result.affectedFiles.includes(path), `affectedFiles missing ${path}`)
+    }
+  })
+})
+
 test('restoreSnapshot reports non-ASCII affected filenames intact (not C-quoted)', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-cjk-'))

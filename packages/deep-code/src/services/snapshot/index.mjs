@@ -11,6 +11,12 @@ import {
 } from './paths.mjs'
 import { initializeSideGit, runSideGit } from './storeInit.mjs'
 
+// Upper bound on restore prune passes (see restoreSnapshot). Each pass strips one
+// nesting layer of turn-created untracked .gitignore files, so the realistic worst
+// case is bounded by directory depth; this cap only guards against a pathologically
+// deep chain of self-hiding ignore files.
+const MAX_PRUNE_PASSES = 64
+
 export {
   computeWorkspaceHash,
   resolveSnapshotStore,
@@ -137,30 +143,48 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
     }
 
     // Materialize every snapshot path — re-creating files deleted during the turn
-    // into any needed subdirectories, AND restoring the snapshot's own .gitignore —
-    // BEFORE the prune, so `clean` reckons "ignored" against the SNAPSHOT's ignore
-    // rules. (If a turn broadened .gitignore and created files under the new rule,
-    // pruning against the live .gitignore would wrongly preserve them.)
+    // into any needed subdirectories, AND restoring the snapshot's own tracked
+    // .gitignore files — BEFORE the prune, so `clean` reckons "ignored" against the
+    // SNAPSHOT's ignore rules. (If a turn broadened a tracked .gitignore and created
+    // files under the new rule, pruning against the live .gitignore would wrongly
+    // preserve them.)
     await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
       'checkout-index',
       '-f',
       '-a',
     ])
 
-    // Untracked, non-ignored (per the now-restored snapshot .gitignore) files
-    // absent from the snapshot — exactly what `clean -fd` removes next. Ignored
-    // artifacts (node_modules/build) survive, symmetric with capture's `add -A`.
-    const addedFiles = normalizeNulFileList(
-      await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
-        'ls-files',
-        '--others',
-        '--exclude-standard',
-        '-z',
-      ]),
-    )
-    // All commands run through the side-git (--git-dir/--work-tree), never the
-    // user's .git.
-    await runSideGit(store.gitDir, normalizedWorkspaceRoot, ['clean', '-fd'])
+    // Prune untracked files the turn created (absent from the snapshot), keeping
+    // artifacts ignored by the now-restored snapshot .gitignore (node_modules,
+    // build outputs) — symmetric with capture's `add -A`. A single `clean -fd` is
+    // not enough: a turn may have created an UNTRACKED nested .gitignore (e.g.
+    // `build/.gitignore` listing `junk.txt`) that hides its siblings from BOTH the
+    // added-files listing AND `clean`, leaving them behind. Each pass removes the
+    // outermost untracked, non-ignored frontier — including any such turn-created
+    // .gitignore — which un-shadows the next layer, so loop to a fixpoint. All
+    // commands run through the side-git (--git-dir/--work-tree), never the user's
+    // .git.
+    const addedFiles = []
+    for (let pass = 0; pass < MAX_PRUNE_PASSES; pass += 1) {
+      const frontier = normalizeNulFileList(
+        await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+          'ls-files',
+          '--others',
+          '--exclude-standard',
+          '-z',
+        ]),
+      )
+      if (frontier.length === 0) break
+      for (const file of frontier) addedFiles.push(file)
+      const removed = await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+        'clean',
+        '-fd',
+      ])
+      // No-progress guard: `clean` prints a line per removed path, so empty output
+      // means it removed nothing this pass (e.g. a nested git repo it refuses to
+      // touch). Stop rather than spin to the pass cap.
+      if (removed.trim() === '') break
+    }
 
     const affectedFiles = [
       ...new Set([...trackedChanges, ...killedPaths, ...addedFiles]),
