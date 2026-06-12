@@ -283,6 +283,42 @@ test('LSP manager reports a crashed server file as not open so callers re-send d
   }
 })
 
+test('LSP client stop() settles instead of hanging when the server dies during shutdown', async () => {
+  const server = await createFakeLspServer({ behavior: 'crash-on-shutdown' })
+  let crashes = 0
+  const client = createTestClient('fake-ts', () => {
+    crashes += 1
+  })
+
+  // The fake server exits without answering the shutdown request. stop()
+  // awaits that round-trip, so without the isStopping exit-path rejection it
+  // would pend forever (and manager.shutdown() would hang the process).
+  let timeoutId
+  const stillHanging = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error('stop() still pending after server died')),
+      3_000,
+    )
+  })
+  stillHanging.catch(() => {})
+
+  try {
+    await client.start(process.execPath, [server.scriptPath], {
+      env: server.env(),
+    })
+    await client.initialize({ processId: process.pid })
+    await assert.rejects(
+      () => Promise.race([client.stop(), stillHanging]),
+      /exited during shutdown/i,
+    )
+    // The exit was deliberate; it must not be reported as a crash.
+    assert.equal(crashes, 0)
+  } finally {
+    clearTimeout(timeoutId)
+    await client.stop().catch(() => {})
+  }
+})
+
 test('LSP client shutdown sends shutdown and exit then clears state', async () => {
   const server = await createFakeLspServer()
   const client = createTestClient('fake-ts')
@@ -881,6 +917,9 @@ function handleMessage(message) {
       return
     }
     if (message.method === 'shutdown') {
+      if (behavior === 'crash-on-shutdown') {
+        process.exit(9)
+      }
       writeMessage({ jsonrpc: '2.0', id: message.id, result: null })
       return
     }

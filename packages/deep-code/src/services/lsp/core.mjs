@@ -125,6 +125,13 @@ export function createLSPClientCore({
           onCrash?.(crashError)
           return
         }
+        // Deliberate stop: stop() awaits the shutdown round-trip, so if the
+        // server dies BEFORE responding, that await would never settle and
+        // stop() (and manager.shutdown()) would hang forever. Settle any
+        // pending requests here; no onCrash — this exit was asked for.
+        rejectPendingRequests(
+          new Error(`LSP server ${serverName} exited during shutdown`),
+        )
         if (!exitedChild) {
           logForDebugging(`LSP server ${serverName} connection closed`)
         }
