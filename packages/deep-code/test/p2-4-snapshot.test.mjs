@@ -557,17 +557,72 @@ test('nextSnapshotTurnId continues the session numbering across process restarts
 })
 
 test('nextSnapshotTurnId stays monotonic past pruned-prefix and legacy uuid entries', async () => {
-  const readManifestFn = async () => [
-    { turnId: 'a2c4e6f8-uuid-legacy', phase: 'pre', sessionId: 'session-a' },
-    // turns 1-3 pruned by diskCap; only 4 and 5 survive
-    { turnId: 'turn-4', phase: 'pre', sessionId: 'session-a' },
-    { turnId: 'turn-5', phase: 'pre', sessionId: 'session-a' },
-    { turnId: 'turn-9', phase: 'pre', sessionId: 'session-other' },
-  ]
-  assert.equal(
-    await nextSnapshotTurnId({ sessionId: 'session-a', readManifestFn }),
-    'turn-6',
-  )
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-next-prune-'))
+    const readManifestFn = async () => [
+      { turnId: 'a2c4e6f8-uuid-legacy', phase: 'pre', sessionId: 'session-a' },
+      // turns 1-3 pruned by diskCap; only 4 and 5 survive
+      { turnId: 'turn-4', phase: 'pre', sessionId: 'session-a' },
+      { turnId: 'turn-5', phase: 'pre', sessionId: 'session-a' },
+      { turnId: 'turn-9', phase: 'pre', sessionId: 'session-other' },
+    ]
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a', readManifestFn }),
+      'turn-6',
+    )
+  })
+})
+
+test('an issued ordinal is consumed even when the turn never persists a snapshot', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-reserve-'))
+    const target = join(workspaceRoot, 'app.js')
+    // Turns 1-2 snapshot normally.
+    const shas = {}
+    for (let turn = 1; turn <= 2; turn += 1) {
+      await writeFile(target, `before turn ${turn}\n`)
+      const entry = await createSnapshot({
+        workspaceRoot,
+        turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+        phase: 'pre',
+        sessionId: 'session-a',
+      })
+      shas[turn] = entry.commitSha
+    }
+
+    // Transcript turn 3: the ordinal is ISSUED but the snapshot fails — no
+    // manifest entry is ever written for it.
+    const failedTurnId = await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' })
+    assert.equal(failedTurnId, 'turn-3')
+
+    // Transcript turn 4 must NOT reuse turn-3: a reused number would make
+    // revert_turn({turn_id: 3}) silently restore the wrong turn.
+    await writeFile(target, 'before turn 4\n')
+    const fourth = await createSnapshot({
+      workspaceRoot,
+      turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      phase: 'pre',
+      sessionId: 'session-a',
+    })
+    assert.equal(fourth.turnId, 'turn-4')
+
+    // The missing turn fails CLEANLY instead of mis-targeting.
+    await assert.rejects(
+      () =>
+        performRevertTurn({
+          workspaceRoot,
+          sessionId: 'session-a',
+          input: { turn_id: 3 },
+        }),
+      /No snapshot found for turn 3/,
+    )
+    const result = await performRevertTurn({
+      workspaceRoot,
+      sessionId: 'session-a',
+      input: { turn_id: 2 },
+    })
+    assert.equal(result.snapshotId, shas[2])
+  })
 })
 
 test('revert_turn after /resume targets the original turn, not a renumbered duplicate', async () => {
