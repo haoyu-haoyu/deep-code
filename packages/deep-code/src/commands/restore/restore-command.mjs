@@ -47,7 +47,7 @@ export async function performRestore({
     return {
       kind: 'confirmation_required',
       message:
-        'Restore requires confirmation because workspace files may be overwritten.',
+        'Restore requires confirmation: it overwrites changed workspace files and removes files created after the snapshot.',
     }
   }
 

@@ -619,6 +619,62 @@ test('restoreSnapshot preserves .gitignored artifacts while removing tracked jun
   })
 })
 
+test('restoreSnapshot resolves a file/directory conflict (turn replaced a dir with a file)', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-conflict-'))
+    await mkdir(join(workspaceRoot, 'dir'))
+    await writeFile(join(workspaceRoot, 'dir', 'file.txt'), 'snapshot content\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-conflict',
+      phase: 'pre',
+    })
+    // the turn replaces the directory `dir/` with a plain file named `dir`
+    await rm(join(workspaceRoot, 'dir'), { recursive: true })
+    await writeFile(join(workspaceRoot, 'dir'), 'now a file\n')
+
+    // must not throw (clean removes the conflicting file before checkout-index)
+    await restoreSnapshot({ workspaceRoot, snapshotId: snapshot.commitSha })
+
+    assert.equal(statSync(join(workspaceRoot, 'dir')).isDirectory(), true)
+    assert.equal(
+      readFileSync(join(workspaceRoot, 'dir', 'file.txt'), 'utf8'),
+      'snapshot content\n',
+    )
+  })
+})
+
+test('restoreSnapshot reports non-ASCII affected filenames intact (not C-quoted)', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-cjk-'))
+    await writeFile(join(workspaceRoot, '配置.txt'), 'orig\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-cjk',
+      phase: 'pre',
+    })
+    await writeFile(join(workspaceRoot, '配置.txt'), 'modified\n')
+    await writeFile(join(workspaceRoot, '新建文件.txt'), 'created in turn\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    assert.equal(readFileSync(join(workspaceRoot, '配置.txt'), 'utf8'), 'orig\n')
+    assert.equal(existsSync(join(workspaceRoot, '新建文件.txt')), false)
+    // -z parsing keeps the raw UTF-8 names — no "\351\205\215\347\275\256" garbage
+    assert.ok(result.affectedFiles.includes('配置.txt'))
+    assert.ok(result.affectedFiles.includes('新建文件.txt'))
+  })
+})
+
+test('revert_turn permission result warns that files created after the snapshot are removed', () => {
+  const result = buildRevertTurnPermissionResult({ turn_id: 5 })
+  assert.match(result.message, /remove/i)
+  assert.match(result.decisionReason.reason, /removing files created after the snapshot/i)
+})
+
 test('performRestore requires confirmation before checkout', async () => {
   let called = false
 
