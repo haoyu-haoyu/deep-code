@@ -607,6 +607,34 @@ test('an orphaned reaper claim is reclaimed by mtime so recovery cannot wedge', 
   })
 })
 
+test('a FRESH foreign reaper claim defers recovery instead of racing it', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-freshreaper-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    await mkdir(store.storePath, { recursive: true })
+    const lockPath = join(store.storePath, 'snapshot.lock')
+    await writeFile(
+      lockPath,
+      JSON.stringify({
+        ownerId: 'crashed-owner',
+        pid: 99_999_999,
+        ts: Date.now() - 10_000,
+        hostname: hostname(),
+      }),
+    )
+    // Another process is reaping RIGHT NOW (fresh claim): we must not race it.
+    await writeFile(
+      `${lockPath}.reaper`,
+      JSON.stringify({ ownerId: 'other-recoverer', claimedAt: Date.now() }),
+    )
+
+    await assert.rejects(
+      () => acquireLock({ workspaceRoot, timeoutMs: 300, staleMs: 5_000 }),
+      /Timed out acquiring snapshot lock/,
+    )
+  })
+})
+
 test('acquireLock refuses release after lock ownership changes', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-owner-'))
