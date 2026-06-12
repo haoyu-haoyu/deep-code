@@ -9,35 +9,53 @@ import test from 'node:test'
 import { forkHandler } from '../src/cli/handlers/session.mjs'
 import { forkSession } from '../src/utils/sessionFork.mjs'
 import { scanSessionFile } from '../src/utils/sessionList.mjs'
-import { dropTruncatedTail } from '../src/utils/transcriptRepair.mjs'
+import { repairTranscriptTail } from '../src/utils/transcriptRepair.mjs'
 
-test('dropTruncatedTail removes only a crash-truncated trailing line', async () => {
+test('repairTranscriptTail truncates a half-written line but keeps a complete one', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'deepcode-repair-'))
   const partial = join(dir, 'partial.jsonl')
   await writeFile(partial, '{"type":"user"}\n{"type":"assist')
-  assert.equal(dropTruncatedTail(partial), true)
+  assert.equal(repairTranscriptTail(partial), 'truncated')
   assert.equal(await readFile(partial, 'utf8'), '{"type":"user"}\n')
   // idempotent on a healthy file
-  assert.equal(dropTruncatedTail(partial), false)
+  assert.equal(repairTranscriptTail(partial), false)
   assert.equal(await readFile(partial, 'utf8'), '{"type":"user"}\n')
+
+  // a crash AFTER the record but BEFORE its newline: the record is VALID and
+  // readers accept it today — it must be terminated, never deleted.
+  const complete = join(dir, 'complete-tail.jsonl')
+  await writeFile(complete, '{"type":"user"}\n{"type":"custom-title","title":"keep me"}')
+  assert.equal(repairTranscriptTail(complete), 'terminated')
+  assert.equal(
+    await readFile(complete, 'utf8'),
+    '{"type":"user"}\n{"type":"custom-title","title":"keep me"}\n',
+  )
+  assert.equal(repairTranscriptTail(complete), false)
 
   // a partial line longer than one scan chunk still truncates to the last newline
   const longTail = join(dir, 'long-tail.jsonl')
   await writeFile(longTail, '{"a":1}\n' + '{"pad":"' + 'x'.repeat(9_000))
-  assert.equal(dropTruncatedTail(longTail), true)
+  assert.equal(repairTranscriptTail(longTail), 'truncated')
   assert.equal(await readFile(longTail, 'utf8'), '{"a":1}\n')
+
+  // a complete line longer than one scan chunk is terminated, not dropped
+  const longComplete = join(dir, 'long-complete.jsonl')
+  const bigEntry = '{"pad":"' + 'y'.repeat(9_000) + '"}'
+  await writeFile(longComplete, '{"a":1}\n' + bigEntry)
+  assert.equal(repairTranscriptTail(longComplete), 'terminated')
+  assert.equal(await readFile(longComplete, 'utf8'), '{"a":1}\n' + bigEntry + '\n')
 
   // a file that is ONE half-written line truncates to empty
   const only = join(dir, 'only-partial.jsonl')
   await writeFile(only, '{"type":"user"')
-  assert.equal(dropTruncatedTail(only), true)
+  assert.equal(repairTranscriptTail(only), 'truncated')
   assert.equal((await readFile(only, 'utf8')).length, 0)
 
   const empty = join(dir, 'empty.jsonl')
   await writeFile(empty, '')
-  assert.equal(dropTruncatedTail(empty), false)
+  assert.equal(repairTranscriptTail(empty), false)
 
-  assert.equal(dropTruncatedTail(join(dir, 'missing.jsonl')), false)
+  assert.equal(repairTranscriptTail(join(dir, 'missing.jsonl')), false)
 })
 
 test('a repaired transcript survives resume-append where a glued one is corrupt forever', async () => {
@@ -64,7 +82,7 @@ test('a repaired transcript survives resume-append where a glued one is corrupt 
   const repaired = await createSessionFixture({ turns: 2 })
   const repairedPath = join(repaired.sessionDir, `${repaired.sourceSessionId}.jsonl`)
   await appendFile(repairedPath, '{"type":"assist')
-  dropTruncatedTail(repairedPath)
+  repairTranscriptTail(repairedPath)
   await appendFile(repairedPath, metaEntry(repaired.sourceSessionId))
   await appendFile(repairedPath, metaEntry(repaired.sourceSessionId))
   const result = await forkSession({
@@ -83,9 +101,9 @@ test('adoptResumedSessionFile wires the repair before its metadata append', asyn
     source.indexOf('export function adoptResumedSessionFile'),
     source.indexOf('export function adoptResumedSessionFile') + 800,
   )
-  assert.match(adoptBody, /dropTruncatedTail\(/)
+  assert.match(adoptBody, /repairTranscriptTail\(/)
   assert.ok(
-    adoptBody.indexOf('dropTruncatedTail(') <
+    adoptBody.indexOf('repairTranscriptTail(') <
       adoptBody.indexOf('reAppendSessionMetadata('),
     'repair must run before the first append',
   )
