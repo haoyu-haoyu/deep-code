@@ -511,6 +511,42 @@ test('resolveRevertTurnSnapshot prefers same-session matches over a newer foreig
   assert.equal(selected.commitSha, 'bbb')
 })
 
+test('revert_turn never restores a FOREIGN session snapshot for a turn this session lacks', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-foreign-revert-'))
+    const target = join(workspaceRoot, 'app.js')
+    // Session B (an earlier run in this workspace) reached turn 5.
+    await writeFile(target, 'SESSION-B content before turn 5\n')
+    await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-5',
+      phase: 'pre',
+      sessionId: 'session-b',
+    })
+    // Session A only reached turn 1.
+    await writeFile(target, 'SESSION-A live work\n')
+    await createSnapshot({
+      workspaceRoot,
+      turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      phase: 'pre',
+      sessionId: 'session-a',
+    })
+
+    // The model miscounts and asks for turn 5: that turn does not exist in
+    // session A, and restoring B's turn-5 would overwrite A's live work.
+    await assert.rejects(
+      () =>
+        performRevertTurn({
+          workspaceRoot,
+          sessionId: 'session-a',
+          input: { turn_id: 5 },
+        }),
+      /No snapshot found for turn 5/,
+    )
+    assert.equal(readFileSync(target, 'utf8'), 'SESSION-A live work\n')
+  })
+})
+
 test('resolveRevertTurnSnapshot falls back to newest match when no entry carries the session', async () => {
   // Entries written before sessionId was recorded must stay revertable.
   const listSnapshotsFn = async () => [
