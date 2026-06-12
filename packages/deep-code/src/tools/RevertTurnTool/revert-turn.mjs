@@ -14,10 +14,24 @@ export function validateRevertTurnInput(input) {
 export async function resolveRevertTurnSnapshot({
   workspaceRoot = process.cwd(),
   turnId,
+  sessionId,
   listSnapshotsFn = listSnapshots,
 } = {}) {
   const snapshots = await listSnapshotsFn({ workspaceRoot, limit: 100 })
-  const matches = snapshots.filter(entry => snapshotMatchesTurn(entry, turnId))
+  let matches = snapshots.filter(entry => snapshotMatchesTurn(entry, turnId))
+  // turn-N restarts with each session, so an older session's turn N can
+  // coexist in the manifest with this session's. Prefer entries stamped with
+  // the calling session; otherwise fall back ONLY to entries written before
+  // sessionId was recorded (newest-wins below) — never to another live
+  // session's snapshot, which would destructively restore foreign work for
+  // any turn number this session never reached.
+  if (sessionId !== undefined) {
+    const sameSession = matches.filter(entry => entry.sessionId === sessionId)
+    matches =
+      sameSession.length > 0
+        ? sameSession
+        : matches.filter(entry => entry.sessionId === undefined)
+  }
   const preMatches = matches.filter(entry => entry.phase === 'pre')
   const selected = (preMatches.length > 0 ? preMatches : matches).at(-1)
   if (!selected) {
@@ -29,6 +43,7 @@ export async function resolveRevertTurnSnapshot({
 export async function performRevertTurn({
   workspaceRoot = process.cwd(),
   input,
+  sessionId,
   listSnapshotsFn = listSnapshots,
   restoreSnapshotFn = restoreSnapshot,
 } = {}) {
@@ -36,6 +51,7 @@ export async function performRevertTurn({
   const snapshot = await resolveRevertTurnSnapshot({
     workspaceRoot,
     turnId,
+    sessionId,
     listSnapshotsFn,
   })
   const restored = await restoreSnapshotFn({

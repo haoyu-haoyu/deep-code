@@ -1,5 +1,5 @@
 import { z } from 'zod/v4'
-import { getOriginalCwd } from '../../bootstrap/state.js'
+import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import type { Tool } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -91,6 +91,7 @@ export const RevertTurnTool: Tool<InputSchema, Output> = buildTool({
   async call(input) {
     const result = await performRevertTurn({
       workspaceRoot: getOriginalCwd(),
+      sessionId: getSessionId(),
       input,
     })
     return { data: result }

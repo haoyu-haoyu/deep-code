@@ -27,7 +27,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue, us
 import { useNotifications } from '../context/notifications.js';
 import { sendNotification } from '../services/notifier.js';
 import { startPreventSleep, stopPreventSleep } from '../services/preventSleep.js';
-import { buildSnapshotTurnId, captureTurnSnapshot, formatSnapshotLifecycleError, getTurnEndSnapshotPhase } from '../services/snapshot/turnLifecycle.mjs';
+import { buildSnapshotTurnId, captureTurnSnapshot, formatSnapshotLifecycleError, getTurnEndSnapshotPhase, nextSnapshotTurnId } from '../services/snapshot/turnLifecycle.mjs';
 import { useTerminalNotification } from '../ink/useTerminalNotification.js';
 import { hasCursorUpViewportYankBug } from '../ink/terminal.js';
 import { createFileStateCacheWithSizeLimit, mergeFileStateCaches, READ_FILE_STATE_CACHE_SIZE } from '../utils/fileStateCache.js';
@@ -2815,6 +2815,7 @@ export function REPL({
       workspaceRoot: getOriginalCwd(),
       turnId,
       phase,
+      sessionId: getSessionId(),
       onError: snapshotError => {
         addNotification({
           key: 'workspace-snapshot-error',
@@ -2856,10 +2857,20 @@ export function REPL({
       });
       return;
     }
-    const snapshotTurnId = buildSnapshotTurnId({
-      generation: thisGeneration,
-      messages: newMessages
-    });
+    // The session's turn ordinal from the manifest, so /resume and
+    // fresh-process --resume continue the resumed session's numbering instead
+    // of duplicating it from the restarted process counter.
+    let snapshotTurnId: string;
+    try {
+      snapshotTurnId = await nextSnapshotTurnId({
+        workspaceRoot: getOriginalCwd(),
+        sessionId: getSessionId()
+      });
+    } catch {
+      snapshotTurnId = buildSnapshotTurnId({
+        generation: thisGeneration
+      });
+    }
     try {
       await captureQuerySnapshot(snapshotTurnId, 'pre');
       // isLoading is derived from queryGuard — tryStart() above already

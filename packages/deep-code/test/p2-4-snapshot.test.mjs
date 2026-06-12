@@ -35,6 +35,7 @@ import {
   captureTurnSnapshot,
   formatSnapshotLifecycleError,
   getTurnEndSnapshotPhase,
+  nextSnapshotTurnId,
 } from '../src/services/snapshot/turnLifecycle.mjs'
 import {
   formatRestoreSnapshotLine,
@@ -483,15 +484,303 @@ test('turn lifecycle helper reports snapshot errors without throwing', async () 
   assert.match(formatSnapshotLifecycleError(errors[0]), /disk unavailable/)
 })
 
-test('buildSnapshotTurnId uses first message uuid with generation fallback', () => {
+test('buildSnapshotTurnId always keys by generation so revert_turn turn_id can match', () => {
+  // An earlier revision preferred the first message uuid — which made every
+  // live snapshot unmatchable by revert_turn's numeric grammar ("N"/"turn-N").
   assert.equal(
     buildSnapshotTurnId({
       generation: 7,
       messages: [{ uuid: 'message-uuid' }],
     }),
-    'message-uuid',
+    'turn-7',
   )
-  assert.equal(buildSnapshotTurnId({ generation: 8, messages: [] }), 'turn-8')
+  assert.equal(buildSnapshotTurnId({ generation: 8 }), 'turn-8')
+})
+
+test('resolveRevertTurnSnapshot prefers same-session matches over a newer foreign session', async () => {
+  const listSnapshotsFn = async () => [
+    { turnId: 'turn-2', phase: 'pre', commitSha: 'aaa', sessionId: 'session-old' },
+    { turnId: 'turn-2', phase: 'pre', commitSha: 'bbb', sessionId: 'session-current' },
+    { turnId: 'turn-2', phase: 'pre', commitSha: 'ccc', sessionId: 'session-other' },
+  ]
+  const selected = await resolveRevertTurnSnapshot({
+    turnId: 2,
+    sessionId: 'session-current',
+    listSnapshotsFn,
+  })
+  assert.equal(selected.commitSha, 'bbb')
+})
+
+test('revert_turn never restores a FOREIGN session snapshot for a turn this session lacks', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-foreign-revert-'))
+    const target = join(workspaceRoot, 'app.js')
+    // Session B (an earlier run in this workspace) reached turn 5.
+    await writeFile(target, 'SESSION-B content before turn 5\n')
+    await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-5',
+      phase: 'pre',
+      sessionId: 'session-b',
+    })
+    // Session A only reached turn 1.
+    await writeFile(target, 'SESSION-A live work\n')
+    await createSnapshot({
+      workspaceRoot,
+      turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      phase: 'pre',
+      sessionId: 'session-a',
+    })
+
+    // The model miscounts and asks for turn 5: that turn does not exist in
+    // session A, and restoring B's turn-5 would overwrite A's live work.
+    await assert.rejects(
+      () =>
+        performRevertTurn({
+          workspaceRoot,
+          sessionId: 'session-a',
+          input: { turn_id: 5 },
+        }),
+      /No snapshot found for turn 5/,
+    )
+    assert.equal(readFileSync(target, 'utf8'), 'SESSION-A live work\n')
+  })
+})
+
+test('resolveRevertTurnSnapshot falls back to newest match when no entry carries the session', async () => {
+  // Entries written before sessionId was recorded must stay revertable.
+  const listSnapshotsFn = async () => [
+    { turnId: 'turn-3', phase: 'pre', commitSha: 'old' },
+    { turnId: 'turn-3', phase: 'pre', commitSha: 'new' },
+  ]
+  const selected = await resolveRevertTurnSnapshot({
+    turnId: 3,
+    sessionId: 'session-current',
+    listSnapshotsFn,
+  })
+  assert.equal(selected.commitSha, 'new')
+})
+
+test('nextSnapshotTurnId continues the session numbering across process restarts and resume', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-next-turn-'))
+    // Fresh session, empty manifest → turn-1.
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      'turn-1',
+    )
+    await writeFile(join(workspaceRoot, 'app.js'), 'v1\n')
+    for (let turn = 1; turn <= 3; turn += 1) {
+      await createSnapshot({
+        workspaceRoot,
+        turnId: `turn-${turn}`,
+        phase: 'pre',
+        sessionId: 'session-a',
+      })
+    }
+    // A restarted process (--resume) or /resume derives the NEXT ordinal from
+    // the manifest, not from its restarted local counter.
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      'turn-4',
+    )
+    // Another session's numbering is independent.
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-b' }),
+      'turn-1',
+    )
+  })
+})
+
+test('nextSnapshotTurnId stays monotonic past pruned-prefix and legacy uuid entries', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-next-prune-'))
+    const readManifestFn = async () => [
+      { turnId: 'a2c4e6f8-uuid-legacy', phase: 'pre', sessionId: 'session-a' },
+      // turns 1-3 pruned by diskCap; only 4 and 5 survive
+      { turnId: 'turn-4', phase: 'pre', sessionId: 'session-a' },
+      { turnId: 'turn-5', phase: 'pre', sessionId: 'session-a' },
+      { turnId: 'turn-9', phase: 'pre', sessionId: 'session-other' },
+    ]
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a', readManifestFn }),
+      'turn-6',
+    )
+  })
+})
+
+test('concurrent issuance for two sessions keeps both reservations (no lost update)', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-ordinal-race-'))
+    // Unserialized, both reads happen before either write and the second
+    // write drops the first session's reservation last-writer-wins; the
+    // snapshot-lock serialization makes both land.
+    const [a, b] = await Promise.all([
+      nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-b' }),
+    ])
+    assert.equal(a, 'turn-1')
+    assert.equal(b, 'turn-1')
+    // Both high-water marks must have survived: the next issuance for each
+    // session continues from its own reservation.
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      'turn-2',
+    )
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-b' }),
+      'turn-2',
+    )
+  })
+})
+
+test('a tampered ordinal file value cannot produce an unmatchable turn key', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-ordinal-tamper-'))
+    await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-2',
+      phase: 'pre',
+      sessionId: 'session-a',
+    })
+    const store = resolveSnapshotStore({ workspaceRoot })
+    for (const tampered of [
+      '{"session-a": 1e99}',
+      '{"session-a": "999abc"}',
+      '{"session-a": -5}',
+      '[]',
+      'null',
+      'garbage{{',
+    ]) {
+      await writeFile(join(store.storePath, 'turn-ordinals.json'), tampered)
+      assert.equal(
+        await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+        'turn-3',
+        `tampered value ${tampered} must degrade to the manifest floor`,
+      )
+    }
+  })
+})
+
+test('an issued ordinal is consumed even when the turn never persists a snapshot', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-reserve-'))
+    const target = join(workspaceRoot, 'app.js')
+    // Turns 1-2 snapshot normally.
+    const shas = {}
+    for (let turn = 1; turn <= 2; turn += 1) {
+      await writeFile(target, `before turn ${turn}\n`)
+      const entry = await createSnapshot({
+        workspaceRoot,
+        turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+        phase: 'pre',
+        sessionId: 'session-a',
+      })
+      shas[turn] = entry.commitSha
+    }
+
+    // Transcript turn 3: the ordinal is ISSUED but the snapshot fails — no
+    // manifest entry is ever written for it.
+    const failedTurnId = await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' })
+    assert.equal(failedTurnId, 'turn-3')
+
+    // Transcript turn 4 must NOT reuse turn-3: a reused number would make
+    // revert_turn({turn_id: 3}) silently restore the wrong turn.
+    await writeFile(target, 'before turn 4\n')
+    const fourth = await createSnapshot({
+      workspaceRoot,
+      turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      phase: 'pre',
+      sessionId: 'session-a',
+    })
+    assert.equal(fourth.turnId, 'turn-4')
+
+    // The missing turn fails CLEANLY instead of mis-targeting.
+    await assert.rejects(
+      () =>
+        performRevertTurn({
+          workspaceRoot,
+          sessionId: 'session-a',
+          input: { turn_id: 3 },
+        }),
+      /No snapshot found for turn 3/,
+    )
+    const result = await performRevertTurn({
+      workspaceRoot,
+      sessionId: 'session-a',
+      input: { turn_id: 2 },
+    })
+    assert.equal(result.snapshotId, shas[2])
+  })
+})
+
+test('revert_turn after /resume targets the original turn, not a renumbered duplicate', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-resume-revert-'))
+    const target = join(workspaceRoot, 'app.js')
+    // Session A: turns 1-3, each changing the file.
+    const turnShas = {}
+    for (let turn = 1; turn <= 3; turn += 1) {
+      await writeFile(target, `content before turn ${turn}\n`)
+      const entry = await createSnapshot({
+        workspaceRoot,
+        turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+        phase: 'pre',
+        sessionId: 'session-a',
+      })
+      turnShas[turn] = entry.commitSha
+    }
+    assert.equal(turnShas[3] !== undefined, true)
+
+    // The user resumes session A in a NEW process (restarted local counter).
+    // The next snapshot must be turn-4 — a restarted generation counter would
+    // have written a colliding turn-1 and shadowed the original.
+    await writeFile(target, 'content before resumed turn\n')
+    const resumed = await createSnapshot({
+      workspaceRoot,
+      turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      phase: 'pre',
+      sessionId: 'session-a',
+    })
+    assert.equal(resumed.turnId, 'turn-4')
+
+    // revert_turn({turn_id: 2}) resolves to the ORIGINAL turn 2 snapshot.
+    const result = await performRevertTurn({
+      workspaceRoot,
+      sessionId: 'session-a',
+      input: { turn_id: 2 },
+    })
+    assert.equal(result.snapshotId, turnShas[2])
+    assert.equal(
+      readFileSync(target, 'utf8'),
+      'content before turn 2\n',
+    )
+  })
+})
+
+test('a REPL-shaped snapshot (generation key + sessionId) is revertable by numeric turn_id end-to-end', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-revert-e2e-'))
+    await writeFile(join(workspaceRoot, 'app.js'), 'orig\n')
+    // The exact shape the REPL writes: buildSnapshotTurnId + sessionId rider.
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: buildSnapshotTurnId({ generation: 2 }),
+      phase: 'pre',
+      sessionId: 'session-e2e',
+    })
+    assert.equal(snapshot.turnId, 'turn-2')
+    assert.equal(snapshot.sessionId, 'session-e2e')
+
+    await writeFile(join(workspaceRoot, 'app.js'), 'botched by the model\n')
+    const result = await performRevertTurn({
+      workspaceRoot,
+      sessionId: 'session-e2e',
+      input: { turn_id: 2 },
+    })
+    assert.equal(result.snapshotId, snapshot.commitSha)
+    assert.equal(readFileSync(join(workspaceRoot, 'app.js'), 'utf8'), 'orig\n')
+  })
 })
 
 test('restore command lists the latest ten snapshots newest first', async () => {

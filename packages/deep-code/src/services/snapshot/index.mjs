@@ -17,7 +17,7 @@ export {
   SNAPSHOT_HASH_VERSION,
 } from './paths.mjs'
 
-export async function createSnapshot({ workspaceRoot, turnId, phase }) {
+export async function createSnapshot({ workspaceRoot, turnId, phase, sessionId }) {
   validateSnapshotPhase(phase)
   const normalizedWorkspaceRoot = normalizeWorkspaceRoot(workspaceRoot)
   const store = resolveSnapshotStore({ workspaceRoot: normalizedWorkspaceRoot })
@@ -63,6 +63,9 @@ export async function createSnapshot({ workspaceRoot, turnId, phase }) {
       workspaceRoot: normalizedWorkspaceRoot,
       hashVersion: SNAPSHOT_HASH_VERSION,
       changedFiles,
+      // Disambiguates same-numbered turns across sessions (the per-process
+      // turn counter restarts with each session) for revert_turn resolution.
+      ...(sessionId === undefined ? {} : { sessionId }),
     }
     await appendManifest(store.manifestPath, entry)
     await checkAndPrune({ workspaceRoot: normalizedWorkspaceRoot })
