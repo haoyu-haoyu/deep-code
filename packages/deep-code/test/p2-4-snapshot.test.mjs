@@ -578,6 +578,35 @@ test('release leaves no zombie lock behind an in-flight refresh tick', async () 
   })
 })
 
+test('an orphaned reaper claim is reclaimed by mtime so recovery cannot wedge', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-reaper-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    await mkdir(store.storePath, { recursive: true })
+    const lockPath = join(store.storePath, 'snapshot.lock')
+    // A stale lock AND an orphaned reaper claim (a recoverer crashed between
+    // claiming and reaping). The orphan blocks recovery until its own mtime
+    // ages a TTL — then recovery proceeds.
+    await writeFile(
+      lockPath,
+      JSON.stringify({
+        ownerId: 'crashed-owner',
+        pid: 99_999_999,
+        ts: Date.now() - 10_000,
+        hostname: hostname(),
+      }),
+    )
+    await writeFile(`${lockPath}.reaper`, '')
+    const past = new Date(Date.now() - 10_000)
+    await utimes(`${lockPath}.reaper`, past, past)
+
+    const lock = await acquireLock({ workspaceRoot, timeoutMs: 2_000, staleMs: 500 })
+    assert.ok(lock.ownerId)
+    assert.equal(existsSync(`${lockPath}.reaper`), false)
+    await lock.release()
+  })
+})
+
 test('acquireLock refuses release after lock ownership changes', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-owner-'))

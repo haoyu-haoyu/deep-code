@@ -170,7 +170,52 @@ async function refreshLockTimestamp(holder) {
 }
 
 async function recoverStaleLock(lockPath, staleMs) {
-  if (!existsSync(lockPath)) return false
+  // Cheap peek first: avoid claiming the reaper at every retry tick while a
+  // perfectly healthy lock exists.
+  if (!(await isLockStale(lockPath, staleMs))) return false
+
+  // The deletion must be an ATOMIC CLAIM, not read-then-rm: two contenders
+  // that both observed the stale lock would otherwise both proceed, and the
+  // loser's rm — already decided on the OLD observation — would delete the
+  // winner's freshly-acquired lock (empirically a ~15% mutual-exclusion
+  // violation under contended recovery). Exactly one recoverer wins the
+  // reaper sidecar via open('wx'), RE-VERIFIES staleness inside the critical
+  // section, and only then removes the lock; a fresh lock acquired in the
+  // meantime fails the re-verify and survives.
+  const reaperPath = `${lockPath}.reaper`
+  let reaper
+  try {
+    reaper = await open(reaperPath, 'wx')
+  } catch (error) {
+    if (error?.code !== 'EEXIST') throw error
+    // Another recoverer holds the claim (milliseconds), or a crashed one
+    // orphaned it: reclaim the ORPHAN once its mtime is a full TTL old, then
+    // let the caller's retry loop come back around.
+    try {
+      const { mtimeMs } = await stat(reaperPath)
+      if (Date.now() - mtimeMs >= staleMs) {
+        await rm(reaperPath, { force: true })
+      }
+    } catch {
+      // raced away — the caller retries
+    }
+    return false
+  }
+  try {
+    await reaper.close()
+    if (!(await isLockStale(lockPath, staleMs))) return false
+    // Between this verify and the rm nothing can change the lock's identity:
+    // acquiring requires the path to be ABSENT (open wx) or this reaper (held
+    // by us), and a forfeited holder never writes again.
+    await rm(lockPath, { force: true })
+    return true
+  } finally {
+    await rm(reaperPath, { force: true })
+  }
+}
+
+async function isLockStale(lockPath, staleMs) {
+  if (!existsSync(lockPath)) return true
   const metadata = await readLockMetadata(lockPath)
   if (!metadata) {
     // Unreadable lock (a crash between the open('wx') and the initial
@@ -179,15 +224,11 @@ async function recoverStaleLock(lockPath, staleMs) {
     // mid-creation has a fresh mtime and is left alone.
     try {
       const { mtimeMs } = await stat(lockPath)
-      if (Date.now() - mtimeMs >= staleMs) {
-        await rm(lockPath, { force: true })
-        return true
-      }
+      return Date.now() - mtimeMs >= staleMs
     } catch {
-      // raced away — treat as recovered so the caller retries open('wx')
+      // raced away — already recovered
       return !existsSync(lockPath)
     }
-    return false
   }
   if (Date.now() - metadata.ts >= staleMs) {
     // The TTL is authoritative: live holders refresh ts (above), so an
@@ -196,17 +237,12 @@ async function recoverStaleLock(lockPath, staleMs) {
     // system daemon where the kill-0 probe returns EPERM = "alive"), and the
     // old pid-AND-TTL rule turned that into a permanent stall on every
     // acquisition until someone hand-deleted the lock.
-    await rm(lockPath, { force: true })
     return true
   }
   // Fast path: a dead pid recorded by THIS host needn't wait out the TTL.
   // Foreign hosts' pids are meaningless locally (the file may live on a
   // network volume), so the probe is hostname-gated.
-  if (metadata.hostname === hostname() && !isPidAlive(metadata.pid)) {
-    await rm(lockPath, { force: true })
-    return true
-  }
-  return false
+  return metadata.hostname === hostname() && !isPidAlive(metadata.pid)
 }
 
 async function releaseFileLock(lockPath, ownerId) {
