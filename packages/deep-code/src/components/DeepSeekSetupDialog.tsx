@@ -5,9 +5,8 @@ import { useTranslation } from '../i18n/useTranslation.js'
 import { Box, Text } from '../ink.js'
 import { useKeybinding } from '../keybindings/useKeybinding.js'
 import {
-  mergeDeepSeekConfigPartial,
+  mergeProviderConfigPartial,
   resolveDeepSeekConfigPath,
-  saveDeepSeekConfigFile,
 } from '../services/providers/deepseek-config-store.mjs'
 import { logForDebugging } from '../utils/debug.js'
 import { Select } from './CustomSelect/select.js'
@@ -190,16 +189,18 @@ export function DeepSeekSetupDialog({
         return
       }
       try {
-        // Merge over any existing persisted fields (smallModel, thinking,
-        // etc.) so re-running the wizard never silently drops keys the
-        // current screens don't ask about.
-        const merged = mergeDeepSeekConfigPartial({
+        // Write through the canonical nested provider store. mergeProviderConfigPartial
+        // deep-merges into providers.deepseek, so it preserves the existing deepseek
+        // fields the wizard doesn't ask about (smallModel, thinking, …) AND any sibling
+        // provider (e.g. an openai-compatible config set via /provider). The old flat
+        // saveDeepSeekConfigFile path overwrote the whole file, silently erasing a
+        // sibling provider and resetting activeProvider to deepseek.
+        mergeProviderConfigPartial('deepseek', {
           apiKey: state.apiKey,
           baseUrl: state.baseUrl,
           model: state.model,
           reasoningEffort: state.reasoningEffort,
         })
-        saveDeepSeekConfigFile(merged)
         onDone(true)
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
