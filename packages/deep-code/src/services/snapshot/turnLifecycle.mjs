@@ -4,11 +4,17 @@ export async function captureTurnSnapshot({
   workspaceRoot = process.cwd(),
   turnId,
   phase,
+  sessionId,
   createSnapshotFn = createSnapshot,
   onError,
 }) {
   try {
-    const entry = await createSnapshotFn({ workspaceRoot, turnId, phase })
+    const entry = await createSnapshotFn({
+      workspaceRoot,
+      turnId,
+      phase,
+      ...(sessionId === undefined ? {} : { sessionId }),
+    })
     return { ok: true, entry }
   } catch (error) {
     const snapshotError = { error, workspaceRoot, turnId, phase }
@@ -21,15 +27,14 @@ export function getTurnEndSnapshotPhase({ aborted }) {
   return aborted ? 'aborted' : 'post'
 }
 
-export function buildSnapshotTurnId({ generation, messages = [] }) {
-  const message = messages.find(
-    candidate =>
-      candidate &&
-      typeof candidate === 'object' &&
-      typeof candidate.uuid === 'string' &&
-      candidate.uuid.length > 0,
-  )
-  return message?.uuid ?? `turn-${generation}`
+// The key MUST stay in revert_turn's input grammar: the tool accepts only a
+// numeric turn_id and its resolver matches "N" / "turn-N". Keying by message
+// uuid (as an earlier revision did) made every live snapshot unmatchable —
+// revert_turn could never find a snapshot in a real session. Cross-session
+// turn-N collisions are disambiguated by the sessionId recorded on the entry,
+// not by the key itself.
+export function buildSnapshotTurnId({ generation }) {
+  return `turn-${generation}`
 }
 
 export function formatSnapshotLifecycleError(errorOrEvent) {

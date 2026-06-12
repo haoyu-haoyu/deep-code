@@ -2815,6 +2815,7 @@ export function REPL({
       workspaceRoot: getOriginalCwd(),
       turnId,
       phase,
+      sessionId: getSessionId(),
       onError: snapshotError => {
         addNotification({
           key: 'workspace-snapshot-error',
@@ -2857,8 +2858,7 @@ export function REPL({
       return;
     }
     const snapshotTurnId = buildSnapshotTurnId({
-      generation: thisGeneration,
-      messages: newMessages
+      generation: thisGeneration
     });
     try {
       await captureQuerySnapshot(snapshotTurnId, 'pre');

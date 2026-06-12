@@ -483,15 +483,70 @@ test('turn lifecycle helper reports snapshot errors without throwing', async () 
   assert.match(formatSnapshotLifecycleError(errors[0]), /disk unavailable/)
 })
 
-test('buildSnapshotTurnId uses first message uuid with generation fallback', () => {
+test('buildSnapshotTurnId always keys by generation so revert_turn turn_id can match', () => {
+  // An earlier revision preferred the first message uuid — which made every
+  // live snapshot unmatchable by revert_turn's numeric grammar ("N"/"turn-N").
   assert.equal(
     buildSnapshotTurnId({
       generation: 7,
       messages: [{ uuid: 'message-uuid' }],
     }),
-    'message-uuid',
+    'turn-7',
   )
-  assert.equal(buildSnapshotTurnId({ generation: 8, messages: [] }), 'turn-8')
+  assert.equal(buildSnapshotTurnId({ generation: 8 }), 'turn-8')
+})
+
+test('resolveRevertTurnSnapshot prefers same-session matches over a newer foreign session', async () => {
+  const listSnapshotsFn = async () => [
+    { turnId: 'turn-2', phase: 'pre', commitSha: 'aaa', sessionId: 'session-old' },
+    { turnId: 'turn-2', phase: 'pre', commitSha: 'bbb', sessionId: 'session-current' },
+    { turnId: 'turn-2', phase: 'pre', commitSha: 'ccc', sessionId: 'session-other' },
+  ]
+  const selected = await resolveRevertTurnSnapshot({
+    turnId: 2,
+    sessionId: 'session-current',
+    listSnapshotsFn,
+  })
+  assert.equal(selected.commitSha, 'bbb')
+})
+
+test('resolveRevertTurnSnapshot falls back to newest match when no entry carries the session', async () => {
+  // Entries written before sessionId was recorded must stay revertable.
+  const listSnapshotsFn = async () => [
+    { turnId: 'turn-3', phase: 'pre', commitSha: 'old' },
+    { turnId: 'turn-3', phase: 'pre', commitSha: 'new' },
+  ]
+  const selected = await resolveRevertTurnSnapshot({
+    turnId: 3,
+    sessionId: 'session-current',
+    listSnapshotsFn,
+  })
+  assert.equal(selected.commitSha, 'new')
+})
+
+test('a REPL-shaped snapshot (generation key + sessionId) is revertable by numeric turn_id end-to-end', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-revert-e2e-'))
+    await writeFile(join(workspaceRoot, 'app.js'), 'orig\n')
+    // The exact shape the REPL writes: buildSnapshotTurnId + sessionId rider.
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: buildSnapshotTurnId({ generation: 2 }),
+      phase: 'pre',
+      sessionId: 'session-e2e',
+    })
+    assert.equal(snapshot.turnId, 'turn-2')
+    assert.equal(snapshot.sessionId, 'session-e2e')
+
+    await writeFile(join(workspaceRoot, 'app.js'), 'botched by the model\n')
+    const result = await performRevertTurn({
+      workspaceRoot,
+      sessionId: 'session-e2e',
+      input: { turn_id: 2 },
+    })
+    assert.equal(result.snapshotId, snapshot.commitSha)
+    assert.equal(readFileSync(join(workspaceRoot, 'app.js'), 'utf8'), 'orig\n')
+  })
 })
 
 test('restore command lists the latest ten snapshots newest first', async () => {
