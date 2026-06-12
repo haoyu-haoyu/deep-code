@@ -92,17 +92,51 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
       throw new Error(`Snapshot not found: ${snapshotId}`)
     }
 
-    const affectedFiles = await listWorkingTreeDiffFiles(
-      store.gitDir,
-      normalizedWorkspaceRoot,
-      snapshotId,
-    )
+    // Reset the side-git index to the snapshot tree so the prune below (and the
+    // added-files listing) reckon "not in the snapshot" against the snapshot
+    // itself, never a stale post-turn `add -A` index that may have staged the very
+    // files the turn created.
     await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
-      'checkout',
+      'read-tree',
       snapshotId,
-      '--',
-      '.',
     ])
+
+    // What the restore will change: tracked modifications + deletions (a
+    // content-accurate diff against the snapshot commit) UNION untracked,
+    // non-ignored files absent from the snapshot (which `clean` removes below).
+    // The previous `git diff <commit>` alone under-reported added files.
+    const trackedChanges = normalizeFileList(
+      await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+        'diff',
+        '--name-only',
+        snapshotId,
+        '--',
+        '.',
+      ]),
+    )
+    const addedFiles = normalizeFileList(
+      await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+        'ls-files',
+        '--others',
+        '--exclude-standard',
+      ]),
+    )
+    const affectedFiles = [...new Set([...trackedChanges, ...addedFiles])].sort()
+
+    // Materialize every snapshot path (re-creating files deleted during the turn,
+    // into any needed subdirectories), then remove worktree files absent from the
+    // snapshot. `git checkout <commit> -- .` alone could not delete files the turn
+    // CREATED, so the workspace was left as the snapshot UNION everything added
+    // since — revert_turn/restore silently kept the model's new files. `clean -fd`
+    // respects .gitignore, so ignored artifacts (node_modules/build) survive,
+    // symmetric with capture's `add -A`. All commands run through the side-git
+    // (--git-dir/--work-tree), never the user's .git.
+    await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+      'checkout-index',
+      '-f',
+      '-a',
+    ])
+    await runSideGit(store.gitDir, normalizedWorkspaceRoot, ['clean', '-fd'])
 
     return {
       snapshotId,
@@ -147,17 +181,6 @@ function normalizeFileList(raw) {
     .split('\n')
     .map(file => file.trim())
     .filter(Boolean)
-}
-
-async function listWorkingTreeDiffFiles(gitDir, workTree, commitSha) {
-  const raw = await runSideGit(gitDir, workTree, [
-    'diff',
-    '--name-only',
-    commitSha,
-    '--',
-    '.',
-  ])
-  return normalizeFileList(raw)
 }
 
 function snapshotRefForCommit(commitSha) {
