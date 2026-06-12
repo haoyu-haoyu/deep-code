@@ -59,11 +59,11 @@ export function buildRevertTurnPermissionResult(input) {
   const turnId = input?.turn_id ?? '?'
   return {
     behavior: 'ask',
-    message: `revert_turn will restore the pre-turn snapshot for turn ${turnId}: it overwrites changed workspace files AND removes files created after that snapshot (except ignored build artifacts). Confirm before continuing.`,
+    message: `revert_turn will restore the pre-turn snapshot for turn ${turnId}: it overwrites changed workspace files AND removes files created after that snapshot (except files ignored by .gitignore). Confirm before continuing.`,
     decisionReason: {
       type: 'safetyCheck',
       reason:
-        'revert_turn restores workspace files from side-git snapshots, overwriting local changes and removing files created after the snapshot (ignored build artifacts are kept)',
+        'revert_turn restores workspace files from side-git snapshots, overwriting local changes and removing files created after the snapshot (files ignored by .gitignore are kept)',
       classifierApprovable: false,
     },
   }

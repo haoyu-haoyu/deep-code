@@ -46,7 +46,7 @@ export const RevertTurnTool: Tool<InputSchema, Output> = buildTool({
     return [
       'Use revert_turn to undo the workspace file changes from a previous turn.',
       'Input must be exactly { "turn_id": number }; never pass paths or git SHAs.',
-      'The tool restores through DeepCode side-git snapshots: it overwrites local workspace changes and removes files created after the snapshot (except ignored build artifacts), so it requires confirmation.',
+      'The tool restores through DeepCode side-git snapshots: it overwrites local workspace changes and removes files created after the snapshot (except files ignored by .gitignore), so it requires confirmation.',
     ].join('\n')
   },
   get inputSchema(): InputSchema {

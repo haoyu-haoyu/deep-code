@@ -11,12 +11,6 @@ import {
 } from './paths.mjs'
 import { initializeSideGit, runSideGit } from './storeInit.mjs'
 
-// Upper bound on restore prune passes (see restoreSnapshot). Each pass strips one
-// nesting layer of turn-created untracked .gitignore files, so the realistic worst
-// case is bounded by directory depth; this cap only guards against a pathologically
-// deep chain of self-hiding ignore files.
-const MAX_PRUNE_PASSES = 64
-
 export {
   computeWorkspaceHash,
   resolveSnapshotStore,
@@ -161,11 +155,17 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
     // `build/.gitignore` listing `junk.txt`) that hides its siblings from BOTH the
     // added-files listing AND `clean`, leaving them behind. Each pass removes the
     // outermost untracked, non-ignored frontier — including any such turn-created
-    // .gitignore — which un-shadows the next layer, so loop to a fixpoint. All
-    // commands run through the side-git (--git-dir/--work-tree), never the user's
-    // .git.
+    // .gitignore — which un-shadows the next layer, so loop to a fixpoint however
+    // deeply the ignore files are nested.
+    //
+    // Termination is guaranteed without a pass cap: `clean` only ever DELETES, so
+    // the finite set of on-disk untracked files strictly shrinks every pass that
+    // removes anything. The loop ends when the frontier is empty (fully pruned) or
+    // `clean` removes nothing — e.g. a nested git repo it refuses to touch, the
+    // same residual a plain `clean -fd` would leave. All commands run through the
+    // side-git (--git-dir/--work-tree), never the user's .git.
     const addedFiles = []
-    for (let pass = 0; pass < MAX_PRUNE_PASSES; pass += 1) {
+    for (;;) {
       const frontier = normalizeNulFileList(
         await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
           'ls-files',
@@ -182,7 +182,7 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
       ])
       // No-progress guard: `clean` prints a line per removed path, so empty output
       // means it removed nothing this pass (e.g. a nested git repo it refuses to
-      // touch). Stop rather than spin to the pass cap.
+      // touch). Stop rather than spin forever.
       if (removed.trim() === '') break
     }
 

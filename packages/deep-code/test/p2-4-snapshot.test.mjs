@@ -737,6 +737,45 @@ test('restoreSnapshot converges on a deep chain of nested untracked .gitignore f
   })
 })
 
+test('restoreSnapshot prunes a self-hiding .gitignore chain deeper than any fixed pass cap', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-deepcap-'))
+    await writeFile(join(workspaceRoot, 'keep.txt'), 'keep\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-deep-cap',
+      phase: 'pre',
+    })
+    // Build a chain where each dir's .gitignore hides ONLY the next dir, so the
+    // prune can peel just one layer per pass. A depth past any small fixed cap
+    // (the loop has none — it terminates by monotonic shrink) proves the deepest
+    // leaf is still removed and reported, not silently left behind.
+    const depth = 70
+    const segments = []
+    for (let level = 1; level <= depth; level += 1) {
+      segments.push(`d${level}`)
+      await mkdir(join(workspaceRoot, ...segments), { recursive: true })
+      const gitignoreBody = level < depth ? `d${level + 1}/\n` : 'secret.txt\n'
+      await writeFile(join(workspaceRoot, ...segments, '.gitignore'), gitignoreBody)
+    }
+    await writeFile(join(workspaceRoot, ...segments, 'secret.txt'), 'secret\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    const secretPath = [...segments, 'secret.txt'].join('/')
+    assert.equal(existsSync(join(workspaceRoot, 'd1')), false)
+    assert.equal(existsSync(join(workspaceRoot, ...segments, 'secret.txt')), false)
+    assert.equal(existsSync(join(workspaceRoot, 'keep.txt')), true)
+    assert.ok(
+      result.affectedFiles.includes(secretPath),
+      `deepest leaf ${secretPath} missing from affectedFiles`,
+    )
+  })
+})
+
 test('restoreSnapshot reports non-ASCII affected filenames intact (not C-quoted)', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-cjk-'))
