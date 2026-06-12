@@ -107,23 +107,31 @@ export function createLSPClientCore({
         const exitedChild = child
         child = undefined
         isInitialized = false
-        if (!isStopping && code !== 0 && code !== null) {
+        if (!isStopping) {
+          // Any exit we did not initiate must settle in-flight requests and
+          // report the crash — including a CLEAN self-exit (code 0). Without
+          // the rejection those requests pend forever (nothing else resolves
+          // them), and without onCrash the wrapping instance stays 'running'
+          // so ensureServerStarted never restarts it.
           const crashError = new Error(
-            `LSP server ${serverName} crashed with exit code ${code}`,
+            code !== 0 && code !== null
+              ? `LSP server ${serverName} crashed with exit code ${code}`
+              : signal
+                ? `LSP server ${serverName} exited with signal ${signal}`
+                : `LSP server ${serverName} exited unexpectedly with code ${code}`,
           )
           rejectPendingRequests(crashError)
           logError(crashError)
           onCrash?.(crashError)
           return
         }
-        if (!isStopping && signal) {
-          const crashError = new Error(
-            `LSP server ${serverName} exited with signal ${signal}`,
-          )
-          rejectPendingRequests(crashError)
-          logError(crashError)
-          onCrash?.(crashError)
-        }
+        // Deliberate stop: stop() awaits the shutdown round-trip, so if the
+        // server dies BEFORE responding, that await would never settle and
+        // stop() (and manager.shutdown()) would hang forever. Settle any
+        // pending requests here; no onCrash — this exit was asked for.
+        rejectPendingRequests(
+          new Error(`LSP server ${serverName} exited during shutdown`),
+        )
         if (!exitedChild) {
           logForDebugging(`LSP server ${serverName} connection closed`)
         }
@@ -789,12 +797,28 @@ export function createLSPServerManagerCore({
         )
         throw err
       }
+      // The freshly started process has no open documents. Entries recorded
+      // against the previous process are already invalid (their startedAt no
+      // longer matches — see isOpenInCurrentServerProcess); dropping them here
+      // just keeps the map from accumulating dead generations.
+      for (const [fileUri, entry] of openedFiles) {
+        if (entry.serverName === server.name) {
+          openedFiles.delete(fileUri)
+        }
+      }
     }
     return server
   }
 
   async function sendRequest(filePath, method, params) {
-    const server = await ensureServerStarted(filePath)
+    // Deliberately NOT ensureServerStarted: a server (re)started at this point
+    // has no document state — the fresh process never saw didOpen — so lazily
+    // booting it here would silently aim a document-scoped request at a blind
+    // server (callers open the file first, which is what starts the server).
+    // If the server died since the open, fail with the instance's clear
+    // health-check error; the caller's next attempt sees isFileOpen === false
+    // and re-opens, which restarts the server properly.
+    const server = getServerForFile(filePath)
     if (!server) return undefined
     try {
       return await server.sendRequest(method, params)
@@ -809,12 +833,31 @@ export function createLSPServerManagerCore({
     }
   }
 
+  // An openedFiles entry means "this document was opened in the server process
+  // identified by startedAt" — server.startTime is a fresh Date OBJECT per
+  // successful start, so identity-comparing it pins the entry to one process
+  // generation. After a crash (state leaves 'running') or a restart (new
+  // startTime), the entry no longer qualifies and every consumer — openFile's
+  // skip, changeFile's didChange gate, isFileOpen — falls back to re-opening.
+  // This is what callers like LSPTool rely on when they consult isFileOpen
+  // BEFORE sendRequest: a stale "open" would make them skip didOpen and aim the
+  // first post-restart request at a process that never saw the document.
+  function isOpenInCurrentServerProcess(fileUri, server) {
+    const entry = openedFiles.get(fileUri)
+    return (
+      entry !== undefined &&
+      entry.serverName === server.name &&
+      server.state === 'running' &&
+      entry.startedAt === server.startTime
+    )
+  }
+
   async function openFile(filePath, content) {
     const server = await ensureServerStarted(filePath)
     if (!server) return
 
     const fileUri = pathToFileURL(path.resolve(filePath)).href
-    if (openedFiles.get(fileUri) === server.name) {
+    if (isOpenInCurrentServerProcess(fileUri, server)) {
       logForDebugging(`LSP: File already open, skipping didOpen for ${filePath}`)
       return
     }
@@ -830,7 +873,10 @@ export function createLSPServerManagerCore({
           text: content,
         },
       })
-      openedFiles.set(fileUri, server.name)
+      openedFiles.set(fileUri, {
+        serverName: server.name,
+        startedAt: server.startTime,
+      })
       logForDebugging(
         `LSP: Sent didOpen for ${filePath} (languageId: ${languageId})`,
       )
@@ -850,7 +896,7 @@ export function createLSPServerManagerCore({
     }
 
     const fileUri = pathToFileURL(path.resolve(filePath)).href
-    if (openedFiles.get(fileUri) !== server.name) {
+    if (!isOpenInCurrentServerProcess(fileUri, server)) {
       return openFile(filePath, content)
     }
 
@@ -911,7 +957,12 @@ export function createLSPServerManagerCore({
   }
 
   function isFileOpen(filePath) {
-    return openedFiles.has(pathToFileURL(path.resolve(filePath)).href)
+    const server = getServerForFile(filePath)
+    if (!server) return false
+    return isOpenInCurrentServerProcess(
+      pathToFileURL(path.resolve(filePath)).href,
+      server,
+    )
   }
 
   return {

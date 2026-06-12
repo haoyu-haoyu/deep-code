@@ -38,9 +38,10 @@ export type LSPClient = {
 /**
  * Create an LSP client wrapper using the local stdio JSON-RPC transport.
  *
- * @param onCrash - Called when the server process exits unexpectedly (non-zero
- *   exit code during operation, not during intentional stop). Allows the owner
- *   to propagate crash state so the server can be restarted on next use.
+ * @param onCrash - Called when the server process exits unexpectedly (any exit
+ *   during operation — crash, signal, or clean self-exit — but not during an
+ *   intentional stop). Allows the owner to propagate crash state so the server
+ *   can be restarted on next use.
  */
 export function createLSPClient(
   serverName: string,
