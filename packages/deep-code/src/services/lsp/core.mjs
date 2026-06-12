@@ -107,22 +107,23 @@ export function createLSPClientCore({
         const exitedChild = child
         child = undefined
         isInitialized = false
-        if (!isStopping && code !== 0 && code !== null) {
+        if (!isStopping) {
+          // Any exit we did not initiate must settle in-flight requests and
+          // report the crash — including a CLEAN self-exit (code 0). Without
+          // the rejection those requests pend forever (nothing else resolves
+          // them), and without onCrash the wrapping instance stays 'running'
+          // so ensureServerStarted never restarts it.
           const crashError = new Error(
-            `LSP server ${serverName} crashed with exit code ${code}`,
+            code !== 0 && code !== null
+              ? `LSP server ${serverName} crashed with exit code ${code}`
+              : signal
+                ? `LSP server ${serverName} exited with signal ${signal}`
+                : `LSP server ${serverName} exited unexpectedly with code ${code}`,
           )
           rejectPendingRequests(crashError)
           logError(crashError)
           onCrash?.(crashError)
           return
-        }
-        if (!isStopping && signal) {
-          const crashError = new Error(
-            `LSP server ${serverName} exited with signal ${signal}`,
-          )
-          rejectPendingRequests(crashError)
-          logError(crashError)
-          onCrash?.(crashError)
         }
         if (!exitedChild) {
           logForDebugging(`LSP server ${serverName} connection closed`)
@@ -788,6 +789,16 @@ export function createLSPServerManagerCore({
           ),
         )
         throw err
+      }
+      // The freshly started process has no open documents, but openedFiles may
+      // still hold entries recorded against the previous process — openFile
+      // would then skip its didOpen (and changeFile would didChange a document
+      // the new server never saw). Drop this server's entries so the next open
+      // re-syncs.
+      for (const [fileUri, openedServerName] of openedFiles) {
+        if (openedServerName === server.name) {
+          openedFiles.delete(fileUri)
+        }
       }
     }
     return server

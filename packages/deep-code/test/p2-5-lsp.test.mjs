@@ -168,6 +168,81 @@ test('LSP server instance marks state error after server crash', async () => {
   await instance.stop().catch(() => {})
 })
 
+test('LSP instance rejects in-flight requests and marks error when the server exits cleanly unprompted', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-lsp-cleanexit-'))
+  const server = await createFakeLspServer({ behavior: 'clean-exit-on-hover' })
+  const instance = createTestServerInstance(
+    'fake-ts',
+    serverConfig(server, workspaceRoot),
+  )
+
+  // The fake server exits with code 0 (a CLEAN exit, not a crash) while the
+  // hover request is in flight and unanswered. The request must reject — not
+  // pend forever — and onCrash must still fire so the instance becomes
+  // restartable.
+  let timeoutId
+  const stillPending = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error('request still pending after server exit')),
+      3_000,
+    )
+  })
+  stillPending.catch(() => {})
+
+  try {
+    await instance.start()
+    await assert.rejects(
+      () =>
+        Promise.race([
+          instance.sendRequest('textDocument/hover', {
+            position: { line: 0, character: 0 },
+          }),
+          stillPending,
+        ]),
+      /exited unexpectedly/i,
+    )
+    await waitFor(() => instance.state === 'error')
+  } finally {
+    clearTimeout(timeoutId)
+    await instance.stop().catch(() => {})
+  }
+})
+
+test('LSP manager re-sends didOpen to a restarted server instead of trusting stale openedFiles', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-lsp-reopen-'))
+  const filePath = join(workspaceRoot, 'demo.ts')
+  const server = await createFakeLspServer({ behavior: 'crash-on-didsave' })
+  const manager = createTestManager({
+    'fake-ts': serverConfig(server, workspaceRoot),
+  })
+
+  try {
+    await manager.initialize()
+    await manager.openFile(filePath, 'const value = 1\n')
+    await server.waitForMethod('notification:textDocument/didOpen')
+
+    const instance = manager.getAllServers().get('fake-ts')
+    await manager.saveFile(filePath)
+    await waitFor(() => instance.state === 'error')
+
+    // openFile restarts the server; the fresh process has no open documents,
+    // so the didOpen must be re-sent — a stale openedFiles entry would skip it
+    // and leave the new server blind to the file.
+    await manager.openFile(filePath, 'const value = 2\n')
+    await waitFor(async () => {
+      const methods = await server.methods()
+      return (
+        methods.filter(
+          method => method === 'notification:textDocument/didOpen',
+        ).length === 2
+      )
+    })
+    assert.equal(manager.isFileOpen(filePath), true)
+  } finally {
+    await manager.shutdown().catch(() => {})
+  }
+})
+
 test('LSP client shutdown sends shutdown and exit then clears state', async () => {
   const server = await createFakeLspServer()
   const client = createTestClient('fake-ts')
@@ -769,6 +844,12 @@ function handleMessage(message) {
       writeMessage({ jsonrpc: '2.0', id: message.id, result: null })
       return
     }
+    if (
+      behavior === 'clean-exit-on-hover' &&
+      message.method === 'textDocument/hover'
+    ) {
+      process.exit(0)
+    }
     writeMessage({ jsonrpc: '2.0', id: message.id, result: null })
     return
   }
@@ -783,6 +864,12 @@ function handleMessage(message) {
       (behavior === 'diagnostics-on-save' || behavior === 'duplicate-diagnostics-on-save')
     ) {
       setTimeout(sendDiagnostics, 25)
+    }
+    if (
+      message.method === 'textDocument/didSave' &&
+      behavior === 'crash-on-didsave'
+    ) {
+      process.exit(7)
     }
     if (message.method === 'exit') {
       setTimeout(() => process.exit(0), 10)
