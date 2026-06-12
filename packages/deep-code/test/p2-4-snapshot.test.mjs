@@ -635,6 +635,31 @@ test('a FRESH foreign reaper claim defers recovery instead of racing it', async 
   })
 })
 
+test('a holder wedged past the TTL leaves its lock for the reaper instead of unlinking', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-forfeitrel-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    const lockPath = join(store.storePath, 'snapshot.lock')
+    const lock = await acquireLock({ workspaceRoot, staleMs: 1_000 })
+    // Wedge the event loop past max(staleMs, 1s): no refresh ticks can run,
+    // exactly like a long process pause. A recoverer elsewhere may already
+    // have VERIFIED this lock as stale — our unlink would hand the path to a
+    // third process mid-reap.
+    const wedgeUntil = Date.now() + 1_100
+    while (Date.now() < wedgeUntil) {
+      // busy-wait: simulates SIGSTOP/VM freeze for the liveness gap
+    }
+    await lock.release()
+    // The lock file must STILL exist (release skipped the unlink)...
+    assert.equal(existsSync(lockPath), true)
+    // ...and the next acquisition reaps it immediately (ts already past TTL).
+    const next = await acquireLock({ workspaceRoot, timeoutMs: 3_000, staleMs: 1_000 })
+    assert.notEqual(next.ownerId, lock.ownerId)
+    await next.release()
+    assert.equal(existsSync(lockPath), false)
+  })
+})
+
 test('acquireLock refuses release after lock ownership changes', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-owner-'))
