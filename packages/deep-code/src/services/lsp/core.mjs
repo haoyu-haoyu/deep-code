@@ -811,7 +811,14 @@ export function createLSPServerManagerCore({
   }
 
   async function sendRequest(filePath, method, params) {
-    const server = await ensureServerStarted(filePath)
+    // Deliberately NOT ensureServerStarted: a server (re)started at this point
+    // has no document state — the fresh process never saw didOpen — so lazily
+    // booting it here would silently aim a document-scoped request at a blind
+    // server (callers open the file first, which is what starts the server).
+    // If the server died since the open, fail with the instance's clear
+    // health-check error; the caller's next attempt sees isFileOpen === false
+    // and re-opens, which restarts the server properly.
+    const server = getServerForFile(filePath)
     if (!server) return undefined
     try {
       return await server.sendRequest(method, params)

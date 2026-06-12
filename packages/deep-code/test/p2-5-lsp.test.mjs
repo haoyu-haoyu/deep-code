@@ -283,6 +283,62 @@ test('LSP manager reports a crashed server file as not open so callers re-send d
   }
 })
 
+test('LSP manager sendRequest refuses to blind-restart a crashed server (no didOpen-less first request)', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-lsp-blindfire-'))
+  const filePath = join(workspaceRoot, 'demo.ts')
+  const server = await createFakeLspServer({ behavior: 'crash-on-didsave' })
+  const manager = createTestManager({
+    'fake-ts': serverConfig(server, workspaceRoot),
+  })
+
+  try {
+    await manager.initialize()
+    await manager.openFile(filePath, 'const value = 1\n')
+    await server.waitForMethod('notification:textDocument/didOpen')
+
+    const instance = manager.getAllServers().get('fake-ts')
+    await manager.saveFile(filePath)
+    await waitFor(() => instance.state === 'error')
+
+    // The server died AFTER the file was opened (LSPTool's window between its
+    // openFile and sendRequest). sendRequest must NOT silently restart the
+    // server and fire at a process that never saw didOpen — it fails with the
+    // health-check error and leaves the instance restartable.
+    await assert.rejects(
+      () =>
+        manager.sendRequest(filePath, 'textDocument/hover', {
+          textDocument: { uri: 'file://ignored' },
+          position: { line: 0, character: 0 },
+        }),
+      /Cannot send request/i,
+    )
+    assert.equal(instance.state, 'error')
+    const didOpenCount = (await server.methods()).filter(
+      method => method === 'notification:textDocument/didOpen',
+    ).length
+    assert.equal(didOpenCount, 1)
+
+    // The caller's retry path heals: isFileOpen is false, so it re-opens
+    // (restarting the server) and only then requests.
+    assert.equal(manager.isFileOpen(filePath), false)
+    await manager.openFile(filePath, 'const value = 1\n')
+    await waitFor(async () => {
+      const methods = await server.methods()
+      return (
+        methods.filter(
+          method => method === 'notification:textDocument/didOpen',
+        ).length === 2
+      )
+    })
+    const result = await manager.sendRequest(filePath, 'textDocument/hover', {
+      position: { line: 0, character: 0 },
+    })
+    assert.equal(result, null)
+  } finally {
+    await manager.shutdown().catch(() => {})
+  }
+})
+
 test('LSP client stop() settles instead of hanging when the server dies during shutdown', async () => {
   const server = await createFakeLspServer({ behavior: 'crash-on-shutdown' })
   let crashes = 0
