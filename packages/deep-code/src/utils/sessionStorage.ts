@@ -71,6 +71,7 @@ import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { isFsInaccessible } from './errors.js'
 import { parseAgentMetadata } from './agentMetadata.mjs'
+import { dropTruncatedTail } from './transcriptRepair.mjs'
 import type { FileHistorySnapshot } from './fileHistory.js'
 import { formatFileSize } from './format.js'
 import { getFsImplementation } from './fsOperations.js'
@@ -1438,6 +1439,12 @@ export async function resetSessionFilePointer() {
 export function adoptResumedSessionFile(): void {
   const project = getProject()
   project.sessionFile = getTranscriptPath()
+  // A crash mid-append may have left a trailing partial line. Readers DROP
+  // that shape on read, but the metadata append below (or the first new
+  // message) would land after it, turning it into mid-file corruption that
+  // fork hard-throws on and session list flags forever. Drop those bytes
+  // first — they are exactly what every reader already discards.
+  dropTruncatedTail(project.sessionFile)
   project.reAppendSessionMetadata(true)
 }
 

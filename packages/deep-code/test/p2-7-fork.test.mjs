@@ -9,6 +9,87 @@ import test from 'node:test'
 import { forkHandler } from '../src/cli/handlers/session.mjs'
 import { forkSession } from '../src/utils/sessionFork.mjs'
 import { scanSessionFile } from '../src/utils/sessionList.mjs'
+import { dropTruncatedTail } from '../src/utils/transcriptRepair.mjs'
+
+test('dropTruncatedTail removes only a crash-truncated trailing line', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepcode-repair-'))
+  const partial = join(dir, 'partial.jsonl')
+  await writeFile(partial, '{"type":"user"}\n{"type":"assist')
+  assert.equal(dropTruncatedTail(partial), true)
+  assert.equal(await readFile(partial, 'utf8'), '{"type":"user"}\n')
+  // idempotent on a healthy file
+  assert.equal(dropTruncatedTail(partial), false)
+  assert.equal(await readFile(partial, 'utf8'), '{"type":"user"}\n')
+
+  // a partial line longer than one scan chunk still truncates to the last newline
+  const longTail = join(dir, 'long-tail.jsonl')
+  await writeFile(longTail, '{"a":1}\n' + '{"pad":"' + 'x'.repeat(9_000))
+  assert.equal(dropTruncatedTail(longTail), true)
+  assert.equal(await readFile(longTail, 'utf8'), '{"a":1}\n')
+
+  // a file that is ONE half-written line truncates to empty
+  const only = join(dir, 'only-partial.jsonl')
+  await writeFile(only, '{"type":"user"')
+  assert.equal(dropTruncatedTail(only), true)
+  assert.equal((await readFile(only, 'utf8')).length, 0)
+
+  const empty = join(dir, 'empty.jsonl')
+  await writeFile(empty, '')
+  assert.equal(dropTruncatedTail(empty), false)
+
+  assert.equal(dropTruncatedTail(join(dir, 'missing.jsonl')), false)
+})
+
+test('a repaired transcript survives resume-append where a glued one is corrupt forever', async () => {
+  // The crash scenario: SIGKILL mid-append leaves a trailing partial line.
+  // Resume then appends (metadata / first message). WITHOUT the repair, the
+  // append glues onto the partial line — mid-file corruption that fork
+  // hard-throws on. WITH the repair, the partial line becomes the benign
+  // trailing-half-write shape readers drop, and the appended entry parses.
+  // Two post-resume appends (metadata, then a message): the glued line stops
+  // being the forgivable LAST line the moment anything follows it.
+  const metaEntry = sessionId =>
+    JSON.stringify({ type: 'user', isMeta: true, sessionId }) + '\n'
+
+  const glued = await createSessionFixture({ turns: 2 })
+  const gluedPath = join(glued.sessionDir, `${glued.sourceSessionId}.jsonl`)
+  await appendFile(gluedPath, '{"type":"assist')
+  await appendFile(gluedPath, metaEntry(glued.sourceSessionId))
+  await appendFile(gluedPath, metaEntry(glued.sourceSessionId))
+  await assert.rejects(
+    forkSession({ sessionDir: glued.sessionDir, sourceSessionId: glued.sourceSessionId }),
+    /Invalid JSONL/,
+  )
+
+  const repaired = await createSessionFixture({ turns: 2 })
+  const repairedPath = join(repaired.sessionDir, `${repaired.sourceSessionId}.jsonl`)
+  await appendFile(repairedPath, '{"type":"assist')
+  dropTruncatedTail(repairedPath)
+  await appendFile(repairedPath, metaEntry(repaired.sourceSessionId))
+  await appendFile(repairedPath, metaEntry(repaired.sourceSessionId))
+  const result = await forkSession({
+    sessionDir: repaired.sessionDir,
+    sourceSessionId: repaired.sourceSessionId,
+  })
+  assert.equal(result.forkedAtTurn, 2)
+})
+
+test('adoptResumedSessionFile wires the repair before its metadata append', async () => {
+  const source = await readFile(
+    new URL('../src/utils/sessionStorage.ts', import.meta.url),
+    'utf8',
+  )
+  const adoptBody = source.slice(
+    source.indexOf('export function adoptResumedSessionFile'),
+    source.indexOf('export function adoptResumedSessionFile') + 800,
+  )
+  assert.match(adoptBody, /dropTruncatedTail\(/)
+  assert.ok(
+    adoptBody.indexOf('dropTruncatedTail(') <
+      adoptBody.indexOf('reAppendSessionMetadata('),
+    'repair must run before the first append',
+  )
+})
 
 test('forkSession copies a 10-turn session through turn 5', async () => {
   const fixture = await createSessionFixture({ turns: 10 })
