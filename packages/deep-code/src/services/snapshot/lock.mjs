@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, open, readFile, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -73,17 +73,35 @@ async function acquireFileLock({ lockPath, timeoutMs, staleMs }) {
       // Keep the held lock visibly alive: refresh ts well inside the TTL so
       // the TTL-based recovery below never steals a lock whose holder is
       // merely slow (a large `git add -A` can outlive any fixed TTL). The
-      // ownership check stops the refresher if the lock was ever taken over
-      // (e.g. this process slept past the TTL), so a stolen lock is never
-      // clobbered back. unref'd: a refresher must not pin the event loop.
-      const refresher = setInterval(() => {
-        void refreshLockTimestamp(lockPath, metadata, refresher)
+      // refresher (a) writes via tmp+rename so a crash mid-refresh can never
+      // leave the lock file unparseable (an unreadable lock would otherwise
+      // be unrecoverable), (b) FORFEITS — stops writing forever — once its
+      // own liveness gap exceeds the TTL (a holder that slept past the TTL
+      // may have been legitimately stolen and must not clobber the thief),
+      // and (c) re-checks ownership before each write. unref'd: it must not
+      // pin the event loop.
+      const holder = {
+        lockPath,
+        metadata,
+        staleMs,
+        lastLiveAt: Date.now(),
+        releasing: false,
+        inflight: Promise.resolve(),
+        refresher: null,
+      }
+      holder.refresher = setInterval(() => {
+        holder.inflight = refreshLockTimestamp(holder)
       }, Math.max(1, Math.floor(staleMs / 3)))
-      refresher.unref?.()
+      holder.refresher.unref?.()
       return {
         ownerId: metadata.ownerId,
-        release: () => {
-          clearInterval(refresher)
+        release: async () => {
+          // Stop the refresher AND wait out any in-flight tick: clearInterval
+          // does not cancel an already-running refresh, whose pending write
+          // could otherwise recreate the lock file after the unlink below.
+          holder.releasing = true
+          clearInterval(holder.refresher)
+          await holder.inflight.catch(() => {})
           return releaseFileLock(lockPath, metadata.ownerId)
         },
       }
@@ -98,14 +116,36 @@ async function acquireFileLock({ lockPath, timeoutMs, staleMs }) {
   }
 }
 
-async function refreshLockTimestamp(lockPath, metadata, refresher) {
+async function refreshLockTimestamp(holder) {
   try {
-    const current = await readLockMetadata(lockPath)
-    if (current?.ownerId !== metadata.ownerId) {
-      clearInterval(refresher)
+    // Forfeit: if our own liveness gap reached the TTL (event loop wedged,
+    // process slept), a contender may have legitimately recovered the lock —
+    // a forfeit holder must never write again, even if the file still (or
+    // again) carries our ownerId.
+    if (Date.now() - holder.lastLiveAt >= holder.staleMs) {
+      clearInterval(holder.refresher)
       return
     }
-    await writeFile(lockPath, JSON.stringify({ ...metadata, ts: Date.now() }))
+    const current = await readLockMetadata(holder.lockPath)
+    if (current?.ownerId !== holder.metadata.ownerId) {
+      clearInterval(holder.refresher)
+      return
+    }
+    if (holder.releasing) return
+    // tmp+rename: the lock file is replaced atomically, so a crash mid-refresh
+    // leaves the previous (parseable) content, never a truncated half-write
+    // that recoverStaleLock could only escape via the mtime fallback.
+    const tmpPath = `${holder.lockPath}.refresh.tmp`
+    await writeFile(
+      tmpPath,
+      JSON.stringify({ ...holder.metadata, ts: Date.now() }),
+    )
+    if (holder.releasing) {
+      await rm(tmpPath, { force: true })
+      return
+    }
+    await rename(tmpPath, holder.lockPath)
+    holder.lastLiveAt = Date.now()
   } catch {
     // best-effort: a failed refresh leaves the previous ts; the holder only
     // becomes stealable if refreshes keep failing past the TTL
@@ -115,7 +155,23 @@ async function refreshLockTimestamp(lockPath, metadata, refresher) {
 async function recoverStaleLock(lockPath, staleMs) {
   if (!existsSync(lockPath)) return false
   const metadata = await readLockMetadata(lockPath)
-  if (!metadata) return false
+  if (!metadata) {
+    // Unreadable lock (a crash between the open('wx') and the initial
+    // metadata write, or hand-tampering). Its contents will never heal, so
+    // recover once the FILE has stopped changing for a full TTL — a lock
+    // mid-creation has a fresh mtime and is left alone.
+    try {
+      const { mtimeMs } = await stat(lockPath)
+      if (Date.now() - mtimeMs >= staleMs) {
+        await rm(lockPath, { force: true })
+        return true
+      }
+    } catch {
+      // raced away — treat as recovered so the caller retries open('wx')
+      return !existsSync(lockPath)
+    }
+    return false
+  }
   if (Date.now() - metadata.ts >= staleMs) {
     // The TTL is authoritative: live holders refresh ts (above), so an
     // over-age lock is a crashed or wedged holder even when its recorded pid

@@ -7,7 +7,7 @@ import {
   readdirSync,
   statSync,
 } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { hostname, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -519,6 +519,62 @@ test('the refresher stops instead of clobbering a lock that changed hands', asyn
     const current = JSON.parse(readFileSync(lockPath, 'utf8'))
     assert.equal(current.ownerId, 'thief-owner', 'stolen lock must not be clobbered back')
     await assert.rejects(lock.release(), /Lock ownership changed/)
+  })
+})
+
+test('acquireLock recovers an UNREADABLE lock once its file stops changing for a TTL', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-corruptlock-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    await mkdir(store.storePath, { recursive: true })
+    const lockPath = join(store.storePath, 'snapshot.lock')
+    // A crash mid-write can leave the lock unparseable; its CONTENTS will
+    // never heal, so recovery keys off the file's mtime instead.
+    await writeFile(lockPath, '{"ownerId": "trunc')
+    const past = new Date(Date.now() - 10_000)
+    await utimes(lockPath, past, past)
+
+    const lock = await acquireLock({ workspaceRoot, timeoutMs: 2_000, staleMs: 500 })
+    assert.ok(lock.ownerId)
+    await lock.release()
+  })
+})
+
+test('acquireLock leaves a FRESH unreadable lock alone (mid-creation window)', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-freshcorrupt-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    await mkdir(store.storePath, { recursive: true })
+    // Fresh mtime: could be another process between open('wx') and its first
+    // metadata write — must NOT be stolen.
+    await writeFile(join(store.storePath, 'snapshot.lock'), 'not json yet')
+
+    await assert.rejects(
+      () => acquireLock({ workspaceRoot, timeoutMs: 300 }),
+      /Timed out acquiring snapshot lock/,
+    )
+  })
+})
+
+test('release leaves no zombie lock behind an in-flight refresh tick', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-zombie-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    const lockPath = join(store.storePath, 'snapshot.lock')
+    // Tight ticks maximize the chance a refresh is mid-write at release time;
+    // release must await the in-flight tick so the unlink is final.
+    for (let round = 0; round < 25; round += 1) {
+      const lock = await acquireLock({ workspaceRoot, staleMs: 30 })
+      await delay(12)
+      await lock.release()
+      assert.equal(existsSync(lockPath), false, `zombie lock after round ${round}`)
+      await delay(15)
+      assert.equal(
+        existsSync(lockPath),
+        false,
+        `lock re-created by a stray refresh after round ${round}`,
+      )
+    }
   })
 })
 
