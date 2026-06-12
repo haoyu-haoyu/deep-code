@@ -410,6 +410,118 @@ test('acquireLock recovers stale lock files', async () => {
   })
 })
 
+test('acquireLock recovers a crashed holder whose pid was recycled to a live process', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-recycled-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    await mkdir(store.storePath, { recursive: true })
+    // A crashed holder's lock whose pid now belongs to a LIVE process (our
+    // own pid — maximally alive). The old pid-AND-TTL rule never recovered
+    // this: every acquisition stalled the full timeout, forever.
+    await writeFile(
+      join(store.storePath, 'snapshot.lock'),
+      JSON.stringify({
+        ownerId: 'crashed-owner',
+        pid: process.pid,
+        ts: Date.now() - 1_000,
+        hostname: hostname(),
+      }),
+    )
+
+    const started = Date.now()
+    const lock = await acquireLock({ workspaceRoot, timeoutMs: 5_000, staleMs: 500 })
+    assert.ok(Date.now() - started < 2_000, 'TTL recovery must not wait out the timeout')
+    assert.notEqual(lock.ownerId, 'crashed-owner')
+    await lock.release()
+  })
+})
+
+test('acquireLock fast-recovers a dead same-host pid without waiting out the TTL', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-deadpid-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    await mkdir(store.storePath, { recursive: true })
+    // Fresh ts (well inside the default 60s TTL) but a dead pid on THIS host.
+    await writeFile(
+      join(store.storePath, 'snapshot.lock'),
+      JSON.stringify({
+        ownerId: 'dead-owner',
+        pid: 99_999_999,
+        ts: Date.now(),
+        hostname: hostname(),
+      }),
+    )
+
+    const lock = await acquireLock({ workspaceRoot, timeoutMs: 1_000 })
+    assert.notEqual(lock.ownerId, 'dead-owner')
+    await lock.release()
+  })
+})
+
+test('acquireLock does not trust a dead pid recorded by a FOREIGN host', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-foreign-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    await mkdir(store.storePath, { recursive: true })
+    // Fresh foreign-host lock: its pid is meaningless locally, so neither the
+    // fast path nor the TTL applies yet — acquisition must wait (time out).
+    await writeFile(
+      join(store.storePath, 'snapshot.lock'),
+      JSON.stringify({
+        ownerId: 'foreign-owner',
+        pid: 99_999_999,
+        ts: Date.now(),
+        hostname: 'some-other-host',
+      }),
+    )
+
+    await assert.rejects(
+      () => acquireLock({ workspaceRoot, timeoutMs: 300 }),
+      /Timed out acquiring snapshot lock/,
+    )
+  })
+})
+
+test('a held lock refreshes its timestamp so TTL recovery cannot steal it', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-refresh-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    const staleMs = 90
+    const lock = await acquireLock({ workspaceRoot, staleMs })
+    const lockPath = join(store.storePath, 'snapshot.lock')
+    const initial = JSON.parse(readFileSync(lockPath, 'utf8'))
+
+    // Hold well past the TTL: the refresher must keep ts inside it.
+    await delay(300)
+    const refreshed = JSON.parse(readFileSync(lockPath, 'utf8'))
+    assert.equal(refreshed.ownerId, initial.ownerId)
+    assert.ok(refreshed.ts > initial.ts, 'ts must advance while held')
+    assert.ok(Date.now() - refreshed.ts < staleMs, 'a live holder never looks stale')
+    await lock.release()
+  })
+})
+
+test('the refresher stops instead of clobbering a lock that changed hands', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-stolen-'))
+    const store = resolveSnapshotStore({ workspaceRoot })
+    const lock = await acquireLock({ workspaceRoot, staleMs: 90 })
+    const lockPath = join(store.storePath, 'snapshot.lock')
+    const foreign = {
+      ownerId: 'thief-owner',
+      pid: process.pid,
+      ts: Date.now(),
+      hostname: hostname(),
+    }
+    await writeFile(lockPath, JSON.stringify(foreign))
+
+    await delay(250)
+    const current = JSON.parse(readFileSync(lockPath, 'utf8'))
+    assert.equal(current.ownerId, 'thief-owner', 'stolen lock must not be clobbered back')
+    await assert.rejects(lock.release(), /Lock ownership changed/)
+  })
+})
+
 test('acquireLock refuses release after lock ownership changes', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-owner-'))
