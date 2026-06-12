@@ -90,7 +90,13 @@ async function acquireFileLock({ lockPath, timeoutMs, staleMs }) {
         refresher: null,
       }
       holder.refresher = setInterval(() => {
-        holder.inflight = refreshLockTimestamp(holder)
+        // Chain, never overlap: a tick stalled in slow I/O must finish before
+        // the next starts, and release() awaiting the chain TAIL therefore
+        // awaits every outstanding tick — not just the most recent one.
+        // (refreshLockTimestamp never rejects, so the chain cannot break.)
+        holder.inflight = holder.inflight.then(() =>
+          refreshLockTimestamp(holder),
+        )
       }, Math.max(1, Math.floor(staleMs / 3)))
       holder.refresher.unref?.()
       return {
@@ -141,6 +147,17 @@ async function refreshLockTimestamp(holder) {
       JSON.stringify({ ...holder.metadata, ts: Date.now() }),
     )
     if (holder.releasing) {
+      await rm(tmpPath, { force: true })
+      return
+    }
+    // Final liveness gate, re-evaluated at the last instant before the rename
+    // publishes: the process may have been PAUSED since the ownership re-read
+    // above (SIGSTOP, VM freeze) — long enough for a contender to age this
+    // holder out and take the lock. If our own gap reached the TTL, forfeit
+    // instead of clobbering the thief; the unavoidable residue is a pause
+    // landing entirely between this check and the rename syscall.
+    if (Date.now() - holder.lastLiveAt >= holder.staleMs) {
+      clearInterval(holder.refresher)
       await rm(tmpPath, { force: true })
       return
     }
