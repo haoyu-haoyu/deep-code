@@ -7,7 +7,7 @@ import {
   readdirSync,
   statSync,
 } from 'node:fs'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { hostname, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
@@ -547,6 +547,264 @@ test('restoreSnapshot restores tracked workspace content from a side-git snapsho
     assert.equal(result.snapshotId, snapshot.commitSha)
     assert.equal(result.affectedFileCount, 1)
   })
+})
+
+test('restoreSnapshot deletes files created after the snapshot and re-creates deleted ones (faithful restore)', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-delete-'))
+    await writeFile(join(workspaceRoot, 'kept.txt'), 'original\n')
+    await writeFile(join(workspaceRoot, 'removed-by-turn.txt'), 'should come back\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-del',
+      phase: 'pre',
+    })
+    // the turn modifies a file, deletes one, and creates a new one (+ a new subdir)
+    await writeFile(join(workspaceRoot, 'kept.txt'), 'modified\n')
+    await rm(join(workspaceRoot, 'removed-by-turn.txt'))
+    await writeFile(join(workspaceRoot, 'created-by-turn.txt'), 'model junk\n')
+    await mkdir(join(workspaceRoot, 'newdir'))
+    await writeFile(join(workspaceRoot, 'newdir', 'deep.txt'), 'junk\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    // modified file rolled back, deleted file re-created
+    assert.equal(readFileSync(join(workspaceRoot, 'kept.txt'), 'utf8'), 'original\n')
+    assert.equal(
+      readFileSync(join(workspaceRoot, 'removed-by-turn.txt'), 'utf8'),
+      'should come back\n',
+    )
+    // files created during the turn are removed (the bug: checkout alone left them)
+    assert.equal(
+      existsSync(join(workspaceRoot, 'created-by-turn.txt')),
+      false,
+      'a file created during the turn must be removed by the restore',
+    )
+    assert.equal(existsSync(join(workspaceRoot, 'newdir')), false)
+    // affectedFiles now includes the added file (was previously under-reported)
+    assert.ok(result.affectedFiles.includes('created-by-turn.txt'))
+    assert.ok(result.affectedFiles.includes('kept.txt'))
+    assert.ok(result.affectedFiles.includes('removed-by-turn.txt'))
+  })
+})
+
+test('restoreSnapshot preserves .gitignored artifacts while removing tracked junk', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-ignore-'))
+    await writeFile(join(workspaceRoot, '.gitignore'), 'build/\n')
+    await writeFile(join(workspaceRoot, 'src.txt'), 'orig\n')
+    await mkdir(join(workspaceRoot, 'build'))
+    await writeFile(join(workspaceRoot, 'build', 'artifact.o'), 'pre-existing build output\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-ignore',
+      phase: 'pre',
+    })
+    await writeFile(join(workspaceRoot, 'src.txt'), 'modified\n')
+    await writeFile(join(workspaceRoot, 'junk.txt'), 'remove me\n')
+    await writeFile(join(workspaceRoot, 'build', 'new-artifact.o'), 'new build output\n')
+
+    await restoreSnapshot({ workspaceRoot, snapshotId: snapshot.commitSha })
+
+    assert.equal(readFileSync(join(workspaceRoot, 'src.txt'), 'utf8'), 'orig\n')
+    // non-ignored junk removed
+    assert.equal(existsSync(join(workspaceRoot, 'junk.txt')), false)
+    // ignored build artifacts preserved — clean -fd respects .gitignore so a revert
+    // never nukes node_modules/build (symmetric with capture's `add -A`)
+    assert.equal(existsSync(join(workspaceRoot, 'build', 'artifact.o')), true)
+    assert.equal(existsSync(join(workspaceRoot, 'build', 'new-artifact.o')), true)
+  })
+})
+
+test('restoreSnapshot resolves a file/directory conflict (turn replaced a dir with a file)', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-conflict-'))
+    await mkdir(join(workspaceRoot, 'dir'))
+    await writeFile(join(workspaceRoot, 'dir', 'file.txt'), 'snapshot content\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-conflict',
+      phase: 'pre',
+    })
+    // the turn replaces the directory `dir/` with a plain file named `dir`
+    await rm(join(workspaceRoot, 'dir'), { recursive: true })
+    await writeFile(join(workspaceRoot, 'dir'), 'now a file\n')
+
+    // must not throw (clean removes the conflicting file before checkout-index)
+    await restoreSnapshot({ workspaceRoot, snapshotId: snapshot.commitSha })
+
+    assert.equal(statSync(join(workspaceRoot, 'dir')).isDirectory(), true)
+    assert.equal(
+      readFileSync(join(workspaceRoot, 'dir', 'file.txt'), 'utf8'),
+      'snapshot content\n',
+    )
+  })
+})
+
+test('restoreSnapshot prunes against the snapshot .gitignore, not a broadened in-turn one', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-ignore-broaden-'))
+    await writeFile(join(workspaceRoot, '.gitignore'), '*.log\n')
+    await writeFile(join(workspaceRoot, 'app.js'), 'orig\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-ignore-broaden',
+      phase: 'pre',
+    })
+    // the turn BROADENS .gitignore to also ignore build/, then creates build/junk.txt
+    await writeFile(join(workspaceRoot, '.gitignore'), '*.log\nbuild/\n')
+    await mkdir(join(workspaceRoot, 'build'))
+    await writeFile(join(workspaceRoot, 'build', 'junk.txt'), 'junk\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    // the SNAPSHOT's .gitignore does not ignore build/, so the file (created after
+    // the snapshot) must be removed — the prune runs after the snapshot .gitignore
+    // is restored, not against the live broadened one.
+    assert.equal(existsSync(join(workspaceRoot, 'build', 'junk.txt')), false)
+    assert.equal(readFileSync(join(workspaceRoot, '.gitignore'), 'utf8'), '*.log\n')
+    assert.ok(result.affectedFiles.includes('build/junk.txt'))
+  })
+})
+
+test('restoreSnapshot prunes files hidden by an untracked nested .gitignore the turn created', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-nested-ignore-'))
+    await writeFile(join(workspaceRoot, '.gitignore'), '*.log\n')
+    await writeFile(join(workspaceRoot, 'app.js'), 'orig\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-nested-ignore',
+      phase: 'pre',
+    })
+    // The turn creates a brand-new build/ dir whose OWN untracked .gitignore hides
+    // build/junk.txt. A single `clean -fd` would skip junk.txt (ignored by the live
+    // nested .gitignore) and only remove the .gitignore, leaving junk.txt behind.
+    await mkdir(join(workspaceRoot, 'build'))
+    await writeFile(join(workspaceRoot, 'build', '.gitignore'), 'junk.txt\n')
+    await writeFile(join(workspaceRoot, 'build', 'junk.txt'), 'junk\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    // The iterative prune strips the .gitignore first, un-hiding junk.txt next pass.
+    assert.equal(existsSync(join(workspaceRoot, 'build', 'junk.txt')), false)
+    assert.equal(existsSync(join(workspaceRoot, 'build')), false)
+    assert.ok(result.affectedFiles.includes('build/.gitignore'))
+    assert.ok(result.affectedFiles.includes('build/junk.txt'))
+  })
+})
+
+test('restoreSnapshot converges on a deep chain of nested untracked .gitignore files', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-deep-ignore-'))
+    await writeFile(join(workspaceRoot, 'keep.txt'), 'keep\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-deep-ignore',
+      phase: 'pre',
+    })
+    // a/.gitignore hides the whole b/ subtree; a/b/.gitignore hides secret.txt.
+    await mkdir(join(workspaceRoot, 'a', 'b'), { recursive: true })
+    await writeFile(join(workspaceRoot, 'a', '.gitignore'), 'b/\n')
+    await writeFile(join(workspaceRoot, 'a', 'b', '.gitignore'), 'secret.txt\n')
+    await writeFile(join(workspaceRoot, 'a', 'b', 'secret.txt'), 'secret\n')
+    await writeFile(join(workspaceRoot, 'a', 'b', 'visible.txt'), 'visible\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    assert.equal(existsSync(join(workspaceRoot, 'a')), false)
+    assert.equal(existsSync(join(workspaceRoot, 'keep.txt')), true)
+    for (const path of [
+      'a/.gitignore',
+      'a/b/.gitignore',
+      'a/b/secret.txt',
+      'a/b/visible.txt',
+    ]) {
+      assert.ok(result.affectedFiles.includes(path), `affectedFiles missing ${path}`)
+    }
+  })
+})
+
+test('restoreSnapshot prunes a self-hiding .gitignore chain deeper than any fixed pass cap', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-deepcap-'))
+    await writeFile(join(workspaceRoot, 'keep.txt'), 'keep\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-deep-cap',
+      phase: 'pre',
+    })
+    // Build a chain where each dir's .gitignore hides ONLY the next dir, so the
+    // prune can peel just one layer per pass. A depth past any small fixed cap
+    // (the loop has none — it terminates by monotonic shrink) proves the deepest
+    // leaf is still removed and reported, not silently left behind.
+    const depth = 70
+    const segments = []
+    for (let level = 1; level <= depth; level += 1) {
+      segments.push(`d${level}`)
+      await mkdir(join(workspaceRoot, ...segments), { recursive: true })
+      const gitignoreBody = level < depth ? `d${level + 1}/\n` : 'secret.txt\n'
+      await writeFile(join(workspaceRoot, ...segments, '.gitignore'), gitignoreBody)
+    }
+    await writeFile(join(workspaceRoot, ...segments, 'secret.txt'), 'secret\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    const secretPath = [...segments, 'secret.txt'].join('/')
+    assert.equal(existsSync(join(workspaceRoot, 'd1')), false)
+    assert.equal(existsSync(join(workspaceRoot, ...segments, 'secret.txt')), false)
+    assert.equal(existsSync(join(workspaceRoot, 'keep.txt')), true)
+    assert.ok(
+      result.affectedFiles.includes(secretPath),
+      `deepest leaf ${secretPath} missing from affectedFiles`,
+    )
+  })
+})
+
+test('restoreSnapshot reports non-ASCII affected filenames intact (not C-quoted)', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-cjk-'))
+    await writeFile(join(workspaceRoot, '配置.txt'), 'orig\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-cjk',
+      phase: 'pre',
+    })
+    await writeFile(join(workspaceRoot, '配置.txt'), 'modified\n')
+    await writeFile(join(workspaceRoot, '新建文件.txt'), 'created in turn\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    assert.equal(readFileSync(join(workspaceRoot, '配置.txt'), 'utf8'), 'orig\n')
+    assert.equal(existsSync(join(workspaceRoot, '新建文件.txt')), false)
+    // -z parsing keeps the raw UTF-8 names — no "\351\205\215\347\275\256" garbage
+    assert.ok(result.affectedFiles.includes('配置.txt'))
+    assert.ok(result.affectedFiles.includes('新建文件.txt'))
+  })
+})
+
+test('revert_turn permission result warns that files created after the snapshot are removed', () => {
+  const result = buildRevertTurnPermissionResult({ turn_id: 5 })
+  assert.match(result.message, /remove/i)
+  assert.match(result.decisionReason.reason, /removing files created after the snapshot/i)
 })
 
 test('performRestore requires confirmation before checkout', async () => {

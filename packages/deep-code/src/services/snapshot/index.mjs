@@ -1,3 +1,5 @@
+import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { checkAndPrune } from './diskCap.mjs'
 import { acquireLock } from './lock.mjs'
 import { appendManifest, readManifest } from './manifest.mjs'
@@ -92,17 +94,101 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
       throw new Error(`Snapshot not found: ${snapshotId}`)
     }
 
-    const affectedFiles = await listWorkingTreeDiffFiles(
-      store.gitDir,
-      normalizedWorkspaceRoot,
-      snapshotId,
-    )
+    // Reset the side-git index to the snapshot tree so everything below reckons
+    // "in the snapshot" against the snapshot itself, never a stale post-turn
+    // `add -A` index that may have staged the very files the turn created. `-z`
+    // gives raw NUL-separated paths so non-ASCII / spaced filenames aren't
+    // C-quoted in the reported set.
     await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
-      'checkout',
+      'read-tree',
       snapshotId,
-      '--',
-      '.',
     ])
+
+    // Tracked modifications + deletions, captured BEFORE the worktree is restored
+    // (afterwards the diff would be empty). Content-accurate, .gitignore-independent.
+    const trackedChanges = normalizeNulFileList(
+      await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+        'diff',
+        '--name-only',
+        '-z',
+        snapshotId,
+        '--',
+        '.',
+      ]),
+    )
+
+    // Worktree paths that conflict by TYPE with a snapshot path (a turn replaced a
+    // tracked directory `dir/` with a file `dir`, or vice versa). checkout-index
+    // would error on these, leaving a half-restored workspace, so remove them
+    // first. `ls-files --killed` reckons file/dir conflicts against the index (just
+    // reset to the snapshot) and is independent of .gitignore.
+    const killedPaths = normalizeNulFileList(
+      await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+        'ls-files',
+        '--killed',
+        '-z',
+      ]),
+    )
+    for (const killed of killedPaths) {
+      await rm(join(normalizedWorkspaceRoot, killed), {
+        recursive: true,
+        force: true,
+      })
+    }
+
+    // Materialize every snapshot path — re-creating files deleted during the turn
+    // into any needed subdirectories, AND restoring the snapshot's own tracked
+    // .gitignore files — BEFORE the prune, so `clean` reckons "ignored" against the
+    // SNAPSHOT's ignore rules. (If a turn broadened a tracked .gitignore and created
+    // files under the new rule, pruning against the live .gitignore would wrongly
+    // preserve them.)
+    await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+      'checkout-index',
+      '-f',
+      '-a',
+    ])
+
+    // Prune untracked files the turn created (absent from the snapshot), keeping
+    // artifacts ignored by the now-restored snapshot .gitignore (node_modules,
+    // build outputs) — symmetric with capture's `add -A`. A single `clean -fd` is
+    // not enough: a turn may have created an UNTRACKED nested .gitignore (e.g.
+    // `build/.gitignore` listing `junk.txt`) that hides its siblings from BOTH the
+    // added-files listing AND `clean`, leaving them behind. Each pass removes the
+    // outermost untracked, non-ignored frontier — including any such turn-created
+    // .gitignore — which un-shadows the next layer, so loop to a fixpoint however
+    // deeply the ignore files are nested.
+    //
+    // Termination is guaranteed without a pass cap: `clean` only ever DELETES, so
+    // the finite set of on-disk untracked files strictly shrinks every pass that
+    // removes anything. The loop ends when the frontier is empty (fully pruned) or
+    // `clean` removes nothing — e.g. a nested git repo it refuses to touch, the
+    // same residual a plain `clean -fd` would leave. All commands run through the
+    // side-git (--git-dir/--work-tree), never the user's .git.
+    const addedFiles = []
+    for (;;) {
+      const frontier = normalizeNulFileList(
+        await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+          'ls-files',
+          '--others',
+          '--exclude-standard',
+          '-z',
+        ]),
+      )
+      if (frontier.length === 0) break
+      for (const file of frontier) addedFiles.push(file)
+      const removed = await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
+        'clean',
+        '-fd',
+      ])
+      // No-progress guard: `clean` prints a line per removed path, so empty output
+      // means it removed nothing this pass (e.g. a nested git repo it refuses to
+      // touch). Stop rather than spin forever.
+      if (removed.trim() === '') break
+    }
+
+    const affectedFiles = [
+      ...new Set([...trackedChanges, ...killedPaths, ...addedFiles]),
+    ].sort()
 
     return {
       snapshotId,
@@ -149,15 +235,11 @@ function normalizeFileList(raw) {
     .filter(Boolean)
 }
 
-async function listWorkingTreeDiffFiles(gitDir, workTree, commitSha) {
-  const raw = await runSideGit(gitDir, workTree, [
-    'diff',
-    '--name-only',
-    commitSha,
-    '--',
-    '.',
-  ])
-  return normalizeFileList(raw)
+// Parse a NUL-separated (`-z`) git path list. Unlike normalizeFileList this does
+// NOT trim or interpret the bytes, so non-ASCII / spaced filenames survive intact
+// (git only C-quotes paths in the newline-separated output).
+function normalizeNulFileList(raw) {
+  return raw.split('\0').filter(Boolean)
 }
 
 function snapshotRefForCommit(commitSha) {
