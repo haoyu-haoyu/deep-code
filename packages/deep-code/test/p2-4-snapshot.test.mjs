@@ -35,6 +35,7 @@ import {
   captureTurnSnapshot,
   formatSnapshotLifecycleError,
   getTurnEndSnapshotPhase,
+  nextSnapshotTurnId,
 } from '../src/services/snapshot/turnLifecycle.mjs'
 import {
   formatRestoreSnapshotLine,
@@ -522,6 +523,95 @@ test('resolveRevertTurnSnapshot falls back to newest match when no entry carries
     listSnapshotsFn,
   })
   assert.equal(selected.commitSha, 'new')
+})
+
+test('nextSnapshotTurnId continues the session numbering across process restarts and resume', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-next-turn-'))
+    // Fresh session, empty manifest → turn-1.
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      'turn-1',
+    )
+    await writeFile(join(workspaceRoot, 'app.js'), 'v1\n')
+    for (let turn = 1; turn <= 3; turn += 1) {
+      await createSnapshot({
+        workspaceRoot,
+        turnId: `turn-${turn}`,
+        phase: 'pre',
+        sessionId: 'session-a',
+      })
+    }
+    // A restarted process (--resume) or /resume derives the NEXT ordinal from
+    // the manifest, not from its restarted local counter.
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      'turn-4',
+    )
+    // Another session's numbering is independent.
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-b' }),
+      'turn-1',
+    )
+  })
+})
+
+test('nextSnapshotTurnId stays monotonic past pruned-prefix and legacy uuid entries', async () => {
+  const readManifestFn = async () => [
+    { turnId: 'a2c4e6f8-uuid-legacy', phase: 'pre', sessionId: 'session-a' },
+    // turns 1-3 pruned by diskCap; only 4 and 5 survive
+    { turnId: 'turn-4', phase: 'pre', sessionId: 'session-a' },
+    { turnId: 'turn-5', phase: 'pre', sessionId: 'session-a' },
+    { turnId: 'turn-9', phase: 'pre', sessionId: 'session-other' },
+  ]
+  assert.equal(
+    await nextSnapshotTurnId({ sessionId: 'session-a', readManifestFn }),
+    'turn-6',
+  )
+})
+
+test('revert_turn after /resume targets the original turn, not a renumbered duplicate', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-resume-revert-'))
+    const target = join(workspaceRoot, 'app.js')
+    // Session A: turns 1-3, each changing the file.
+    const turnShas = {}
+    for (let turn = 1; turn <= 3; turn += 1) {
+      await writeFile(target, `content before turn ${turn}\n`)
+      const entry = await createSnapshot({
+        workspaceRoot,
+        turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+        phase: 'pre',
+        sessionId: 'session-a',
+      })
+      turnShas[turn] = entry.commitSha
+    }
+    assert.equal(turnShas[3] !== undefined, true)
+
+    // The user resumes session A in a NEW process (restarted local counter).
+    // The next snapshot must be turn-4 — a restarted generation counter would
+    // have written a colliding turn-1 and shadowed the original.
+    await writeFile(target, 'content before resumed turn\n')
+    const resumed = await createSnapshot({
+      workspaceRoot,
+      turnId: await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      phase: 'pre',
+      sessionId: 'session-a',
+    })
+    assert.equal(resumed.turnId, 'turn-4')
+
+    // revert_turn({turn_id: 2}) resolves to the ORIGINAL turn 2 snapshot.
+    const result = await performRevertTurn({
+      workspaceRoot,
+      sessionId: 'session-a',
+      input: { turn_id: 2 },
+    })
+    assert.equal(result.snapshotId, turnShas[2])
+    assert.equal(
+      readFileSync(target, 'utf8'),
+      'content before turn 2\n',
+    )
+  })
 })
 
 test('a REPL-shaped snapshot (generation key + sessionId) is revertable by numeric turn_id end-to-end', async () => {
