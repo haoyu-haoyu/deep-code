@@ -573,6 +573,59 @@ test('nextSnapshotTurnId stays monotonic past pruned-prefix and legacy uuid entr
   })
 })
 
+test('concurrent issuance for two sessions keeps both reservations (no lost update)', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-ordinal-race-'))
+    // Unserialized, both reads happen before either write and the second
+    // write drops the first session's reservation last-writer-wins; the
+    // snapshot-lock serialization makes both land.
+    const [a, b] = await Promise.all([
+      nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-b' }),
+    ])
+    assert.equal(a, 'turn-1')
+    assert.equal(b, 'turn-1')
+    // Both high-water marks must have survived: the next issuance for each
+    // session continues from its own reservation.
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+      'turn-2',
+    )
+    assert.equal(
+      await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-b' }),
+      'turn-2',
+    )
+  })
+})
+
+test('a tampered ordinal file value cannot produce an unmatchable turn key', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-ordinal-tamper-'))
+    await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-2',
+      phase: 'pre',
+      sessionId: 'session-a',
+    })
+    const store = resolveSnapshotStore({ workspaceRoot })
+    for (const tampered of [
+      '{"session-a": 1e99}',
+      '{"session-a": "999abc"}',
+      '{"session-a": -5}',
+      '[]',
+      'null',
+      'garbage{{',
+    ]) {
+      await writeFile(join(store.storePath, 'turn-ordinals.json'), tampered)
+      assert.equal(
+        await nextSnapshotTurnId({ workspaceRoot, sessionId: 'session-a' }),
+        'turn-3',
+        `tampered value ${tampered} must degrade to the manifest floor`,
+      )
+    }
+  })
+})
+
 test('an issued ordinal is consumed even when the turn never persists a snapshot', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-reserve-'))

@@ -2,6 +2,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { atomicWriteFile } from '../../utils/atomicWrite.mjs'
 import { createSnapshot } from './index.mjs'
+import { acquireLock } from './lock.mjs'
 import { readManifest } from './manifest.mjs'
 import { resolveSnapshotStore } from './paths.mjs'
 
@@ -70,25 +71,41 @@ export async function nextSnapshotTurnId({
   sessionId,
   readManifestFn = readManifest,
 }) {
-  const store = resolveSnapshotStore({ workspaceRoot })
-  const entries = await readManifestFn(store.manifestPath)
-  let maxTurn = 0
-  for (const entry of entries) {
-    if (sessionId !== undefined && entry.sessionId !== sessionId) continue
-    const match = /^turn-(\d+)$/.exec(String(entry.turnId))
-    if (!match) continue
-    const value = Number(match[1])
-    if (value > maxTurn) maxTurn = value
+  if (sessionId === undefined) {
+    const store = resolveSnapshotStore({ workspaceRoot })
+    const entries = await readManifestFn(store.manifestPath)
+    return `turn-${manifestTurnFloor(entries, sessionId) + 1}`
   }
 
-  if (sessionId === undefined) {
-    return `turn-${maxTurn + 1}`
+  // The reservation is a cross-process read-modify-write: serialize it through
+  // the snapshot lock (the same one createSnapshot takes — no nesting, the
+  // capture acquires it after this returns) so a concurrent process's write
+  // cannot drop this reservation last-writer-wins. A lock failure degrades to
+  // the lock-free path rather than blocking the turn.
+  let lock = null
+  try {
+    lock = await acquireLock({ workspaceRoot, timeoutMs: 5_000 })
+  } catch {
+    lock = null
   }
+  try {
+    return await issueNextTurnId({ workspaceRoot, sessionId, readManifestFn })
+  } finally {
+    await lock?.release()
+  }
+}
+
+async function issueNextTurnId({ workspaceRoot, sessionId, readManifestFn }) {
+  const store = resolveSnapshotStore({ workspaceRoot })
+  const entries = await readManifestFn(store.manifestPath)
+  let maxTurn = manifestTurnFloor(entries, sessionId)
 
   const ordinalsPath = join(store.storePath, TURN_ORDINALS_FILE)
   const ordinals = await readTurnOrdinals(ordinalsPath)
   const issued = Number(ordinals[sessionId])
-  if (Number.isInteger(issued) && issued > maxTurn) {
+  // isSafeInteger also rejects tampered values like 1e99 that would otherwise
+  // produce an unmatchable "turn-1e+99" key.
+  if (Number.isSafeInteger(issued) && issued > maxTurn) {
     maxTurn = issued
   }
   const next = maxTurn + 1
@@ -107,6 +124,18 @@ export async function nextSnapshotTurnId({
     // degrade silently — the manifest floor still bounds the common case
   }
   return `turn-${next}`
+}
+
+function manifestTurnFloor(entries, sessionId) {
+  let maxTurn = 0
+  for (const entry of entries) {
+    if (sessionId !== undefined && entry.sessionId !== sessionId) continue
+    const match = /^turn-(\d+)$/.exec(String(entry.turnId))
+    if (!match) continue
+    const value = Number(match[1])
+    if (value > maxTurn) maxTurn = value
+  }
+  return maxTurn
 }
 
 async function readTurnOrdinals(ordinalsPath) {
