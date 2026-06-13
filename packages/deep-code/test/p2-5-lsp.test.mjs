@@ -264,6 +264,53 @@ test('LSP instance bounds a stuck request via config.requestTimeout and stays ru
   }
 })
 
+// Build a client with a small message ceiling so the framing-limit paths are
+// cheap to exercise (a real client uses the 64 MiB default).
+function createBoundedClient(serverName, maxMessageBytes) {
+  return createLSPClientCore({
+    serverName,
+    logForDebugging() {},
+    logError() {},
+    subprocessEnv: () => process.env,
+    maxMessageBytes,
+  })
+}
+
+test('LSP client rejects a frame whose declared Content-Length exceeds the limit (no unbounded stall)', async () => {
+  const server = await createFakeLspServer({ behavior: 'oversized-content-length' })
+  const client = createBoundedClient('fake-ts', 1024)
+  try {
+    await client.start(process.execPath, [server.scriptPath], { env: server.env() })
+    await client.initialize({ processId: process.pid })
+    // The server answers the hover with `Content-Length: 5000` (> 1024) then a
+    // few bytes and keeps the pipe open. Without the ceiling this request would
+    // pend forever waiting for 5000 bytes; the framing error must reject it.
+    // timeoutMs:0 disables the per-request timeout so the FRAMING error is what
+    // rejects (isolates this fix from the request-timeout one).
+    await assert.rejects(
+      () => client.sendRequest('textDocument/hover', {}, 0),
+      /framing error.*exceeds the 1024-byte limit/,
+    )
+  } finally {
+    await client.stop().catch(() => {})
+  }
+})
+
+test('LSP client rejects a header flood that never forms a frame terminator', async () => {
+  const server = await createFakeLspServer({ behavior: 'header-flood' })
+  const client = createBoundedClient('fake-ts', 1024)
+  try {
+    await client.start(process.execPath, [server.scriptPath], { env: server.env() })
+    await client.initialize({ processId: process.pid })
+    await assert.rejects(
+      () => client.sendRequest('textDocument/hover', {}, 0),
+      /framing error.*no frame terminator/,
+    )
+  } finally {
+    await client.stop().catch(() => {})
+  }
+})
+
 test('LSP manager re-sends didOpen to a restarted server instead of trusting stale openedFiles', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-lsp-reopen-'))
   const filePath = join(workspaceRoot, 'demo.ts')
@@ -1137,6 +1184,18 @@ function handleMessage(message) {
     if (behavior === 'swallow-request') {
       // Accept the request (already logged) but never answer it — a
       // healthy-but-stuck server that hangs the client absent a request timeout.
+      return
+    }
+    if (behavior === 'oversized-content-length') {
+      // Declare a body far larger than it ever sends (and keep the pipe open) —
+      // the client must reject it as a framing error, not stall forever.
+      process.stdout.write('Content-Length: 5000\r\n\r\n')
+      process.stdout.write('partial')
+      return
+    }
+    if (behavior === 'header-flood') {
+      // Stream bytes that never form a \r\n\r\n frame terminator.
+      process.stdout.write('Content-Length: 12'.repeat(500))
       return
     }
     writeMessage({ jsonrpc: '2.0', id: message.id, result: null })
