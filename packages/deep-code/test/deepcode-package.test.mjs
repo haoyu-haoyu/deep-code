@@ -639,6 +639,72 @@ test('Deep Code front controller delegates interactive startup to full TUI by de
   )
 })
 
+test('resolveFullCliExitCode preserves code, maps signals to 128+signum', async () => {
+  const { resolveFullCliExitCode } = await import('../src/deepcode/front-controller.mjs')
+  // a numeric exit code passes through (incl 0)
+  assert.equal(resolveFullCliExitCode(0, null), 0)
+  assert.equal(resolveFullCliExitCode(7, null), 7)
+  // a signalled child maps to the shell convention 128 + signum
+  assert.equal(resolveFullCliExitCode(null, 'SIGTERM'), 143)
+  assert.equal(resolveFullCliExitCode(null, 'SIGINT'), 130)
+  assert.equal(resolveFullCliExitCode(null, 'SIGHUP'), 129)
+  assert.equal(resolveFullCliExitCode(null, 'SIGKILL'), 137)
+  // neither code nor signal → 1; unknown signal name → 128+1
+  assert.equal(resolveFullCliExitCode(null, null), 1)
+  assert.equal(resolveFullCliExitCode(undefined, undefined), 1)
+  assert.equal(resolveFullCliExitCode(null, 'SIGMADEUP'), 129)
+})
+
+test('forwardSignalsToChild forwards signals to the child and unsubscribes', async () => {
+  const { forwardSignalsToChild } = await import('../src/deepcode/front-controller.mjs')
+  const makeFakeProc = platform => {
+    const listeners = new Map()
+    return {
+      platform,
+      on: (sig, h) => {
+        const a = listeners.get(sig) ?? []
+        a.push(h)
+        listeners.set(sig, a)
+      },
+      removeListener: (sig, h) => {
+        listeners.set(sig, (listeners.get(sig) ?? []).filter(x => x !== h))
+      },
+      emit: sig => (listeners.get(sig) ?? []).forEach(h => h()),
+      count: sig => (listeners.get(sig) ?? []).length,
+    }
+  }
+  const killed = []
+  const child = { kill: sig => killed.push(sig) }
+
+  // POSIX: SIGINT/SIGTERM/SIGHUP forwarded
+  const proc = makeFakeProc('linux')
+  const unsub = forwardSignalsToChild(child, proc)
+  proc.emit('SIGTERM')
+  proc.emit('SIGINT')
+  proc.emit('SIGHUP')
+  assert.deepEqual(killed, ['SIGTERM', 'SIGINT', 'SIGHUP'])
+  // unsubscribe removes every handler so a later signal isn't forwarded
+  unsub()
+  assert.equal(proc.count('SIGTERM'), 0)
+  assert.equal(proc.count('SIGINT'), 0)
+  assert.equal(proc.count('SIGHUP'), 0)
+  proc.emit('SIGTERM')
+  assert.deepEqual(killed, ['SIGTERM', 'SIGINT', 'SIGHUP'])
+
+  // Windows: SIGHUP is skipped
+  const winProc = makeFakeProc('win32')
+  forwardSignalsToChild(child, winProc)
+  assert.equal(winProc.count('SIGINT'), 1)
+  assert.equal(winProc.count('SIGTERM'), 1)
+  assert.equal(winProc.count('SIGHUP'), 0)
+
+  // a child that's already gone (kill throws) doesn't blow up the handler
+  const deadChild = { kill: () => { throw new Error('ESRCH') } }
+  const proc2 = makeFakeProc('linux')
+  forwardSignalsToChild(deadChild, proc2)
+  assert.doesNotThrow(() => proc2.emit('SIGTERM'))
+})
+
 test('Deep Code front controller uses native interactive only when explicitly forced', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-delegate-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')
@@ -678,6 +744,51 @@ test('Deep Code front controller uses native interactive only when explicitly fo
   assert.doesNotMatch(result.stdout, /deepcode>/)
   assert.doesNotMatch(result.stdout, /Claude|Anthropic/)
   assert.doesNotMatch(result.stdout, /should-not-delegate-full-cli-tui/)
+})
+
+test('delegateToFullCli surfaces the full-CLI child exit code instead of masking it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-exit-'))
+  const fakeFullCli = join(dir, 'deepcode-full.mjs')
+  // child exits non-zero; the wrapper must propagate the same code (not 1)
+  writeFileSync(fakeFullCli, ['#!/usr/bin/env node', 'process.exit(7)'].join('\n'))
+
+  const result = spawnSync('node', [resolve(root, rootPackage.bin.deepcode), '-p', 'x'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DEEPCODE_FORCE_NATIVE_INTERACTIVE: '1',
+      DEEPCODE_FULL_CLI_PATH: fakeFullCli,
+      DEEPCODE_PROVIDER: 'deepseek',
+    },
+  })
+  assert.equal(result.status, 7, result.stderr)
+})
+
+test('native interactive survives a failing turn (no wedge): prints the error and exits cleanly on EOF', () => {
+  // Point the provider at a refused port so the turn throws immediately
+  // (ECONNREFUSED). With stdin closed after the prompt (spawnSync input), the
+  // session must catch the error, return to the prompt, hit EOF, close the
+  // reader, and exit 0 — NOT crash with the terminal left in raw mode.
+  const result = spawnSync('node', [resolve(root, rootPackage.bin.deepcode)], {
+    cwd: root,
+    encoding: 'utf8',
+    input: 'hello\n',
+    timeout: 30_000,
+    env: {
+      ...process.env,
+      DEEPCODE_FORCE_NATIVE_INTERACTIVE: '1',
+      DEEPCODE_PROVIDER: 'deepseek',
+      DEEPSEEK_API_KEY: 'sk-test-not-real',
+      DEEPSEEK_BASE_URL: 'http://127.0.0.1:1/v1',
+      DEEPCODE_REQUEST_TIMEOUT_MS: '4000',
+    },
+  })
+  assert.equal(result.signal, null, `should not be killed by timeout: ${result.signal}`)
+  assert.equal(result.status, 0, result.stderr)
+  // the turn error was surfaced, and the welcome (proof the loop ran) printed
+  assert.match(result.stdout, /Welcome back/)
+  assert.notEqual(result.stderr.trim(), '', 'the failing turn should print an error')
 })
 
 test('Deep Code front controller delegates bare interactive startup to full TUI', () => {
