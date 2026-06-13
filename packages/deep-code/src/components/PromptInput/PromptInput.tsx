@@ -107,6 +107,7 @@ import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js';
 import { TeamsDialog } from '../teams/TeamsDialog.js';
 import VimTextInput from '../VimTextInput.js';
 import { getModeFromInput, getValueFromInput } from './inputModes.js';
+import { reconcilePasteId } from './pasteId.mjs';
 import { FOOTER_TEMPORARY_STATUS_TIMEOUT, Notifications } from './Notifications.js';
 import PromptInputFooter from './PromptInputFooter.js';
 import type { SuggestionItem } from './PromptInputFooterSuggestions.js';
@@ -1041,7 +1042,8 @@ function PromptInput({
   function onImagePaste(image: string, mediaType?: string, filename?: string, dimensions?: ImageDimensions, sourcePath?: string) {
     logEvent('tengu_paste_image', {});
     onModeChange('prompt');
-    const pasteId = nextPasteIdRef.current++;
+    const pasteId = reconcilePasteId(nextPasteIdRef.current, pastedContents, parseReferences(input).map(r => r.id));
+    nextPasteIdRef.current = pasteId + 1;
     const newContent: PastedContent = {
       id: pasteId,
       type: 'image',
@@ -1112,7 +1114,8 @@ function PromptInput({
     // Use special handling for long pasted text (>PASTE_THRESHOLD chars)
     // or if it exceeds the number of lines we want to show
     if (text.length > PASTE_THRESHOLD || numLines > maxLines) {
-      const pasteId = nextPasteIdRef.current++;
+      const pasteId = reconcilePasteId(nextPasteIdRef.current, pastedContents, parseReferences(input).map(r => r.id));
+      nextPasteIdRef.current = pasteId + 1;
       const newContent: PastedContent = {
         id: pasteId,
         type: 'text',

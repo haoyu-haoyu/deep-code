@@ -105,6 +105,7 @@ jobs:
             test/edit-delete-occurrences.test.mjs \
             test/utf8-tail.test.mjs \
             test/word-diff-guard.test.mjs \
+            test/paste-id.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \
             test/sandbox-fortress/integration/*.test.mjs \
             test/sandbox-fortress/redteam/*.test.mjs

@@ -1,5 +1,6 @@
-import { getPastedTextRefNumLines } from 'src/history.js'
+import { getPastedTextRefNumLines, parseReferences } from 'src/history.js'
 import type { PastedContent } from 'src/utils/config.js'
+import { reconcilePasteId } from './pasteId.mjs'
 
 const TRUNCATION_THRESHOLD = 10000 // Characters before we truncate
 const PREVIEW_LENGTH = 1000 // Characters to show at start and end
@@ -62,9 +63,15 @@ export function maybeTruncateInput(
   input: string,
   pastedContents: Record<number, PastedContent>,
 ): { newInput: string; newPastedContents: Record<number, PastedContent> } {
-  // Get the next available ID for the truncated content
-  const existingIds = Object.keys(pastedContents).map(Number)
-  const nextPasteId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1
+  // Get the next available ID for the truncated content. Share the allocation
+  // rule with PromptInput's paste counter so the two sites can't mint the same
+  // id (see pasteId.mjs): reconcile against both the live map keys and any
+  // paste refs already in the input text.
+  const nextPasteId = reconcilePasteId(
+    1,
+    pastedContents,
+    parseReferences(input).map(r => r.id),
+  )
 
   // Apply truncation
   const { truncatedText, placeholderContent } = maybeTruncateMessageForInput(
