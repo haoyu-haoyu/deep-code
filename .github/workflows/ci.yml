@@ -86,7 +86,6 @@ jobs:
             test/phase5-perf-compare.test.mjs \
             test/phase5-ci-workflow.test.mjs \
             test/a1-mcp-nonblocking.test.mjs \
-            test/mcp-prompt-args.test.mjs \
             test/sanitization.test.mjs \
             test/redact.test.mjs \
             test/read-text-result-classify.test.mjs \

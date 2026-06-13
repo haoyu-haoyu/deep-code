@@ -40,7 +40,7 @@ import mapValues from 'lodash-es/mapValues.js'
 import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
-import { parseShellArguments } from './promptArguments.mjs'
+import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import { getOauthConfig } from '../../constants/oauth.js'
@@ -2028,10 +2028,11 @@ export const fetchCommandsForClient = memoizeWithLRU(
           argNames,
           source: 'mcp',
           async getPromptForCommand(args: string) {
-            // Shell-aware parse (honors quotes / collapses whitespace), matching the
-            // plugin and skill prompt paths — a naive split(' ') corrupts quoted
-            // multi-word argument values sent to the MCP server.
-            const argsArray = parseShellArguments(args)
+            // Shell-aware parse (honors quotes / collapses whitespace) via the same
+            // canonical parser the plugin and skill prompt paths use — a naive
+            // split(' ') corrupts quoted multi-word argument values sent to the MCP
+            // server.
+            const argsArray = parseArguments(args)
             try {
               const connectedClient = await ensureConnectedClient(client)
               const result = await connectedClient.client.getPrompt({
