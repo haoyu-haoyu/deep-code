@@ -24,7 +24,7 @@ export function mapMessagesToDeepSeek(messages, options = {}) {
       mapped.push(mapClaudeCodeAssistantMessage(message, { reasoningReplay }))
     }
   }
-  return dropOrphanToolMessages(mapped)
+  return dropDanglingToolCalls(dropOrphanToolMessages(mapped))
 }
 
 /**
@@ -61,6 +61,57 @@ function dropOrphanToolMessages(mapped) {
     out.push(entry)
   }
   return out
+}
+
+/**
+ * Drop "dangling" assistant tool_calls — a `tool_calls` entry whose paired
+ * `role:'tool'` result is missing from the request. This is the inverse of
+ * dropOrphanToolMessages and the case its single forward pass cannot see.
+ *
+ * DeepSeek's API hard-rejects an assistant tool_calls message that is not
+ * followed by a tool message for EVERY tool_call_id, so a single dangling call
+ * 400s the whole request — and because the offending assistant message stays in
+ * the transcript, every subsequent turn re-400s, permanently wedging the session.
+ *
+ * The live trigger is a session resumed/forked after a HARD crash that persisted
+ * some but not all results of a multi-tool turn (the model requested tools X and
+ * Y; only X's result reached disk). The resume-time filterUnresolvedToolUses
+ * keeps such a message because not ALL its calls are unresolved, so the dangling
+ * call survives to request-build. We drop the unpaired call rather than inject a
+ * synthetic result, matching this module's drop-not-inject repair discipline.
+ *
+ * Runs AFTER dropOrphanToolMessages so "paired" is reckoned against the tool
+ * results that actually survive — an out-of-order result already dropped as an
+ * orphan does not falsely rescue its call. A fully-paired request (the common
+ * case) is returned untouched, so the cached prefix stays byte-stable.
+ */
+function dropDanglingToolCalls(mapped) {
+  const resolvedToolCallIds = new Set()
+  for (const entry of mapped) {
+    if (entry.role === 'tool' && entry.tool_call_id) {
+      resolvedToolCallIds.add(entry.tool_call_id)
+    }
+  }
+  return mapped.map(entry => {
+    if (entry.role !== 'assistant' || !Array.isArray(entry.tool_calls)) {
+      return entry
+    }
+    // Keep a call only if it can be positively paired with a surviving result. A
+    // call with no id is left as-is (it can't be matched either way, and was
+    // always passed through before — no happy-path byte change).
+    const paired = entry.tool_calls.filter(
+      call => !call?.id || resolvedToolCallIds.has(call.id),
+    )
+    if (paired.length === entry.tool_calls.length) return entry
+    if (paired.length > 0) return { ...entry, tool_calls: paired }
+    // Every call dangled: strip tool_calls and the reasoning that rode them,
+    // leaving the (possibly empty) assistant text turn — which is pairing-neutral.
+    return omitUndefined({
+      ...entry,
+      reasoning_content: undefined,
+      tool_calls: undefined,
+    })
+  })
 }
 
 export function normalizeToolCalls(toolCalls) {
