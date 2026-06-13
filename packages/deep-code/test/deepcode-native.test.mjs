@@ -4461,3 +4461,34 @@ test('formatDeepSeekSetupAbort: a save FAILURE surfaces the reason, not the gene
   assert.match(failure, /write permissions/)
   assert.doesNotMatch(failure, /requires a DeepSeek API key/)
 })
+
+import { readFileSync as fsReadFileSyncForSettingsPin } from 'node:fs'
+
+test('updateSettingsForSource wraps its read-merge-write in the cross-process lock', () => {
+  // settings.json is the highest-traffic shared file (model persistence,
+  // permission saves, migrations) and was the one unlocked read-merge-write
+  // among the shared stores — two instances writing concurrently lost each
+  // other's changes last-writer-wins. The lock must be acquired BEFORE the
+  // read (an RMW locked only around the write still loses updates), released
+  // in a finally, and contention must surface as an error rather than a
+  // silent unlocked write.
+  const source = fsReadFileSyncForSettingsPin(
+    new URL('../src/utils/settings/settings.ts', import.meta.url),
+    'utf8',
+  )
+  const fnStart = source.indexOf('export function updateSettingsForSource')
+  assert.ok(fnStart >= 0)
+  const body = source.slice(fnStart, fnStart + 7_000)
+  const lockAt = body.indexOf('lockfile.lockSync(')
+  const readAt = body.indexOf('getSettingsForSourceUncached(')
+  const writeAt = body.indexOf('writeFileSyncAndFlush_DEPRECATED(')
+  assert.ok(lockAt > 0, 'settings write must take the cross-process lock')
+  assert.ok(lockAt < readAt, 'the lock must cover the READ, not just the write')
+  assert.ok(readAt < writeAt)
+  assert.match(body, /ELOCKED/, 'contention must be surfaced, not ignored')
+  assert.match(
+    body.slice(body.indexOf('} finally {')),
+    /releaseLock\?\.\(\)/,
+    'the lock must be released in a finally',
+  )
+})
