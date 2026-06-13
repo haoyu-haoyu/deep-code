@@ -16,7 +16,9 @@ import memoize from 'lodash-es/memoize.js'
 import type { LoadedPlugin } from '../../types/plugin.js'
 import { logForDebugging } from '../debug.js'
 import { logError } from '../log.js'
+import { replaceBlobEntry } from '../secureStorage/blob.mjs'
 import { getSecureStorage } from '../secureStorage/index.js'
+import { mutateSecureStorage } from '../secureStorage/mutateSecureStorage.js'
 import {
   getSettings_DEPRECATED,
   updateSettingsForSource,
@@ -111,31 +113,40 @@ export function savePluginOptions(
 
   // secureStorage FIRST — if keychain fails, throw before touching
   // settings.json so old plaintext (if any) stays as fallback.
-  const storage = getSecureStorage()
-  const existingInSecureStorage =
-    storage.read()?.pluginSecrets?.[pluginId] ?? undefined
-  const secureScrubbed = existingInSecureStorage
+  //
+  // Pre-read snapshot only DECIDES whether a write is needed (skip the keychain
+  // when nothing sensitive and nothing to scrub); the merge runs under the
+  // credentials lock against a fresh re-read so a concurrent MCP token refresh
+  // (same whole-blob file) can't clobber, and vice-versa.
+  const snapshotEntry =
+    getSecureStorage().read()?.pluginSecrets?.[pluginId] ?? undefined
+  const snapshotScrubbed = snapshotEntry
     ? Object.fromEntries(
-        Object.entries(existingInSecureStorage).filter(
+        Object.entries(snapshotEntry).filter(
           ([k]) => !nonSensitiveKeysInThisSave.has(k),
         ),
       )
     : undefined
   const needSecureScrub =
-    secureScrubbed &&
-    existingInSecureStorage &&
-    Object.keys(secureScrubbed).length !==
-      Object.keys(existingInSecureStorage).length
+    snapshotScrubbed &&
+    snapshotEntry &&
+    Object.keys(snapshotScrubbed).length !== Object.keys(snapshotEntry).length
   if (Object.keys(sensitive).length > 0 || needSecureScrub) {
-    const existing = storage.read() ?? {}
-    if (!existing.pluginSecrets) {
-      existing.pluginSecrets = {}
-    }
-    existing.pluginSecrets[pluginId] = {
-      ...secureScrubbed,
-      ...sensitive,
-    }
-    const result = storage.update(existing)
+    const result = mutateSecureStorage(current => {
+      // Recompute the scrub from the freshest entry under the lock.
+      const liveEntry = current.pluginSecrets?.[pluginId]
+      const scrubbed = liveEntry
+        ? Object.fromEntries(
+            Object.entries(liveEntry).filter(
+              ([k]) => !nonSensitiveKeysInThisSave.has(k),
+            ),
+          )
+        : undefined
+      return replaceBlobEntry(current, 'pluginSecrets', pluginId, {
+        ...scrubbed,
+        ...sensitive,
+      })
+    })
     if (!result.success) {
       const err = new Error(
         `Failed to save sensitive plugin options for ${pluginId} to secure storage`,
@@ -243,22 +254,27 @@ export function deletePluginOptions(pluginId: string): void {
   // saveMcpServerUserConfig's sensitive split). `/` prefix match is safe:
   // plugin IDs are `name@marketplace`, never contain `/`, so
   // startsWith(`${id}/`) can't false-positive on a different plugin.
-  const storage = getSecureStorage()
-  const existing = storage.read()
-  if (existing?.pluginSecrets) {
+  const snapshotSecrets = getSecureStorage().read()?.pluginSecrets
+  if (snapshotSecrets) {
     const prefix = `${pluginId}/`
-    const survivingEntries = Object.entries(existing.pluginSecrets).filter(
-      ([k]) => k !== pluginId && !k.startsWith(prefix),
+    const wouldRemove = Object.keys(snapshotSecrets).some(
+      k => k === pluginId || k.startsWith(prefix),
     )
-    if (
-      survivingEntries.length !== Object.keys(existing.pluginSecrets).length
-    ) {
-      const result = storage.update({
-        ...existing,
-        pluginSecrets:
-          survivingEntries.length > 0
-            ? Object.fromEntries(survivingEntries)
-            : undefined,
+    if (wouldRemove) {
+      // Filter under the credentials lock against a fresh re-read.
+      const result = mutateSecureStorage(current => {
+        const live = current.pluginSecrets
+        if (!live) return current
+        const survivingEntries = Object.entries(live).filter(
+          ([k]) => k !== pluginId && !k.startsWith(prefix),
+        )
+        return {
+          ...current,
+          pluginSecrets:
+            survivingEntries.length > 0
+              ? Object.fromEntries(survivingEntries)
+              : undefined,
+        }
       })
       if (!result.success) {
         logForDebugging(

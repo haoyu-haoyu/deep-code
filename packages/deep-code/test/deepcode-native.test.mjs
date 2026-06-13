@@ -15,8 +15,9 @@ import { sessionBelongsToWorkspace } from '../src/utils/sessionWorkspaceIdentity
 import {
   deleteBlobEntry,
   hasBlobEntry,
+  replaceBlobEntry,
   setBlobEntry,
-} from '../src/services/mcp/secureStorageBlob.mjs'
+} from '../src/utils/secureStorage/blob.mjs'
 import { runMutateSecureStorage } from '../src/utils/secureStorage/mutateSecureStorageCore.mjs'
 import { finalizePendingHooks } from '../src/utils/hooks/finalizePendingHooks.mjs'
 import { formatFileSize } from '../src/utils/fileSize.mjs'
@@ -1700,6 +1701,25 @@ test('setBlobEntry seeds a missing sub-tree/blob and is __proto__-safe', () => {
   const poison = setBlobEntry({}, 'mcpOAuth', '__proto__', { x: 1 })
   assert.equal({}.x, undefined, 'no prototype pollution')
   assert.deepEqual(poison.mcpOAuth['__proto__'], { x: 1 })
+})
+
+test('replaceBlobEntry sets the entry verbatim (no prev merge) and keeps siblings', () => {
+  const blob = {
+    pluginSecrets: {
+      'p1': { keep: 'x', stale: 'drop-me' },
+      'p2': { other: 'y' },
+    },
+  }
+  // replace must DROP the prev entry's fields (unlike setBlobEntry's merge) —
+  // this is the scrub semantics the plugin writers rely on.
+  const next = replaceBlobEntry(blob, 'pluginSecrets', 'p1', { keep: 'x2' })
+  assert.deepEqual(next.pluginSecrets['p1'], { keep: 'x2' }) // 'stale' gone
+  assert.deepEqual(next.pluginSecrets['p2'], { other: 'y' }) // sibling intact
+  assert.equal(blob.pluginSecrets['p1'].stale, 'drop-me', 'input not mutated')
+  // seeds a missing sub-tree
+  assert.deepEqual(replaceBlobEntry({}, 'pluginSecrets', 'p1', { a: 1 }), {
+    pluginSecrets: { 'p1': { a: 1 } },
+  })
 })
 
 test('deleteBlobEntry removes only the key; absent key is a no-op', () => {

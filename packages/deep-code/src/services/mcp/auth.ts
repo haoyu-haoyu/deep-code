@@ -40,12 +40,12 @@ import { logMCPDebug } from '../../utils/log.js'
 import { getPlatform } from '../../utils/platform.js'
 import { getSecureStorage } from '../../utils/secureStorage/index.js'
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
-import { mutateSecureStorage } from '../../utils/secureStorage/mutateSecureStorage.js'
 import {
   deleteBlobEntry,
   hasBlobEntry,
   setBlobEntry,
-} from './secureStorageBlob.mjs'
+} from '../../utils/secureStorage/blob.mjs'
+import { mutateSecureStorage } from '../../utils/secureStorage/mutateSecureStorage.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { logEvent } from '../analytics/index.js'

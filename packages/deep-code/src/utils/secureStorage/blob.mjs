@@ -8,10 +8,10 @@
 //
 // Sub-trees in the blob: mcpOAuth (per-server tokens), mcpOAuthClientConfig
 // (per-server client creds), mcpXaaIdp (IdP id_token cache), mcpXaaIdpConfig
-// (IdP client secrets).
+// (IdP client secrets), pluginSecrets (per-plugin/per-server sensitive options).
 
 /**
- * Return a new blob with `patch` merged into `blob[subtree][key]`, preserving
+ * Return a new blob with `patch` MERGED into `blob[subtree][key]`, preserving
  * that entry's untouched fields and all siblings. A field set to `undefined` in
  * the patch clears it (JSON.stringify drops it), matching the old in-place
  * `delete entry.field` writes. Computed keys use data-property semantics, so a
@@ -32,6 +32,31 @@ export function setBlobEntry(blob, subtree, key, patch) {
     [subtree]: {
       ...tree,
       [key]: { ...tree[key], ...patch },
+    },
+  }
+}
+
+/**
+ * Return a new blob with `blob[subtree][key]` REPLACED by `value` exactly (no
+ * merge with the previous entry), preserving all siblings. Use this where the
+ * caller already computed the entry's complete new contents (e.g. a scrub that
+ * intentionally drops fields the previous entry had).
+ *
+ * @param {Record<string, any>} blob
+ * @param {string} subtree
+ * @param {string} key
+ * @param {Record<string, any>} value
+ * @returns {Record<string, any>} a new blob
+ */
+export function replaceBlobEntry(blob, subtree, key, value) {
+  const base = blob && typeof blob === 'object' ? blob : {}
+  const tree =
+    base[subtree] && typeof base[subtree] === 'object' ? base[subtree] : {}
+  return {
+    ...base,
+    [subtree]: {
+      ...tree,
+      [key]: value,
     },
   }
 }
