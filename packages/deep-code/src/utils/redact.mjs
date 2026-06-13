@@ -72,17 +72,24 @@ export function redactSensitiveInfo(text) {
   // the sk-ant rule above. submitTranscriptShare scrubs `JSON.stringify(data)`,
   // so the on-disk blob arrives JSON-escaped as `\"apiKey\":\"sk-…\"` (or doubly
   // escaped inside rawTranscriptJsonl). `[^\s"']` absorbs the escaping
-  // backslash(es) before the closing quote, so the escaped form — the ONLY shape
-  // the config blob takes on the wire — is caught; a narrow class stops at the
-  // `\` and misses it. The unquoted rule keeps the narrow class so it doesn't eat
-  // trailing prose punctuation around a bare key.
+  // backslash(es) before the closing quote, so the escaped form — a shape the
+  // config blob takes on the wire — is caught; a narrow class stops at the `\`.
   redacted = redacted.replace(
     /"(sk-(?:proj-)?[^\s"']{20,})"/g,
     '"[REDACTED_API_KEY]"',
   )
+  // Unquoted/prose keys, INCLUDING a key flush against a string's quote on one
+  // side — the last or first token of a JSON-encoded message (`"… sk-KEY"` /
+  // `"sk-KEY …"`), which the quoted rule misses (it needs a quote on BOTH sides
+  // with no interior space). The boundary here is a KEY-CHAR check
+  // ([A-Za-z0-9_-]), NOT quote-exclusion: a neighbouring `"`/`'` is a legitimate
+  // key boundary (a JSON string terminator), so it must be allowed — only a real
+  // key-continuation char blocks a match, so a glued token like `xsk-…` is still
+  // left alone. (Was `[A-Za-z0-9"']`, which wrongly treated the terminating
+  // quote as continuation and leaked a key ending a message.)
   redacted = redacted.replace(
     // eslint-disable-next-line custom-rules/no-lookbehind-regex -- .replace(re, string) on no-match returns same string.
-    /(?<![A-Za-z0-9"'])(sk-(?:proj-)?[A-Za-z0-9_-]{20,})(?![A-Za-z0-9"'])/g,
+    /(?<![A-Za-z0-9_-])(sk-(?:proj-)?[A-Za-z0-9_-]{20,})(?![A-Za-z0-9_-])/g,
     '[REDACTED_API_KEY]',
   )
 

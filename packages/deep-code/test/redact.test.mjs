@@ -132,6 +132,23 @@ test('redacts the key on the REAL egress shape — JSON.stringify(data) escapes 
   assert.ok(!wire.includes(SK), 'key must not survive anywhere in the stringified payload')
 })
 
+test('redacts a key flush against a JSON string quote (last/first token of a message), not just space-delimited', () => {
+  // The MOST common paste: a key as the last token of a message — after
+  // JSON.stringify it sits flush against the closing quote (`…sk-KEY"`). The
+  // unquoted rule's boundary must treat that terminating quote as a valid end
+  // (key-char check), not as key-continuation, or the key leaks. Symmetric for a
+  // key that STARTS a value (`"sk-KEY …"`), which the quoted rule can't catch
+  // (interior space) and the lookbehind must not reject for a leading quote.
+  const endRaw = redactSensitiveInfo(`{"role":"user","content":"my deepseek key is ${SK}"}`)
+  assert.ok(!endRaw.includes(SK), 'key ending a message must not leak')
+
+  const endWire = redactSensitiveInfo(JSON.stringify({ content: `my key is ${SK}` }))
+  assert.ok(!endWire.includes(SK), 'escaped key ending a message must not leak')
+
+  const startWire = redactSensitiveInfo(JSON.stringify({ content: `${SK} is the key i use` }))
+  assert.ok(!startWire.includes(SK), 'key starting a value (with trailing text) must not leak')
+})
+
 test('sk- redaction: short substrings and glued/prefixed tokens are NOT touched (low FP noise)', () => {
   // {20,} floor — a real key is 32+ chars; shorter `sk-` substrings stay.
   assert.equal(redactSensitiveInfo('sk-short1'), 'sk-short1')
