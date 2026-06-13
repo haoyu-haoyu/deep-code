@@ -86,8 +86,11 @@ function isCompleteJsonLine(tail) {
   const text = tail.toString('utf8').trim()
   if (text.length === 0) return false
   try {
-    JSON.parse(text)
-    return true
+    const parsed = JSON.parse(text)
+    // Only OBJECT records are worth preserving: that is the only shape the
+    // writer emits and the only one downstream consumers dereference (a
+    // terminated `null` line would trip loadTranscriptFile's entry.type).
+    return parsed !== null && typeof parsed === 'object'
   } catch {
     return false
   }
