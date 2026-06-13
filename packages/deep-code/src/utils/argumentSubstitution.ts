@@ -11,6 +11,7 @@
  */
 
 import { tryParseShellCommand } from './bash/shellQuote.js'
+import { replaceAllLiteral } from './literalReplace.mjs'
 import { escapeRegExp } from './stringUtils.js'
 
 /**
@@ -121,7 +122,11 @@ export function substituteArguments(
     // would compile to a catastrophic-backtracking pattern (ReDoS against the body) and
     // a name like `[` would make `new RegExp` throw and abort the whole substitution.
     // Escaping makes `$name` a literal match — a no-op for every normal identifier name.
-    content = content.replace(
+    // Function replacer (via replaceAllLiteral) so a value containing $$ / $& /
+    // $` / $' is inserted literally rather than interpreted as a replacement
+    // pattern. The regex is global, so every $name occurrence is still replaced.
+    content = replaceAllLiteral(
+      content,
       new RegExp(`\\$${escapeRegExp(name)}(?![\\[\\w])`, 'g'),
       parsedArgs[i] ?? '',
     )
@@ -139,8 +144,10 @@ export function substituteArguments(
     return parsedArgs[index] ?? ''
   })
 
-  // Replace $ARGUMENTS with the full arguments string
-  content = content.replaceAll('$ARGUMENTS', args)
+  // Replace $ARGUMENTS with the full arguments string. Function replacer (via
+  // replaceAllLiteral) so $$ / $& / $` / $' in the user args aren't interpreted as
+  // replacement patterns.
+  content = replaceAllLiteral(content, '$ARGUMENTS', args)
 
   // If no placeholders were found and appendIfNoPlaceholder is true, append
   // But only if args is non-empty (empty string means command invoked with no args)

@@ -1,6 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join, parse } from 'node:path'
 
+import { replaceAllLiteral } from '../utils/literalReplace.mjs'
+
 const COMMAND_DIRS = [
   { dir: '.deepcode', source: 'deepcode' },
   { dir: '.cursor', source: 'cursor' },
@@ -71,7 +73,9 @@ export async function loadWorkspaceCommands(workspaceRoot, options = {}) {
  * @returns {string}
  */
 export function renderWorkspaceCommandPrompt(command, args) {
-  return command.promptTemplate.replaceAll('$ARGUMENTS', args)
+  // Function replacer (via replaceAllLiteral) so $$ / $& / $` / $' in the user
+  // args are inserted literally, not interpreted as replacement patterns.
+  return replaceAllLiteral(command.promptTemplate, '$ARGUMENTS', args)
 }
 
 /**
