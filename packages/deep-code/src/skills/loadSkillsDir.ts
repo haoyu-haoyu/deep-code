@@ -1,5 +1,6 @@
 import { realpath } from 'fs/promises'
 import ignore from 'ignore'
+import { replaceAllLiteral } from '../utils/literalReplace.mjs'
 import memoize from 'lodash-es/memoize.js'
 import {
   basename,
@@ -395,11 +396,18 @@ export function createSkillCommand({
       if (baseDir) {
         const skillDir =
           process.platform === 'win32' ? baseDir.replace(/\\/g, '/') : baseDir
-        finalContent = finalContent.replace(/\$\{CLAUDE_SKILL_DIR\}/g, skillDir)
+        // replaceAllLiteral so a skill path containing $$/$&/$`/$' isn't mangled
+        // by special replacement-pattern interpretation.
+        finalContent = replaceAllLiteral(
+          finalContent,
+          /\$\{CLAUDE_SKILL_DIR\}/g,
+          skillDir,
+        )
       }
 
       // Replace ${CLAUDE_SESSION_ID} with the current session ID
-      finalContent = finalContent.replace(
+      finalContent = replaceAllLiteral(
+        finalContent,
         /\$\{CLAUDE_SESSION_ID\}/g,
         getSessionId(),
       )

@@ -71,6 +71,16 @@ test('replaceAllLiteral splices $-special values verbatim for string and global-
     replaceAllLiteral('$n and $n', /\$n(?![\[\w])/g, 'a$&b'),
     'a$&b and a$&b',
   )
+  // the ${CLAUDE_SKILL_DIR} / ${CLAUDE_SESSION_ID} substitution pattern: a skill
+  // path containing a $-special must be spliced verbatim, not interpreted.
+  assert.equal(
+    replaceAllLiteral(
+      'cd ${CLAUDE_SKILL_DIR}/run',
+      /\$\{CLAUDE_SKILL_DIR\}/g,
+      '/skills/a$&b',
+    ),
+    'cd /skills/a$&b/run',
+  )
   // plain value unchanged
   assert.equal(replaceAllLiteral('x $X y', '$X', 'V'), 'x V y')
 })

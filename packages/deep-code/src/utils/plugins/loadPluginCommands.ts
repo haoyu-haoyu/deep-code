@@ -1,5 +1,6 @@
 import memoize from 'lodash-es/memoize.js'
 import { basename, dirname, join } from 'path'
+import { replaceAllLiteral } from '../literalReplace.mjs'
 import { getInlinePlugins, getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../types/command.js'
 import { getPluginErrorMessage } from '../../types/plugin.js'
@@ -358,14 +359,18 @@ function createPluginCommand(
             process.platform === 'win32'
               ? rawSkillDir.replace(/\\/g, '/')
               : rawSkillDir
-          finalContent = finalContent.replace(
+          // replaceAllLiteral so a skill path containing $$/$&/$`/$' isn't mangled
+          // by special replacement-pattern interpretation.
+          finalContent = replaceAllLiteral(
+            finalContent,
             /\$\{CLAUDE_SKILL_DIR\}/g,
             skillDir,
           )
         }
 
         // Replace ${CLAUDE_SESSION_ID} with the current session ID
-        finalContent = finalContent.replace(
+        finalContent = replaceAllLiteral(
+          finalContent,
           /\$\{CLAUDE_SESSION_ID\}/g,
           getSessionId(),
         )

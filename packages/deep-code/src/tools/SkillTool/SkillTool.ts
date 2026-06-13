@@ -2,6 +2,7 @@ import { feature } from 'bun:bundle'
 import type { ToolResultBlockParam } from '../../types/sdk-shim.js'
 import uniqBy from 'lodash-es/uniqBy.js'
 import { dirname } from 'path'
+import { replaceAllLiteral } from '../../utils/literalReplace.mjs'
 import { getProjectRoot } from 'src/bootstrap/state.js'
 import {
   builtInCommandNames,
@@ -1074,8 +1075,15 @@ async function executeRemoteSkill(
   const normalizedDir =
     process.platform === 'win32' ? skillDir.replace(/\\/g, '/') : skillDir
   let finalContent = `Base directory for this skill: ${normalizedDir}\n\n${bodyContent}`
-  finalContent = finalContent.replace(/\$\{CLAUDE_SKILL_DIR\}/g, normalizedDir)
-  finalContent = finalContent.replace(
+  // replaceAllLiteral so a skill path / session id containing $$/$&/$`/$' isn't
+  // mangled by special replacement-pattern interpretation.
+  finalContent = replaceAllLiteral(
+    finalContent,
+    /\$\{CLAUDE_SKILL_DIR\}/g,
+    normalizedDir,
+  )
+  finalContent = replaceAllLiteral(
+    finalContent,
     /\$\{CLAUDE_SESSION_ID\}/g,
     getSessionId(),
   )
