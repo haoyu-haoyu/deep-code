@@ -184,6 +184,30 @@ test('forkSession copies the sub-agent transcript directory', async () => {
   assert.equal(existsSync(join(subdir, 'agent-task1.jsonl')), true)
 })
 
+test('forkSession copies ONLY subagents/, not tool-results or session-memory', async () => {
+  // The session dir is mixed-purpose; tool-results wrappers embed literal
+  // source-session paths, so cloning them duplicates blobs the fork would
+  // never reference.
+  const fixture = await createSessionFixture({ turns: 1 })
+  const sessionRoot = join(fixture.sessionDir, fixture.sourceSessionId)
+  await mkdir(join(sessionRoot, 'subagents'), { recursive: true })
+  await writeFile(join(sessionRoot, 'subagents', 'agent-a.jsonl'), '{"type":"assistant"}\n')
+  await mkdir(join(sessionRoot, 'tool-results'), { recursive: true })
+  await writeFile(join(sessionRoot, 'tool-results', 'big-blob.json'), '{"huge":true}\n')
+  await mkdir(join(sessionRoot, 'session-memory'), { recursive: true })
+  await writeFile(join(sessionRoot, 'session-memory', 'mem.json'), '{}\n')
+
+  const result = await forkSession({
+    sessionDir: fixture.sessionDir,
+    sourceSessionId: fixture.sourceSessionId,
+  })
+
+  const forkRoot = join(fixture.sessionDir, result.newSessionId)
+  assert.equal(existsSync(join(forkRoot, 'subagents', 'agent-a.jsonl')), true)
+  assert.equal(existsSync(join(forkRoot, 'tool-results')), false)
+  assert.equal(existsSync(join(forkRoot, 'session-memory')), false)
+})
+
 test('forkSession copies a 10-turn session through turn 5', async () => {
   const fixture = await createSessionFixture({ turns: 10 })
 

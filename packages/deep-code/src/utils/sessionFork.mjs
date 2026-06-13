@@ -56,12 +56,19 @@ export async function forkSession({
     { encoding: 'utf8', mode: 0o600 },
   )
 
-  // Sub-agent transcripts live under <dir>/<sessionId>/ keyed by the CURRENT
-  // session id — without a copy the fork silently loses every task/sidechain
-  // transcript, unrecoverably once the source session is removed.
-  const sourceSubdir = join(targetDir, sourceSessionId)
-  if (existsSync(sourceSubdir)) {
-    cpSync(sourceSubdir, join(targetDir, newSessionId), { recursive: true })
+  // Sub-agent transcripts (and their .meta.json sidecars) live under
+  // <dir>/<sessionId>/subagents/ keyed by the CURRENT session id — without a
+  // copy the fork silently loses every task/sidechain transcript,
+  // unrecoverably once the source session is removed. ONLY subagents/ is
+  // copied: the session dir is mixed-purpose, and its other residents
+  // (tool-results/, session-memory/) embed literal source-session paths in
+  // their wrappers — cloning those would duplicate large blobs the fork
+  // still would not reference.
+  const sourceSubagents = join(targetDir, sourceSessionId, 'subagents')
+  if (existsSync(sourceSubagents)) {
+    cpSync(sourceSubagents, join(targetDir, newSessionId, 'subagents'), {
+      recursive: true,
+    })
   }
 
   return {
