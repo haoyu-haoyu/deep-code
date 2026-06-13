@@ -10,6 +10,12 @@ import {
   SNAPSHOT_HASH_VERSION,
 } from './paths.mjs'
 import { initializeSideGit, runSideGit } from './storeInit.mjs'
+import { sweepStoreTemps } from './sweepStoreTemps.mjs'
+
+// Reclaim atomic-write temp files orphaned by a hard crash mid-rename. 5 min is
+// far beyond any live tmp+rename (milliseconds), so this never races an in-flight
+// write — including a turn-ordinals write that doesn't hold the snapshot lock.
+const STORE_TEMP_TTL_MS = 5 * 60 * 1000
 
 export {
   computeWorkspaceHash,
@@ -23,6 +29,9 @@ export async function createSnapshot({ workspaceRoot, turnId, phase, sessionId }
   const store = resolveSnapshotStore({ workspaceRoot: normalizedWorkspaceRoot })
   const lock = await acquireLock({ workspaceRoot: normalizedWorkspaceRoot })
   try {
+    // Best-effort sweep of crash-orphaned `*.tmp` files (under the lock, so no
+    // concurrent snapshot write to this store is in flight). Never throws.
+    await sweepStoreTemps(store.storePath, STORE_TEMP_TTL_MS)
     await initializeSideGit(store.gitDir, normalizedWorkspaceRoot)
     await runSideGit(store.gitDir, normalizedWorkspaceRoot, [
       'add',
