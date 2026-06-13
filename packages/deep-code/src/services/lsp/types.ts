@@ -15,6 +15,10 @@ export type LspServerConfig = {
   settings?: unknown
   workspaceFolder?: string
   startupTimeout?: number
+  // Per-request deadline (ms) for post-initialize requests. Unset → a built-in
+  // default; 0 disables it. Bounds a server that accepts a request but never
+  // answers, which would otherwise hang the turn forever.
+  requestTimeout?: number
   shutdownTimeout?: number
   restartOnCrash?: boolean
   maxRestarts?: number
