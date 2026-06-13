@@ -168,6 +168,70 @@ test('acpAgentTurn streams tool updates and returns the finish reason', async ()
   }
 })
 
+test('acpAgentTurn: a DENIED write feeds the failure back through the REAL agent loop and the turn finishes (not -32603)', async () => {
+  // Integration over the real runDeepSeekAgent (default runAgent): the model
+  // emits an Edit, the editor denies it, and the turn must FINISH — the denial
+  // is fed back as a tool result so the model can respond — instead of crashing
+  // the whole turn. Drives the loop via a fake provider's streamQuery.
+  const dir = mkdtempSync(join(tmpdir(), 'acp-deny-'))
+  try {
+    let streamCalls = 0
+    const provider = {
+      ...createDeepSeekProvider(),
+      streamQuery() {
+        streamCalls++
+        if (streamCalls === 1) {
+          return (async function* () {
+            yield {
+              type: 'tool_call_delta',
+              index: 0,
+              id: 'call_edit',
+              name: 'Edit',
+              argumentsDelta: '{"file_path":"a.txt","old_string":"x","new_string":"y"}',
+              finishReason: 'tool_calls',
+            }
+          })()
+        }
+        return (async function* () {
+          yield { type: 'content_delta', text: 'The edit was denied, so I stopped.' }
+          yield { type: 'finish', finishReason: 'stop' }
+        })()
+      },
+    }
+    const updates = []
+    const gen = acpAgentTurn({
+      prompt: 'fix the typo',
+      cwd: dir,
+      env: { DEEPSEEK_API_KEY: 'sk-test', DEEPSEEK_CACHE_USER_ID: 'workspace-1' },
+      provider,
+      requestPermission: async () => false, // editor denies the write
+    })
+    let step = await gen.next()
+    while (!step.done) {
+      updates.push(step.value)
+      step = await gen.next()
+    }
+    // The turn FINISHED cleanly: the generator RETURNED the model's natural
+    // finish reason rather than REJECTING. Pre-fix the denial throw unwound out
+    // of runDeepSeekAgent and the turn aborted (→ JSON-RPC -32603); now the
+    // model's second turn runs to a normal 'stop'.
+    assert.equal(step.value, 'stop')
+    // The editor saw the denial as a failed tool_call_update.
+    assert.ok(
+      updates.some(u => u.sessionUpdate === 'tool_call_update' && u.status === 'failed'),
+      'a failed tool_call_update was emitted for the denied Edit',
+    )
+    // The model was re-invoked after the denial (the failure was fed back).
+    assert.equal(streamCalls, 2)
+    // And its follow-up message reached the editor.
+    assert.ok(
+      updates.some(u => u.sessionUpdate === 'agent_message_chunk' && /denied/.test(u.content?.text ?? '')),
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('acpAgentTurn maps a max_turns cap to the runtime finish reason', async () => {
   const runAgent = async () => ({ content: '', stoppedReason: 'max_turns' })
   const gen = acpAgentTurn({ prompt: 'x', cwd: process.cwd(), runAgent })

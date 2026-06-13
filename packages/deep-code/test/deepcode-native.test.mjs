@@ -3192,6 +3192,126 @@ test('runDeepSeekAgent can drive tool loop through provider streams', async () =
   })
 })
 
+test('runDeepSeekAgent feeds a thrown tool error back as a tool result and continues the turn', async () => {
+  // A routine model mistake — an Edit old_string that does not match — makes the
+  // tool throw. The turn must NOT abort: the error is surfaced as the tool
+  // result so the model gets another turn to self-correct (OpenAI/Claude
+  // tool-failure-is-a-tool-result contract). Before the fix this throw unwound
+  // out of the loop (native single-turn exit 1; ACP turn -32603).
+  const requests = []
+  const result = await runDeepSeekAgent({
+    prompt: 'Fix the typo',
+    env: { DEEPSEEK_API_KEY: 'sk-test', DEEPSEEK_CACHE_USER_ID: 'workspace-1' },
+    tools: [
+      {
+        name: 'Edit',
+        description: 'Edit a file',
+        inputJSONSchema: { type: 'object' },
+        async execute() {
+          throw new Error('String to replace not found in file.')
+        },
+      },
+    ],
+    async complete(request) {
+      requests.push(request.body.messages)
+      if (requests.length === 1) {
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [
+            {
+              id: 'call_edit',
+              type: 'function',
+              function: { name: 'Edit', arguments: '{"file_path":"a.txt","old_string":"x","new_string":"y"}' },
+            },
+          ],
+        }
+      }
+      return { content: 'I could not find that string; let me re-read.', finishReason: 'stop', toolCalls: [] }
+    },
+  })
+
+  assert.equal(requests.length, 2, 'the model was re-invoked after the tool error (turn did not abort)')
+  assert.equal(result.content, 'I could not find that string; let me re-read.')
+  assert.deepEqual(requests[1].at(-1), {
+    role: 'tool',
+    tool_call_id: 'call_edit',
+    content: 'Error: String to replace not found in file.',
+  })
+})
+
+test('runDeepSeekAgent feeds back a tool whose return cannot be serialized (stringify throw) instead of aborting', async () => {
+  // A tool returning a circular object would throw inside stringifyToolResultContent;
+  // that path is now inside the per-tool try, so it too becomes a tool result.
+  const requests = []
+  const circular = {}
+  circular.self = circular
+  const result = await runDeepSeekAgent({
+    prompt: 'call the weird tool',
+    env: { DEEPSEEK_API_KEY: 'sk-test', DEEPSEEK_CACHE_USER_ID: 'workspace-1' },
+    tools: [
+      {
+        name: 'Weird',
+        description: 'returns a circular object',
+        inputJSONSchema: { type: 'object' },
+        async execute() {
+          return circular
+        },
+      },
+    ],
+    async complete(request) {
+      requests.push(request.body.messages)
+      if (requests.length === 1) {
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{ id: 'cw', type: 'function', function: { name: 'Weird', arguments: '{}' } }],
+        }
+      }
+      return { content: 'ok', finishReason: 'stop', toolCalls: [] }
+    },
+  })
+
+  assert.equal(requests.length, 2)
+  const last = requests[1].at(-1)
+  assert.equal(last.role, 'tool')
+  assert.equal(last.tool_call_id, 'cw')
+  assert.match(last.content, /^Error: /)
+})
+
+test('runDeepSeekAgent re-throws an AbortError from a tool — a cancelled turn must unwind, not feed back', async () => {
+  // The ACP tool wrapper throws an Error tagged name:'AbortError' when the turn
+  // is cancelled; that (and a fetch-style AbortError) must propagate so the turn
+  // ends, NOT be fed back as a tool result that keeps the loop running.
+  let calls = 0
+  await assert.rejects(
+    runDeepSeekAgent({
+      prompt: 'do work',
+      env: { DEEPSEEK_API_KEY: 'sk-test', DEEPSEEK_CACHE_USER_ID: 'workspace-1' },
+      tools: [
+        {
+          name: 'Slow',
+          description: 'a tool cancelled mid-flight',
+          inputJSONSchema: { type: 'object' },
+          async execute() {
+            throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+          },
+        },
+      ],
+      async complete() {
+        calls++
+        return {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{ id: 'c1', type: 'function', function: { name: 'Slow', arguments: '{}' } }],
+        }
+      },
+    }),
+    /aborted/,
+  )
+  assert.equal(calls, 1, 'the model was NOT re-invoked after the abort (turn unwound at the first tool)')
+})
+
 test('deepSeekResponseToAssistantMessage emits Claude Code compatible tool_use blocks', () => {
   const message = deepSeekResponseToAssistantMessage(
     {

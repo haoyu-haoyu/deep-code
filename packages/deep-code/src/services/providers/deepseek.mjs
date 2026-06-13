@@ -304,21 +304,39 @@ export async function runDeepSeekAgent({
     for (const toolCall of toolCalls) {
       const toolName = toolCall.function.name
       const tool = executableTools.get(toolName)
-      const toolInput = parseToolArguments(toolCall.function.arguments)
       let content
-      if (!tool) {
-        content = `Tool ${toolName} is not available.`
-      } else if (typeof tool.execute === 'function') {
-        content = await tool.execute(toolInput, { cwd, env, toolCall })
-      } else if (typeof tool.call === 'function') {
-        content = await tool.call(toolInput)
-      } else {
-        content = `Tool ${toolName} has no executable handler.`
+      try {
+        const toolInput = parseToolArguments(toolCall.function.arguments)
+        let result
+        if (!tool) {
+          result = `Tool ${toolName} is not available.`
+        } else if (typeof tool.execute === 'function') {
+          result = await tool.execute(toolInput, { cwd, env, toolCall })
+        } else if (typeof tool.call === 'function') {
+          result = await tool.call(toolInput)
+        } else {
+          result = `Tool ${toolName} has no executable handler.`
+        }
+        // Inside the try so a circular/unserializable tool return that breaks
+        // stringify is also fed back as an error rather than aborting the turn.
+        content = stringifyToolResultContent(result)
+      } catch (error) {
+        // A real cancellation (Ctrl-C, or ACP session/cancel — the wrapped ACP
+        // tool throws an AbortError when its signal is aborted) must END the
+        // turn, so re-throw it. Every OTHER tool failure is DATA for the model:
+        // a thrown Edit old_string-not-found, Read ENOENT, a denied write, or a
+        // wrong-shape argument is surfaced as THIS tool_call's result so the
+        // loop can self-correct, matching the OpenAI/Claude tool-failure-is-a-
+        // tool-result contract. Without this the throw unwinds out of the loop
+        // and aborts the whole turn (native single-turn exits 1; the ACP turn
+        // returns JSON-RPC -32603) and the model never sees the error.
+        if (isAbortError(error)) throw error
+        content = `Error: ${String(error?.message ?? error)}`
       }
       conversation.push({
         role: 'tool',
         tool_call_id: toolCall.id,
-        content: stringifyToolResultContent(content),
+        content,
       })
     }
   }
@@ -700,6 +718,15 @@ function parseToolArguments(rawArguments) {
   } catch {
     return { _raw: rawArguments }
   }
+}
+
+// True for a cancellation, not a tool failure. Covers both abort shapes used in
+// this stack: fetch()/AbortSignal reject with a DOMException whose name is
+// 'AbortError' (code 'ABORT_ERR'), and the ACP tool wrapper throws an Error
+// hand-tagged `name: 'AbortError'`. A cancelled turn must unwind; a tool error
+// must be fed back to the model — so the agent loop branches on this.
+function isAbortError(error) {
+  return error?.name === 'AbortError' || error?.code === 'ABORT_ERR'
 }
 
 function systemPromptToMessages(systemPrompt) {
