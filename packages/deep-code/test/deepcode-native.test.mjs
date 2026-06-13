@@ -7,6 +7,10 @@ import { byteCompare } from '../src/cache/byte-order.mjs'
 import { computeHighlightSpans } from '../src/utils/highlightSpans.mjs'
 import { parseAgentMetadata } from '../src/utils/agentMetadata.mjs'
 import { withCronFileLock } from '../src/utils/cronFileStore.mjs'
+import {
+  KNOWN_CRON_TASK_KEYS,
+  normalizeCronTaskForRead,
+} from '../src/utils/cronTaskNormalize.mjs'
 import { finalizePendingHooks } from '../src/utils/hooks/finalizePendingHooks.mjs'
 import { formatFileSize } from '../src/utils/fileSize.mjs'
 import { shouldUseColor } from '../src/deepcode/colorSupport.mjs'
@@ -1511,6 +1515,103 @@ test('withCronFileLock serializes concurrent read-modify-writes (no lost update)
   assert.deepEqual((await readdir(join(dir, '.claude'))).sort(), [
     'scheduled_tasks.json',
   ])
+})
+
+// readCronTasks used to rebuild each task with the known fields only, so any
+// field a NEWER DeepCode version added to scheduled_tasks.json was stripped on
+// every read — and a routine mutation (add/remove/markFired → read+write) then
+// destroyed it on disk. normalizeCronTaskForRead now preserves unknown fields
+// while keeping the known-field behavior identical.
+test('normalizeCronTaskForRead preserves forward-compatible unknown fields', () => {
+  const task = {
+    id: 'a',
+    cron: '* * * * *',
+    prompt: 'p',
+    createdAt: 123,
+    // fields a future scheduler version might add:
+    priority: 7,
+    tags: ['x', 'y'],
+    payload: { nested: { deep: true } },
+  }
+  const out = normalizeCronTaskForRead(task)
+  assert.equal(out.priority, 7)
+  assert.deepEqual(out.tags, ['x', 'y'])
+  assert.deepEqual(out.payload, { nested: { deep: true } })
+  // known fields carried verbatim
+  assert.equal(out.id, 'a')
+  assert.equal(out.cron, '* * * * *')
+  assert.equal(out.prompt, 'p')
+  assert.equal(out.createdAt, 123)
+})
+
+test('normalizeCronTaskForRead keeps known-field behavior identical (omit/normalize)', () => {
+  // lastFiredAt: kept only when numeric
+  assert.equal(
+    'lastFiredAt' in normalizeCronTaskForRead({
+      id: 'a',
+      cron: '* * * * *',
+      prompt: 'p',
+      createdAt: 1,
+      lastFiredAt: 'nope',
+    }),
+    false,
+  )
+  assert.equal(
+    normalizeCronTaskForRead({
+      id: 'a',
+      cron: '* * * * *',
+      prompt: 'p',
+      createdAt: 1,
+      lastFiredAt: 999,
+    }).lastFiredAt,
+    999,
+  )
+  // recurring/permanent: truthy -> true, falsy -> omitted
+  const falsy = normalizeCronTaskForRead({
+    id: 'a',
+    cron: '* * * * *',
+    prompt: 'p',
+    createdAt: 1,
+    recurring: false,
+    permanent: 0,
+  })
+  assert.equal('recurring' in falsy, false)
+  assert.equal('permanent' in falsy, false)
+  const truthy = normalizeCronTaskForRead({
+    id: 'a',
+    cron: '* * * * *',
+    prompt: 'p',
+    createdAt: 1,
+    recurring: 'yes',
+    permanent: 1,
+  })
+  assert.equal(truthy.recurring, true)
+  assert.equal(truthy.permanent, true)
+})
+
+test('normalizeCronTaskForRead never rehydrates the runtime-only durable/agentId flags', () => {
+  const out = normalizeCronTaskForRead({
+    id: 'a',
+    cron: '* * * * *',
+    prompt: 'p',
+    createdAt: 1,
+    durable: true,
+    agentId: 'teammate-7',
+  })
+  assert.equal('durable' in out, false)
+  assert.equal('agentId' in out, false)
+  // and they are in the known-exclusion set so they're never preserved as unknowns
+  assert.equal(KNOWN_CRON_TASK_KEYS.has('durable'), true)
+  assert.equal(KNOWN_CRON_TASK_KEYS.has('agentId'), true)
+})
+
+test('normalizeCronTaskForRead does not pollute the prototype via a JSON __proto__ key', () => {
+  const task = JSON.parse(
+    '{"id":"a","cron":"* * * * *","prompt":"p","createdAt":1,"__proto__":{"polluted":true}}',
+  )
+  const out = normalizeCronTaskForRead(task)
+  assert.equal({}.polluted, undefined, 'Object.prototype must not be polluted')
+  assert.equal(Object.getPrototypeOf(out), Object.prototype)
 })
 
 test('finalizePendingHooks isolates a failing hook and finalizes the rest', async () => {
