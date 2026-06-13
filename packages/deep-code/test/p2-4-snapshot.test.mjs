@@ -521,7 +521,16 @@ test('the refresher stops instead of clobbering a lock that changed hands', asyn
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-stolen-'))
     const store = resolveSnapshotStore({ workspaceRoot })
-    const lock = await acquireLock({ workspaceRoot, staleMs: 90 })
+    // A large TTL keeps the test deterministic: the first refresh tick fires
+    // at staleMs/3 (~200ms), so the foreign takeover below (written within a
+    // few ms of acquire) lands well before any tick — no in-flight refresh
+    // can race the write and clobber the thief's lock back. (A small TTL made
+    // the ~few-ms read->rename window of a tick collide with the write, which
+    // flaked on loaded CI runners.) The TTL stays under 1s so release still
+    // attempts the unlink and hits the ownership check rather than the
+    // wedged-holder skip.
+    const staleMs = 600
+    const lock = await acquireLock({ workspaceRoot, staleMs })
     const lockPath = join(store.storePath, 'snapshot.lock')
     const foreign = {
       ownerId: 'thief-owner',
@@ -531,7 +540,10 @@ test('the refresher stops instead of clobbering a lock that changed hands', asyn
     }
     await writeFile(lockPath, JSON.stringify(foreign))
 
-    await delay(250)
+    // Past the first refresh tick: it must read the foreign ownerId, stop, and
+    // never rewrite our metadata. (A delayed tick is equally safe — it still
+    // reads foreign and stops.)
+    await delay(staleMs / 2)
     const current = JSON.parse(readFileSync(lockPath, 'utf8'))
     assert.equal(current.ownerId, 'thief-owner', 'stolen lock must not be clobbered back')
     await assert.rejects(lock.release(), /Lock ownership changed/)
