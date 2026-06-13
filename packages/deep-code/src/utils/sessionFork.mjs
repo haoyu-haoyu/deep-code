@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 import {
   accessSync,
   closeSync,
+  cpSync,
+  existsSync,
   fstatSync,
   mkdirSync,
   openSync,
@@ -53,6 +55,21 @@ export async function forkSession({
     forkedLines.join('\n') + '\n',
     { encoding: 'utf8', mode: 0o600 },
   )
+
+  // Sub-agent transcripts (and their .meta.json sidecars) live under
+  // <dir>/<sessionId>/subagents/ keyed by the CURRENT session id — without a
+  // copy the fork silently loses every task/sidechain transcript,
+  // unrecoverably once the source session is removed. ONLY subagents/ is
+  // copied: the session dir is mixed-purpose, and its other residents
+  // (tool-results/, session-memory/) embed literal source-session paths in
+  // their wrappers — cloning those would duplicate large blobs the fork
+  // still would not reference.
+  const sourceSubagents = join(targetDir, sourceSessionId, 'subagents')
+  if (existsSync(sourceSubagents)) {
+    cpSync(sourceSubagents, join(targetDir, newSessionId, 'subagents'), {
+      recursive: true,
+    })
+  }
 
   return {
     forkedAtTurn,
@@ -320,7 +337,18 @@ export function countTurns(entries) {
 }
 
 export function isTurnStart(entry) {
-  if (entry?.type !== 'user' || entry.isMeta === true) return false
+  // Compact summaries are synthetic user-typed messages (compact.ts writes
+  // createUserMessage({ isCompactSummary: true })) — they carry text content
+  // but are NOT user turns: counting them inflates session list/show turn
+  // counts by one per compaction and makes fork --at-turn slice at the wrong
+  // user prompt. compact.ts's own message filter excludes them the same way.
+  if (
+    entry?.type !== 'user' ||
+    entry.isMeta === true ||
+    entry.isCompactSummary === true
+  ) {
+    return false
+  }
   const content = entry.message?.content
   if (typeof content === 'string') return content.trim().length > 0
   if (Array.isArray(content)) {
