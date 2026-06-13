@@ -11,6 +11,7 @@ import {
   KNOWN_CRON_TASK_KEYS,
   normalizeCronTaskForRead,
 } from '../src/utils/cronTaskNormalize.mjs'
+import { sessionBelongsToWorkspace } from '../src/utils/sessionWorkspaceIdentity.mjs'
 import { finalizePendingHooks } from '../src/utils/hooks/finalizePendingHooks.mjs'
 import { formatFileSize } from '../src/utils/fileSize.mjs'
 import { shouldUseColor } from '../src/deepcode/colorSupport.mjs'
@@ -1612,6 +1613,42 @@ test('normalizeCronTaskForRead does not pollute the prototype via a JSON __proto
   const out = normalizeCronTaskForRead(task)
   assert.equal({}.polluted, undefined, 'Object.prototype must not be polluted')
   assert.equal(Object.getPrototypeOf(out), Object.prototype)
+})
+
+// sanitizePath folds punctuation, so distinct short workspaces collide onto one
+// project dir; sessionBelongsToWorkspace filters foreign sessions at read time
+// using each session's own recorded cwd. Inputs are pre-canonicalized by callers.
+test('sessionBelongsToWorkspace: exact + nested match, fails open on absent', () => {
+  // exact match
+  assert.equal(sessionBelongsToWorkspace('/a/my-app', '/a/my-app'), true)
+  // session ran in a subdirectory of the workspace root
+  assert.equal(sessionBelongsToWorkspace('/a/my-app/pkg', '/a/my-app'), true)
+  // trailing separator on the root is normalized away
+  assert.equal(sessionBelongsToWorkspace('/a/my-app', '/a/my-app/'), true)
+  // FAIL-OPEN: an absent/empty side keeps the session showing
+  assert.equal(sessionBelongsToWorkspace(undefined, '/a/my-app'), true)
+  assert.equal(sessionBelongsToWorkspace('/a/my-app', undefined), true)
+  assert.equal(sessionBelongsToWorkspace('', '/a/my-app'), true)
+  assert.equal(sessionBelongsToWorkspace(42, '/a/my-app'), true)
+})
+
+test('sessionBelongsToWorkspace: rejects a folded sibling and a non-boundary prefix', () => {
+  // the collision case: '/a/my.app' folds to the same dir name as '/a/my-app'
+  // but is a DIFFERENT workspace → must be rejected
+  assert.equal(sessionBelongsToWorkspace('/a/my.app', '/a/my-app'), false)
+  assert.equal(sessionBelongsToWorkspace('/a/my_app', '/a/my-app'), false)
+  // a shared string prefix that is NOT a path-component boundary must not match
+  assert.equal(sessionBelongsToWorkspace('/a/myapp', '/a/my'), false)
+  assert.equal(sessionBelongsToWorkspace('/a/my-app-2', '/a/my-app'), false)
+})
+
+test('sessionBelongsToWorkspace: Windows folds case and separators', () => {
+  const win = { platform: 'win32' }
+  assert.equal(sessionBelongsToWorkspace('C:\\Users\\Me\\App', 'c:/users/me/app', win), true)
+  assert.equal(sessionBelongsToWorkspace('C:\\Users\\Me\\App\\pkg', 'C:\\Users\\Me\\App', win), true)
+  assert.equal(sessionBelongsToWorkspace('C:\\Users\\Me\\Other', 'C:\\Users\\Me\\App', win), false)
+  // case-sensitivity is preserved on POSIX (distinct dirs)
+  assert.equal(sessionBelongsToWorkspace('/a/App', '/a/app', { platform: 'linux' }), false)
 })
 
 test('finalizePendingHooks isolates a failing hook and finalizes the rest', async () => {

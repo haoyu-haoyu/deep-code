@@ -246,8 +246,10 @@ function projectSessionsRoot() {
 }
 
 // realpath + NFC, mirroring sessionStoragePortable.ts canonicalizePath; NFC-only
-// fallback when realpath fails (e.g. the dir does not exist yet).
-function canonicalizeDir(dir) {
+// fallback when realpath fails (e.g. the dir does not exist yet). Exported so the
+// session listers canonicalize a recorded cwd the exact same way the writer named
+// the project dir, keeping symlinked workspaces (/tmp -> /private/tmp) matching.
+export function canonicalizeDir(dir) {
   try {
     return realpathSync(dir).normalize('NFC')
   } catch {

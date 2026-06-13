@@ -563,6 +563,67 @@ test('long same-prefix paths exact-match the writer hash (no wrong-sibling pick)
   }
 })
 
+test('short workspaces that fold to ONE project dir are separated by recorded cwd', async () => {
+  const cfg = await makeDir()
+  try {
+    await withConfigDir(cfg, async () => {
+      // '/nonexistent/my-app' and '/nonexistent/my.app' both sanitize to
+      // '-nonexistent-my-app' (punctuation folds to '-'), so their sessions
+      // physically share ONE project dir. Without the per-session cwd filter,
+      // each workspace's /resume would leak the other's sessions.
+      const cwdHyphen = '/nonexistent/my-app'
+      const cwdDot = '/nonexistent/my.app'
+      assert.equal(prefixOf(cwdHyphen), prefixOf(cwdDot)) // collide
+      const dir = join(cfg, 'projects', prefixOf(cwdHyphen))
+      await mkdir(dir, { recursive: true })
+      await writeSession(dir, UUID_A, [userTurnInCwd('mine', cwdHyphen)])
+      await writeSession(dir, UUID_B, [userTurnInCwd('theirs', cwdDot)])
+      await writeSession(dir, UUID_C, [userTurn('legacy, no cwd field')])
+
+      // my-app sees its own session + the cwd-less legacy one (fail-open), NOT my.app's
+      assert.deepEqual(
+        (await listSessions({ cwd: cwdHyphen })).map(s => s.sessionId).sort(),
+        [UUID_A, UUID_C].sort(),
+      )
+      // the reverse direction: my.app sees its own + the legacy one, not my-app's
+      assert.deepEqual(
+        (await listSessions({ cwd: cwdDot })).map(s => s.sessionId).sort(),
+        [UUID_B, UUID_C].sort(),
+      )
+      // an explicit sessionDir bypasses the workspace filter entirely (lists all 3)
+      assert.equal((await listSessions({ sessionDir: dir })).length, 3)
+    })
+  } finally {
+    await rm(cfg, { recursive: true, force: true })
+  }
+})
+
+test('a symlinked workspace still lists its sessions (canonicalized cwd match)', async () => {
+  const cfg = await makeDir()
+  const real = await makeDir()
+  const linkParent = await makeDir()
+  const link = join(linkParent, 'link')
+  try {
+    await withConfigDir(cfg, async () => {
+      await symlink(real, link)
+      // The session was recorded under the REAL path; the user now lists via the
+      // SYMLINK. canonicalizeDir(realpath) collapses both to `real`, so the
+      // session must still show (not be dropped as foreign).
+      const dir = resolveProjectSessionsDir({ cwd: real })
+      await mkdir(dir, { recursive: true })
+      await writeSession(dir, UUID_A, [userTurnInCwd('mine', real)])
+      assert.deepEqual(
+        (await listSessions({ cwd: link })).map(s => s.sessionId),
+        [UUID_A],
+      )
+    })
+  } finally {
+    await rm(cfg, { recursive: true, force: true })
+    await rm(real, { recursive: true, force: true })
+    await rm(linkParent, { recursive: true, force: true })
+  }
+})
+
 // ── handler: listSessionsHandler ─────────────────────────────────────────────
 
 // No undefined-valued keys: JSON.stringify drops those, so the round-trip stays
