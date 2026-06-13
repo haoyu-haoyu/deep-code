@@ -33,10 +33,18 @@ export function createLSPClientCore({
     }
   }
 
+  // Returns an unsubscribe so per-call listeners (e.g. the post-edit
+  // diagnostics collector, registered on every Edit/Write) can be removed.
+  // Without it the handler Set on this session-lifetime client grows
+  // unboundedly and every diagnostics push fans out to every dead closure —
+  // O(edits) memory and notification work over a long session.
   function onNotification(method, handler) {
     const handlers = notificationHandlers.get(method) || new Set()
     handlers.add(handler)
     notificationHandlers.set(method, handlers)
+    return () => {
+      handlers.delete(handler)
+    }
   }
 
   function onRequest(method, handler) {
