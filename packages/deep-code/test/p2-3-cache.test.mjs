@@ -309,12 +309,19 @@ test('/cache inspect reports recent turns and session totals', async () => {
   assert.match(result.report, /pricing snapshot 2026-05-27/)
 })
 
-test('resolveCacheReportModel defaults to the product default (pro), honoring env override', () => {
+test('resolveCacheReportModel: env > config-file model > product default', () => {
   assert.equal(resolveCacheReportModel({}), 'deepseek-v4-pro')
   assert.equal(resolveCacheReportModel({ DEEPSEEK_MODEL: 'deepseek-v4-flash' }), 'deepseek-v4-flash')
   assert.equal(resolveCacheReportModel({ DEEPCODE_MODEL: 'custom' }), 'custom')
-  // an empty-string env var must fall through to the default, not be picked
+  // an empty-string env var must fall through, not be picked
   assert.equal(resolveCacheReportModel({ DEEPSEEK_MODEL: '' }), 'deepseek-v4-pro')
+  // a config-file model (set via the setup wizard / /provider, NOT env) is honored —
+  // a wizard-flash session must price at flash, not mis-default to pro
+  assert.equal(resolveCacheReportModel({}, 'deepseek-v4-flash'), 'deepseek-v4-flash')
+  // env still beats the config-file model; file beats the default; empty file falls through
+  assert.equal(resolveCacheReportModel({ DEEPSEEK_MODEL: 'envm' }, 'filem'), 'envm')
+  assert.equal(resolveCacheReportModel({}, 'filem'), 'filem')
+  assert.equal(resolveCacheReportModel({}, ''), 'deepseek-v4-pro')
 })
 
 test('formatCacheInspectReport prices savings at the pro default, not the flash tier (~3.1x)', () => {

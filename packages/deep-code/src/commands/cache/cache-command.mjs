@@ -19,6 +19,7 @@ import {
 import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
 import { firstNonEmpty } from '../../utils/configValue.mjs'
 import { DEFAULT_DEEPSEEK_MODEL } from '../../services/providers/deepseek.mjs'
+import { loadDeepSeekConfigFile } from '../../services/providers/deepseek-config-store.mjs'
 
 const HELP_ARGS = new Set(['help', '-h', '--help'])
 const SUPPORTED_SUBCOMMANDS = new Set(['inspect', 'warmup', 'clear'])
@@ -83,20 +84,24 @@ export async function executeCacheCommand(args = '', {
     report: formatCacheInspectReport({
       totals: getSessionTotals(),
       turns: getRecentTurns(10),
-      model: resolveCacheReportModel(env),
+      model: resolveCacheReportModel(env, loadDeepSeekConfigFile({ env })?.model),
     }),
   }
 }
 
-// Resolve the model the cache-savings estimate should be priced at. Mirrors the
-// session's model resolution order (DEEPSEEK_MODEL > DEEPCODE_MODEL > product
-// default) so the report prices at the model actually in use. The product default
-// is deepseek-v4-pro, NOT the flash tier the inspect path previously hardcoded —
-// pro's cache savings are ~3x larger, so flash understated savings ~3x.
-export function resolveCacheReportModel(env = process.env) {
+// Resolve the model the cache-savings estimate should be priced at, matching the
+// session's model resolution order: DEEPSEEK_MODEL > DEEPCODE_MODEL > config-file
+// model > product default. The product default is deepseek-v4-pro, NOT the flash
+// tier the inspect path previously hardcoded — pro's cache savings are ~3x larger,
+// so flash understated savings ~3x. The config-file model is threaded in by the
+// caller (the setup wizard / /provider write the model THERE, not to env), so a
+// wizard-configured flash session is priced at flash rather than mis-defaulted to
+// pro.
+export function resolveCacheReportModel(env = process.env, fileModel) {
   return firstNonEmpty(
     env.DEEPSEEK_MODEL,
     env.DEEPCODE_MODEL,
+    fileModel,
     DEFAULT_DEEPSEEK_MODEL,
   )
 }
