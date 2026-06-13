@@ -3,7 +3,12 @@ import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 
-import { isTurnStart, resolveProjectSessionsDir } from './sessionFork.mjs'
+import {
+  canonicalizeDir,
+  isTurnStart,
+  resolveProjectSessionsDir,
+} from './sessionFork.mjs'
+import { sessionBelongsToWorkspace } from './sessionWorkspaceIdentity.mjs'
 
 // Session transcript filenames are `<uuid>.jsonl`. Matching strictly keeps the
 // listing to real sessions (ignores stray files, lock files, subdirs).
@@ -32,6 +37,16 @@ export async function listSessions({ sessionDir, cwd, limit, includeSidechains =
   }
 
   const dir = resolveProjectSessionsDir({ sessionDir, cwd })
+
+  // When listing BY workspace (cwd), drop sessions that physically share this
+  // project dir but were recorded in a DIFFERENT workspace — sanitizePath folds
+  // punctuation, so `/a/my-app` and `/a/my.app` collide onto one dir. An explicit
+  // `sessionDir` means the caller chose the dir directly, so no workspace filter
+  // applies. Canonicalize the same way the writer named the dir so a symlinked
+  // workspace still matches.
+  const workspaceRoot =
+    cwd && !sessionDir ? canonicalizeDir(cwd) : undefined
+
   let dirents
   try {
     dirents = await readdir(dir, { withFileTypes: true })
@@ -89,6 +104,12 @@ export async function listSessions({ sessionDir, cwd, limit, includeSidechains =
     }
     const sidechain = scanned.isSidechain === true
     if (sidechain && !includeSidechains) continue
+    // Foreign-workspace filter (fail-open when the session has no recorded cwd,
+    // e.g. legacy sessions written before cwd was stamped).
+    if (workspaceRoot && typeof scanned.cwd === 'string') {
+      const sessionRoot = canonicalizeDir(scanned.cwd)
+      if (!sessionBelongsToWorkspace(sessionRoot, workspaceRoot)) continue
+    }
     sessions.push({
       sessionId: candidate.sessionId,
       path: candidate.path,

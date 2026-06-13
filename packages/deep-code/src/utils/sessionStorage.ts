@@ -83,6 +83,7 @@ import { logError } from './log.js'
 import { extractTag, isCompactBoundaryMessage } from './messages.js'
 import { sanitizePath } from './path.js'
 import {
+  canonicalizePath,
   extractJsonStringField,
   extractLastJsonStringField,
   LITE_READ_BUF_SIZE,
@@ -90,6 +91,7 @@ import {
   readTranscriptForLoad,
   SKIP_PRECOMPACT_THRESHOLD,
 } from './sessionStoragePortable.js'
+import { sessionBelongsToWorkspace } from './sessionWorkspaceIdentity.mjs'
 import { getSettings_DEPRECATED } from './settings/settings.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 import type { ContentReplacementRecord } from './toolResultStorage.js'
@@ -4958,6 +4960,26 @@ async function enrichLog(
     prUrl: meta.prUrl,
     prRepository: meta.prRepository,
     projectPath: meta.projectPath ?? log.projectPath,
+  }
+
+  // Drop a session that physically shares this project dir but was recorded in a
+  // DIFFERENT workspace. sanitizePath folds punctuation, so distinct workspaces
+  // (/a/my-app vs /a/my.app) and sibling worktree dirs (-code-myrepo vs
+  // -code-myrepo-docs) collide onto one dir. log.projectPath is the workspace
+  // this log was swept FOR (the cwd/worktree hint); meta.projectPath is the
+  // session's own recorded cwd. Canonicalize both (realpath + NFC) so symlinked
+  // workspaces still match; fail open when either is absent.
+  if (meta.projectPath && log.projectPath) {
+    const [sessionRoot, workspaceRoot] = await Promise.all([
+      canonicalizePath(meta.projectPath),
+      canonicalizePath(log.projectPath),
+    ])
+    if (!sessionBelongsToWorkspace(sessionRoot, workspaceRoot)) {
+      logForDebugging(
+        `Session ${log.sessionId} filtered from /resume: recorded cwd ${meta.projectPath} is not in workspace ${log.projectPath}`,
+      )
+      return null
+    }
   }
 
   // Provide a fallback title for sessions where we couldn't extract the first
