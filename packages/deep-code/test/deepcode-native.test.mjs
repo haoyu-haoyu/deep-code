@@ -4514,4 +4514,13 @@ test('updateSettingsForSource wraps its read-merge-write in the cross-process lo
     2,
     'both settings-file sync writes must request the lock',
   )
+  // The vendored `retry` package is a stub whose scheduled retries never
+  // re-invoke: lock() with a retries option becomes a promise that NEVER
+  // settles on first contention. The retry loop must be ours.
+  assert.doesNotMatch(
+    syncSource,
+    /lockfile\.lock\([^)]*retries/s,
+    'never pass retries to proper-lockfile (vendored retry stub hangs)',
+  )
+  assert.match(syncSource, /SYNC_LOCK_ATTEMPTS/)
 })

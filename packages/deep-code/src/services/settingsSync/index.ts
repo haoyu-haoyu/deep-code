@@ -433,6 +433,8 @@ async function buildEntriesFromLocalFiles(
   return entries
 }
 
+const SYNC_LOCK_ATTEMPTS = 10
+
 async function writeFileForSync(
   filePath: string,
   content: string,
@@ -447,22 +449,33 @@ async function writeFileForSync(
     // Settings files are also written by updateSettingsForSource under the
     // cross-process lock; a sync pull writing the same file unlocked could
     // race that read-merge-write and clobber either side. Persistent
-    // contention (ELOCKED after retries) SKIPS this pull (returns false —
-    // the periodic sync re-applies later) rather than writing unlocked; a
-    // missing vendored proper-lockfile degrades to the unlocked write.
+    // contention (ELOCKED after the bounded loop) SKIPS this pull (returns
+    // false — the periodic sync re-applies later) rather than writing
+    // unlocked; a missing vendored proper-lockfile degrades to the unlocked
+    // write. The retry loop is OURS, with lock() taking NO retries option:
+    // the vendored `retry` package is a stub whose scheduled retries never
+    // re-invoke, so a proper-lockfile-internal retry would make lock() a
+    // promise that never settles (same bounded-own-loop idiom as
+    // mcp/auth.ts's refresh lock).
     let release: (() => Promise<void>) | undefined
     if (lock) {
-      try {
-        release = await lockfile.lock(filePath, {
-          realpath: false,
-          retries: { retries: 10, minTimeout: 25, maxTimeout: 200 },
-        })
-      } catch (e) {
-        const code = (e as { code?: string })?.code
-        if (code !== 'MODULE_NOT_FOUND' && code !== 'ERR_MODULE_NOT_FOUND') {
-          throw e
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          release = await lockfile.lock(filePath, { realpath: false })
+          break
+        } catch (e) {
+          const code = (e as { code?: string })?.code
+          if (code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND') {
+            release = undefined
+            break
+          }
+          if (code !== 'ELOCKED' || attempt >= SYNC_LOCK_ATTEMPTS) {
+            throw e
+          }
+          await new Promise(resolve =>
+            setTimeout(resolve, Math.min(25 * attempt, 200)),
+          )
         }
-        release = undefined
       }
     }
     try {
