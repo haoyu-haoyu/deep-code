@@ -11,6 +11,14 @@ const RETRY_BASE_DELAY_MS = 500
 // rust-analyzer) is not falsely cut off; a config requestTimeout (incl. 0 to
 // disable) overrides it. Initialize keeps its own startupTimeout instead.
 const DEFAULT_LSP_REQUEST_TIMEOUT_MS = 30_000
+// Upper bound on a single LSP message (header + body). A confused or hostile
+// server can declare an enormous Content-Length it never delivers — which both
+// permanently stalls the framing parser (the body never completes) and grows the
+// `incoming` buffer without limit — or flood bytes that never form a `\r\n\r\n`
+// frame at all. 64 MiB is far above any legitimate LSP message yet bounds the
+// memory an unfaithful server can force us to hold. Overridable per client (for
+// tests); a real instance uses the default.
+const DEFAULT_MAX_LSP_MESSAGE_BYTES = 64 * 1024 * 1024
 
 export function createLSPClientCore({
   serverName,
@@ -20,6 +28,7 @@ export function createLSPClientCore({
   logForDebugging = () => {},
   logError = () => {},
   errorMessage = defaultErrorMessage,
+  maxMessageBytes = DEFAULT_MAX_LSP_MESSAGE_BYTES,
 }) {
   let child
   let capabilities
@@ -318,23 +327,49 @@ export function createLSPClientCore({
     })
   }
 
+  // A framing error is unrecoverable for this connection (the byte stream is
+  // desynchronized or the peer is unfaithful): tear the child down and reject
+  // in-flight requests so they don't pend forever, exactly as the
+  // missing-Content-Length case always has.
+  function failFraming(reason) {
+    const error = new Error(`LSP server ${serverName} framing error: ${reason}`)
+    logError(error)
+    cleanupChild()
+    rejectPendingRequests(error)
+  }
+
   function handleIncomingData(chunk) {
     incoming = Buffer.concat([incoming, chunk])
     while (true) {
       const headerEnd = incoming.indexOf('\r\n\r\n')
-      if (headerEnd === -1) return
+      if (headerEnd === -1) {
+        // No complete header yet. Bound the wait: a server that streams bytes
+        // without ever sending a `\r\n\r\n` terminator must not grow `incoming`
+        // without limit.
+        if (incoming.length > maxMessageBytes) {
+          failFraming(
+            `header exceeded ${maxMessageBytes} bytes with no frame terminator`,
+          )
+        }
+        return
+      }
       const header = incoming.slice(0, headerEnd).toString('utf8')
       const lengthMatch = header.match(/Content-Length:\s*(\d+)/i)
       if (!lengthMatch) {
-        const error = new Error(
-          `LSP server ${serverName} sent a message without Content-Length`,
-        )
-        logError(error)
-        cleanupChild()
-        rejectPendingRequests(error)
+        failFraming('message had no Content-Length header')
         return
       }
       const bodyLength = Number(lengthMatch[1])
+      // A server can declare an enormous body it never delivers, permanently
+      // stalling this loop (the body never completes) while `incoming` grows
+      // unbounded. Reject the frame up front rather than waiting for bytes that
+      // will never come.
+      if (bodyLength > maxMessageBytes) {
+        failFraming(
+          `declared Content-Length ${bodyLength} exceeds the ${maxMessageBytes}-byte limit`,
+        )
+        return
+      }
       const bodyStart = headerEnd + 4
       const bodyEnd = bodyStart + bodyLength
       if (incoming.length < bodyEnd) return
