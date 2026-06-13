@@ -19,6 +19,7 @@ import { getOauthConfig } from '../../constants/oauth.js'
 import { clearMemoryFileCaches } from '../../utils/claudemd.js'
 import { getMemoryPath } from '../../utils/config.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
+import * as lockfile from '../../utils/lockfile.js'
 import { classifyAxiosError } from '../../utils/errors.js'
 import { getRepoRemoteHash } from '../../utils/git.js'
 import {
@@ -435,6 +436,7 @@ async function buildEntriesFromLocalFiles(
 async function writeFileForSync(
   filePath: string,
   content: string,
+  { lock = false }: { lock?: boolean } = {},
 ): Promise<boolean> {
   try {
     const parentDir = dirname(filePath)
@@ -442,7 +444,32 @@ async function writeFileForSync(
       await mkdir(parentDir, { recursive: true })
     }
 
-    await writeFile(filePath, content, 'utf8')
+    // Settings files are also written by updateSettingsForSource under the
+    // cross-process lock; a sync pull writing the same file unlocked could
+    // race that read-merge-write and clobber either side. Persistent
+    // contention (ELOCKED after retries) SKIPS this pull (returns false —
+    // the periodic sync re-applies later) rather than writing unlocked; a
+    // missing vendored proper-lockfile degrades to the unlocked write.
+    let release: (() => Promise<void>) | undefined
+    if (lock) {
+      try {
+        release = await lockfile.lock(filePath, {
+          realpath: false,
+          retries: { retries: 10, minTimeout: 25, maxTimeout: 200 },
+        })
+      } catch (e) {
+        const code = (e as { code?: string })?.code
+        if (code !== 'MODULE_NOT_FOUND' && code !== 'ERR_MODULE_NOT_FOUND') {
+          throw e
+        }
+        release = undefined
+      }
+    }
+    try {
+      await writeFile(filePath, content, 'utf8')
+    } finally {
+      await release?.()
+    }
     logForDiagnosticsNoPII('info', 'settings_sync_file_written')
     return true
   } catch {
@@ -490,7 +517,11 @@ async function applyRemoteEntriesToLocal(
     ) {
       // Mark as internal write to prevent spurious change detection
       markInternalWrite(userSettingsPath)
-      if (await writeFileForSync(userSettingsPath, userSettingsContent)) {
+      if (
+        await writeFileForSync(userSettingsPath, userSettingsContent, {
+          lock: true,
+        })
+      ) {
         appliedCount++
         settingsWritten = true
       }
@@ -521,7 +552,11 @@ async function applyRemoteEntriesToLocal(
       ) {
         // Mark as internal write to prevent spurious change detection
         markInternalWrite(localSettingsPath)
-        if (await writeFileForSync(localSettingsPath, projectSettingsContent)) {
+        if (
+          await writeFileForSync(localSettingsPath, projectSettingsContent, {
+            lock: true,
+          })
+        ) {
           appliedCount++
           settingsWritten = true
         }

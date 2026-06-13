@@ -469,6 +469,9 @@ export function getPolicySettingsOrigin():
   return null
 }
 
+const SETTINGS_LOCK_ATTEMPTS = 10
+const SETTINGS_LOCK_RETRY_MS = 15
+
 /**
  * Merges `settings` into the existing settings for `source` using lodash mergeWith.
  *
@@ -503,29 +506,60 @@ export function updateSettingsForSource(
     // last-writer-wins each other's changes away. Same lockfile idiom as
     // config.ts's saveConfigWithLock for the sibling ~/.claude.json;
     // realpath:false lets the lock be taken before the file first exists.
+    // Contention retries synchronously a bounded ~150ms first: competing
+    // writers hold for milliseconds, so callers practically never see the
+    // contention error (many fire-and-forget the result).
     try {
-      releaseLock = lockfile.lockSync(filePath, {
-        realpath: false,
-        onCompromised: err => {
-          // Default onCompromised throws from a timer (unhandled). The lock
-          // being stolen after an event-loop stall is recoverable — log it.
-          logForDebugging(`Settings lock compromised: ${err}`, {
-            level: 'error',
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          releaseLock = lockfile.lockSync(filePath, {
+            realpath: false,
+            onCompromised: err => {
+              // Default onCompromised throws from a timer (unhandled). The
+              // lock being stolen after an event-loop stall is recoverable —
+              // log it.
+              logForDebugging(`Settings lock compromised: ${err}`, {
+                level: 'error',
+              })
+            },
           })
-        },
-      })
+          break
+        } catch (lockError) {
+          if (
+            (lockError as { code?: string })?.code !== 'ELOCKED' ||
+            attempt >= SETTINGS_LOCK_ATTEMPTS
+          ) {
+            throw lockError
+          }
+          Atomics.wait(
+            new Int32Array(new SharedArrayBuffer(4)),
+            0,
+            0,
+            SETTINGS_LOCK_RETRY_MS,
+          )
+        }
+      }
     } catch (lockError) {
-      if ((lockError as { code?: string })?.code === 'ELOCKED') {
+      const code = (lockError as { code?: string })?.code
+      if (code === 'ELOCKED') {
         return {
           error: new Error(
             `Another DeepCode instance is writing ${filePath}; retry shortly`,
           ),
         }
       }
-      // proper-lockfile unavailable (it is vendored and not resolvable in
-      // every environment) or another acquire failure: proceed unlocked —
-      // the pre-lock behavior — rather than breaking settings writes.
-      releaseLock = undefined
+      if (code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND') {
+        // proper-lockfile is vendored and not resolvable in every
+        // environment: proceed unlocked — the pre-lock behavior — rather
+        // than breaking settings writes there. Any OTHER acquire failure
+        // (lock-dir EACCES etc.) is a real fault and must not silently
+        // recreate the unlocked lost-update behavior.
+        releaseLock = undefined
+      } else {
+        return {
+          error: new Error(`Failed to lock ${filePath}: ${lockError}`),
+        }
+      }
     }
 
     // Try to get existing settings with validation. Bypass the per-source

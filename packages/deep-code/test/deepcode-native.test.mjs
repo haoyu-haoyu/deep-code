@@ -4487,8 +4487,31 @@ test('updateSettingsForSource wraps its read-merge-write in the cross-process lo
   assert.ok(readAt < writeAt)
   assert.match(body, /ELOCKED/, 'contention must be surfaced, not ignored')
   assert.match(
+    body,
+    /Atomics\.wait/,
+    'contention must retry briefly before surfacing (callers fire-and-forget)',
+  )
+  assert.match(
+    body,
+    /MODULE_NOT_FOUND/,
+    'only a missing vendored proper-lockfile may degrade to unlocked writes',
+  )
+  assert.match(
     body.slice(body.indexOf('} finally {')),
     /releaseLock\?\.\(\)/,
     'the lock must be released in a finally',
+  )
+
+  // The sync pull writes the same settings files — it must take the same
+  // lock (async variant) at its settings call sites.
+  const syncSource = fsReadFileSyncForSettingsPin(
+    new URL('../src/services/settingsSync/index.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(syncSource, /lockfile\.lock\(/)
+  assert.equal(
+    (syncSource.match(/lock: true/g) ?? []).length,
+    2,
+    'both settings-file sync writes must request the lock',
   )
 })
