@@ -12,6 +12,7 @@ import { logError } from './log.js'
 import { cleanupOldVersions } from './nativeInstaller/index.js'
 import { cleanupOldPastes } from './pasteStore.js'
 import { getProjectsDir } from './sessionStorage.js'
+import { cleanupOldShellSnapshotsCore } from './shellSnapshotCleanup.mjs'
 import { getSettingsWithAllErrors } from './settings/allErrors.js'
 import {
   getSettings_DEPRECATED,
@@ -302,6 +303,21 @@ export function cleanupOldPlanFiles(): Promise<CleanupResult> {
   return cleanupSingleDirectory(plansDir, '.md')
 }
 
+/**
+ * Reclaim orphaned Bash shell-snapshot files (~/.claude/shell-snapshots).
+ * One snapshot-*.sh is written per session and removed only on a GRACEFUL
+ * shutdown, so a SIGKILL/OOM/crash leaves it forever — no other GC pass sweeps
+ * this directory. Logic lives in a node-testable .mjs leaf.
+ */
+export function cleanupOldShellSnapshots(): Promise<CleanupResult> {
+  const snapshotsDir = join(getClaudeConfigHomeDir(), 'shell-snapshots')
+  return cleanupOldShellSnapshotsCore(
+    snapshotsDir,
+    getCutoffDate(),
+    getFsImplementation(),
+  )
+}
+
 export async function cleanupOldFileHistoryBackups(): Promise<CleanupResult> {
   const cutoffDate = getCutoffDate()
   const result: CleanupResult = { messages: 0, errors: 0 }
@@ -587,6 +603,7 @@ export async function cleanupOldMessageFilesInBackground(): Promise<void> {
   await cleanupOldMessageFiles()
   await cleanupOldSessionFiles()
   await cleanupOldPlanFiles()
+  await cleanupOldShellSnapshots()
   await cleanupOldFileHistoryBackups()
   await cleanupOldSessionEnvDirs()
   await cleanupOldDebugLogs()
