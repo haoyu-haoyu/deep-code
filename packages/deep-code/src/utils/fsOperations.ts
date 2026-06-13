@@ -14,6 +14,7 @@ import { homedir } from 'os'
 import * as nodePath from 'path'
 import { getErrnoCode } from './errors.js'
 import { slowLogging } from './slowOperations.js'
+import { trimTrailingPartialUtf8 } from './utf8Tail.mjs'
 
 /**
  * Simplified filesystem operations interface based on Node.js fs module.
@@ -668,9 +669,22 @@ export async function readFileRange(
     totalRead += bytesRead
   }
 
+  // When the read was capped BEFORE end-of-file, its final bytes may be a partial
+  // multibyte codepoint; decoding them directly emits a stray U+FFFD. Trim to the
+  // last complete codepoint and report the trimmed byte count so a byte-offset delta
+  // reader (newOffset = offset + bytesRead) resumes on a clean lead byte. Skip the
+  // trim at EOF — a genuinely truncated final codepoint is real data, not a cut.
+  // Guard against zero forward progress (only possible with a pathologically tiny
+  // maxBytes): keep the full read rather than stall a delta reader.
+  let end = totalRead
+  if (offset + totalRead < size) {
+    const trimmed = trimTrailingPartialUtf8(buffer, totalRead)
+    if (trimmed > 0) end = trimmed
+  }
+
   return {
-    content: buffer.toString('utf8', 0, totalRead),
-    bytesRead: totalRead,
+    content: buffer.toString('utf8', 0, end),
+    bytesRead: end,
     bytesTotal: size,
   }
 }
