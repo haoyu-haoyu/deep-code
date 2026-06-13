@@ -1,4 +1,5 @@
 import { getAllowedSettingSources } from '../../bootstrap/state.js'
+import { orderEnabledSettingSources } from './settingSourceOrder.mjs'
 
 /**
  * All possible sources where settings can come from
@@ -157,13 +158,17 @@ export function parseSettingSourcesFlag(flag: string): SettingSource[] {
  * @returns Array of enabled SettingSource values
  */
 export function getEnabledSettingSources(): SettingSource[] {
-  const allowed = getAllowedSettingSources()
-
-  // Always include policy and flag settings
-  const result = new Set<SettingSource>(allowed)
-  result.add('policySettings')
-  result.add('flagSettings')
-  return Array.from(result)
+  // Order by canonical precedence (SETTING_SOURCES), NOT by the order sources were
+  // enabled. Sources merge later-wins, so a Set built from the enabled list would
+  // append the always-on policy/flag sources at the end — placing flagSettings
+  // after policySettings whenever --setting-sources is used, which lets a CLI
+  // --settings file override enterprise managed policy. Filtering the canonical
+  // order keeps policySettings last (un-overridable) regardless of how sources
+  // were enabled.
+  return orderEnabledSettingSources(
+    getAllowedSettingSources(),
+    SETTING_SOURCES,
+  ) as SettingSource[]
 }
 
 /**
