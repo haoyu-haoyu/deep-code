@@ -59,5 +59,23 @@ export function redactSensitiveInfo(text) {
     '$1[REDACTED]',
   )
 
+  // DeepSeek / OpenAI API keys (sk-… / sk-proj-…). The sk-ant rules above only
+  // match Anthropic keys, but THIS fork's primary credential is a bare `sk-` key
+  // (deepseek-config.json stores it as `"apiKey": "sk-…"`). Without these rules a
+  // key pasted in prose, or the on-disk config blob surfaced in a transcript,
+  // leaks through this scrubber — the sole guard on submitTranscriptShare's POST
+  // to api.anthropic.com. Run LAST so the structured authorization/x-api-key
+  // rules claim their forms first (avoids a double-redacted `[REDACTED_TOKEN]]`).
+  // {20,} floor: long enough to skip short `sk-` substrings (a real key is 32+).
+  redacted = redacted.replace(
+    /"(sk-(?:proj-)?[A-Za-z0-9_-]{20,})"/g,
+    '"[REDACTED_API_KEY]"',
+  )
+  redacted = redacted.replace(
+    // eslint-disable-next-line custom-rules/no-lookbehind-regex -- .replace(re, string) on no-match returns same string.
+    /(?<![A-Za-z0-9"'])(sk-(?:proj-)?[A-Za-z0-9_-]{20,})(?![A-Za-z0-9"'])/g,
+    '[REDACTED_API_KEY]',
+  )
+
   return redacted
 }

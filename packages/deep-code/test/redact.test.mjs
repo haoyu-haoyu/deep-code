@@ -75,6 +75,54 @@ test('redacts AWS_*/GOOGLE_* assignments and generic KEY/TOKEN/SECRET/PASSWORD',
   assert.equal(redactSensitiveInfo('TOKEN = abc123def456'), 'TOKEN = [REDACTED]')
 })
 
+// DeepSeek/OpenAI bare `sk-` keys — THIS fork's primary credential. The sk-ant
+// rules don't match them, so before this coverage a key pasted in prose or the
+// on-disk `"apiKey": "sk-…"` config blob leaked through the transcript-share
+// scrubber. Keys below are fake.
+const SK = 'sk-' + '0a1b2c3d4e5f60718293a4b5c6d7e8f9' // DeepSeek shape: sk- + 32 hex
+const PROJ = 'sk-proj-' + 'AbCdEf0123456789AbCdEf0123456789' // OpenAI project key
+
+test('redacts bare DeepSeek/OpenAI sk- keys in prose and the on-disk apiKey JSON shape', () => {
+  const prose = redactSensitiveInfo(`my key is ${SK} ok`)
+  assert.equal(prose, 'my key is [REDACTED_API_KEY] ok')
+  assert.ok(!prose.includes(SK))
+
+  // The deepseek-config.json on-disk shape `"apiKey": "sk-…"` — the generic
+  // API_KEY rule can't catch it (the quote between `apiKey"` and `:` defeats it).
+  const pretty = redactSensitiveInfo(`{\n  "apiKey": "${SK}",\n  "baseURL": "https://api.deepseek.com"\n}`)
+  assert.ok(!pretty.includes(SK))
+  assert.match(pretty, /"apiKey": "\[REDACTED_API_KEY\]"/)
+  assert.ok(pretty.includes('https://api.deepseek.com'), 'non-secret fields survive')
+
+  const compact = redactSensitiveInfo(`{"apiKey":"${SK}"}`)
+  assert.equal(compact, '{"apiKey":"[REDACTED_API_KEY]"}')
+
+  const proj = redactSensitiveInfo(`key ${PROJ} here`)
+  assert.equal(proj, 'key [REDACTED_API_KEY] here')
+  assert.ok(!proj.includes(PROJ))
+})
+
+test('sk- redaction: short substrings and glued/prefixed tokens are NOT touched (low FP noise)', () => {
+  // {20,} floor — a real key is 32+ chars; shorter `sk-` substrings stay.
+  assert.equal(redactSensitiveInfo('sk-short1'), 'sk-short1')
+  assert.equal(redactSensitiveInfo('sk-' + 'a'.repeat(19)), 'sk-' + 'a'.repeat(19))
+  // exactly 20 chars after `sk-` crosses the floor and is redacted
+  assert.equal(redactSensitiveInfo('sk-' + 'a'.repeat(20)), '[REDACTED_API_KEY]')
+  // leading-alnum glue (word boundary) is left alone, like the sk-ant rule
+  const glued = 'xsk-' + 'a'.repeat(25)
+  assert.equal(redactSensitiveInfo(glued), glued)
+  // an unrelated `task-…` token (no sk- prefix) is untouched
+  const task = 'task-abc12345678901234567890'
+  assert.equal(redactSensitiveInfo(task), task)
+})
+
+test('sk- rule runs after the structured rules: Authorization: Bearer sk-… stays a clean token redaction', () => {
+  // Placed last so the authorization rule claims its form first — no double-redact.
+  const out = redactSensitiveInfo(`Authorization: Bearer ${SK}`)
+  assert.equal(out, 'Authorization: Bearer [REDACTED_TOKEN]')
+  assert.ok(!out.includes(SK))
+})
+
 test('leaves non-secret text untouched, and redacts multiple secrets in one blob', () => {
   const innocent = 'the curl command failed with exit code 7 at /usr/bin/curl'
   assert.equal(redactSensitiveInfo(innocent), innocent)
