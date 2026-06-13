@@ -11,6 +11,7 @@ import {
   renderWorkspaceCommandPrompt,
   resetWorkspaceCommandWarningsForTests,
 } from '../src/commands/workspaceSlashLoader.mjs'
+import { replaceAllLiteral } from '../src/utils/literalReplace.mjs'
 
 test('loadWorkspaceCommands loads .deepcode command markdown', async () => {
   const workspaceRoot = await createWorkspace()
@@ -39,6 +40,39 @@ test('$ARGUMENTS substitution happens at execution time', async () => {
   const prompt = await slashCommand.getPromptForCommand('again', {})
 
   assert.deepEqual(prompt, [{ type: 'text', text: 'Hello again' }])
+})
+
+test('renderWorkspaceCommandPrompt inserts $-special args literally (no $&/$$ corruption)', () => {
+  const command = {
+    name: 'note',
+    promptTemplate: 'note: $ARGUMENTS done',
+    source: 'deepcode',
+    filePath: '/tmp/note.md',
+  }
+  // The user value is spliced verbatim — $$ must not collapse to $, $& must not
+  // inject the matched $ARGUMENTS token, $`/$' must not inject surrounding text.
+  assert.equal(renderWorkspaceCommandPrompt(command, 'cost $$5'), 'note: cost $$5 done')
+  assert.equal(renderWorkspaceCommandPrompt(command, 'a$&b'), 'note: a$&b done')
+  assert.equal(renderWorkspaceCommandPrompt(command, "x$'y"), "note: x$'y done")
+  assert.equal(renderWorkspaceCommandPrompt(command, 'p$`q'), 'note: p$`q done')
+  // plain args are unchanged (no behavior change for the common case)
+  assert.equal(renderWorkspaceCommandPrompt(command, 'world'), 'note: world done')
+})
+
+test('replaceAllLiteral splices $-special values verbatim for string and global-regex search', () => {
+  // string search → every literal occurrence, value inserted verbatim
+  assert.equal(replaceAllLiteral('a $X b $X', '$X', 'cost $$5'), 'a cost $$5 b cost $$5')
+  assert.equal(replaceAllLiteral('<$X>', '$X', '$&'), '<$&>')
+  assert.equal(replaceAllLiteral('<$X>', '$X', "$'"), "<$'>")
+  assert.equal(replaceAllLiteral('<$X>', '$X', '$`'), '<$`>')
+  assert.equal(replaceAllLiteral('<$X>', '$X', '$1'), '<$1>')
+  // global-regex search (the named-arg path) → every match, value literal
+  assert.equal(
+    replaceAllLiteral('$n and $n', /\$n(?![\[\w])/g, 'a$&b'),
+    'a$&b and a$&b',
+  )
+  // plain value unchanged
+  assert.equal(replaceAllLiteral('x $X y', '$X', 'V'), 'x V y')
 })
 
 test('source priority is .deepcode > .cursor > .claude for duplicate names', async () => {
