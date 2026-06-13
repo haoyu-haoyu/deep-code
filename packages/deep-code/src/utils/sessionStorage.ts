@@ -71,6 +71,7 @@ import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { getClaudeConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { isFsInaccessible } from './errors.js'
 import { parseAgentMetadata } from './agentMetadata.mjs'
+import { repairTranscriptTail } from './transcriptRepair.mjs'
 import type { FileHistorySnapshot } from './fileHistory.js'
 import { formatFileSize } from './format.js'
 import { getFsImplementation } from './fsOperations.js'
@@ -1438,6 +1439,12 @@ export async function resetSessionFilePointer() {
 export function adoptResumedSessionFile(): void {
   const project = getProject()
   project.sessionFile = getTranscriptPath()
+  // A crash mid-append may have left the file ending without a newline. The
+  // appends below (metadata, then messages) would land right after it,
+  // turning a shape readers forgive into permanent mid-file corruption.
+  // Repair first: a complete-but-unterminated record is terminated (kept),
+  // a half-written one is dropped — exactly what readers already discard.
+  repairTranscriptTail(project.sessionFile)
   project.reAppendSessionMetadata(true)
 }
 
