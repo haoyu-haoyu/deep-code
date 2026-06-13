@@ -11,6 +11,8 @@ import * as lockfile from './lockfile.js'
 import { logError } from './log.js'
 import { cleanupOldVersions } from './nativeInstaller/index.js'
 import { cleanupOldPastes } from './pasteStore.js'
+import { reclaimAbandonedSnapshotStoresCore } from '../services/snapshot/reclaimStores.mjs'
+import { resolveSnapshotsBaseDir } from '../services/snapshot/paths.mjs'
 import { getProjectsDir } from './sessionStorage.js'
 import { cleanupOldShellSnapshotsCore } from './shellSnapshotCleanup.mjs'
 import { getSettingsWithAllErrors } from './settings/allErrors.js'
@@ -318,6 +320,20 @@ export function cleanupOldShellSnapshots(): Promise<CleanupResult> {
   )
 }
 
+/**
+ * Reclaim ABANDONED per-workspace snapshot stores (~/.deepcode/snapshots/<hash>).
+ * A store is pruned only by its own checkAndPrune when the workspace is
+ * reopened, so a deleted/never-revisited workspace leaves its store (a side
+ * .git repo + manifest) forever. Logic lives in a node-testable .mjs leaf.
+ */
+export function cleanupAbandonedSnapshotStores(): Promise<CleanupResult> {
+  return reclaimAbandonedSnapshotStoresCore({
+    baseDir: resolveSnapshotsBaseDir(),
+    cutoffMs: getCutoffDate().getTime(),
+    fs: getFsImplementation(),
+  })
+}
+
 export async function cleanupOldFileHistoryBackups(): Promise<CleanupResult> {
   const cutoffDate = getCutoffDate()
   const result: CleanupResult = { messages: 0, errors: 0 }
@@ -604,6 +620,7 @@ export async function cleanupOldMessageFilesInBackground(): Promise<void> {
   await cleanupOldSessionFiles()
   await cleanupOldPlanFiles()
   await cleanupOldShellSnapshots()
+  await cleanupAbandonedSnapshotStores()
   await cleanupOldFileHistoryBackups()
   await cleanupOldSessionEnvDirs()
   await cleanupOldDebugLogs()

@@ -12,9 +12,16 @@ export function computeWorkspaceHash(workspaceRoot) {
     .slice(0, 16)
 }
 
+// Base directory holding every per-workspace snapshot store
+// (~/.deepcode/snapshots/<hash>). Exposed so the background cleanup can sweep
+// abandoned stores without re-deriving the path.
+export function resolveSnapshotsBaseDir() {
+  return join(resolveDeepCodeHome(), 'snapshots')
+}
+
 export function resolveSnapshotStore({ workspaceRoot }) {
   const workspaceHash = computeWorkspaceHash(workspaceRoot)
-  const storePath = join(resolveDeepCodeHome(), 'snapshots', workspaceHash)
+  const storePath = join(resolveSnapshotsBaseDir(), workspaceHash)
   return {
     storePath,
     gitDir: join(storePath, '.git'),
