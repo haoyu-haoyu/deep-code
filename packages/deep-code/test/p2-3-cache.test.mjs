@@ -11,7 +11,11 @@ import {
   formatCacheStatusText,
   formatCompactTokenCount,
 } from '../src/components/cacheStatusChipData.mjs'
-import { executeCacheCommand } from '../src/commands/cache/cache-command.mjs'
+import {
+  executeCacheCommand,
+  formatCacheInspectReport,
+  resolveCacheReportModel,
+} from '../src/commands/cache/cache-command.mjs'
 import { createDeepSeekCallModel } from '../src/query/deepseek-call-model.mjs'
 import { cacheHitRatio } from '../src/cache/hitRate.mjs'
 
@@ -303,6 +307,35 @@ test('/cache inspect reports recent turns and session totals', async () => {
   assert.match(result.report, /turn-inspect: hit=8 miss=2 hit_rate=80\.0% prefix=prefix-inspect/)
   assert.match(result.report, /Estimated savings:/)
   assert.match(result.report, /pricing snapshot 2026-05-27/)
+})
+
+test('resolveCacheReportModel: env > config-file model > product default', () => {
+  assert.equal(resolveCacheReportModel({}), 'deepseek-v4-pro')
+  assert.equal(resolveCacheReportModel({ DEEPSEEK_MODEL: 'deepseek-v4-flash' }), 'deepseek-v4-flash')
+  assert.equal(resolveCacheReportModel({ DEEPCODE_MODEL: 'custom' }), 'custom')
+  // an empty-string env var must fall through, not be picked
+  assert.equal(resolveCacheReportModel({ DEEPSEEK_MODEL: '' }), 'deepseek-v4-pro')
+  // a config-file model (set via the setup wizard / /provider, NOT env) is honored —
+  // a wizard-flash session must price at flash, not mis-default to pro
+  assert.equal(resolveCacheReportModel({}, 'deepseek-v4-flash'), 'deepseek-v4-flash')
+  // env still beats the config-file model; file beats the default; empty file falls through
+  assert.equal(resolveCacheReportModel({ DEEPSEEK_MODEL: 'envm' }, 'filem'), 'envm')
+  assert.equal(resolveCacheReportModel({}, 'filem'), 'filem')
+  assert.equal(resolveCacheReportModel({}, ''), 'deepseek-v4-pro')
+})
+
+test('formatCacheInspectReport prices savings at the pro default, not the flash tier (~3.1x)', () => {
+  const totals = { totalHit: 50_000_000, totalMiss: 0, turnCount: 1, hitRate: 1 }
+  // default (no model) → pro pricing
+  assert.match(
+    formatCacheInspectReport({ totals, turns: [] }),
+    /Estimated savings: \$21\.568750/,
+  )
+  // an explicit flash model still degrades to the flash number (graceful)
+  assert.match(
+    formatCacheInspectReport({ totals, turns: [], model: 'deepseek-v4-flash' }),
+    /Estimated savings: \$6\.860000/,
+  )
 })
 
 test('/cache warmup calls warmDeepSeekCache and formats the result', async () => {
