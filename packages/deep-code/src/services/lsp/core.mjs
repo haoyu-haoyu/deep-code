@@ -5,6 +5,12 @@ import { pathToFileURL } from 'node:url'
 const LSP_ERROR_CONTENT_MODIFIED = -32801
 const MAX_RETRIES_FOR_TRANSIENT_ERRORS = 3
 const RETRY_BASE_DELAY_MS = 500
+// Default per-request deadline for post-initialize requests. A stuck server that
+// accepts the write but never replies would otherwise hang the agentic turn
+// forever. Generous enough that a legitimately slow op (a cold-indexing gopls /
+// rust-analyzer) is not falsely cut off; a config requestTimeout (incl. 0 to
+// disable) overrides it. Initialize keeps its own startupTimeout instead.
+const DEFAULT_LSP_REQUEST_TIMEOUT_MS = 30_000
 
 export function createLSPClientCore({
   serverName,
@@ -180,7 +186,7 @@ export function createLSPClientCore({
     }
   }
 
-  async function sendRequest(method, params) {
+  async function sendRequest(method, params, timeoutMs) {
     if (!child) {
       throw new Error('LSP client not started')
     }
@@ -189,7 +195,7 @@ export function createLSPClientCore({
       throw new Error('LSP server not initialized')
     }
     try {
-      return await sendRawRequest(method, params)
+      return await sendRawRequest(method, params, timeoutMs)
     } catch (error) {
       const err = toError(error)
       logError(
@@ -258,17 +264,40 @@ export function createLSPClientCore({
     }
   }
 
-  function sendRawRequest(method, params) {
+  function sendRawRequest(method, params, timeoutMs) {
     const id = nextRequestId++
     const request = { jsonrpc: '2.0', id, method, params }
     const response = new Promise((resolve, reject) => {
       pendingRequests.set(id, { resolve, reject })
     })
 
-    return writeMessage(request).then(() => response, error => {
+    const settled = writeMessage(request).then(() => response, error => {
       pendingRequests.delete(id)
       throw error
     })
+
+    if (!(timeoutMs > 0)) return settled
+
+    // Per-request deadline. A server that accepts the write but never answers (a
+    // healthy-but-stuck server, or one that silently swallows a method it
+    // advertised) would otherwise leave this request pending FOREVER and hang
+    // the turn — the instance-level retry only fires on a rejection, never on a
+    // silent hang. On fire, drop the pending entry (so a late reply is ignored
+    // AND pendingRequests does not leak) and reject. A timeout is not a
+    // ContentModified error, so the instance does not retry it — it surfaces.
+    let timer
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        if (pendingRequests.delete(id)) {
+          reject(
+            new Error(
+              `LSP server ${serverName} request ${method} timed out after ${timeoutMs}ms`,
+            ),
+          )
+        }
+      }, timeoutMs)
+    })
+    return Promise.race([settled, timeout]).finally(() => clearTimeout(timer))
   }
 
   function sendRawNotification(method, params) {
@@ -617,6 +646,11 @@ export function createLSPServerInstanceCore({
       throw error
     }
 
+    // Unset → built-in default; 0 disables (a server that legitimately needs
+    // unbounded time can opt out). Bounds a stuck server so the turn can't hang.
+    const requestTimeout =
+      config.requestTimeout ?? DEFAULT_LSP_REQUEST_TIMEOUT_MS
+
     let lastAttemptError
     for (
       let attempt = 0;
@@ -624,7 +658,7 @@ export function createLSPServerInstanceCore({
       attempt++
     ) {
       try {
-        return await client.sendRequest(method, params)
+        return await client.sendRequest(method, params, requestTimeout)
       } catch (error) {
         lastAttemptError = toError(error)
         const errorCode = error && typeof error === 'object' ? error.code : undefined

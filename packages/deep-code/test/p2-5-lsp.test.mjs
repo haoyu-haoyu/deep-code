@@ -208,6 +208,62 @@ test('LSP instance rejects in-flight requests and marks error when the server ex
   }
 })
 
+test('LSP client sendRequest enforces a per-request timeout when the server never answers', async () => {
+  const server = await createFakeLspServer({ behavior: 'swallow-request' })
+  const client = createTestClient('fake-ts')
+
+  try {
+    await client.start(process.execPath, [server.scriptPath], { env: server.env() })
+    // initialize uses sendRawRequest WITHOUT a timeout and still completes — the
+    // per-request deadline is post-initialize only (init has its own timeout).
+    const init = await client.initialize({ processId: process.pid })
+    assert.equal(init.capabilities.definitionProvider, true)
+
+    // The server accepts the request but never replies. Without the timeout this
+    // promise would pend forever and hang the agentic turn.
+    const started = Date.now()
+    await assert.rejects(
+      () =>
+        client.sendRequest(
+          'textDocument/hover',
+          { textDocument: { uri: 'file:///fake.ts' } },
+          150,
+        ),
+      /timed out after 150ms/,
+    )
+    assert.ok(Date.now() - started < 3_000, 'rejected promptly, did not hang')
+  } finally {
+    await client.stop().catch(() => {})
+  }
+})
+
+test('LSP instance bounds a stuck request via config.requestTimeout and stays running', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-lsp-timeout-'))
+  const server = await createFakeLspServer({ behavior: 'swallow-request' })
+  const instance = createTestServerInstance('fake-ts', {
+    ...serverConfig(server, workspaceRoot),
+    requestTimeout: 200,
+  })
+
+  try {
+    await instance.start()
+    const started = Date.now()
+    await assert.rejects(
+      () =>
+        instance.sendRequest('textDocument/hover', {
+          position: { line: 0, character: 0 },
+        }),
+      /timed out after 200ms/,
+    )
+    assert.ok(Date.now() - started < 3_000, 'rejected promptly')
+    // A timeout is not a crash: the server is alive (just stuck), so the
+    // instance stays usable rather than being torn down / marked error.
+    assert.equal(instance.state, 'running')
+  } finally {
+    await instance.stop().catch(() => {})
+  }
+})
+
 test('LSP manager re-sends didOpen to a restarted server instead of trusting stale openedFiles', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-lsp-reopen-'))
   const filePath = join(workspaceRoot, 'demo.ts')
@@ -1077,6 +1133,11 @@ function handleMessage(message) {
       message.method === 'textDocument/hover'
     ) {
       process.exit(0)
+    }
+    if (behavior === 'swallow-request') {
+      // Accept the request (already logged) but never answer it — a
+      // healthy-but-stuck server that hangs the client absent a request timeout.
+      return
     }
     writeMessage({ jsonrpc: '2.0', id: message.id, result: null })
     return
