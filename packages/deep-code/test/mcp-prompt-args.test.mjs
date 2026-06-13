@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import zipObject from 'lodash-es/zipObject.js'
 
 import { parseShellArguments } from '../src/services/mcp/promptArguments.mjs'
+
+// Local equivalent of lodash zipObject (which client.ts uses): zipObject(keys,
+// values) → { keys[i]: values[i] }, with undefined for a missing value. Inlined so
+// the test has no bare lodash-es import (not node-resolvable under `npm ci` in CI).
+const zipObject = (keys, values) =>
+  Object.fromEntries(keys.map((key, i) => [key, values[i]]))
 
 // client.ts builds the MCP prompts/get `arguments` as zipObject(argNames, argsArray).
 // This mirrors that to prove the parse fix produces correct server-bound arguments.
@@ -19,6 +24,9 @@ test('parseShellArguments honors quotes and collapses whitespace (vs the old spl
   assert.deepEqual(parseShellArguments('a b'), ['a', 'b'])
   // $VAR is preserved literally (not expanded), matching parseArguments
   assert.deepEqual(parseShellArguments('$HOME x'), ['$HOME', 'x'])
+  // shell operators (|, ;, &&) parse to non-string objects and must be filtered out
+  // (they can't be a prompt argument value), keeping only the literal string tokens
+  assert.deepEqual(parseShellArguments('a | b'), ['a', 'b'])
 })
 
 test('MCP prompt arguments are correct for quoted/multi-word/empty inputs', () => {
