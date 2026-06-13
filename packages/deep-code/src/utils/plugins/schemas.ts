@@ -768,6 +768,14 @@ export const LspServerConfigSchema = lazySchema(() =>
       .positive()
       .optional()
       .describe('Maximum time to wait for server startup (milliseconds)'),
+    requestTimeout: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .describe(
+        'Maximum time to wait for a post-initialize request reply (milliseconds); 0 disables the timeout. Unset uses a built-in default.',
+      ),
     shutdownTimeout: z
       .number()
       .int()
