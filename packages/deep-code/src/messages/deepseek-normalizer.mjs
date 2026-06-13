@@ -130,6 +130,25 @@ export function normalizeToolCalls(toolCalls) {
   }))
 }
 
+// DeepSeek (and the openai-compatible providers we target) are text-only — they
+// cannot decode an image/document content block. Without this, the JSON.stringify
+// fallthrough below would serialize the ENTIRE base64 blob as raw text into the
+// prompt (a token/cost bomb with zero vision benefit), and a top-level image block
+// in a user message would be dropped silently with no feedback. Return a compact,
+// deterministic placeholder so the model is told what was elided and the bytes stay
+// stable turn-over-turn. Returns null for blocks this doesn't recognize (the caller
+// keeps its existing handling for those).
+export function describeNonTextBlock(block) {
+  const mediaType = block?.source?.media_type ?? block?.source?.mediaType
+  if (block?.type === 'image') {
+    return `[image omitted: DeepSeek has no vision${mediaType ? `; ${mediaType}` : ''}]`
+  }
+  if (block?.type === 'document') {
+    return `[document omitted: DeepSeek has no vision${mediaType ? `; ${mediaType}` : ''}]`
+  }
+  return null
+}
+
 export function stringifyToolResultContent(content) {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return JSON.stringify(content ?? '')
@@ -137,6 +156,8 @@ export function stringifyToolResultContent(content) {
     .map(block => {
       if (typeof block === 'string') return block
       if (block?.type === 'text') return block.text ?? ''
+      const placeholder = describeNonTextBlock(block)
+      if (placeholder !== null) return placeholder
       return JSON.stringify(block)
     })
     .join('\n')
@@ -198,6 +219,14 @@ function mapClaudeCodeUserMessage(message) {
     }
     if (block.type === 'text') {
       textParts.push(block.text ?? '')
+      continue
+    }
+    // A non-text block (a pasted image / PDF) can't be sent to a text-only model.
+    // Emit a placeholder so the user gets a signal it was elided AND an image-only
+    // turn still produces a non-empty user message instead of vanishing entirely.
+    const placeholder = describeNonTextBlock(block)
+    if (placeholder !== null) {
+      textParts.push(placeholder)
     }
   }
   if (textParts.length > 0) {
