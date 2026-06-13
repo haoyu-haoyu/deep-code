@@ -4689,6 +4689,111 @@ test('mapMessagesToDeepSeek drops orphan tool results (post-compaction / resume 
   assert.equal(toolMsgs[0].tool_call_id, 'call_1')
 })
 
+test('mapMessagesToDeepSeek drops dangling assistant tool_calls (resume/fork mid multi-tool turn)', () => {
+  // A multi-tool turn (the model requests bash=X and read=Y) crashes HARD after
+  // X's result is persisted but before Y's. On resume, filterUnresolvedToolUses
+  // keeps the assistant message because not ALL its calls are unresolved, so the
+  // dangling Y reaches request-build. DeepSeek 400s an assistant tool_calls entry
+  // not followed by a tool message for EVERY id, and the message stays in the
+  // transcript, so every later turn re-400s — a permanent session wedge. The
+  // dangling call must be dropped (drop-not-inject), keeping the paired one.
+  const assertNoDangling = mapped => {
+    const resultIds = new Set(
+      mapped.filter(m => m.role === 'tool').map(m => m.tool_call_id),
+    )
+    for (const m of mapped) {
+      if (m.role === 'assistant' && Array.isArray(m.tool_calls)) {
+        for (const call of m.tool_calls) {
+          assert.ok(
+            resultIds.has(call.id),
+            `tool_call ${call.id} must have a following tool result`,
+          )
+        }
+      }
+    }
+  }
+
+  const repaired = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'X', name: 'bash', input: {} },
+          { type: 'tool_use', id: 'Y', name: 'read', input: {} },
+        ],
+      },
+    },
+    {
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 'X', content: 'ok' }] },
+    },
+    { type: 'user', message: { content: [{ type: 'text', text: 'Continue' }] } },
+  ])
+  const asst = repaired.find(m => m.role === 'assistant')
+  assert.deepEqual(
+    asst.tool_calls.map(c => c.id),
+    ['X'],
+    'the dangling call Y must be dropped, the paired call X kept',
+  )
+  assert.ok(
+    repaired.some(m => m.role === 'tool' && m.tool_call_id === 'X'),
+    "X's tool result must be preserved",
+  )
+  assert.ok(
+    repaired.some(m => m.role === 'user' && m.content === 'Continue'),
+    'the trailing user prompt must be preserved',
+  )
+  assertNoDangling(repaired)
+
+  // An assistant whose ONLY call dangles loses tool_calls entirely (and the
+  // reasoning that rode it), leaving a pairing-neutral empty assistant turn.
+  const allDangling = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'planning' },
+          { type: 'tool_use', id: 'Z', name: 'bash', input: {} },
+        ],
+      },
+    },
+    { type: 'user', message: { content: [{ type: 'text', text: 'Continue' }] } },
+  ])
+  const stripped = allDangling.find(m => m.role === 'assistant')
+  assert.ok(stripped, 'the assistant turn is kept')
+  assert.equal(stripped.tool_calls, undefined, 'tool_calls is stripped')
+  assert.equal(stripped.reasoning_content, undefined, 'reasoning is stripped with it')
+  assertNoDangling(allDangling)
+
+  // A fully-paired multi-tool turn (the common case) is returned untouched.
+  const happy = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'A', name: 'bash', input: {} },
+          { type: 'tool_use', id: 'B', name: 'read', input: {} },
+        ],
+      },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 'A', content: ' a' },
+          { type: 'tool_result', tool_use_id: 'B', content: 'b' },
+        ],
+      },
+    },
+  ])
+  assert.deepEqual(
+    happy.find(m => m.role === 'assistant').tool_calls.map(c => c.id),
+    ['A', 'B'],
+    'a fully-paired turn keeps every call (byte-stable prefix)',
+  )
+  assertNoDangling(happy)
+})
+
 test('reasoningReplay knob controls re-sending reasoning_content on tool turns (default preserves it)', async () => {
   // Reasonix strips reasoning_content on tool turns after a live probe showed it
   // costs ~500 uncached prompt tokens/turn. DeepCode re-sends it by deliberate
