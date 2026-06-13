@@ -596,11 +596,14 @@ test('post-edit diagnostics notifies change and save then collects diagnostics',
 })
 
 test('LSP client onNotification returns an unsubscribe that removes the handler', async () => {
-  const server = await createFakeLspServer({ behavior: 'diagnostics-after-init' })
+  // diagnostics-on-save emits a fresh push for each didSave, so we can drive
+  // a real second push and prove the unsubscribed handler is suppressed.
+  const server = await createFakeLspServer({ behavior: 'diagnostics-on-save' })
   const client = createTestClient('fake-ts')
-  let calls = 0
+  let firstCalls = 0
+  let secondCalls = 0
   const off = client.onNotification('textDocument/publishDiagnostics', () => {
-    calls += 1
+    firstCalls += 1
   })
 
   try {
@@ -608,18 +611,24 @@ test('LSP client onNotification returns an unsubscribe that removes the handler'
       env: server.env(),
     })
     await client.initialize({ processId: process.pid })
-    await waitFor(() => calls === 1)
 
-    // After unsubscribing, a further push must not reach the handler.
-    off()
-    const before = calls
-    client.onNotification('textDocument/publishDiagnostics', () => {})
-    // Drive another diagnostics push by re-saving (fake server emits on save).
-    await client.sendNotification?.('textDocument/didSave', {
+    // First push reaches the handler.
+    await client.sendNotification('textDocument/didSave', {
       textDocument: { uri: 'file:///fake.ts' },
     })
-    await delay(60)
-    assert.equal(calls, before, 'unsubscribed handler must not fire again')
+    await waitFor(() => firstCalls === 1)
+
+    // Unsubscribe the first handler; register a second that stays live as a
+    // deterministic witness that the next push actually arrived.
+    off()
+    client.onNotification('textDocument/publishDiagnostics', () => {
+      secondCalls += 1
+    })
+    await client.sendNotification('textDocument/didSave', {
+      textDocument: { uri: 'file:///fake.ts' },
+    })
+    await waitFor(() => secondCalls === 1)
+    assert.equal(firstCalls, 1, 'unsubscribed handler must not fire again')
   } finally {
     await client.stop().catch(() => {})
   }
