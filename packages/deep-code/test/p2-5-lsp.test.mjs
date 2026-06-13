@@ -595,6 +595,99 @@ test('post-edit diagnostics notifies change and save then collects diagnostics',
   }
 })
 
+test('LSP client onNotification returns an unsubscribe that removes the handler', async () => {
+  // diagnostics-on-save emits a fresh push for each didSave, so we can drive
+  // a real second push and prove the unsubscribed handler is suppressed.
+  const server = await createFakeLspServer({ behavior: 'diagnostics-on-save' })
+  const client = createTestClient('fake-ts')
+  let firstCalls = 0
+  let secondCalls = 0
+  const off = client.onNotification('textDocument/publishDiagnostics', () => {
+    firstCalls += 1
+  })
+
+  try {
+    await client.start(process.execPath, [server.scriptPath], {
+      env: server.env(),
+    })
+    await client.initialize({ processId: process.pid })
+
+    // First push reaches the handler.
+    await client.sendNotification('textDocument/didSave', {
+      textDocument: { uri: 'file:///fake.ts' },
+    })
+    await waitFor(() => firstCalls === 1)
+
+    // Unsubscribe the first handler; register a second that stays live as a
+    // deterministic witness that the next push actually arrived.
+    off()
+    client.onNotification('textDocument/publishDiagnostics', () => {
+      secondCalls += 1
+    })
+    await client.sendNotification('textDocument/didSave', {
+      textDocument: { uri: 'file:///fake.ts' },
+    })
+    await waitFor(() => secondCalls === 1)
+    assert.equal(firstCalls, 1, 'unsubscribed handler must not fire again')
+  } finally {
+    await client.stop().catch(() => {})
+  }
+})
+
+test('post-edit diagnostics removes its collector so handlers do not accumulate', async () => {
+  // Inject a manager whose server records each onNotification registration
+  // and whether its unsubscribe was called — a real publishDiagnostics handler
+  // Set is closure-private, so we observe the contract directly.
+  let live = 0
+  const registrations = []
+  const fakeServer = {
+    onNotification(method, handler) {
+      const reg = { method, handler, removed: false }
+      registrations.push(reg)
+      live += 1
+      return () => {
+        if (!reg.removed) {
+          reg.removed = true
+          live -= 1
+        }
+      }
+    },
+  }
+  const fakeManager = {
+    async ensureServerStarted() {
+      return fakeServer
+    },
+    isFileOpen: () => false,
+    async openFile() {},
+    async changeFile() {},
+    async saveFile() {},
+  }
+
+  const run = () =>
+    notifyAndCollectDiagnosticsCore({
+      filePath: '/tmp/leak-demo.ts',
+      content: 'const value: string = 1\n',
+      operation: 'edit',
+      pollDelay: 1,
+      maxDiagnostics: 10,
+      lspManager: fakeManager,
+      clearDeliveredDiagnosticsForFile() {},
+      formatDiagnosticsForAttachment: () => [],
+      delay,
+      logForDebugging() {},
+      logError() {},
+    })
+
+  // Several edits in a row: without the unsubscribe each leaves a collector
+  // behind, so the handler count would climb with every call.
+  await run()
+  await run()
+  await run()
+
+  assert.equal(registrations.length, 3, 'each call registers one collector')
+  assert.equal(live, 0, 'every collector must be removed after its call returns')
+})
+
 test('post-edit diagnostics failures return empty results without throwing', async () => {
   const result = await notifyAndCollectDiagnosticsCore({
     filePath: '/tmp/demo.ts',

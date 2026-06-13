@@ -16,6 +16,11 @@ export async function notifyAndCollectDiagnosticsCore({
 }) {
   const started = Date.now()
   const collected = new Map()
+  // The diagnostics collector below is registered on the server's
+  // session-lifetime client; this call must remove it again, or every
+  // Edit/Write permanently leaks a closure that the LSP server's diagnostic
+  // pushes keep fanning out to (see core.mjs onNotification).
+  let unsubscribe
 
   try {
     if (!lspManager) {
@@ -31,20 +36,23 @@ export async function notifyAndCollectDiagnosticsCore({
       return emptyResult(started)
     }
 
-    server.onNotification('textDocument/publishDiagnostics', params => {
-      try {
-        for (const file of formatDiagnosticsForAttachment(params)) {
-          if (normalizeUri(file.uri) !== absolutePath) {
-            continue
+    unsubscribe = server.onNotification(
+      'textDocument/publishDiagnostics',
+      params => {
+        try {
+          for (const file of formatDiagnosticsForAttachment(params)) {
+            if (normalizeUri(file.uri) !== absolutePath) {
+              continue
+            }
+            for (const diagnostic of file.diagnostics) {
+              collected.set(diagnosticKey(diagnostic), diagnostic)
+            }
           }
-          for (const diagnostic of file.diagnostics) {
-            collected.set(diagnosticKey(diagnostic), diagnostic)
-          }
+        } catch (error) {
+          logError(toError(error))
         }
-      } catch (error) {
-        logError(toError(error))
-      }
-    })
+      },
+    )
 
     if (!lspManager.isFileOpen?.(filePath)) {
       await lspManager.openFile(filePath, content)
@@ -67,6 +75,10 @@ export async function notifyAndCollectDiagnosticsCore({
     )
     logError(err)
     return emptyResult(started)
+  } finally {
+    // Remove the per-call collector on every exit path — success, error, or
+    // the early returns (which leave unsubscribe undefined, so this no-ops).
+    unsubscribe?.()
   }
 }
 
