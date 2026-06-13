@@ -1630,6 +1630,12 @@ test('sessionBelongsToWorkspace: exact + nested match, fails open on absent', ()
   assert.equal(sessionBelongsToWorkspace('/a/my-app', undefined), true)
   assert.equal(sessionBelongsToWorkspace('', '/a/my-app'), true)
   assert.equal(sessionBelongsToWorkspace(42, '/a/my-app'), true)
+  // the filesystem root '/' must treat every absolute path as nested (no '//')
+  assert.equal(sessionBelongsToWorkspace('/pkg', '/'), true)
+  assert.equal(sessionBelongsToWorkspace('/', '/'), true)
+  assert.equal(sessionBelongsToWorkspace('/a/deep/path', '/'), true)
+  // win32 drive root likewise admits everything on that drive
+  assert.equal(sessionBelongsToWorkspace('C:\\pkg', 'C:\\', { platform: 'win32' }), true)
 })
 
 test('sessionBelongsToWorkspace: rejects a folded sibling and a non-boundary prefix', () => {

@@ -57,6 +57,9 @@ export function sessionBelongsToWorkspace(
   const root = normalizeForCompare(workspaceRoot, platform)
   if (!session || !root) return true
   if (session === root) return true
-  // The session ran in a subdirectory of the workspace root.
-  return session.startsWith(root + '/')
+  // The session ran in a subdirectory of the workspace root. When the root IS
+  // the filesystem root ('/'), normalizeForCompare keeps the trailing '/', so
+  // don't append a second one (every absolute path is then nested under '/').
+  const boundary = root.endsWith('/') ? root : root + '/'
+  return session.startsWith(boundary)
 }
