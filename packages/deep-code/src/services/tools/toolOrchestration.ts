@@ -9,22 +9,12 @@ import {
 } from '../../tools/AgentTool/constants.js'
 import { resolveDeepCodeHarnessConfig } from '../../deepcode/harness-config.mjs'
 import { computeBatchConcurrency } from './batchConcurrency.mjs'
+import { getMaxToolUseConcurrency } from './maxToolConcurrency.mjs'
 import { type MessageUpdateLazy, runToolUse } from './toolExecution.js'
 
 // The Agent/Task tool names — a batch containing one of these is bounded by the
 // harness sub-agent cap rather than the generic tool cap.
 const AGENT_TOOL_NAMES = [AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME]
-
-function getMaxToolUseConcurrency(): number {
-  return (
-    parseInt(
-      process.env.DEEPCODE_MAX_TOOL_USE_CONCURRENCY ||
-        process.env.CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY ||
-        '',
-      10,
-    ) || 10
-  )
-}
 
 export type MessageUpdate = {
   message?: Message
