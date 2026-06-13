@@ -71,6 +71,15 @@ test('repairTranscriptTail truncates a half-written line but keeps a complete on
   await writeFile(crPartial, '{"type":"user","a":1}\r{"type":"assist')
   assert.equal(repairTranscriptTail(crPartial), 'truncated')
   assert.equal(await readFile(crPartial, 'utf8'), '{"type":"user","a":1}\r')
+
+  // null/scalar tails parse as JSON but are not records the writer emits —
+  // they truncate (a terminated `null` line would trip entry.type derefs).
+  for (const scalarTail of ['null', '42', '"str"']) {
+    const scalar = join(dir, `scalar-${scalarTail.replace(/\W/g, '')}.jsonl`)
+    await writeFile(scalar, '{"type":"user","a":1}\n' + scalarTail)
+    assert.equal(repairTranscriptTail(scalar), 'truncated')
+    assert.equal(await readFile(scalar, 'utf8'), '{"type":"user","a":1}\n')
+  }
 })
 
 test('a repaired transcript survives resume-append where a glued one is corrupt forever', async () => {
