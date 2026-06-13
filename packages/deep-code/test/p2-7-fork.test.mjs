@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -131,6 +131,57 @@ test('adoptResumedSessionFile wires the repair before its metadata append', asyn
       adoptBody.indexOf('reAppendSessionMetadata('),
     'repair must run before the first append',
   )
+})
+
+test('compact summaries do not count as turns and fork slices at the real user prompt', async () => {
+  // compact.ts writes the summary as a user-typed message with
+  // isCompactSummary: true — it must not inflate turn counts or shift
+  // fork --at-turn slicing.
+  const fixture = await createSessionFixture({ turns: 3 })
+  const summary = JSON.stringify({
+    type: 'user',
+    isCompactSummary: true,
+    sessionId: fixture.sourceSessionId,
+    uuid: randomUUID(),
+    message: { role: 'user', content: 'This session is being continued from a previous conversation...' },
+  })
+  // Inject the summary between turn 1 and turn 2 (a mid-session compaction).
+  const lines = (await readFile(fixture.sourcePath, 'utf8')).trim().split('\n')
+  const turnTwoAt = lines.findIndex(line => line.includes('"turn 2"'))
+  lines.splice(turnTwoAt, 0, summary)
+  await writeFile(fixture.sourcePath, lines.join('\n') + '\n')
+
+  const scan = await scanSessionFile(fixture.sourcePath)
+  assert.equal(scan.turnCount, 3, 'summary must not inflate the turn count')
+
+  const result = await forkSession({
+    atTurn: 2,
+    sessionDir: fixture.sessionDir,
+    sourceSessionId: fixture.sourceSessionId,
+  })
+  const forked = await readSessionLines(fixture.sessionDir, result.newSessionId)
+  const prompts = forked
+    .filter(entry => entry.type === 'user' && entry.isCompactSummary !== true && !entry.isMeta)
+    .map(entry => entry.message.content)
+  assert.deepEqual(prompts, ['turn 1', 'turn 2'], 'fork must slice at the REAL second prompt')
+})
+
+test('forkSession copies the sub-agent transcript directory', async () => {
+  const fixture = await createSessionFixture({ turns: 2 })
+  const subdir = join(fixture.sessionDir, fixture.sourceSessionId, 'subagents')
+  await mkdir(subdir, { recursive: true })
+  await writeFile(join(subdir, 'agent-task1.jsonl'), '{"type":"assistant"}\n')
+
+  const result = await forkSession({
+    sessionDir: fixture.sessionDir,
+    sourceSessionId: fixture.sourceSessionId,
+  })
+
+  const copied = join(fixture.sessionDir, result.newSessionId, 'subagents', 'agent-task1.jsonl')
+  assert.equal(existsSync(copied), true, 'sub-agent transcript must ride along with the fork')
+  assert.equal(await readFile(copied, 'utf8'), '{"type":"assistant"}\n')
+  // The source is untouched.
+  assert.equal(existsSync(join(subdir, 'agent-task1.jsonl')), true)
 })
 
 test('forkSession copies a 10-turn session through turn 5', async () => {
