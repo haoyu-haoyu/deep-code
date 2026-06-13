@@ -78,9 +78,10 @@ export function createDeepCodeInteractiveReader({
   input = process.stdin,
   output = process.stdout,
   env = process.env,
+  onInterrupt,
 } = {}) {
   if (shouldUseKeyDrivenInteractive(input, env)) {
-    return new KeyDrivenInteractiveReader({ input, output, env })
+    return new KeyDrivenInteractiveReader({ input, output, env, onInterrupt })
   }
   return new ReadlineInteractiveReader({ input, output })
 }
@@ -218,10 +219,15 @@ class ReadlineInteractiveReader {
 class KeyDrivenInteractiveReader {
   supportsKeyMenus = true
 
-  constructor({ input, output, env }) {
+  constructor({ input, output, env, onInterrupt }) {
     this.input = input
     this.output = output
     this.env = env
+    // Fired when a ctrl-c arrives with no reader waiting (i.e. MID-TURN, during
+    // a streaming response). Lets the caller abort the in-flight turn instead of
+    // the ctrl-c being queued and consumed by the next readLine (which would
+    // exit the session at the following prompt).
+    this.onInterrupt = onInterrupt
     this.tokens = []
     this.waiters = []
     this.ended = false
@@ -442,6 +448,15 @@ class KeyDrivenInteractiveReader {
     const waiter = this.waiters.shift()
     if (waiter) {
       waiter(token)
+      return
+    }
+    // No reader is waiting → a ctrl-c here arrived MID-TURN. Offer it to the
+    // interrupt hook; if it HANDLED it (an abortable streaming op was in
+    // flight, now aborted), drop the keypress. Otherwise fall through and QUEUE
+    // it so the next readLine consumes it and exits — the same escape the
+    // line-based reader gives, so a Ctrl-C during a non-abortable operation is
+    // never silently lost.
+    if (token.type === 'ctrl-c' && this.onInterrupt && this.onInterrupt()) {
       return
     }
     this.tokens.push(token)

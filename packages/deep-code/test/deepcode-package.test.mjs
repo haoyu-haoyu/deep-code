@@ -791,6 +791,114 @@ test('native interactive survives a failing turn (no wedge): prints the error an
   assert.notEqual(result.stderr.trim(), '', 'the failing turn should print an error')
 })
 
+test('native key reader: a HANDLED mid-turn Ctrl-C fires onInterrupt and is NOT queued', async () => {
+  const { PassThrough } = await import('node:stream')
+  const { createDeepCodeInteractiveReader } = await import(
+    '../src/deepcode/native-interactive.mjs'
+  )
+  const input = new PassThrough()
+  const output = new PassThrough()
+  output.resume() // drain prompt writes
+  let interrupts = 0
+  const reader = createDeepCodeInteractiveReader({
+    input,
+    output,
+    env: { DEEPCODE_FORCE_NATIVE_INTERACTIVE_KEYS: '1' },
+    // returns true → an abortable op was in flight → drop the keypress
+    onInterrupt: () => {
+      interrupts += 1
+      return true
+    },
+  })
+  const tick = () => new Promise(r => setImmediate(r))
+
+  // MID-TURN (no readLine waiting): a Ctrl-C fires onInterrupt and, since it was
+  // HANDLED (returned true), is NOT queued — a queued one would be consumed by
+  // the next readLine and exit.
+  input.write('\x03')
+  await tick()
+  assert.equal(interrupts, 1)
+
+  // AT THE PROMPT (readLine waiting): a Ctrl-C goes to the waiter → '/exit'.
+  // That readLine genuinely WAITS (doesn't return from a leftover queued token)
+  // proves the first, handled Ctrl-C was dropped.
+  const linePromise = reader.readLine()
+  await tick()
+  input.write('\x03')
+  assert.equal(await linePromise, '/exit')
+  assert.equal(interrupts, 1) // the at-prompt Ctrl-C did NOT fire onInterrupt
+  reader.close()
+})
+
+test('native key reader: an UNHANDLED mid-turn Ctrl-C is queued (exit at next prompt)', async () => {
+  const { PassThrough } = await import('node:stream')
+  const { createDeepCodeInteractiveReader } = await import(
+    '../src/deepcode/native-interactive.mjs'
+  )
+  const input = new PassThrough()
+  const output = new PassThrough()
+  output.resume()
+  let interrupts = 0
+  const reader = createDeepCodeInteractiveReader({
+    input,
+    output,
+    env: { DEEPCODE_FORCE_NATIVE_INTERACTIVE_KEYS: '1' },
+    // returns false → NO abortable op in flight (e.g. a local slash command);
+    // the Ctrl-C must NOT be lost — it queues and the next readLine exits.
+    onInterrupt: () => {
+      interrupts += 1
+      return false
+    },
+  })
+  const tick = () => new Promise(r => setImmediate(r))
+
+  input.write('\x03')
+  await tick()
+  assert.equal(interrupts, 1)
+  // the queued Ctrl-C is consumed by the next readLine → '/exit' (no keypress lost)
+  assert.equal(await reader.readLine(), '/exit')
+  reader.close()
+})
+
+test('native interactive routes every streaming op through runInterruptible (abortable)', () => {
+  // deepcode.js's interactive loop is the entrypoint (not unit-loadable); pin
+  // the wiring by source so a regression that drops the abort plumbing on any
+  // streaming op (chat turn / /compact / /doctor) is caught.
+  const src = readFileSync(resolve(root, rootPackage.bin.deepcode), 'utf8')
+  // the helper exists and threads a per-turn AbortController
+  assert.match(src, /const runInterruptible = async op =>/)
+  assert.match(src, /currentTurnAbort = new AbortController\(\)/)
+  // onInterrupt returns true only when an op is in flight (else queue → /exit)
+  assert.match(src, /if \(!currentTurnAbort\) return false/)
+  // all three streaming ops go through runInterruptible with a signal
+  assert.match(src, /runInterruptible\(signal =>\s*\n?\s*requestDeepSeek\(messages, env, \{[\s\S]*?signal,/)
+  assert.match(src, /runInterruptible\(signal =>\s*\n?\s*compactDeepCodeConversation\(\{[\s\S]*?signal,/)
+  assert.match(src, /runInterruptible\(signal =>\s*\n?\s*createDeepSeekDoctorReport\(\{[\s\S]*?signal[\s\S]*?\}\)/)
+})
+
+test('native key reader: a queued char (mid-turn) is still delivered to the next readLine', async () => {
+  const { PassThrough } = await import('node:stream')
+  const { createDeepCodeInteractiveReader } = await import(
+    '../src/deepcode/native-interactive.mjs'
+  )
+  const input = new PassThrough()
+  const output = new PassThrough()
+  output.resume()
+  const reader = createDeepCodeInteractiveReader({
+    input,
+    output,
+    env: { DEEPCODE_FORCE_NATIVE_INTERACTIVE_KEYS: '1' },
+    onInterrupt: () => {},
+  })
+  const tick = () => new Promise(r => setImmediate(r))
+  // a non-ctrl-c token typed with no waiter must STILL be queued (only ctrl-c
+  // is intercepted) and delivered to the next readLine.
+  input.write('hi\r')
+  await tick()
+  assert.equal(await reader.readLine(), 'hi')
+  reader.close()
+})
+
 test('Deep Code front controller delegates bare interactive startup to full TUI', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-default-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')

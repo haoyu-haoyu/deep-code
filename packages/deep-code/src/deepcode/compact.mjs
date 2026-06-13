@@ -17,6 +17,7 @@ export async function compactDeepCodeConversation({
   cwd = process.cwd(),
   provider,
   maxTokens,
+  signal,
 } = {}) {
   const modelProvider = provider ?? createDeepSeekProvider()
   const prefix =
@@ -51,7 +52,9 @@ export async function compactDeepCodeConversation({
       ? await modelProvider.buildRequest(requestContext)
       : await buildDeepSeekRequest(requestContext)
   const response = await collectDeepSeekStreamEvents(
-    modelProvider.streamQuery(request),
+    // Thread the abort signal so a mid-turn Ctrl-C can cancel /compact's
+    // streaming call (streamQuery reads context.signal; undefined is a no-op).
+    modelProvider.streamQuery({ ...request, signal }),
   )
   const summary = response.content.trim()
 
