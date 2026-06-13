@@ -7,9 +7,20 @@ import {
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { findToolByName, type Tools, type ToolUseContext } from '../../Tool.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
+import {
+  AGENT_TOOL_NAME,
+  LEGACY_AGENT_TOOL_NAME,
+} from '../../tools/AgentTool/constants.js'
 import type { AssistantMessage, Message } from '../../types/message.js'
 import { createChildAbortController } from '../../utils/abortController.js'
+import { resolveDeepCodeHarnessConfig } from '../../deepcode/harness-config.mjs'
+import { getMaxToolUseConcurrency } from './maxToolConcurrency.mjs'
+import { computeStreamingAdmission } from './streamingAdmission.mjs'
 import { runToolUse } from './toolExecution.js'
+
+// Agent/Task tools — bounded by the harness sub-agent cap rather than the
+// generic tool cap (mirrors toolOrchestration's AGENT_TOOL_NAMES).
+const AGENT_TOOL_NAMES = new Set([AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME])
 
 type MessageUpdate = {
   message?: Message
@@ -124,14 +135,23 @@ export class StreamingToolExecutor {
   }
 
   /**
-   * Check if a tool can execute based on current concurrency state
+   * Check if a tool can execute based on current concurrency state, INCLUDING
+   * the generic per-turn cap and (for Agent/Task tools) the harness maxAgents
+   * cap. Compatibility alone (the prior check) let concurrency-safe tools fan
+   * out without bound; the count caps are enforced via computeStreamingAdmission.
    */
-  private canExecuteTool(isConcurrencySafe: boolean): boolean {
-    const executingTools = this.tools.filter(t => t.status === 'executing')
-    return (
-      executingTools.length === 0 ||
-      (isConcurrencySafe && executingTools.every(t => t.isConcurrencySafe))
-    )
+  private canExecuteTool(tool: TrackedTool): boolean {
+    const executing = this.tools.filter(t => t.status === 'executing')
+    return computeStreamingAdmission({
+      candidateIsConcurrencySafe: tool.isConcurrencySafe,
+      candidateIsAgent: AGENT_TOOL_NAMES.has(tool.block.name),
+      runningCount: executing.length,
+      runningAllConcurrencySafe: executing.every(t => t.isConcurrencySafe),
+      runningAgentCount: executing.filter(t => AGENT_TOOL_NAMES.has(t.block.name))
+        .length,
+      genericCap: getMaxToolUseConcurrency(),
+      maxAgents: resolveDeepCodeHarnessConfig().maxAgents,
+    })
   }
 
   /**
@@ -141,7 +161,7 @@ export class StreamingToolExecutor {
     for (const tool of this.tools) {
       if (tool.status !== 'queued') continue
 
-      if (this.canExecuteTool(tool.isConcurrencySafe)) {
+      if (this.canExecuteTool(tool)) {
         await this.executeTool(tool)
       } else {
         // Can't execute this tool yet, and since we need to maintain order for non-concurrent tools, stop here
