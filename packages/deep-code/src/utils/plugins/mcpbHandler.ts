@@ -13,7 +13,9 @@ import { parseZipModes, unzipFile } from '../dxt/zip.js'
 import { errorMessage, getErrnoCode, isENOENT, toError } from '../errors.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { logError } from '../log.js'
+import { replaceBlobEntry } from '../secureStorage/blob.mjs'
 import { getSecureStorage } from '../secureStorage/index.js'
+import { mutateSecureStorage } from '../secureStorage/mutateSecureStorage.js'
 import {
   getSettings_DEPRECATED,
   updateSettingsForSource,
@@ -227,34 +229,40 @@ export function saveMcpServerUserConfig(
     // sensitive→false and they're being written to settings.json now. Without
     // this, loadMcpServerUserConfig's merge would let the stale secureStorage
     // value win on next read.
-    const storage = getSecureStorage()
     const k = serverSecretsKey(pluginId, serverName)
-    const existingInSecureStorage =
-      storage.read()?.pluginSecrets?.[k] ?? undefined
-    const secureScrubbed = existingInSecureStorage
+    // Pre-read snapshot only DECIDES whether a write is needed; the merge runs
+    // under the credentials lock against a fresh re-read so a concurrent MCP
+    // token refresh (same whole-blob file) can't clobber it, and vice-versa.
+    const snapshotEntry = getSecureStorage().read()?.pluginSecrets?.[k] ?? undefined
+    const snapshotScrubbed = snapshotEntry
       ? Object.fromEntries(
-          Object.entries(existingInSecureStorage).filter(
+          Object.entries(snapshotEntry).filter(
             ([key]) => !nonSensitiveKeysInThisSave.has(key),
           ),
         )
       : undefined
     const needSecureScrub =
-      secureScrubbed &&
-      existingInSecureStorage &&
-      Object.keys(secureScrubbed).length !==
-        Object.keys(existingInSecureStorage).length
+      snapshotScrubbed &&
+      snapshotEntry &&
+      Object.keys(snapshotScrubbed).length !== Object.keys(snapshotEntry).length
     if (Object.keys(sensitive).length > 0 || needSecureScrub) {
-      const existing = storage.read() ?? {}
-      if (!existing.pluginSecrets) {
-        existing.pluginSecrets = {}
-      }
       // secureStorage keyvault is a flat object — direct replace, no merge
-      // semantics to worry about (unlike settings.json's mergeWith).
-      existing.pluginSecrets[k] = {
-        ...secureScrubbed,
-        ...sensitive,
-      }
-      const result = storage.update(existing)
+      // semantics to worry about (unlike settings.json's mergeWith). Recompute
+      // the scrub from the freshest entry under the lock.
+      const result = mutateSecureStorage(current => {
+        const liveEntry = current.pluginSecrets?.[k]
+        const scrubbed = liveEntry
+          ? Object.fromEntries(
+              Object.entries(liveEntry).filter(
+                ([key]) => !nonSensitiveKeysInThisSave.has(key),
+              ),
+            )
+          : undefined
+        return replaceBlobEntry(current, 'pluginSecrets', k, {
+          ...scrubbed,
+          ...sensitive,
+        })
+      })
       if (!result.success) {
         throw new Error(
           `Failed to save sensitive config to secure storage for ${k}`,
@@ -268,8 +276,8 @@ export function saveMcpServerUserConfig(
       if (needSecureScrub) {
         logForDebugging(
           `saveMcpServerUserConfig: scrubbed ${
-            Object.keys(existingInSecureStorage!).length -
-            Object.keys(secureScrubbed!).length
+            Object.keys(snapshotEntry!).length -
+            Object.keys(snapshotScrubbed!).length
           } stale non-sensitive key(s) from secureStorage for ${k}`,
         )
       }

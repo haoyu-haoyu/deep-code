@@ -40,7 +40,12 @@ import { logMCPDebug } from '../../utils/log.js'
 import { getPlatform } from '../../utils/platform.js'
 import { getSecureStorage } from '../../utils/secureStorage/index.js'
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
-import type { SecureStorageData } from '../../utils/secureStorage/types.js'
+import {
+  deleteBlobEntry,
+  hasBlobEntry,
+  setBlobEntry,
+} from '../../utils/secureStorage/blob.mjs'
+import { mutateSecureStorage } from '../../utils/secureStorage/mutateSecureStorage.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { logEvent } from '../analytics/index.js'
@@ -583,36 +588,29 @@ export async function revokeServerTokens(
     tokenData &&
     (tokenData.stepUpScope || tokenData.discoveryState)
   ) {
-    const freshData = storage.read() || {}
-    const updatedData: SecureStorageData = {
-      ...freshData,
-      mcpOAuth: {
-        ...freshData.mcpOAuth,
-        [serverKey]: {
-          ...freshData.mcpOAuth?.[serverKey],
-          serverName,
-          serverUrl: serverConfig.url,
-          accessToken: freshData.mcpOAuth?.[serverKey]?.accessToken ?? '',
-          expiresAt: freshData.mcpOAuth?.[serverKey]?.expiresAt ?? 0,
-          ...(tokenData.stepUpScope
-            ? { stepUpScope: tokenData.stepUpScope }
-            : {}),
-          ...(tokenData.discoveryState
-            ? {
-                // Strip legacy bulky metadata fields here too so users with
-                // existing overflowed blobs recover on next re-auth (#30337).
-                discoveryState: {
-                  authorizationServerUrl:
-                    tokenData.discoveryState.authorizationServerUrl,
-                  resourceMetadataUrl:
-                    tokenData.discoveryState.resourceMetadataUrl,
-                },
-              }
-            : {}),
-        },
-      },
-    }
-    storage.update(updatedData)
+    mutateSecureStorage(current =>
+      setBlobEntry(current, 'mcpOAuth', serverKey, {
+        serverName,
+        serverUrl: serverConfig.url,
+        accessToken: current.mcpOAuth?.[serverKey]?.accessToken ?? '',
+        expiresAt: current.mcpOAuth?.[serverKey]?.expiresAt ?? 0,
+        ...(tokenData.stepUpScope
+          ? { stepUpScope: tokenData.stepUpScope }
+          : {}),
+        ...(tokenData.discoveryState
+          ? {
+              // Strip legacy bulky metadata fields here too so users with
+              // existing overflowed blobs recover on next re-auth (#30337).
+              discoveryState: {
+                authorizationServerUrl:
+                  tokenData.discoveryState.authorizationServerUrl,
+                resourceMetadataUrl:
+                  tokenData.discoveryState.resourceMetadataUrl,
+              },
+            }
+          : {}),
+      }),
+    )
     logMCPDebug(serverName, 'Preserved step-up auth state across revocation')
   }
 }
@@ -621,16 +619,10 @@ export function clearServerTokensFromLocalStorage(
   serverName: string,
   serverConfig: McpSSEServerConfig | McpHTTPServerConfig,
 ): void {
-  const storage = getSecureStorage()
-  const existingData = storage.read()
-  if (!existingData?.mcpOAuth) return
-
   const serverKey = getServerKey(serverName, serverConfig)
-  if (existingData.mcpOAuth[serverKey]) {
-    delete existingData.mcpOAuth[serverKey]
-    storage.update(existingData)
-    logMCPDebug(serverName, 'Cleared stored tokens')
-  }
+  if (!hasBlobEntry(getSecureStorage().read(), 'mcpOAuth', serverKey)) return
+  mutateSecureStorage(current => deleteBlobEntry(current, 'mcpOAuth', serverKey))
+  logMCPDebug(serverName, 'Cleared stored tokens')
 }
 
 type WWWAuthenticateParams = {
@@ -793,33 +785,26 @@ async function performMCPXaaAuth(
     // Save tokens via the same storage path as normal OAuth. We write directly
     // (instead of ClaudeAuthProvider.saveTokens) to avoid instantiating the
     // whole provider just to write the same keys.
-    const storage = getSecureStorage()
-    const existingData = storage.read() || {}
     const serverKey = getServerKey(serverName, serverConfig)
-    const prev = existingData.mcpOAuth?.[serverKey]
-    storage.update({
-      ...existingData,
-      mcpOAuth: {
-        ...existingData.mcpOAuth,
-        [serverKey]: {
-          ...prev,
-          serverName,
-          serverUrl: serverConfig.url,
-          accessToken: tokens.access_token,
-          // AS may omit refresh_token on jwt-bearer — preserve any existing one
-          refreshToken: tokens.refresh_token ?? prev?.refreshToken,
-          expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
-          scope: tokens.scope,
-          clientId,
-          clientSecret,
-          // Persist the AS URL so _doRefresh and revokeServerTokens can locate
-          // the token/revocation endpoints when MCP URL ≠ AS URL (the common
-          // XAA topology).
-          discoveryState: {
-            authorizationServerUrl: tokens.authorizationServerUrl,
-          },
+    mutateSecureStorage(current => {
+      const prev = current.mcpOAuth?.[serverKey]
+      return setBlobEntry(current, 'mcpOAuth', serverKey, {
+        serverName,
+        serverUrl: serverConfig.url,
+        accessToken: tokens.access_token,
+        // AS may omit refresh_token on jwt-bearer — preserve any existing one
+        refreshToken: tokens.refresh_token ?? prev?.refreshToken,
+        expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
+        scope: tokens.scope,
+        clientId,
+        clientSecret,
+        // Persist the AS URL so _doRefresh and revokeServerTokens can locate
+        // the token/revocation endpoints when MCP URL ≠ AS URL (the common
+        // XAA topology).
+        discoveryState: {
+          authorizationServerUrl: tokens.authorizationServerUrl,
         },
-      },
+      })
     })
 
     logMCPDebug(serverName, 'XAA: tokens saved')
@@ -1307,14 +1292,14 @@ export async function performMCPOAuthFlow(
         error.errorCode === 'invalid_client' &&
         error.message.includes('Client not found')
       ) {
-        const storage = getSecureStorage()
-        const existingData = storage.read() || {}
         const serverKey = getServerKey(serverName, serverConfig)
-        if (existingData.mcpOAuth?.[serverKey]) {
-          delete existingData.mcpOAuth[serverKey].clientId
-          delete existingData.mcpOAuth[serverKey].clientSecret
-          storage.update(existingData)
-        }
+        mutateSecureStorage(current => {
+          if (!current.mcpOAuth?.[serverKey]) return current
+          return setBlobEntry(current, 'mcpOAuth', serverKey, {
+            clientId: undefined,
+            clientSecret: undefined,
+          })
+        })
       }
     }
 
@@ -1513,28 +1498,19 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   async saveClientInformation(
     clientInformation: OAuthClientInformationFull,
   ): Promise<void> {
-    const storage = getSecureStorage()
-    const existingData = storage.read() || {}
     const serverKey = getServerKey(this.serverName, this.serverConfig)
-
-    const updatedData: SecureStorageData = {
-      ...existingData,
-      mcpOAuth: {
-        ...existingData.mcpOAuth,
-        [serverKey]: {
-          ...existingData.mcpOAuth?.[serverKey],
-          serverName: this.serverName,
-          serverUrl: this.serverConfig.url,
-          clientId: clientInformation.client_id,
-          clientSecret: clientInformation.client_secret,
-          // Provide default values for required fields if not present
-          accessToken: existingData.mcpOAuth?.[serverKey]?.accessToken || '',
-          expiresAt: existingData.mcpOAuth?.[serverKey]?.expiresAt || 0,
-        },
-      },
-    }
-
-    storage.update(updatedData)
+    mutateSecureStorage(current => {
+      const prev = current.mcpOAuth?.[serverKey]
+      return setBlobEntry(current, 'mcpOAuth', serverKey, {
+        serverName: this.serverName,
+        serverUrl: this.serverConfig.url,
+        clientId: clientInformation.client_id,
+        clientSecret: clientInformation.client_secret,
+        // Provide default values for required fields if not present
+        accessToken: prev?.accessToken || '',
+        expiresAt: prev?.expiresAt || 0,
+      })
+    })
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
@@ -1703,31 +1679,24 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     this._pendingStepUpScope = undefined
-    const storage = getSecureStorage()
-    const existingData = storage.read() || {}
     const serverKey = getServerKey(this.serverName, this.serverConfig)
 
     logMCPDebug(this.serverName, `Saving tokens`)
     logMCPDebug(this.serverName, `Token expires in: ${tokens.expires_in}`)
     logMCPDebug(this.serverName, `Has refresh token: ${!!tokens.refresh_token}`)
 
-    const updatedData: SecureStorageData = {
-      ...existingData,
-      mcpOAuth: {
-        ...existingData.mcpOAuth,
-        [serverKey]: {
-          ...existingData.mcpOAuth?.[serverKey],
-          serverName: this.serverName,
-          serverUrl: this.serverConfig.url,
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
-          scope: tokens.scope,
-        },
-      },
-    }
-
-    storage.update(updatedData)
+    // Locked RMW: re-read inside the lock so a concurrent refresh of a DIFFERENT
+    // server can't clobber this write (and vice-versa) — see mutateSecureStorage.
+    mutateSecureStorage(current =>
+      setBlobEntry(current, 'mcpOAuth', serverKey, {
+        serverName: this.serverName,
+        serverUrl: this.serverConfig.url,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
+        scope: tokens.scope,
+      }),
+    )
   }
 
   /**
@@ -1806,29 +1775,22 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
       // only spreads existing data; if no prior performMCPXaaAuth ran,
       // revokeServerTokens would later read tokenData.clientId as undefined
       // and send a client_id-less RFC 7009 request that strict ASes reject.
-      const storage = getSecureStorage()
-      const existingData = storage.read() || {}
       const serverKey = getServerKey(this.serverName, this.serverConfig)
-      const prev = existingData.mcpOAuth?.[serverKey]
-      storage.update({
-        ...existingData,
-        mcpOAuth: {
-          ...existingData.mcpOAuth,
-          [serverKey]: {
-            ...prev,
-            serverName: this.serverName,
-            serverUrl: this.serverConfig.url,
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token ?? prev?.refreshToken,
-            expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
-            scope: tokens.scope,
-            clientId,
-            clientSecret: clientConfig.clientSecret,
-            discoveryState: {
-              authorizationServerUrl: tokens.authorizationServerUrl,
-            },
+      mutateSecureStorage(current => {
+        const prev = current.mcpOAuth?.[serverKey]
+        return setBlobEntry(current, 'mcpOAuth', serverKey, {
+          serverName: this.serverName,
+          serverUrl: this.serverConfig.url,
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token ?? prev?.refreshToken,
+          expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
+          scope: tokens.scope,
+          clientId,
+          clientSecret: clientConfig.clientSecret,
+          discoveryState: {
+            authorizationServerUrl: tokens.authorizationServerUrl,
           },
-        },
+        })
       })
       return {
         access_token: tokens.access_token,
@@ -1888,13 +1850,16 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     // Guard with !handleRedirection to avoid persisting during normal auth flows
     // (where the scope may come from metadata scopes_supported rather than a 401).
     if (this._scopes && !this.handleRedirection) {
-      const storage = getSecureStorage()
-      const existingData = storage.read() || {}
       const serverKey = getServerKey(this.serverName, this.serverConfig)
-      const existing = existingData.mcpOAuth?.[serverKey]
-      if (existing) {
-        existing.stepUpScope = this._scopes
-        storage.update(existingData)
+      let persisted = false
+      mutateSecureStorage(current => {
+        if (!current.mcpOAuth?.[serverKey]) return current
+        persisted = true
+        return setBlobEntry(current, 'mcpOAuth', serverKey, {
+          stepUpScope: this._scopes,
+        })
+      })
+      if (persisted) {
         logMCPDebug(this.serverName, `Persisted step-up scope: ${this._scopes}`)
       }
     }
@@ -1960,43 +1925,43 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
   async invalidateCredentials(
     scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery',
   ): Promise<void> {
-    const storage = getSecureStorage()
-    const existingData = storage.read()
-    if (!existingData?.mcpOAuth) return
-
-    const serverKey = getServerKey(this.serverName, this.serverConfig)
-    const tokenData = existingData.mcpOAuth[serverKey]
-    if (!tokenData) return
-
-    switch (scope) {
-      case 'all':
-        delete existingData.mcpOAuth[serverKey]
-        break
-      case 'client':
-        tokenData.clientId = undefined
-        tokenData.clientSecret = undefined
-        break
-      case 'tokens':
-        tokenData.accessToken = ''
-        tokenData.refreshToken = undefined
-        tokenData.expiresAt = 0
-        break
-      case 'verifier':
-        this._codeVerifier = undefined
-        return
-      case 'discovery':
-        tokenData.discoveryState = undefined
-        tokenData.stepUpScope = undefined
-        break
+    // The 'verifier' scope only touches in-memory state — no blob write.
+    if (scope === 'verifier') {
+      this._codeVerifier = undefined
+      return
     }
 
-    storage.update(existingData)
+    const serverKey = getServerKey(this.serverName, this.serverConfig)
+    if (!hasBlobEntry(getSecureStorage().read(), 'mcpOAuth', serverKey)) return
+
+    mutateSecureStorage(current => {
+      if (!current.mcpOAuth?.[serverKey]) return current // raced removal
+      switch (scope) {
+        case 'all':
+          return deleteBlobEntry(current, 'mcpOAuth', serverKey)
+        case 'client':
+          return setBlobEntry(current, 'mcpOAuth', serverKey, {
+            clientId: undefined,
+            clientSecret: undefined,
+          })
+        case 'tokens':
+          return setBlobEntry(current, 'mcpOAuth', serverKey, {
+            accessToken: '',
+            refreshToken: undefined,
+            expiresAt: 0,
+          })
+        case 'discovery':
+          return setBlobEntry(current, 'mcpOAuth', serverKey, {
+            discoveryState: undefined,
+            stepUpScope: undefined,
+          })
+      }
+      return current
+    })
     logMCPDebug(this.serverName, `Invalidated credentials (scope: ${scope})`)
   }
 
   async saveDiscoveryState(state: OAuthDiscoveryState): Promise<void> {
-    const storage = getSecureStorage()
-    const existingData = storage.read() || {}
     const serverKey = getServerKey(this.serverName, this.serverConfig)
 
     logMCPDebug(
@@ -2013,25 +1978,19 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
     // the credential store (#30337). The SDK re-fetches missing metadata
     // with one HTTP GET on the next auth — see node_modules/.../auth.js
     // `cachedState.authorizationServerMetadata ?? await discover...`.
-    const updatedData: SecureStorageData = {
-      ...existingData,
-      mcpOAuth: {
-        ...existingData.mcpOAuth,
-        [serverKey]: {
-          ...existingData.mcpOAuth?.[serverKey],
-          serverName: this.serverName,
-          serverUrl: this.serverConfig.url,
-          accessToken: existingData.mcpOAuth?.[serverKey]?.accessToken || '',
-          expiresAt: existingData.mcpOAuth?.[serverKey]?.expiresAt || 0,
-          discoveryState: {
-            authorizationServerUrl: state.authorizationServerUrl,
-            resourceMetadataUrl: state.resourceMetadataUrl,
-          },
+    mutateSecureStorage(current => {
+      const prev = current.mcpOAuth?.[serverKey]
+      return setBlobEntry(current, 'mcpOAuth', serverKey, {
+        serverName: this.serverName,
+        serverUrl: this.serverConfig.url,
+        accessToken: prev?.accessToken || '',
+        expiresAt: prev?.expiresAt || 0,
+        discoveryState: {
+          authorizationServerUrl: state.authorizationServerUrl,
+          resourceMetadataUrl: state.resourceMetadataUrl,
         },
-      },
-    }
-
-    storage.update(updatedData)
+      })
+    })
   }
 
   async discoveryState(): Promise<OAuthDiscoveryState | undefined> {
@@ -2401,30 +2360,24 @@ export function saveMcpClientSecret(
   serverConfig: McpSSEServerConfig | McpHTTPServerConfig,
   clientSecret: string,
 ): void {
-  const storage = getSecureStorage()
-  const existingData = storage.read() || {}
   const serverKey = getServerKey(serverName, serverConfig)
-  storage.update({
-    ...existingData,
-    mcpOAuthClientConfig: {
-      ...existingData.mcpOAuthClientConfig,
-      [serverKey]: { clientSecret },
-    },
-  })
+  mutateSecureStorage(current =>
+    setBlobEntry(current, 'mcpOAuthClientConfig', serverKey, { clientSecret }),
+  )
 }
 
 export function clearMcpClientConfig(
   serverName: string,
   serverConfig: McpSSEServerConfig | McpHTTPServerConfig,
 ): void {
-  const storage = getSecureStorage()
-  const existingData = storage.read()
-  if (!existingData?.mcpOAuthClientConfig) return
   const serverKey = getServerKey(serverName, serverConfig)
-  if (existingData.mcpOAuthClientConfig[serverKey]) {
-    delete existingData.mcpOAuthClientConfig[serverKey]
-    storage.update(existingData)
-  }
+  if (
+    !hasBlobEntry(getSecureStorage().read(), 'mcpOAuthClientConfig', serverKey)
+  )
+    return
+  mutateSecureStorage(current =>
+    deleteBlobEntry(current, 'mcpOAuthClientConfig', serverKey),
+  )
 }
 
 export function getMcpClientConfig(
