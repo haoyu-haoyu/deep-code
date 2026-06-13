@@ -17,6 +17,8 @@ import {
   warmDeepSeekCache,
 } from '../../cache/deepseek-warmup.mjs'
 import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
+import { firstNonEmpty } from '../../utils/configValue.mjs'
+import { DEFAULT_DEEPSEEK_MODEL } from '../../services/providers/deepseek.mjs'
 
 const HELP_ARGS = new Set(['help', '-h', '--help'])
 const SUPPORTED_SUBCOMMANDS = new Set(['inspect', 'warmup', 'clear'])
@@ -81,14 +83,28 @@ export async function executeCacheCommand(args = '', {
     report: formatCacheInspectReport({
       totals: getSessionTotals(),
       turns: getRecentTurns(10),
+      model: resolveCacheReportModel(env),
     }),
   }
+}
+
+// Resolve the model the cache-savings estimate should be priced at. Mirrors the
+// session's model resolution order (DEEPSEEK_MODEL > DEEPCODE_MODEL > product
+// default) so the report prices at the model actually in use. The product default
+// is deepseek-v4-pro, NOT the flash tier the inspect path previously hardcoded —
+// pro's cache savings are ~3x larger, so flash understated savings ~3x.
+export function resolveCacheReportModel(env = process.env) {
+  return firstNonEmpty(
+    env.DEEPSEEK_MODEL,
+    env.DEEPCODE_MODEL,
+    DEFAULT_DEEPSEEK_MODEL,
+  )
 }
 
 export function formatCacheInspectReport({
   totals = getSessionTotals(),
   turns = getRecentTurns(10),
-  model = 'deepseek-v4-flash',
+  model = DEFAULT_DEEPSEEK_MODEL,
 } = {}) {
   const hit = totals.totalHit ?? 0
   const miss = totals.totalMiss ?? 0
