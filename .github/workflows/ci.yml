@@ -49,6 +49,7 @@ jobs:
             test/a2-bash-polling-core.test.mjs \
             test/a4-paste-cleanup.test.mjs \
             test/bash-command-stripping.test.mjs \
+            test/bash-command-text.test.mjs \
             test/compact-boundary.test.mjs \
             test/s1-tool-streaming.test.mjs \
             test/s4-streaming-resume.test.mjs \
