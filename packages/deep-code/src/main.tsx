@@ -553,11 +553,18 @@ export async function main() {
   process.on('SIGINT', () => {
     // In print mode, print.ts registers its own SIGINT handler that aborts
     // the in-flight query and calls gracefulShutdown; skip here to avoid
-    // preempting it with a synchronous process.exit().
+    // preempting it.
     if (process.argv.includes('-p') || process.argv.includes('--print')) {
       return;
     }
-    process.exit(0);
+    // Delegate to the graceful path instead of a bare synchronous exit: this
+    // bootstrap handler is registered BEFORE setupGracefulShutdown's SIGINT
+    // handler, so exiting synchronously here preempted it — skipping the
+    // session transcript flush, LSP SIGTERM, and SessionEnd hooks on every
+    // external SIGINT (IDE/SDK host, CI/timeout, `kill -INT`).
+    // gracefulShutdownSync is idempotent (shutdownInProgress), so it coexists
+    // with the later handler.
+    gracefulShutdownSync(0, 'other');
   });
   profileCheckpoint('main_warning_handler_initialized');
 

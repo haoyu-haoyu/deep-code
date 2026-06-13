@@ -1776,6 +1776,21 @@ test('source CLI entrypoint is branded for Deep Code and DeepSeek model env', ()
   assert.doesNotMatch(mainSource, /const explicitModel = options\.model \|\| process\.env\.ANTHROPIC_MODEL/)
 })
 
+test('bootstrap SIGINT handler delegates to gracefulShutdownSync (not a bare process.exit)', () => {
+  // The early process.on('SIGINT') in main() must NOT process.exit(0) — that
+  // preempts setupGracefulShutdown's later SIGINT handler, skipping the
+  // transcript flush / LSP SIGTERM / SessionEnd hooks. It must delegate to the
+  // idempotent graceful path. Isolate the bootstrap handler body (the one
+  // guarded by the print-mode early return).
+  const handler = mainSource.match(
+    /process\.on\('SIGINT',[\s\S]*?\n {2}\}\);/,
+  )
+  assert.ok(handler, 'expected a process.on(\'SIGINT\', ...) handler in main.tsx')
+  const body = handler[0]
+  assert.match(body, /gracefulShutdownSync\(0, 'other'\)/)
+  assert.doesNotMatch(body, /process\.exit\(0\)/)
+})
+
 test('full CLI command help avoids legacy Claude and Anthropic branding', () => {
   assert.match(mainSource, /Start a Deep Code session server/)
   assert.match(mainSource, /Run Deep Code on a remote host over SSH/)
