@@ -23,6 +23,7 @@ import {
   appendManifest,
   readManifest,
 } from '../src/services/snapshot/manifest.mjs'
+import { sweepStoreTemps } from '../src/services/snapshot/sweepStoreTemps.mjs'
 import {
   computeWorkspaceHash,
   createSnapshot,
@@ -1546,3 +1547,61 @@ function runGit(args, cwd) {
   )
   return result.stdout
 }
+
+// ── sweepStoreTemps: reclaim crash-orphaned atomic-write temps ───────────────
+// manifest.json.<uuid>.tmp / turn-ordinals.json.<uuid>.tmp are written then
+// renamed; a hard crash mid-rename orphans the tmp forever and it counts against
+// the disk cap. The sweep removes only OLD store temps (TTL guards live writes).
+
+async function makeAgedFile(path, ageMs) {
+  await writeFile(path, 'x')
+  const when = new Date(Date.now() - ageMs)
+  await utimes(path, when, when)
+}
+
+test('sweepStoreTemps removes old store temps but never the live files or unrelated temps', async () => {
+  const store = await mkdtemp(join(tmpdir(), 'snap-tmp-sweep-'))
+  const MIN = 60_000
+  // orphaned (old) store temps — must be reclaimed
+  await makeAgedFile(join(store, `manifest.json.${'a'.repeat(8)}.tmp`), 30 * MIN)
+  await makeAgedFile(join(store, `turn-ordinals.json.${'b'.repeat(8)}.tmp`), 30 * MIN)
+  // a FRESH store temp (a write in flight) — must be kept (TTL guard)
+  await makeAgedFile(join(store, `manifest.json.${'c'.repeat(8)}.tmp`), 1000)
+  // the live targets + an unrelated temp — must never be touched
+  await makeAgedFile(join(store, 'manifest.json'), 30 * MIN)
+  await makeAgedFile(join(store, 'turn-ordinals.json'), 30 * MIN)
+  await makeAgedFile(join(store, 'something-else.json.x.tmp'), 30 * MIN)
+
+  const result = await sweepStoreTemps(store, 5 * MIN)
+
+  assert.equal(result.removed, 2)
+  assert.equal(result.errors, 0)
+  assert.equal(existsSync(join(store, `manifest.json.${'a'.repeat(8)}.tmp`)), false)
+  assert.equal(existsSync(join(store, `turn-ordinals.json.${'b'.repeat(8)}.tmp`)), false)
+  // fresh temp + live files + unrelated temp survive
+  assert.equal(existsSync(join(store, `manifest.json.${'c'.repeat(8)}.tmp`)), true)
+  assert.equal(existsSync(join(store, 'manifest.json')), true)
+  assert.equal(existsSync(join(store, 'turn-ordinals.json')), true)
+  assert.equal(existsSync(join(store, 'something-else.json.x.tmp')), true)
+
+  await rm(store, { recursive: true, force: true })
+})
+
+test('sweepStoreTemps is a no-op (no throw) when the store dir is absent, and counts a flaky unlink', async () => {
+  const missing = join(tmpdir(), 'snap-tmp-sweep-missing-' + process.pid)
+  assert.deepEqual(await sweepStoreTemps(missing, 1000), { removed: 0, errors: 0 })
+
+  const store = await mkdtemp(join(tmpdir(), 'snap-tmp-sweep-'))
+  await makeAgedFile(join(store, 'manifest.json.dead.tmp'), 30 * 60_000)
+  await makeAgedFile(join(store, 'manifest.json.live.tmp'), 30 * 60_000)
+  const result = await sweepStoreTemps(store, 60_000, {
+    unlink: async p => {
+      if (p.endsWith('manifest.json.dead.tmp')) throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' })
+      const { unlink } = await import('node:fs/promises')
+      return unlink(p)
+    },
+  })
+  assert.equal(result.errors, 1)
+  assert.equal(result.removed, 1)
+  await rm(store, { recursive: true, force: true })
+})
