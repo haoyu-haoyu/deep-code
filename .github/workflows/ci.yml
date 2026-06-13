@@ -98,6 +98,7 @@ jobs:
             test/disk-shell-snapshot-cleanup.test.mjs \
             test/disk-snapshot-store-reclaim.test.mjs \
             test/keychain-argv.test.mjs \
+            test/worktree-lsfiles-args.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \
             test/sandbox-fortress/integration/*.test.mjs \
             test/sandbox-fortress/redteam/*.test.mjs

@@ -38,6 +38,7 @@ import {
   hasWorktreeCreateHook,
 } from './hooks.js'
 import { containsPathTraversal } from './path.js'
+import { buildIgnoredLsFilesArgs } from './worktreeLsFilesArgs.mjs'
 import { getPlatform } from './platform.js'
 import {
   getInitialSettings,
@@ -413,7 +414,7 @@ export async function copyWorktreeIncludeFiles(
   // In a large repo this cuts ~500k entries/~7s down to ~hundreds of entries/~100ms.
   const gitignored = await execFileNoThrowWithCwd(
     gitExe(),
-    ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory'],
+    buildIgnoredLsFilesArgs(['--directory']),
     { cwd: repoRoot },
   )
   if (gitignored.code !== 0 || !gitignored.stdout.trim()) {
@@ -460,14 +461,7 @@ export async function copyWorktreeIncludeFiles(
   if (dirsToExpand.length > 0) {
     const expanded = await execFileNoThrowWithCwd(
       gitExe(),
-      [
-        'ls-files',
-        '--others',
-        '--ignored',
-        '--exclude-standard',
-        '--',
-        ...dirsToExpand,
-      ],
+      buildIgnoredLsFilesArgs(['--', ...dirsToExpand]),
       { cwd: repoRoot },
     )
     if (expanded.code === 0 && expanded.stdout.trim()) {
