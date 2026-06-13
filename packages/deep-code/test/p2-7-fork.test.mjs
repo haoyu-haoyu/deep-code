@@ -56,6 +56,21 @@ test('repairTranscriptTail truncates a half-written line but keeps a complete on
   assert.equal(repairTranscriptTail(empty), false)
 
   assert.equal(repairTranscriptTail(join(dir, 'missing.jsonl')), false)
+
+  // CR-only transcripts are certified clean and forkable by the readers
+  // (universal newlines) — the repair must treat CR as a terminator too, not
+  // wipe the whole file as one giant partial line.
+  const crOnly = join(dir, 'cr-only.jsonl')
+  const crContent = '{"type":"user","a":1}\r{"type":"assistant","b":2}\r'
+  await writeFile(crOnly, crContent)
+  assert.equal(repairTranscriptTail(crOnly), false)
+  assert.equal(await readFile(crOnly, 'utf8'), crContent)
+
+  // a half-written line after CR-separated lines truncates back to the CR
+  const crPartial = join(dir, 'cr-partial.jsonl')
+  await writeFile(crPartial, '{"type":"user","a":1}\r{"type":"assist')
+  assert.equal(repairTranscriptTail(crPartial), 'truncated')
+  assert.equal(await readFile(crPartial, 'utf8'), '{"type":"user","a":1}\r')
 })
 
 test('a repaired transcript survives resume-append where a glued one is corrupt forever', async () => {

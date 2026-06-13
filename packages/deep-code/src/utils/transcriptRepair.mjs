@@ -40,7 +40,13 @@ export function repairTranscriptTail(filePath) {
     if (size === 0) return false
     const lastByte = Buffer.alloc(1)
     readSync(fd, lastByte, 0, 1, size - 1)
-    if (lastByte[0] === 0x0a) return false
+    // CR counts as a terminator everywhere here: the readers tokenize on
+    // universal newlines (/\r\n|\r|\n/), and the repo certifies CR-only
+    // transcripts as clean and forkable — scanning for LF alone would wipe
+    // such a file to zero bytes. This cannot mask a real repair: the writer's
+    // jsonStringify escapes CR inside strings as the two characters \r, so no
+    // internally half-written line can ever END in a raw 0x0d.
+    if (lastByte[0] === 0x0a || lastByte[0] === 0x0d) return false
 
     const tailStart = findLastNewline(fd, size) + 1
     const tail = Buffer.alloc(size - tailStart)
@@ -56,8 +62,9 @@ export function repairTranscriptTail(filePath) {
   }
 }
 
-// Offset of the last 0x0a before EOF, or -1. Chunked backwards scan so a
-// multi-megabyte half-written line cannot force a whole-file read.
+// Offset of the last line terminator (LF or CR — universal newlines, matching
+// the readers) before EOF, or -1. Chunked backwards scan so a multi-megabyte
+// half-written line cannot force a whole-file read.
 function findLastNewline(fd, size) {
   const chunk = Buffer.alloc(SCAN_CHUNK_BYTES)
   let scanEnd = size - 1
@@ -65,7 +72,10 @@ function findLastNewline(fd, size) {
     const scanStart = Math.max(0, scanEnd - SCAN_CHUNK_BYTES)
     const length = scanEnd - scanStart
     readSync(fd, chunk, 0, length, scanStart)
-    const offset = chunk.lastIndexOf(0x0a, length - 1)
+    const offset = Math.max(
+      chunk.lastIndexOf(0x0a, length - 1),
+      chunk.lastIndexOf(0x0d, length - 1),
+    )
     if (offset !== -1) return scanStart + offset
     scanEnd = scanStart
   }
