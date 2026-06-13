@@ -350,11 +350,13 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
         continue
       }
       if (prompt.trim() === '/doctor') {
-        const report = await createDeepSeekDoctorReport({
-          env,
-          cwd: process.cwd(),
-        })
-        console.log(formatDeepCodeTextPanel('Doctor', formatDeepSeekDoctorReport(report)))
+        // /doctor runs a live streaming probe when an API key is configured —
+        // make that Ctrl-C-abortable too.
+        const doctor = await runInterruptible(signal =>
+          createDeepSeekDoctorReport({ env, cwd: process.cwd(), signal }),
+        )
+        if (!doctor) continue
+        console.log(formatDeepCodeTextPanel('Doctor', formatDeepSeekDoctorReport(doctor.value)))
         continue
       }
       if (prompt.trim() === '/harness') {

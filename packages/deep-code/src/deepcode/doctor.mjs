@@ -51,6 +51,7 @@ export async function createDeepSeekDoctorReport({
   cwd = process.cwd(),
   live,
   provider,
+  signal,
 } = {}) {
   const config = resolveDeepSeekConfig({ env, cwd })
   const harnessConfig = resolveDeepCodeHarnessConfig(env)
@@ -253,7 +254,9 @@ export async function createDeepSeekDoctorReport({
         })
         const liveProvider = provider ?? createDeepSeekProvider()
         const response = await collectDeepSeekStreamEvents(
-          liveProvider.streamQuery(liveRequest),
+          // Thread the abort signal so a mid-turn Ctrl-C cancels the live
+          // streaming probe (undefined is a no-op via forwardAbortToController).
+          liveProvider.streamQuery({ ...liveRequest, signal }),
         )
         liveUsage = response.usage
         add(

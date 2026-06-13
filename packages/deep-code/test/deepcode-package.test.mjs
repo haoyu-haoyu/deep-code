@@ -860,6 +860,22 @@ test('native key reader: an UNHANDLED mid-turn Ctrl-C is queued (exit at next pr
   reader.close()
 })
 
+test('native interactive routes every streaming op through runInterruptible (abortable)', () => {
+  // deepcode.js's interactive loop is the entrypoint (not unit-loadable); pin
+  // the wiring by source so a regression that drops the abort plumbing on any
+  // streaming op (chat turn / /compact / /doctor) is caught.
+  const src = readFileSync(resolve(root, rootPackage.bin.deepcode), 'utf8')
+  // the helper exists and threads a per-turn AbortController
+  assert.match(src, /const runInterruptible = async op =>/)
+  assert.match(src, /currentTurnAbort = new AbortController\(\)/)
+  // onInterrupt returns true only when an op is in flight (else queue → /exit)
+  assert.match(src, /if \(!currentTurnAbort\) return false/)
+  // all three streaming ops go through runInterruptible with a signal
+  assert.match(src, /runInterruptible\(signal =>\s*\n?\s*requestDeepSeek\(messages, env, \{[\s\S]*?signal,/)
+  assert.match(src, /runInterruptible\(signal =>\s*\n?\s*compactDeepCodeConversation\(\{[\s\S]*?signal,/)
+  assert.match(src, /runInterruptible\(signal =>\s*\n?\s*createDeepSeekDoctorReport\(\{[\s\S]*?signal[\s\S]*?\}\)/)
+})
+
 test('native key reader: a queued char (mid-turn) is still delivered to the next readLine', async () => {
   const { PassThrough } = await import('node:stream')
   const { createDeepCodeInteractiveReader } = await import(
