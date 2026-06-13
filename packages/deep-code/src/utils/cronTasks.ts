@@ -14,6 +14,7 @@ import { readFileSync } from 'fs'
 import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { atomicWriteFile } from './atomicWrite.mjs'
+import { normalizeCronTaskForRead } from './cronTaskNormalize.mjs'
 import { withCronFileLock } from './cronFileStore.mjs'
 import {
   addSessionCronTask,
@@ -126,17 +127,11 @@ export async function readCronTasks(dir?: string): Promise<CronTask[]> {
       )
       continue
     }
-    out.push({
-      id: t.id,
-      cron: t.cron,
-      prompt: t.prompt,
-      createdAt: t.createdAt,
-      ...(typeof t.lastFiredAt === 'number'
-        ? { lastFiredAt: t.lastFiredAt }
-        : {}),
-      ...(t.recurring ? { recurring: true } : {}),
-      ...(t.permanent ? { permanent: true } : {}),
-    })
+    // Preserve forward-compatible fields a newer DeepCode wrote (the inline
+    // rebuild used to strip them on every read; a routine mutate→write then
+    // destroyed them). normalizeCronTaskForRead keeps the known-field behavior
+    // identical and drops the runtime-only durable/agentId flags.
+    out.push(normalizeCronTaskForRead(t) as CronTask)
   }
   return out
 }
