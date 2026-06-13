@@ -269,10 +269,15 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     cwd: process.cwd(),
     env,
   }))
+  // A mid-turn Ctrl-C aborts the in-flight turn's request (instead of the
+  // keypress being queued and exiting the session at the next prompt). The
+  // reader fires onInterrupt only when no readLine is waiting (i.e. mid-turn).
+  let currentTurnAbort = null
   const reader = createDeepCodeInteractiveReader({
     input: process.stdin,
     output: process.stdout,
     env,
+    onInterrupt: () => currentTurnAbort?.abort(),
   })
   // Always restore the terminal: a thrown turn error (or any other escape from
   // the loop) must not skip reader.close() and leave the session wedged in raw
@@ -349,21 +354,29 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
       }
       if (!prompt.trim()) continue
       messages.push({ role: 'user', content: prompt })
+      currentTurnAbort = new AbortController()
       let response
       try {
         response = await requestDeepSeek(messages, env, {
           streamToStdout: true,
           stablePrefix,
+          signal: currentTurnAbort.signal,
         })
       } catch (error) {
-        // A transient turn failure (invalid key / 401, network down, request
-        // timeout) must not wedge or exit the session: roll back the
-        // unanswered user message (only it was pushed at this point, so pop is
-        // exact) so the next turn isn't two consecutive user turns, surface the
-        // error, and return to the prompt.
+        // A failed or INTERRUPTED turn must not wedge or exit the session: roll
+        // back the unanswered user message (only it was pushed at this point,
+        // so pop is exact) so the next turn isn't two consecutive user turns,
+        // and return to the prompt. A mid-turn Ctrl-C aborts the stream
+        // (AbortError) — acknowledge it with ^C rather than printing it as a
+        // failure; any other error (invalid key/401, network down, timeout) is
+        // surfaced.
         messages.pop()
         process.stdout.write('\n')
-        console.error(error?.message ?? String(error))
+        if (currentTurnAbort?.signal.aborted || error?.name === 'AbortError') {
+          process.stdout.write('^C\n')
+        } else {
+          console.error(error?.message ?? String(error))
+        }
         continue
       }
       messages.push({
@@ -384,7 +397,7 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
 async function requestDeepSeek(
   messages,
   env,
-  { streamToStdout = false, stablePrefix } = {},
+  { streamToStdout = false, stablePrefix, signal } = {},
 ) {
   const provider = resolveModelProvider({ env })
   const prefix = stablePrefix ?? (await createDeepCodeStablePrefix())
@@ -404,6 +417,8 @@ async function requestDeepSeek(
       env,
       cwd: process.cwd(),
       maxTokens: Number(env.DEEPCODE_MAX_TOKENS ?? env.DEEPSEEK_MAX_TOKENS ?? 4096),
+      // Per-turn abort: a mid-turn Ctrl-C aborts this signal (see runInteractive).
+      signal,
     }), {
       onContent: streamToStdout
         ? text => {

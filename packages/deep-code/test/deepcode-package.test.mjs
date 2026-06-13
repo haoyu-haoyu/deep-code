@@ -791,6 +791,64 @@ test('native interactive survives a failing turn (no wedge): prints the error an
   assert.notEqual(result.stderr.trim(), '', 'the failing turn should print an error')
 })
 
+test('native key reader: a mid-turn Ctrl-C fires onInterrupt and is NOT queued', async () => {
+  const { PassThrough } = await import('node:stream')
+  const { createDeepCodeInteractiveReader } = await import(
+    '../src/deepcode/native-interactive.mjs'
+  )
+  const input = new PassThrough()
+  const output = new PassThrough()
+  output.resume() // drain prompt writes
+  let interrupts = 0
+  const reader = createDeepCodeInteractiveReader({
+    input,
+    output,
+    env: { DEEPCODE_FORCE_NATIVE_INTERACTIVE_KEYS: '1' },
+    onInterrupt: () => {
+      interrupts += 1
+    },
+  })
+  const tick = () => new Promise(r => setImmediate(r))
+
+  // MID-TURN (no readLine waiting): a Ctrl-C must fire onInterrupt and NOT be
+  // queued — a queued one would be consumed by the next readLine and exit.
+  input.write('\x03')
+  await tick()
+  assert.equal(interrupts, 1)
+
+  // AT THE PROMPT (readLine waiting): a Ctrl-C goes to the waiter → '/exit'.
+  // That this returns at all proves the first Ctrl-C was not left in the queue.
+  const linePromise = reader.readLine()
+  await tick()
+  input.write('\x03')
+  assert.equal(await linePromise, '/exit')
+  assert.equal(interrupts, 1) // the at-prompt Ctrl-C did NOT fire onInterrupt
+  reader.close()
+})
+
+test('native key reader: a queued char (mid-turn) is still delivered to the next readLine', async () => {
+  const { PassThrough } = await import('node:stream')
+  const { createDeepCodeInteractiveReader } = await import(
+    '../src/deepcode/native-interactive.mjs'
+  )
+  const input = new PassThrough()
+  const output = new PassThrough()
+  output.resume()
+  const reader = createDeepCodeInteractiveReader({
+    input,
+    output,
+    env: { DEEPCODE_FORCE_NATIVE_INTERACTIVE_KEYS: '1' },
+    onInterrupt: () => {},
+  })
+  const tick = () => new Promise(r => setImmediate(r))
+  // a non-ctrl-c token typed with no waiter must STILL be queued (only ctrl-c
+  // is intercepted) and delivered to the next readLine.
+  input.write('hi\r')
+  await tick()
+  assert.equal(await reader.readLine(), 'hi')
+  reader.close()
+})
+
 test('Deep Code front controller delegates bare interactive startup to full TUI', () => {
   const dir = mkdtempSync(join(tmpdir(), 'deepcode-full-cli-tui-default-'))
   const fakeFullCli = join(dir, 'deepcode-full.mjs')
