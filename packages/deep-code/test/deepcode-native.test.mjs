@@ -81,6 +81,7 @@ import {
   MODEL_PROVIDER_CAPABILITIES,
   resolveModelProvider,
 } from '../src/services/providers/index.mjs'
+import { describeNonTextBlock } from '../src/messages/deepseek-normalizer.mjs'
 import {
   createDeepSeekCallModel,
   deepSeekResponseToAssistantMessage,
@@ -4792,6 +4793,93 @@ test('mapMessagesToDeepSeek drops dangling assistant tool_calls (resume/fork mid
     'a fully-paired turn keeps every call (byte-stable prefix)',
   )
   assertNoDangling(happy)
+})
+
+test('describeNonTextBlock returns a placeholder for image/document, null otherwise', () => {
+  assert.equal(
+    describeNonTextBlock({ type: 'image', source: { media_type: 'image/png' } }),
+    '[image omitted: DeepSeek has no vision; image/png]',
+  )
+  assert.equal(
+    describeNonTextBlock({ type: 'document', source: { media_type: 'application/pdf' } }),
+    '[document omitted: DeepSeek has no vision; application/pdf]',
+  )
+  // missing media_type still yields a stable placeholder
+  assert.equal(describeNonTextBlock({ type: 'image' }), '[image omitted: DeepSeek has no vision]')
+  // not a non-text block → null (caller keeps its own handling)
+  assert.equal(describeNonTextBlock({ type: 'text', text: 'hi' }), null)
+  assert.equal(describeNonTextBlock('plain'), null)
+  assert.equal(describeNonTextBlock(null), null)
+})
+
+test('mapMessagesToDeepSeek elides image/PDF blocks to a placeholder (no base64 dump, no vanished turn)', () => {
+  const BIG = 'A'.repeat(5000)
+
+  // (1) an image tool_result must NOT dump the base64 into the tool message
+  const toolResult = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', id: 'r', name: 'Read', input: {} }] },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'r',
+            content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: BIG } }],
+          },
+        ],
+      },
+    },
+  ])
+  const toolMsg = toolResult.find(m => m.role === 'tool')
+  assert.ok(!toolMsg.content.includes(BIG), 'the base64 blob must not reach the prompt')
+  assert.match(toolMsg.content, /\[image omitted: DeepSeek has no vision; image\/png\]/)
+
+  // (2) a [text, image] user turn keeps the text and a placeholder for the image
+  const mixed = mapMessagesToDeepSeek([
+    {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'text', text: 'look at this' },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: BIG } },
+        ],
+      },
+    },
+  ])
+  const mixedUser = mixed.find(m => m.role === 'user')
+  assert.match(mixedUser.content, /look at this/)
+  assert.match(mixedUser.content, /\[image omitted/)
+  assert.ok(!mixedUser.content.includes(BIG))
+
+  // (3) an image-ONLY user turn must still produce a non-empty user message (not vanish)
+  const imageOnly = mapMessagesToDeepSeek([
+    {
+      type: 'user',
+      message: {
+        content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: BIG } }],
+      },
+    },
+  ])
+  assert.equal(imageOnly.length, 1, 'the user turn must not disappear')
+  assert.equal(imageOnly[0].role, 'user')
+  assert.match(imageOnly[0].content, /\[image omitted: DeepSeek has no vision; image\/jpeg\]/)
+
+  // (4) a text-only tool_result is byte-identical to before (no placeholder path)
+  const textOnly = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', id: 't', name: 'Bash', input: {} }] },
+    },
+    {
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 't', content: 'ok output' }] },
+    },
+  ])
+  assert.equal(textOnly.find(m => m.role === 'tool').content, 'ok output')
 })
 
 test('reasoningReplay knob controls re-sending reasoning_content on tool turns (default preserves it)', async () => {
