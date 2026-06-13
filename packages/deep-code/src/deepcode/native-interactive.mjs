@@ -450,11 +450,13 @@ class KeyDrivenInteractiveReader {
       waiter(token)
       return
     }
-    // No reader is waiting → a ctrl-c here arrived MID-TURN. Fire the interrupt
-    // hook to abort the turn instead of queueing it (a queued ctrl-c would be
-    // consumed by the next readLine and exit the session at the next prompt).
-    if (token.type === 'ctrl-c' && this.onInterrupt) {
-      this.onInterrupt()
+    // No reader is waiting → a ctrl-c here arrived MID-TURN. Offer it to the
+    // interrupt hook; if it HANDLED it (an abortable streaming op was in
+    // flight, now aborted), drop the keypress. Otherwise fall through and QUEUE
+    // it so the next readLine consumes it and exits — the same escape the
+    // line-based reader gives, so a Ctrl-C during a non-abortable operation is
+    // never silently lost.
+    if (token.type === 'ctrl-c' && this.onInterrupt && this.onInterrupt()) {
       return
     }
     this.tokens.push(token)

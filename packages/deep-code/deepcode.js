@@ -269,16 +269,45 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     cwd: process.cwd(),
     env,
   }))
-  // A mid-turn Ctrl-C aborts the in-flight turn's request (instead of the
-  // keypress being queued and exiting the session at the next prompt). The
-  // reader fires onInterrupt only when no readLine is waiting (i.e. mid-turn).
+  // A mid-turn Ctrl-C aborts the in-flight streaming op. The reader fires
+  // onInterrupt only when no readLine is waiting (i.e. mid-turn). It returns
+  // true iff an abortable op was in flight (so the reader drops the keypress);
+  // otherwise false, so the reader queues the Ctrl-C and the next readLine
+  // exits — the same escape the line-based reader gives, so a Ctrl-C during a
+  // NON-abortable operation (e.g. a local slash command) is never lost.
   let currentTurnAbort = null
   const reader = createDeepCodeInteractiveReader({
     input: process.stdin,
     output: process.stdout,
     env,
-    onInterrupt: () => currentTurnAbort?.abort(),
+    onInterrupt: () => {
+      if (!currentTurnAbort) return false
+      currentTurnAbort.abort()
+      return true
+    },
   })
+  // Run a streaming op under a fresh per-turn AbortController. On success
+  // returns { value }; on a Ctrl-C abort or a request failure it prints ^C (or
+  // the error) and returns null so the caller returns to the prompt instead of
+  // wedging/exiting. currentTurnAbort is cleared afterward so onInterrupt only
+  // intercepts a Ctrl-C while an op is actually in flight.
+  const runInterruptible = async op => {
+    currentTurnAbort = new AbortController()
+    try {
+      return { value: await op(currentTurnAbort.signal) }
+    } catch (error) {
+      const aborted = currentTurnAbort.signal.aborted
+      process.stdout.write('\n')
+      if (aborted || error?.name === 'AbortError') {
+        process.stdout.write('^C\n')
+      } else {
+        console.error(error?.message ?? String(error))
+      }
+      return null
+    } finally {
+      currentTurnAbort = null
+    }
+  }
   // Always restore the terminal: a thrown turn error (or any other escape from
   // the loop) must not skip reader.close() and leave the session wedged in raw
   // mode with no echo and a dead Ctrl-C.
@@ -337,12 +366,19 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
           console.log('Nothing to compact.')
           continue
         }
-        const result = await compactDeepCodeConversation({
-          env,
-          cwd: process.cwd(),
-          stablePrefix,
-          messages,
-        })
+        // /compact also streams a provider call — make it Ctrl-C-abortable too,
+        // so a stuck compaction is recoverable (not just queued for exit).
+        const compacted = await runInterruptible(signal =>
+          compactDeepCodeConversation({
+            env,
+            cwd: process.cwd(),
+            stablePrefix,
+            messages,
+            signal,
+          }),
+        )
+        if (!compacted) continue
+        const result = compacted.value
         messages.splice(0, messages.length, ...result.messages)
         console.log(formatDeepCodeCompactResult(result))
         await recordDeepSeekCacheUsage({
@@ -354,31 +390,23 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
       }
       if (!prompt.trim()) continue
       messages.push({ role: 'user', content: prompt })
-      currentTurnAbort = new AbortController()
-      let response
-      try {
-        response = await requestDeepSeek(messages, env, {
+      // A failed or Ctrl-C-interrupted turn returns null; roll back the
+      // unanswered user message (only it was pushed at this point, so pop is
+      // exact) so the next turn isn't two consecutive user turns, and return to
+      // the prompt. runInterruptible has already printed ^C (abort) or the
+      // error (invalid key/401, network down, timeout).
+      const turn = await runInterruptible(signal =>
+        requestDeepSeek(messages, env, {
           streamToStdout: true,
           stablePrefix,
-          signal: currentTurnAbort.signal,
-        })
-      } catch (error) {
-        // A failed or INTERRUPTED turn must not wedge or exit the session: roll
-        // back the unanswered user message (only it was pushed at this point,
-        // so pop is exact) so the next turn isn't two consecutive user turns,
-        // and return to the prompt. A mid-turn Ctrl-C aborts the stream
-        // (AbortError) — acknowledge it with ^C rather than printing it as a
-        // failure; any other error (invalid key/401, network down, timeout) is
-        // surfaced.
+          signal,
+        }),
+      )
+      if (!turn) {
         messages.pop()
-        process.stdout.write('\n')
-        if (currentTurnAbort?.signal.aborted || error?.name === 'AbortError') {
-          process.stdout.write('^C\n')
-        } else {
-          console.error(error?.message ?? String(error))
-        }
         continue
       }
+      const response = turn.value
       messages.push({
         role: 'assistant',
         content: response.content,
