@@ -53,6 +53,8 @@ import {
 import {
   formatFullCliLaunchFailure,
   formatMissingFullCliMessage,
+  forwardSignalsToChild,
+  resolveFullCliExitCode,
   resolveFullCliPath,
   shouldDelegateToFullCli,
   shouldLaunchFullTui,
@@ -217,19 +219,26 @@ async function delegateToFullCli(env, cli) {
     stdio: 'inherit',
   })
 
-  const exitCode = await new Promise((resolve, reject) => {
-    child.once('error', reject)
-    child.once('exit', (code, signal) => {
-      if (signal) {
-        resolve(1)
-        return
-      }
-      resolve(code ?? 1)
+  // Forward SIGINT/SIGTERM/SIGHUP to the child so killing the wrapper tears
+  // down the TUI child (which owns the terminal in raw mode) instead of
+  // orphaning it; this also keeps the wrapper alive to await the child.
+  const unforwardSignals = forwardSignalsToChild(child, process)
+  let exitCode
+  try {
+    exitCode = await new Promise((resolve, reject) => {
+      child.once('error', reject)
+      // Preserve the child's real exit cause (128 + signum on a signal)
+      // instead of masking it as 1, so `timeout`/CI see why it died.
+      child.once('exit', (code, signal) => {
+        resolve(resolveFullCliExitCode(code, signal))
+      })
     })
-  }).catch(error => {
+  } catch (error) {
     console.error(formatFullCliLaunchFailure(error))
-    return 1
-  })
+    exitCode = 1
+  } finally {
+    unforwardSignals()
+  }
   process.exitCode = exitCode
 }
 
@@ -265,92 +274,111 @@ async function runInteractive(env, cacheStatsPath, stablePrefix) {
     output: process.stdout,
     env,
   })
-  while (true) {
-    const prompt = await reader.readLine()
-    if (prompt === null) break
-    if (prompt.trim() === '/exit') break
-    if (prompt.trim() === '/status') {
-      console.log(formatDeepCodeTextPanel('Status', formatDeepCodeStatus(await buildDeepCodeStatusReport({
-        env,
-        cwd: process.cwd(),
-        repoSummary: stablePrefix?.repoSummary,
-        cacheStatsPath,
-        stablePrefix,
-      }))))
-      continue
-    }
-    if (prompt.trim() === '/model') {
-      const config = resolveDeepSeekConfig({ env, cwd: process.cwd() })
-      if (reader.supportsKeyMenus) {
-        const selection = await reader.selectModel({ config })
-        if (selection) {
-          applyInteractiveModelSelection(env, selection)
-          console.log(formatDeepCodeInfoPanel('Model updated', [
-            { label: 'Main model', value: selection.model },
-            { label: 'Reasoning effort', value: selection.reasoningEffort },
-            { label: 'Scope', value: 'current session' },
-          ]))
+  // Always restore the terminal: a thrown turn error (or any other escape from
+  // the loop) must not skip reader.close() and leave the session wedged in raw
+  // mode with no echo and a dead Ctrl-C.
+  try {
+    while (true) {
+      const prompt = await reader.readLine()
+      if (prompt === null) break
+      if (prompt.trim() === '/exit') break
+      if (prompt.trim() === '/status') {
+        console.log(formatDeepCodeTextPanel('Status', formatDeepCodeStatus(await buildDeepCodeStatusReport({
+          env,
+          cwd: process.cwd(),
+          repoSummary: stablePrefix?.repoSummary,
+          cacheStatsPath,
+          stablePrefix,
+        }))))
+        continue
+      }
+      if (prompt.trim() === '/model') {
+        const config = resolveDeepSeekConfig({ env, cwd: process.cwd() })
+        if (reader.supportsKeyMenus) {
+          const selection = await reader.selectModel({ config })
+          if (selection) {
+            applyInteractiveModelSelection(env, selection)
+            console.log(formatDeepCodeInfoPanel('Model updated', [
+              { label: 'Main model', value: selection.model },
+              { label: 'Reasoning effort', value: selection.reasoningEffort },
+              { label: 'Scope', value: 'current session' },
+            ]))
+          }
+          continue
         }
+        console.log(formatDeepCodeInfoPanel('Model', [
+          { label: 'Main model', value: config.model },
+          { label: 'Small model', value: config.smallModel },
+          { label: 'Thinking', value: config.thinking?.type ?? 'enabled' },
+          { label: 'Reasoning effort', value: config.reasoningEffort },
+          { label: 'Context window', value: '1M context' },
+        ]))
         continue
       }
-      console.log(formatDeepCodeInfoPanel('Model', [
-        { label: 'Main model', value: config.model },
-        { label: 'Small model', value: config.smallModel },
-        { label: 'Thinking', value: config.thinking?.type ?? 'enabled' },
-        { label: 'Reasoning effort', value: config.reasoningEffort },
-        { label: 'Context window', value: '1M context' },
-      ]))
-      continue
-    }
-    if (prompt.trim() === '/doctor') {
-      const report = await createDeepSeekDoctorReport({
-        env,
-        cwd: process.cwd(),
-      })
-      console.log(formatDeepCodeTextPanel('Doctor', formatDeepSeekDoctorReport(report)))
-      continue
-    }
-    if (prompt.trim() === '/harness') {
-      console.log(formatDeepCodeTextPanel('Harness', formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig(env))))
-      continue
-    }
-    if (prompt.trim() === '/compact') {
-      if (messages.length === 0) {
-        console.log('Nothing to compact.')
+      if (prompt.trim() === '/doctor') {
+        const report = await createDeepSeekDoctorReport({
+          env,
+          cwd: process.cwd(),
+        })
+        console.log(formatDeepCodeTextPanel('Doctor', formatDeepSeekDoctorReport(report)))
         continue
       }
-      const result = await compactDeepCodeConversation({
-        env,
-        cwd: process.cwd(),
-        stablePrefix,
-        messages,
+      if (prompt.trim() === '/harness') {
+        console.log(formatDeepCodeTextPanel('Harness', formatDeepCodeHarnessStatus(resolveDeepCodeHarnessConfig(env))))
+        continue
+      }
+      if (prompt.trim() === '/compact') {
+        if (messages.length === 0) {
+          console.log('Nothing to compact.')
+          continue
+        }
+        const result = await compactDeepCodeConversation({
+          env,
+          cwd: process.cwd(),
+          stablePrefix,
+          messages,
+        })
+        messages.splice(0, messages.length, ...result.messages)
+        console.log(formatDeepCodeCompactResult(result))
+        await recordDeepSeekCacheUsage({
+          path: cacheStatsPath,
+          usage: result.usage,
+          stablePrefix,
+        })
+        continue
+      }
+      if (!prompt.trim()) continue
+      messages.push({ role: 'user', content: prompt })
+      let response
+      try {
+        response = await requestDeepSeek(messages, env, {
+          streamToStdout: true,
+          stablePrefix,
+        })
+      } catch (error) {
+        // A transient turn failure (invalid key / 401, network down, request
+        // timeout) must not wedge or exit the session: roll back the
+        // unanswered user message (only it was pushed at this point, so pop is
+        // exact) so the next turn isn't two consecutive user turns, surface the
+        // error, and return to the prompt.
+        messages.pop()
+        process.stdout.write('\n')
+        console.error(error?.message ?? String(error))
+        continue
+      }
+      messages.push({
+        role: 'assistant',
+        content: response.content,
+        reasoning_content:
+          response.toolCalls.length > 0 ? response.reasoning : undefined,
+        tool_calls: response.toolCalls.length > 0 ? response.toolCalls : undefined,
       })
-      messages.splice(0, messages.length, ...result.messages)
-      console.log(formatDeepCodeCompactResult(result))
-      await recordDeepSeekCacheUsage({
-        path: cacheStatsPath,
-        usage: result.usage,
-        stablePrefix,
-      })
-      continue
+      if (!response.content.endsWith('\n')) process.stdout.write('\n')
+      await printAndRecordUsage(response.usage, cacheStatsPath, stablePrefix)
     }
-    if (!prompt.trim()) continue
-    messages.push({ role: 'user', content: prompt })
-    const response = await requestDeepSeek(messages, env, {
-      streamToStdout: true,
-      stablePrefix,
-    })
-    messages.push({
-      role: 'assistant',
-      content: response.content,
-      reasoning_content:
-        response.toolCalls.length > 0 ? response.reasoning : undefined,
-      tool_calls: response.toolCalls.length > 0 ? response.toolCalls : undefined,
-    })
-    if (!response.content.endsWith('\n')) process.stdout.write('\n')
-    await printAndRecordUsage(response.usage, cacheStatsPath, stablePrefix)
+  } finally {
+    reader.close()
   }
-  reader.close()
 }
 
 async function requestDeepSeek(
