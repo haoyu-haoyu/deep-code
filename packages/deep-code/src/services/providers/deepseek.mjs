@@ -52,6 +52,23 @@ export const DEEPSEEK_PROVIDER_CAPABILITIES = Object.freeze([
   MODEL_PROVIDER_CAPABILITIES.TOOL_CALLS,
 ])
 
+// Normalize a thinking/reasoning toggle to 'enabled' | 'disabled'. The boolean was
+// previously derived with `thinkingType !== 'disabled'`, which treats EVERY value
+// except the literal lowercase 'disabled' as enabled — so DEEPSEEK_THINKING=false
+// (or 0/no/off, or `deepcode --thinking=false`) left reasoning ON, the opposite of
+// intent (burning reasoning tokens and forcing temperature/top_p off). Mirror the
+// envBool/normalizeDeepSeekEffort normalization already used in this file: map the
+// common disable spellings to 'disabled', everything else (incl. 'enabled' and the
+// commander 'adaptive') to 'enabled'. Unset/empty → 'enabled' (the default).
+export function normalizeDeepSeekThinking(value) {
+  if (value === undefined || value === null || value === '') return 'enabled'
+  const normalized = String(value).trim().toLowerCase()
+  if (['disabled', 'disable', 'false', '0', 'no', 'off'].includes(normalized)) {
+    return 'disabled'
+  }
+  return 'enabled'
+}
+
 export function resolveDeepSeekConfig({
   env = process.env,
   cwd = process.cwd(),
@@ -65,7 +82,7 @@ export function resolveDeepSeekConfig({
     env.DEEPCODE_THINKING ??
     file?.thinking ??
     'enabled'
-  const thinkingEnabled = thinkingType !== 'disabled'
+  const thinkingEnabled = normalizeDeepSeekThinking(thinkingType) !== 'disabled'
 
   return {
     apiKey:
