@@ -244,6 +244,43 @@ test('checkAndPrune removes oldest snapshots when side-git exceeds cap', async (
   })
 })
 
+test('checkAndPrune does NOT wipe all history against a PACKED store, and reclaims packed objects', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-packed-'))
+    for (let index = 1; index <= 4; index += 1) {
+      await writeFile(
+        join(workspaceRoot, 'large.txt'),
+        `${index}:${'x'.repeat(200_000)}\n`,
+      )
+      await createSnapshot({ workspaceRoot, turnId: `turn-${index}`, phase: 'post' })
+    }
+
+    const store = resolveSnapshotStore({ workspaceRoot })
+    // Simulate the trigger: an external `git gc` PACKS the side store. After
+    // this, deleting a ref + `git prune` (loose-only) reclaims 0 bytes — so the
+    // old loop would delete EVERY ref (wiping all history) while staying over cap.
+    await runSideGit(store.gitDir, workspaceRoot, ['gc', '--prune=now'])
+    const objectsDir = join(store.gitDir, 'objects')
+    const objectsBefore = await getSnapshotStoreSize(objectsDir)
+
+    // An impossible-to-satisfy cap forces the loop to keep evicting — exactly
+    // the path that used to destroy the whole store.
+    await checkAndPrune({ workspaceRoot, capBytes: 1 })
+    const remaining = await listSnapshots({ workspaceRoot, limit: 10 })
+
+    // DATA-LOSS GUARD: it must STOP rather than wipe every snapshot.
+    assert.ok(remaining.length >= 1, 'at least one snapshot must survive a packed-store prune')
+    assert.equal(remaining.at(-1).turnId, 'turn-4', 'the newest snapshot survives')
+    // EFFECTIVENESS: the gc reclaimed PACKED git objects that loose prune could
+    // not (measured on the object store — immune to the manifest shrinkage that
+    // every eviction causes).
+    assert.ok(
+      (await getSnapshotStoreSize(objectsDir)) < objectsBefore,
+      'packed git objects were reclaimed (gc ran)',
+    )
+  })
+})
+
 test('checkAndPrune is a no-op when snapshot store is under cap', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-cap-ok-'))

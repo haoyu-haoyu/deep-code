@@ -52,15 +52,41 @@ export async function checkAndPrune({
     .map((entry, index) => ({ entry, index }))
     .sort((left, right) => left.entry.timestamp - right.entry.timestamp)
   let prunedCount = 0
+  let gcAttempted = false
+  // The git OBJECT store (loose objects + packfiles) is what eviction must
+  // shrink. We track it separately from the whole-store size because each
+  // eviction also rewrites a smaller manifest.json — a few-hundred-byte drop
+  // that would otherwise masquerade as "progress" even when no git object was
+  // reclaimed, defeating the no-progress guard below.
+  const objectsDir = join(store.gitDir, 'objects')
 
   for (const candidate of pruneOrder) {
     if (finalBytes <= capBytes) break
+    const objectsBefore = await getSnapshotStoreSize(objectsDir)
     await deleteSnapshotRef(store.gitDir, normalizedWorkspaceRoot, candidate.entry)
     entries = entries.filter(entry => entry !== candidate.entry)
     await writeManifestAtomically(store.manifestPath, entries)
     await pruneUnreachableObjects(store.gitDir, normalizedWorkspaceRoot)
+    const objectsAfter = await getSnapshotStoreSize(objectsDir)
     finalBytes = await getSnapshotStoreSize(store.storePath)
     prunedCount += 1
+
+    // No-progress guard. `git prune` only collects LOOSE objects; if the store
+    // was packed (an external `git gc`/repack ran against it), this eviction
+    // reclaimed no git object. Without this, the loop would delete EVERY
+    // remaining ref — wiping all restore/revert_turn history — while the
+    // packfile stays put and the store never drops below the cap. On the first
+    // stall, reclaim packed objects once via gc; if THAT still frees no object,
+    // STOP rather than keep destroying history against an unreclaimable store.
+    // The common (loose) path shrinks the object store every iteration and never
+    // gc's, so there is no per-eviction gc cost.
+    if (objectsAfter >= objectsBefore && entries.length > 0) {
+      if (gcAttempted) break
+      gcAttempted = true
+      await reclaimPackedObjects(store.gitDir, normalizedWorkspaceRoot)
+      finalBytes = await getSnapshotStoreSize(store.storePath)
+      if (finalBytes <= capBytes) break
+    }
   }
 
   return { prunedCount, finalBytes }
@@ -137,6 +163,14 @@ async function deleteSnapshotRef(gitDir, workTree, entry) {
 async function pruneUnreachableObjects(gitDir, workTree) {
   await runSideGit(gitDir, workTree, ['reflog', 'expire', '--expire=now', '--all'])
   await runSideGit(gitDir, workTree, ['prune', '--expire=now'])
+}
+
+// `git prune` drops only LOOSE unreachable objects; `gc --prune=now` also
+// repacks and discards unreachable objects living inside a packfile (which a
+// `git gc`/repack run against the side store leaves behind). Only invoked when
+// the loose prune above stalls, so the common path never pays for a gc.
+async function reclaimPackedObjects(gitDir, workTree) {
+  await runSideGit(gitDir, workTree, ['gc', '--prune=now'])
 }
 
 async function writeManifestAtomically(manifestPath, entries) {
