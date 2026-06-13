@@ -25,7 +25,13 @@ import { toError } from '../../utils/errors.js'
 import { logMCPDebug } from '../../utils/log.js'
 import { getPlatform } from '../../utils/platform.js'
 import { getSecureStorage } from '../../utils/secureStorage/index.js'
+import { mutateSecureStorage } from '../../utils/secureStorage/mutateSecureStorage.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
+import {
+  deleteBlobEntry,
+  hasBlobEntry,
+  setBlobEntry,
+} from './secureStorageBlob.mjs'
 import { jsonParse } from '../../utils/slowOperations.js'
 import { buildRedirectUri, findAvailablePort } from './oauthPort.js'
 
@@ -111,15 +117,12 @@ function saveIdpIdToken(
   idToken: string,
   expiresAt: number,
 ): void {
-  const storage = getSecureStorage()
-  const existing = storage.read() || {}
-  storage.update({
-    ...existing,
-    mcpXaaIdp: {
-      ...existing.mcpXaaIdp,
-      [issuerKey(idpIssuer)]: { idToken, expiresAt },
-    },
-  })
+  mutateSecureStorage(current =>
+    setBlobEntry(current, 'mcpXaaIdp', issuerKey(idpIssuer), {
+      idToken,
+      expiresAt,
+    }),
+  )
 }
 
 /**
@@ -141,12 +144,9 @@ export function saveIdpIdTokenFromJwt(
 }
 
 export function clearIdpIdToken(idpIssuer: string): void {
-  const storage = getSecureStorage()
-  const existing = storage.read()
   const key = issuerKey(idpIssuer)
-  if (!existing?.mcpXaaIdp?.[key]) return
-  delete existing.mcpXaaIdp[key]
-  storage.update(existing)
+  if (!hasBlobEntry(getSecureStorage().read(), 'mcpXaaIdp', key)) return
+  mutateSecureStorage(current => deleteBlobEntry(current, 'mcpXaaIdp', key))
 }
 
 /**
@@ -160,15 +160,11 @@ export function saveIdpClientSecret(
   idpIssuer: string,
   clientSecret: string,
 ): { success: boolean; warning?: string } {
-  const storage = getSecureStorage()
-  const existing = storage.read() || {}
-  return storage.update({
-    ...existing,
-    mcpXaaIdpConfig: {
-      ...existing.mcpXaaIdpConfig,
-      [issuerKey(idpIssuer)]: { clientSecret },
-    },
-  })
+  return mutateSecureStorage(current =>
+    setBlobEntry(current, 'mcpXaaIdpConfig', issuerKey(idpIssuer), {
+      clientSecret,
+    }),
+  )
 }
 
 /**
@@ -185,12 +181,9 @@ export function getIdpClientSecret(idpIssuer: string): string | undefined {
  * Used by `claude mcp xaa clear`.
  */
 export function clearIdpClientSecret(idpIssuer: string): void {
-  const storage = getSecureStorage()
-  const existing = storage.read()
   const key = issuerKey(idpIssuer)
-  if (!existing?.mcpXaaIdpConfig?.[key]) return
-  delete existing.mcpXaaIdpConfig[key]
-  storage.update(existing)
+  if (!hasBlobEntry(getSecureStorage().read(), 'mcpXaaIdpConfig', key)) return
+  mutateSecureStorage(current => deleteBlobEntry(current, 'mcpXaaIdpConfig', key))
 }
 
 // OIDC Discovery §4.1 says `{issuer}/.well-known/openid-configuration` — path

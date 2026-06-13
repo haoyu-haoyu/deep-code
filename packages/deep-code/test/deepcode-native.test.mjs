@@ -12,6 +12,12 @@ import {
   normalizeCronTaskForRead,
 } from '../src/utils/cronTaskNormalize.mjs'
 import { sessionBelongsToWorkspace } from '../src/utils/sessionWorkspaceIdentity.mjs'
+import {
+  deleteBlobEntry,
+  hasBlobEntry,
+  setBlobEntry,
+} from '../src/services/mcp/secureStorageBlob.mjs'
+import { runMutateSecureStorage } from '../src/utils/secureStorage/mutateSecureStorageCore.mjs'
 import { finalizePendingHooks } from '../src/utils/hooks/finalizePendingHooks.mjs'
 import { formatFileSize } from '../src/utils/fileSize.mjs'
 import { shouldUseColor } from '../src/deepcode/colorSupport.mjs'
@@ -1655,6 +1661,190 @@ test('sessionBelongsToWorkspace: Windows folds case and separators', () => {
   assert.equal(sessionBelongsToWorkspace('C:\\Users\\Me\\Other', 'C:\\Users\\Me\\App', win), false)
   // case-sensitivity is preserved on POSIX (distinct dirs)
   assert.equal(sessionBelongsToWorkspace('/a/App', '/a/app', { platform: 'linux' }), false)
+})
+
+// The secure-storage credentials blob is written as a unit; setBlobEntry/
+// deleteBlobEntry update ONE sub-tree entry while preserving every sibling, and
+// runMutateSecureStorage applies them under a lock with a fresh in-lock read so
+// a concurrent writer of a different entry can't clobber this one.
+test('setBlobEntry merges into the entry and preserves all siblings', () => {
+  const blob = {
+    mcpOAuth: {
+      'A|h': { accessToken: 'a-old', refreshToken: 'a-rt', clientId: 'a-cid' },
+      'B|h': { accessToken: 'b', refreshToken: 'b-rt' },
+    },
+    mcpOAuthClientConfig: { 'A|h': { clientSecret: 's' } },
+  }
+  const next = setBlobEntry(blob, 'mcpOAuth', 'A|h', {
+    accessToken: 'a-new',
+    refreshToken: 'a-rt2',
+  })
+  // patched entry: merged (clientId preserved), patched fields updated
+  assert.deepEqual(next.mcpOAuth['A|h'], {
+    accessToken: 'a-new',
+    refreshToken: 'a-rt2',
+    clientId: 'a-cid',
+  })
+  // sibling server B untouched — the lost-update this prevents
+  assert.deepEqual(next.mcpOAuth['B|h'], { accessToken: 'b', refreshToken: 'b-rt' })
+  // sibling sub-tree untouched
+  assert.deepEqual(next.mcpOAuthClientConfig, { 'A|h': { clientSecret: 's' } })
+  // input not mutated
+  assert.equal(blob.mcpOAuth['A|h'].accessToken, 'a-old')
+})
+
+test('setBlobEntry seeds a missing sub-tree/blob and is __proto__-safe', () => {
+  assert.deepEqual(setBlobEntry(null, 'mcpXaaIdp', 'k', { idToken: 't' }), {
+    mcpXaaIdp: { k: { idToken: 't' } },
+  })
+  const poison = setBlobEntry({}, 'mcpOAuth', '__proto__', { x: 1 })
+  assert.equal({}.x, undefined, 'no prototype pollution')
+  assert.deepEqual(poison.mcpOAuth['__proto__'], { x: 1 })
+})
+
+test('deleteBlobEntry removes only the key; absent key is a no-op', () => {
+  const blob = { mcpOAuth: { 'A|h': { accessToken: 'a' }, 'B|h': { accessToken: 'b' } } }
+  const next = deleteBlobEntry(blob, 'mcpOAuth', 'A|h')
+  assert.equal('A|h' in next.mcpOAuth, false)
+  assert.deepEqual(next.mcpOAuth['B|h'], { accessToken: 'b' })
+  assert.equal(blob.mcpOAuth['A|h'].accessToken, 'a', 'input not mutated')
+  // absent → original returned unchanged (caller can skip the write)
+  assert.equal(deleteBlobEntry(blob, 'mcpOAuth', 'Z|h'), blob)
+  assert.equal(deleteBlobEntry({}, 'mcpOAuth', 'A|h').mcpOAuth, undefined)
+})
+
+test('hasBlobEntry reports entry presence safely', () => {
+  const blob = { mcpOAuth: { 'A|h': {} } }
+  assert.equal(hasBlobEntry(blob, 'mcpOAuth', 'A|h'), true)
+  assert.equal(hasBlobEntry(blob, 'mcpOAuth', 'Z|h'), false)
+  assert.equal(hasBlobEntry(blob, 'mcpXaaIdp', 'A|h'), false)
+  assert.equal(hasBlobEntry(null, 'mcpOAuth', 'A|h'), false)
+})
+
+function makeFakeLockHarness() {
+  const store = { value: { mcpOAuth: {} } }
+  const events = []
+  let held = false
+  return {
+    store,
+    events,
+    isHeld: () => held,
+    deps: {
+      lockSync: (path, opts) => {
+        if (held) {
+          const e = new Error('ELOCKED')
+          e.code = 'ELOCKED'
+          throw e
+        }
+        held = true
+        events.push('lock')
+        return () => {
+          held = false
+          events.push('release')
+        }
+      },
+      lockPath: '/tmp/x.lock',
+      read: () => {
+        events.push('read')
+        return store.value
+      },
+      update: blob => {
+        events.push('update')
+        store.value = blob
+        return { success: true }
+      },
+      ensureDir: () => events.push('ensureDir'),
+      clearCache: () => events.push('clearCache'),
+      sleep: () => events.push('sleep'),
+    },
+  }
+}
+
+test('runMutateSecureStorage reads INSIDE the lock and applies the updater', () => {
+  const h = makeFakeLockHarness()
+  h.store.value = { mcpOAuth: { 'B|h': { refreshToken: 'b-rt' } } }
+  const res = runMutateSecureStorage(h.deps, current =>
+    setBlobEntry(current, 'mcpOAuth', 'A|h', { refreshToken: 'a-rt' }),
+  )
+  assert.deepEqual(res, { success: true })
+  // lock acquired and cache cleared BEFORE the read; release LAST
+  assert.deepEqual(h.events, ['ensureDir', 'lock', 'clearCache', 'read', 'update', 'release'])
+  // both servers present — no lost update
+  assert.deepEqual(h.store.value.mcpOAuth['A|h'], { refreshToken: 'a-rt' })
+  assert.deepEqual(h.store.value.mcpOAuth['B|h'], { refreshToken: 'b-rt' })
+})
+
+test('runMutateSecureStorage: two sequential mutates of distinct keys both survive', () => {
+  const h = makeFakeLockHarness()
+  // simulates two processes each refreshing a different server
+  runMutateSecureStorage(h.deps, c => setBlobEntry(c, 'mcpOAuth', 'A|h', { refreshToken: 'a1' }))
+  runMutateSecureStorage(h.deps, c => setBlobEntry(c, 'mcpOAuth', 'B|h', { refreshToken: 'b1' }))
+  assert.deepEqual(h.store.value.mcpOAuth, {
+    'A|h': { refreshToken: 'a1' },
+    'B|h': { refreshToken: 'b1' },
+  })
+})
+
+test('runMutateSecureStorage retries on ELOCKED then proceeds, always releasing', () => {
+  let calls = 0
+  const events = []
+  const release = () => events.push('release')
+  const deps = {
+    lockSync: () => {
+      calls++
+      if (calls <= 2) {
+        const e = new Error('ELOCKED')
+        e.code = 'ELOCKED'
+        throw e
+      }
+      events.push('lock')
+      return release
+    },
+    lockPath: '/tmp/x.lock',
+    read: () => ({ mcpOAuth: {} }),
+    update: () => ({ success: true }),
+    sleep: () => events.push('sleep'),
+    attempts: 5,
+  }
+  runMutateSecureStorage(deps, c => c)
+  // two ELOCKED → two sleeps → third attempt acquires; release runs
+  assert.deepEqual(events, ['sleep', 'sleep', 'lock', 'release'])
+  assert.equal(calls, 3)
+})
+
+test('runMutateSecureStorage proceeds WITHOUT a lock after exhausting attempts (never wedges)', () => {
+  let updated = false
+  const deps = {
+    lockSync: () => {
+      const e = new Error('ELOCKED')
+      e.code = 'ELOCKED'
+      throw e
+    },
+    lockPath: '/tmp/x.lock',
+    read: () => ({ mcpOAuth: {} }),
+    update: () => {
+      updated = true
+      return { success: true }
+    },
+    sleep: () => {},
+    attempts: 3,
+  }
+  // must still write (degraded last-writer-wins) rather than hang or throw
+  assert.deepEqual(runMutateSecureStorage(deps, c => c), { success: true })
+  assert.equal(updated, true)
+})
+
+test('runMutateSecureStorage releases the lock even when the updater throws', () => {
+  const h = makeFakeLockHarness()
+  assert.throws(
+    () =>
+      runMutateSecureStorage(h.deps, () => {
+        throw new Error('boom')
+      }),
+    /boom/,
+  )
+  assert.equal(h.isHeld(), false, 'lock must be released on updater throw')
+  assert.equal(h.events.includes('release'), true)
 })
 
 test('finalizePendingHooks isolates a failing hook and finalizes the rest', async () => {
