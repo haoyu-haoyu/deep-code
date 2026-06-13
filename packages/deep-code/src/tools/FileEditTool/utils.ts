@@ -13,6 +13,7 @@ import {
   convertLeadingTabsToSpaces,
   readFileSyncCached,
 } from '../../utils/file.js'
+import { deleteOccurrences } from './deleteOccurrences.mjs'
 import type { EditInput, FileEdit } from './types.js'
 
 // The model can't output curly quotes, so we define them as constants here for it to use
@@ -209,22 +210,21 @@ export function applyEditToFile(
   newString: string,
   replaceAll: boolean = false,
 ): string {
-  const f = replaceAll
-    ? (content: string, search: string, replace: string) =>
-        content.replaceAll(search, () => replace)
-    : (content: string, search: string, replace: string) =>
-        content.replace(search, () => replace)
-
-  if (newString !== '') {
-    return f(originalContent, oldString, newString)
+  // Empty new_string is a deletion. A dedicated scanner removes every (or, for a
+  // single edit, the first) occurrence and consumes each occurrence's own trailing
+  // newline. The previous code prepended one global `oldString + '\n'` search,
+  // which matched ONLY occurrences immediately followed by a newline and silently
+  // skipped the rest — so a replace_all delete over mixed trailing context left
+  // occurrences behind while still reporting "All occurrences were replaced".
+  if (newString === '') {
+    return deleteOccurrences(originalContent, oldString, replaceAll)
   }
 
-  const stripTrailingNewline =
-    !oldString.endsWith('\n') && originalContent.includes(oldString + '\n')
-
-  return stripTrailingNewline
-    ? f(originalContent, oldString + '\n', newString)
-    : f(originalContent, oldString, newString)
+  // Non-empty replacement: function replacers so `$`-sequences in new_string are
+  // inserted literally (no $&/$1 special-pattern interpretation).
+  return replaceAll
+    ? originalContent.replaceAll(oldString, () => newString)
+    : originalContent.replace(oldString, () => newString)
 }
 
 /**
