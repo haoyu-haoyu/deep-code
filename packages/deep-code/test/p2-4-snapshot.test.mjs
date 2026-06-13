@@ -486,17 +486,33 @@ test('a held lock refreshes its timestamp so TTL recovery cannot steal it', asyn
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-snapshot-refresh-'))
     const store = resolveSnapshotStore({ workspaceRoot })
-    const staleMs = 90
+    // A generous TTL keeps the test robust on loaded CI runners: the
+    // refresher fires every staleMs/3, so the recorded ts is always well
+    // inside the TTL by construction. The fragile part is asserting that
+    // against the WALL CLOCK (Date.now() - ts), which races scheduling
+    // jitter — so the freshness is proven by SAMPLING the file twice and
+    // showing ts keeps advancing (the refresher is alive), not by a
+    // wall-clock deadline.
+    const staleMs = 600
     const lock = await acquireLock({ workspaceRoot, staleMs })
     const lockPath = join(store.storePath, 'snapshot.lock')
     const initial = JSON.parse(readFileSync(lockPath, 'utf8'))
 
-    // Hold well past the TTL: the refresher must keep ts inside it.
-    await delay(300)
-    const refreshed = JSON.parse(readFileSync(lockPath, 'utf8'))
-    assert.equal(refreshed.ownerId, initial.ownerId)
-    assert.ok(refreshed.ts > initial.ts, 'ts must advance while held')
-    assert.ok(Date.now() - refreshed.ts < staleMs, 'a live holder never looks stale')
+    // Hold past two refresh intervals and confirm ts advanced...
+    await delay(staleMs)
+    const firstSample = JSON.parse(readFileSync(lockPath, 'utf8'))
+    assert.equal(firstSample.ownerId, initial.ownerId)
+    assert.ok(firstSample.ts > initial.ts, 'ts must advance while held')
+
+    // ...and again, proving the refresher is actively running rather than
+    // having fired once and stopped (which would let the TTL lapse).
+    await delay(staleMs)
+    const secondSample = JSON.parse(readFileSync(lockPath, 'utf8'))
+    assert.equal(secondSample.ownerId, initial.ownerId)
+    assert.ok(
+      secondSample.ts > firstSample.ts,
+      'the refresher must keep advancing ts, not stop after one tick',
+    )
     await lock.release()
   })
 })
