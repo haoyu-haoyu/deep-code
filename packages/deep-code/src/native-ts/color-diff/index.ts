@@ -18,6 +18,7 @@
  */
 
 import { diffArrays } from 'diff'
+import { wordDiffTooLarge } from './wordDiffGuard.mjs'
 import type * as hljsNamespace from 'highlight.js'
 import { basename, extname } from 'path'
 
@@ -602,6 +603,12 @@ function findAdjacentPairs(markers: Marker[]): [number, number][] {
 }
 
 function wordDiffStrings(oldStr: string, newStr: string): [Range[], Range[]] {
+  // Skip the unbounded Myers word-diff for very long lines (it freezes the
+  // synchronous render). Falling back to [[], []] = whole-line highlighting is
+  // identical to the change-ratio early-out below, so the render is unchanged.
+  if (wordDiffTooLarge(oldStr, newStr)) {
+    return [[], []]
+  }
   const oldTokens = tokenize(oldStr)
   const newTokens = tokenize(newStr)
   const ops = diffArrays(oldTokens, newTokens)
