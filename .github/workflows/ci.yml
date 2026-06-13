@@ -97,6 +97,7 @@ jobs:
             test/violation-feedback-tail.test.mjs \
             test/disk-shell-snapshot-cleanup.test.mjs \
             test/disk-snapshot-store-reclaim.test.mjs \
+            test/keychain-argv.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \
             test/sandbox-fortress/integration/*.test.mjs \
             test/sandbox-fortress/redteam/*.test.mjs
