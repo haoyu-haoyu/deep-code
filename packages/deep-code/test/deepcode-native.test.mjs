@@ -144,6 +144,7 @@ import {
   mergeProviderConfigPartial,
   resolveDeepSeekConfigPath,
   saveDeepSeekConfigFile,
+  saveProviderConfigFile,
 } from '../src/services/providers/deepseek-config-store.mjs'
 import { resolveDeepSeekConfig } from '../src/services/providers/deepseek.mjs'
 import { firstNonEmpty, parsePositiveIntOr } from '../src/utils/configValue.mjs'
@@ -3888,6 +3889,86 @@ test('wizard save (mergeProviderConfigPartial) preserves a sibling provider; the
     'the old flat save path erased the sibling provider (the bug this fix resolves)',
   )
   assert.equal(afterOld.activeProvider, 'deepseek')
+})
+
+// Forward-compatibility: a NEWER DeepCode version may write config keys an
+// OLDER binary doesn't recognise. The store must not silently strip them on a
+// load→save round-trip (a downgrade then re-save would otherwise destroy the
+// user's newer settings). Before the fix, every reconstruction point rebuilt a
+// known-keys-only object, so unknown fields were dropped on EVERY save.
+test('mergeProviderConfigPartial preserves unknown fields across ALL provider sections (forward-compat)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-fwd-'))
+  const env = { DEEPCODE_CONFIG_FILE: join(dir, 'deepseek.json') }
+
+  // A sibling provider section carries a field a future version added.
+  mergeProviderConfigPartial(
+    'openai-compatible',
+    { apiKey: 'oai', baseUrl: 'https://llm', futureFlag: 'KEEP-ME' },
+    { env },
+  )
+  // Saving an UNRELATED provider must not strip the sibling's unknown field…
+  mergeProviderConfigPartial(
+    'deepseek',
+    { apiKey: 'ds', model: 'deepseek-v4-pro', tomorrowKey: 42 },
+    { env },
+  )
+
+  const after = loadProviderConfigFile({ env })
+  assert.equal(
+    after.providers['openai-compatible'].futureFlag,
+    'KEEP-ME',
+    'a sibling section unknown field must survive a save of another provider',
+  )
+  assert.equal(
+    after.providers.deepseek.tomorrowKey,
+    42,
+    'the saved section keeps its own unknown field',
+  )
+  // …while still validating known fields.
+  assert.equal(after.providers.deepseek.apiKey, 'ds')
+  assert.equal(after.providers.deepseek.model, 'deepseek-v4-pro')
+})
+
+test('saveProviderConfigFile preserves unknown TOP-LEVEL keys (forward-compat)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-fwd-top-'))
+  const env = { DEEPCODE_CONFIG_FILE: join(dir, 'deepseek.json') }
+
+  saveProviderConfigFile(
+    {
+      activeProvider: 'deepseek',
+      schemaVersion: 2,
+      providers: { deepseek: { apiKey: 'ds' } },
+    },
+    { env },
+  )
+
+  const after = loadProviderConfigFile({ env })
+  assert.equal(after.schemaVersion, 2, 'an unknown top-level key must survive')
+  assert.equal(after.activeProvider, 'deepseek')
+  assert.equal(after.providers.deepseek.apiKey, 'ds')
+})
+
+test('saveDeepSeekConfigFile (flat) preserves unknown fields but still validates known ones', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'deepseek-fwd-flat-'))
+  const env = { DEEPCODE_CONFIG_FILE: join(dir, 'deepseek.json') }
+
+  saveDeepSeekConfigFile(
+    {
+      apiKey: 123, // wrong type → must be dropped by known-field validation
+      model: 'deepseek-v4-pro',
+      futureNested: { later: true },
+    },
+    { env },
+  )
+
+  const loaded = loadDeepSeekConfigFile({ env })
+  assert.equal(loaded.apiKey, undefined, 'invalid known field is still stripped')
+  assert.equal(loaded.model, 'deepseek-v4-pro')
+  assert.deepEqual(
+    loaded.futureNested,
+    { later: true },
+    'an unknown nested field survives the flat save',
+  )
 })
 
 test('saveDeepSeekConfigFile writes file with 0600 permissions on POSIX systems', async () => {

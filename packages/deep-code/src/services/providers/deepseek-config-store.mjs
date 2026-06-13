@@ -54,6 +54,13 @@ export function saveDeepSeekConfigFile(config, { env = process.env } = {}) {
     mkdirSync(dir, { recursive: true })
   }
   const persisted = {
+    // Spread the incoming config FIRST so forward-compatible keys written by a
+    // NEWER DeepCode version survive a downgrade save (an older binary loading
+    // and re-saving the file must not silently destroy fields it doesn't know
+    // about). Object spread copies an own `__proto__` data key from JSON.parse
+    // as plain data without invoking the prototype setter. The validated known
+    // fields below overwrite their spread values in place.
+    ...config,
     apiKey: typeof config.apiKey === 'string' ? config.apiKey : undefined,
     baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl : undefined,
     model: typeof config.model === 'string' ? config.model : undefined,
@@ -216,6 +223,10 @@ function normalizeProviderConfig(config) {
       providers[provider] = sanitizeProviderConfigSection(value)
     }
     return {
+      // Preserve forward-compatible TOP-LEVEL keys (e.g. a global default a
+      // newer version added) so an older binary's load→save round-trip does
+      // not strip them. `activeProvider`/`providers` are overwritten in place.
+      ...config,
       activeProvider:
         typeof config.activeProvider === 'string'
           ? config.activeProvider
@@ -245,6 +256,12 @@ function extractDeepSeekConfig(config) {
 
 function sanitizeProviderConfigSection(config) {
   const sanitized = {
+    // Spread the raw section FIRST so forward-compatible unknown keys (written
+    // by a newer DeepCode version, in THIS or any sibling provider section)
+    // survive a downgrade load→save round-trip rather than being silently
+    // stripped. Spread copies an own `__proto__` data key as plain data (no
+    // prototype setter); the validated known fields below overwrite in place.
+    ...config,
     apiKey: typeof config.apiKey === 'string' ? config.apiKey : undefined,
     baseUrl: typeof config.baseUrl === 'string' ? config.baseUrl : undefined,
     model: typeof config.model === 'string' ? config.model : undefined,
