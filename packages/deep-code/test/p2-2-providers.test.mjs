@@ -14,6 +14,7 @@ import {
 import {
   compactDeepCodeConversation,
   formatDeepCodeCompactResult,
+  isUsableCompactSummary,
 } from '../src/deepcode/compact.mjs'
 import {
   deepCodeStatusReportToProperties,
@@ -728,6 +729,57 @@ test('compact suppresses cache diagnostics for providers without cache capabilit
   assert.equal(result.cacheDiagnostics, null)
   assert.equal(Object.hasOwn(provider.calls[0].buildRequest, 'thinking'), false)
   assert.doesNotMatch(formatDeepCodeCompactResult(result), /^Cache:/m)
+})
+
+test('isUsableCompactSummary rejects empty/whitespace content', () => {
+  assert.equal(isUsableCompactSummary('real summary'), true)
+  assert.equal(isUsableCompactSummary(''), false)
+  assert.equal(isUsableCompactSummary('   \n\t '), false)
+  assert.equal(isUsableCompactSummary(undefined), false)
+  assert.equal(isUsableCompactSummary(null), false)
+})
+
+test('compact THROWS on an empty summary instead of returning messages:[] (no silent history wipe)', async () => {
+  // The stream completes successfully (a clean finish) but yields no content —
+  // a reasoning-only completion, or a proxy that drops the content `data:` lines
+  // while [DONE] still arrives. Returning messages:[] here makes the caller splice
+  // an empty array over the live conversation, destroying the whole session.
+  const makeProvider = events =>
+    createMockProvider({ name: 'small', capabilities: ['streaming'], events })
+  const args = summaryEvents => ({
+    messages: [{ role: 'user', content: 'a real conversation tail' }],
+    stablePrefix: { systemPrompt: ['stable'], prefixHash: 'h', componentHashes: {} },
+    provider: makeProvider(summaryEvents),
+    env: {},
+    cwd: packageRoot,
+  })
+
+  // no content_delta at all → must throw, NOT clear history
+  await assert.rejects(
+    () => compactDeepCodeConversation(args([{ type: 'finish', finishReason: 'stop' }])),
+    /Failed to generate conversation summary/,
+  )
+  // whitespace-only content → must throw
+  await assert.rejects(
+    () =>
+      compactDeepCodeConversation(
+        args([
+          { type: 'content_delta', text: '  \n ' },
+          { type: 'finish', finishReason: 'stop' },
+        ]),
+      ),
+    /Failed to generate conversation summary/,
+  )
+
+  // a real summary still compacts to exactly one summary message (no regression)
+  const ok = await compactDeepCodeConversation(
+    args([
+      { type: 'content_delta', text: 'kept goals and next steps' },
+      { type: 'finish', finishReason: 'stop' },
+    ]),
+  )
+  assert.equal(ok.messages.length, 1)
+  assert.match(ok.messages[0].content, /kept goals and next steps/)
 })
 
 test('runtime messageSend gates provider-specific routing fields through provider.supports', async () => {

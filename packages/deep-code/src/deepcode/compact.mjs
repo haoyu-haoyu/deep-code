@@ -56,20 +56,34 @@ export async function compactDeepCodeConversation({
     // streaming call (streamQuery reads context.signal; undefined is a no-op).
     modelProvider.streamQuery({ ...request, signal }),
   )
+
+  // An empty/whitespace-only summary is a FAILURE, not a "compact to nothing"
+  // result. The stream can complete successfully with no content (a reasoning-only
+  // completion, or a proxy/network glitch that drops the content `data:` lines while
+  // `[DONE]` still arrives — parseDeepSeekSSELines deliberately skips malformed
+  // lines rather than aborting). Returning `messages: []` here would make the caller
+  // splice an empty array over the live conversation, silently destroying the whole
+  // session history. Throw loudly instead — both callers (the interactive /compact
+  // handler and the --compact subcommand) handle a thrown error by leaving history
+  // untouched, mirroring the full-CLI services/compact contract. An aborted stream
+  // throws AbortError above this point, so Ctrl-C is never mislabeled.
+  if (!isUsableCompactSummary(response.content)) {
+    throw new Error(
+      'Failed to generate conversation summary: the model returned no summary text. Conversation history is unchanged.',
+    )
+  }
   const summary = response.content.trim()
 
   return {
     prefixBeforeHash: prefix.prefixHash,
     prefixAfterHash: prefix.prefixHash,
     summary,
-    messages: summary
-      ? [
-          {
-            role: 'user',
-            content: `Compacted conversation summary:\n${summary}`,
-          },
-        ]
-      : [],
+    messages: [
+      {
+        role: 'user',
+        content: `Compacted conversation summary:\n${summary}`,
+      },
+    ],
     finishReason: response.finishReason,
     usage: response.usage,
     cacheDiagnostics: providerSupports(modelProvider, 'cache_breakpoint') && response.usage
@@ -77,6 +91,13 @@ export async function compactDeepCodeConversation({
       : null,
     request,
   }
+}
+
+// A compaction summary is only usable if it has non-whitespace content. An empty
+// summary means the model produced no text (filtered/reasoning-only completion, or
+// dropped content lines) — treating it as usable would clear the conversation.
+export function isUsableCompactSummary(content) {
+  return Boolean(content && content.trim())
 }
 
 export function formatDeepCodeCompactResult(result) {
