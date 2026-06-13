@@ -4461,3 +4461,66 @@ test('formatDeepSeekSetupAbort: a save FAILURE surfaces the reason, not the gene
   assert.match(failure, /write permissions/)
   assert.doesNotMatch(failure, /requires a DeepSeek API key/)
 })
+
+import { readFileSync as fsReadFileSyncForSettingsPin } from 'node:fs'
+
+test('updateSettingsForSource wraps its read-merge-write in the cross-process lock', () => {
+  // settings.json is the highest-traffic shared file (model persistence,
+  // permission saves, migrations) and was the one unlocked read-merge-write
+  // among the shared stores — two instances writing concurrently lost each
+  // other's changes last-writer-wins. The lock must be acquired BEFORE the
+  // read (an RMW locked only around the write still loses updates), released
+  // in a finally, and contention must surface as an error rather than a
+  // silent unlocked write.
+  const source = fsReadFileSyncForSettingsPin(
+    new URL('../src/utils/settings/settings.ts', import.meta.url),
+    'utf8',
+  )
+  const fnStart = source.indexOf('export function updateSettingsForSource')
+  assert.ok(fnStart >= 0)
+  const body = source.slice(fnStart, fnStart + 7_000)
+  const lockAt = body.indexOf('lockfile.lockSync(')
+  const readAt = body.indexOf('getSettingsForSourceUncached(')
+  const writeAt = body.indexOf('writeFileSyncAndFlush_DEPRECATED(')
+  assert.ok(lockAt > 0, 'settings write must take the cross-process lock')
+  assert.ok(lockAt < readAt, 'the lock must cover the READ, not just the write')
+  assert.ok(readAt < writeAt)
+  assert.match(body, /ELOCKED/, 'contention must be surfaced, not ignored')
+  assert.match(
+    body,
+    /Atomics\.wait/,
+    'contention must retry briefly before surfacing (callers fire-and-forget)',
+  )
+  assert.match(
+    body,
+    /MODULE_NOT_FOUND/,
+    'only a missing vendored proper-lockfile may degrade to unlocked writes',
+  )
+  assert.match(
+    body.slice(body.indexOf('} finally {')),
+    /releaseLock\?\.\(\)/,
+    'the lock must be released in a finally',
+  )
+
+  // The sync pull writes the same settings files — it must take the same
+  // lock (async variant) at its settings call sites.
+  const syncSource = fsReadFileSyncForSettingsPin(
+    new URL('../src/services/settingsSync/index.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(syncSource, /lockfile\.lock\(/)
+  assert.equal(
+    (syncSource.match(/lock: true/g) ?? []).length,
+    2,
+    'both settings-file sync writes must request the lock',
+  )
+  // The vendored `retry` package is a stub whose scheduled retries never
+  // re-invoke: lock() with a retries option becomes a promise that NEVER
+  // settles on first contention. The retry loop must be ours.
+  assert.doesNotMatch(
+    syncSource,
+    /lockfile\.lock\([^)]*retries/s,
+    'never pass retries to proper-lockfile (vendored retry stub hangs)',
+  )
+  assert.match(syncSource, /SYNC_LOCK_ATTEMPTS/)
+})

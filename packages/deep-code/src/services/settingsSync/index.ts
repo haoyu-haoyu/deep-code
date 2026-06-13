@@ -19,6 +19,7 @@ import { getOauthConfig } from '../../constants/oauth.js'
 import { clearMemoryFileCaches } from '../../utils/claudemd.js'
 import { getMemoryPath } from '../../utils/config.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
+import * as lockfile from '../../utils/lockfile.js'
 import { classifyAxiosError } from '../../utils/errors.js'
 import { getRepoRemoteHash } from '../../utils/git.js'
 import {
@@ -432,9 +433,12 @@ async function buildEntriesFromLocalFiles(
   return entries
 }
 
+const SYNC_LOCK_ATTEMPTS = 10
+
 async function writeFileForSync(
   filePath: string,
   content: string,
+  { lock = false }: { lock?: boolean } = {},
 ): Promise<boolean> {
   try {
     const parentDir = dirname(filePath)
@@ -442,7 +446,43 @@ async function writeFileForSync(
       await mkdir(parentDir, { recursive: true })
     }
 
-    await writeFile(filePath, content, 'utf8')
+    // Settings files are also written by updateSettingsForSource under the
+    // cross-process lock; a sync pull writing the same file unlocked could
+    // race that read-merge-write and clobber either side. Persistent
+    // contention (ELOCKED after the bounded loop) SKIPS this pull (returns
+    // false — the periodic sync re-applies later) rather than writing
+    // unlocked; a missing vendored proper-lockfile degrades to the unlocked
+    // write. The retry loop is OURS, with lock() taking NO retries option:
+    // the vendored `retry` package is a stub whose scheduled retries never
+    // re-invoke, so a proper-lockfile-internal retry would make lock() a
+    // promise that never settles (same bounded-own-loop idiom as
+    // mcp/auth.ts's refresh lock).
+    let release: (() => Promise<void>) | undefined
+    if (lock) {
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          release = await lockfile.lock(filePath, { realpath: false })
+          break
+        } catch (e) {
+          const code = (e as { code?: string })?.code
+          if (code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND') {
+            release = undefined
+            break
+          }
+          if (code !== 'ELOCKED' || attempt >= SYNC_LOCK_ATTEMPTS) {
+            throw e
+          }
+          await new Promise(resolve =>
+            setTimeout(resolve, Math.min(25 * attempt, 200)),
+          )
+        }
+      }
+    }
+    try {
+      await writeFile(filePath, content, 'utf8')
+    } finally {
+      await release?.()
+    }
     logForDiagnosticsNoPII('info', 'settings_sync_file_written')
     return true
   } catch {
@@ -490,7 +530,11 @@ async function applyRemoteEntriesToLocal(
     ) {
       // Mark as internal write to prevent spurious change detection
       markInternalWrite(userSettingsPath)
-      if (await writeFileForSync(userSettingsPath, userSettingsContent)) {
+      if (
+        await writeFileForSync(userSettingsPath, userSettingsContent, {
+          lock: true,
+        })
+      ) {
         appliedCount++
         settingsWritten = true
       }
@@ -521,7 +565,11 @@ async function applyRemoteEntriesToLocal(
       ) {
         // Mark as internal write to prevent spurious change detection
         markInternalWrite(localSettingsPath)
-        if (await writeFileForSync(localSettingsPath, projectSettingsContent)) {
+        if (
+          await writeFileForSync(localSettingsPath, projectSettingsContent, {
+            lock: true,
+          })
+        ) {
           appliedCount++
           settingsWritten = true
         }
