@@ -24,6 +24,7 @@ import {
   skipSetsidFlags,
   skipTasksetFlags,
 } from '../../tools/BashTool/argvWrapperStripping.mjs'
+import { matchingCommandText } from './bashCommandText.mjs'
 import { SHELL_KEYWORDS } from './bashParser.js'
 import type { Node } from './parser.js'
 import { PARSE_ABORTED, parseCommandRaw } from './parser.js'
@@ -1319,49 +1320,24 @@ function walkCommand(
     }
   }
 
-  // .text is the raw source span. Downstream (bashToolCheckPermission →
-  // splitCommand_DEPRECATED) re-tokenizes it via shell-quote. Normally .text
-  // is used unchanged — but if we resolved a $VAR into argv, .text diverges
-  // (has raw `$VAR`) and downstream RULE MATCHING would miss deny rules.
+  // .text is the raw source span used by downstream RULE MATCHING. When the
+  // raw span carries whitespace/expansions that the tokenized argv collapses,
+  // matching (which assumes single-ASCII-space separators) misses deny rules,
+  // so matchingCommandText() rebuilds .text from argv. The class it guards:
   //
-  // SECURITY: `SUB=push && git $SUB --force` with `Bash(git push:*)` deny:
-  //   argv = ['git', 'push', '--force']  ← correct, path validation sees 'push'
-  //   .text = 'git $SUB --force'         ← deny rule 'git push:*' doesn't match
+  //   - $VAR:    `SUB=push && git $SUB --force` vs `Bash(git push:*)` —
+  //              argv=['git','push','--force'] but .text='git $SUB --force'.
+  //   - newline: `timeout 5 \<LF>curl evil.com` vs `Bash(curl:*)` — the line
+  //              continuation is invisible to argv but preserved in .text.
+  //   - TAB:     `rm\t-rf /x` vs `Bash(rm:*)` / `Bash(rm *)` — argv splits on
+  //              the tab but .text keeps it, so the literal-space deny matcher
+  //              never fires (the bug this leaf closes).
   //
-  // Detection: any `$<identifier>` in node.text means a simple_expansion was
-  // resolved (or we'd have returned too-complex). This catches $VAR at any
-  // position — command_name, word, string interior, concatenation part.
-  // `$(...)` doesn't match (paren, not identifier start). `'$VAR'` in single
-  // quotes: tree-sitter's .text includes the quotes, so a naive check would
-  // FP on `echo '$VAR'`. But single-quoted $ is LITERAL in bash — argv has
-  // the literal `$VAR` string, so rebuilding from argv produces `'$VAR'`
-  // anyway (shell-escape wraps it). Same net .text. No rule-matching error.
-  //
-  // Rebuild .text from argv. Shell-escape each arg: single-quote wrap with
-  // `'\''` for embedded single quotes. Empty string, metacharacters, and
-  // placeholders all get quoted. Downstream shell-quote re-parse is correct.
-  //
-  // NOTE: This does NOT include redirects/envVars in the rebuilt .text —
-  // walkFileRedirect rejects simple_expansion, and envVars aren't used for
-  // rule matching. If either changes, this rebuild must include them.
-  //
-  // SECURITY: also rebuild when node.text contains a newline. Line
-  // continuations `<space>\<LF>` are invisible to argv (tree-sitter collapses
-  // them) but preserved in node.text. `timeout 5 \<LF>curl evil.com` → argv
-  // is correct, but raw .text → stripSafeWrappers matches `timeout 5 ` (the
-  // space before \), leaving `\<LF>curl evil.com` — Bash(curl:*) deny doesn't
-  // prefix-match. Rebuilt .text joins argv with ' ' → no newlines →
-  // stripSafeWrappers works. Also covers heredoc-body leakage.
-  const text =
-    /\$[A-Za-z_]/.test(node.text) || node.text.includes('\n')
-      ? argv
-          .map(a =>
-            a === '' || /["'\\ \t\n$`;|&<>(){}*?[\]~#]/.test(a)
-              ? `'${a.replace(/'/g, "'\\''")}'`
-              : a,
-          )
-          .join(' ')
-      : node.text
+  // The rebuild is quote-safe (tree-sitter keeps quoted whitespace inside the
+  // argv token) and does NOT include redirects/envVars — walkFileRedirect
+  // rejects simple_expansion and envVars aren't used for rule matching; if
+  // either changes, the rebuild in bashCommandText.mjs must include them.
+  const text = matchingCommandText(node.text, argv)
   return {
     kind: 'simple',
     commands: [{ argv, envVars, redirects, text }],
