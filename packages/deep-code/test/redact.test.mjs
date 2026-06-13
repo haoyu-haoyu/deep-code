@@ -102,6 +102,36 @@ test('redacts bare DeepSeek/OpenAI sk- keys in prose and the on-disk apiKey JSON
   assert.ok(!proj.includes(PROJ))
 })
 
+test('redacts the key on the REAL egress shape — JSON.stringify(data) escapes the config blob to \\"sk-…\\"', () => {
+  // submitTranscriptShare runs redactSensitiveInfo(JSON.stringify(data)), so a
+  // config blob surfaced in a transcript NEVER reaches the scrubber as a plain
+  // `"sk-…"`: JSON-encoding escapes it to `\"sk-…\"` (and doubly so inside the
+  // already-JSON rawTranscriptJsonl). The quoted rule's `[^\s"']` class must
+  // absorb the escaping backslash(es) and still redact — a narrow class stops at
+  // the `\` and the key leaks. This is the shape that actually goes on the wire.
+  const onDisk = `{"apiKey": "${SK}", "baseURL": "https://api.deepseek.com"}`
+
+  // (i) the blob as a string field in the payload → single JSON-escape
+  const once = redactSensitiveInfo(JSON.stringify({ toolResult: onDisk }))
+  assert.ok(!once.includes(SK), 'single-escaped config blob must not leak')
+  assert.match(once, /REDACTED_API_KEY/)
+
+  // (ii) the blob inside a rawTranscriptJsonl line, re-stringified → double-escape
+  const jsonlLine = JSON.stringify({ type: 'tool_result', content: onDisk })
+  const twice = redactSensitiveInfo(JSON.stringify({ rawTranscriptJsonl: jsonlLine }))
+  assert.ok(!twice.includes(SK), 'double-escaped rawTranscriptJsonl blob must not leak')
+  assert.match(twice, /REDACTED_API_KEY/)
+
+  // (iii) full faithful payload: transcript array + rawTranscriptJsonl together
+  const wire = redactSensitiveInfo(
+    JSON.stringify({
+      transcript: [{ role: 'assistant', content: `here is the config:\n${onDisk}` }],
+      rawTranscriptJsonl: [jsonlLine, JSON.stringify({ role: 'user', content: `my key is ${SK}` })].join('\n'),
+    }),
+  )
+  assert.ok(!wire.includes(SK), 'key must not survive anywhere in the stringified payload')
+})
+
 test('sk- redaction: short substrings and glued/prefixed tokens are NOT touched (low FP noise)', () => {
   // {20,} floor — a real key is 32+ chars; shorter `sk-` substrings stay.
   assert.equal(redactSensitiveInfo('sk-short1'), 'sk-short1')

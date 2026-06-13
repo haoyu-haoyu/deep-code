@@ -67,8 +67,17 @@ export function redactSensitiveInfo(text) {
   // to api.anthropic.com. Run LAST so the structured authorization/x-api-key
   // rules claim their forms first (avoids a double-redacted `[REDACTED_TOKEN]]`).
   // {20,} floor: long enough to skip short `sk-` substrings (a real key is 32+).
+  //
+  // The quoted rule's value class is `[^\s"']` (NOT `[A-Za-z0-9_-]`), matching
+  // the sk-ant rule above. submitTranscriptShare scrubs `JSON.stringify(data)`,
+  // so the on-disk blob arrives JSON-escaped as `\"apiKey\":\"sk-…\"` (or doubly
+  // escaped inside rawTranscriptJsonl). `[^\s"']` absorbs the escaping
+  // backslash(es) before the closing quote, so the escaped form — the ONLY shape
+  // the config blob takes on the wire — is caught; a narrow class stops at the
+  // `\` and misses it. The unquoted rule keeps the narrow class so it doesn't eat
+  // trailing prose punctuation around a bare key.
   redacted = redacted.replace(
-    /"(sk-(?:proj-)?[A-Za-z0-9_-]{20,})"/g,
+    /"(sk-(?:proj-)?[^\s"']{20,})"/g,
     '"[REDACTED_API_KEY]"',
   )
   redacted = redacted.replace(
