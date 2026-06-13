@@ -4524,3 +4524,183 @@ test('updateSettingsForSource wraps its read-merge-write in the cross-process lo
   )
   assert.match(syncSource, /SYNC_LOCK_ATTEMPTS/)
 })
+
+import { createIdleTimeoutCore as idleTimeoutCoreForTest, MAX_TIMER_MS as IDLE_MAX_TIMER_MS } from '../src/utils/idleTimeoutCore.mjs'
+
+// A controllable monotonic clock + timer queue: timers carry their scheduled
+// absolute deadline so advancing the clock fires the due ones in order.
+function makeFakeIdleHarness() {
+  let clock = 1000
+  let nextId = 1
+  const timers = new Map()
+  const exits = []
+  return {
+    now: () => clock,
+    setTimer: (fn, ms) => {
+      const id = nextId++
+      timers.set(id, { fn, at: clock + ms })
+      return id
+    },
+    clearTimer: id => timers.delete(id),
+    onIdleExit: () => exits.push(clock),
+    exits,
+    timerCount: () => timers.size,
+    // Advance the monotonic clock, firing any timers that come due (re-armed
+    // timers scheduled within the window fire too).
+    advance(ms) {
+      const target = clock + ms
+      for (;;) {
+        let due
+        for (const [id, t] of timers) {
+          if (t.at <= target && (!due || t.at < due[1].at)) due = [id, t]
+        }
+        if (!due) break
+        clock = due[1].at
+        timers.delete(due[0])
+        due[1].fn()
+      }
+      clock = target
+    },
+  }
+}
+
+test('idle timeout exits once the monotonic deadline passes while idle', () => {
+  const h = makeFakeIdleHarness()
+  const mgr = idleTimeoutCoreForTest({
+    delayMs: 1000,
+    isIdle: () => true,
+    onIdleExit: h.onIdleExit,
+    now: h.now,
+    setTimer: h.setTimer,
+    clearTimer: h.clearTimer,
+  })
+  mgr.start()
+  h.advance(999)
+  assert.equal(h.exits.length, 0, 'must not exit before the deadline')
+  h.advance(2)
+  assert.equal(h.exits.length, 1, 'must exit at the deadline')
+})
+
+test('idle timeout does not exit if activity resumed before the deadline', () => {
+  const h = makeFakeIdleHarness()
+  let idle = true
+  const mgr = idleTimeoutCoreForTest({
+    delayMs: 1000,
+    isIdle: () => idle,
+    onIdleExit: h.onIdleExit,
+    now: h.now,
+    setTimer: h.setTimer,
+    clearTimer: h.clearTimer,
+  })
+  mgr.start()
+  idle = false // activity resumed
+  h.advance(1001)
+  assert.equal(h.exits.length, 0, 'an active session must not be exited')
+})
+
+test('idle timeout RE-ARMS when the timer fires before the monotonic deadline', () => {
+  // The bug: a backward wall-clock step made the fired timer read short and
+  // skip the exit AND never re-arm. With a monotonic deadline an early firing
+  // (here: a timer that runs while remaining > 0) re-arms instead of dying.
+  let clock = 1000
+  const exits = []
+  let pending = null
+  const mgr = idleTimeoutCoreForTest({
+    delayMs: 1000,
+    isIdle: () => true,
+    onIdleExit: () => exits.push(true),
+    now: () => clock,
+    setTimer: fn => {
+      pending = fn
+      return 1
+    },
+    clearTimer: () => {
+      pending = null
+    },
+  })
+  mgr.start()
+  // Fire the timer EARLY (clock only advanced 300 of the 1000ms deadline).
+  clock = 1300
+  pending()
+  assert.equal(exits.length, 0, 'must not exit early')
+  assert.notEqual(pending, null, 'must have re-armed for the remaining time')
+  // Now advance past the deadline and fire again.
+  clock = 2001
+  pending()
+  assert.equal(exits.length, 1, 'must exit once the real deadline passes')
+})
+
+test('idle timeout clamps a delay above the setTimeout max and re-arms', () => {
+  let clock = 0
+  const exits = []
+  const scheduled = []
+  let pending = null
+  const mgr = idleTimeoutCoreForTest({
+    delayMs: IDLE_MAX_TIMER_MS + 5_000,
+    isIdle: () => true,
+    onIdleExit: () => exits.push(true),
+    now: () => clock,
+    setTimer: (fn, ms) => {
+      scheduled.push(ms)
+      pending = fn
+      return 1
+    },
+    clearTimer: () => {},
+  })
+  mgr.start()
+  assert.equal(scheduled[0], IDLE_MAX_TIMER_MS, 'first arm clamps to the max')
+  // Fire after the clamp; the remainder must be re-armed, not fired instantly.
+  clock = IDLE_MAX_TIMER_MS
+  pending()
+  assert.equal(exits.length, 0, 'must not exit at the clamp boundary')
+  assert.equal(scheduled[1], 5_000, 're-arms for the remaining delay')
+})
+
+test('idle timeout is inert for an invalid or absent delay', () => {
+  const h = makeFakeIdleHarness()
+  for (const delayMs of [null, 0, -5, NaN]) {
+    const mgr = idleTimeoutCoreForTest({
+      delayMs,
+      isIdle: () => true,
+      onIdleExit: h.onIdleExit,
+      now: h.now,
+      setTimer: h.setTimer,
+      clearTimer: h.clearTimer,
+    })
+    mgr.start()
+  }
+  assert.equal(h.timerCount(), 0, 'no timer armed for an invalid delay')
+  assert.equal(h.exits.length, 0)
+})
+
+test('idle timeout stop() disarms a pending exit', () => {
+  const h = makeFakeIdleHarness()
+  const mgr = idleTimeoutCoreForTest({
+    delayMs: 1000,
+    isIdle: () => true,
+    onIdleExit: h.onIdleExit,
+    now: h.now,
+    setTimer: h.setTimer,
+    clearTimer: h.clearTimer,
+  })
+  mgr.start()
+  assert.equal(h.timerCount(), 1)
+  mgr.stop()
+  assert.equal(h.timerCount(), 0)
+  h.advance(2000)
+  assert.equal(h.exits.length, 0, 'a stopped timer must not exit')
+})
+
+test('idleTimeout.ts wrapper uses a monotonic clock, not Date.now', () => {
+  const source = fsReadFileSyncForSettingsPin(
+    new URL('../src/utils/idleTimeout.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(source, /createIdleTimeoutCore\(/)
+  assert.match(source, /performance\.now\(\)/, 'deadline must be monotonic')
+  assert.doesNotMatch(
+    source,
+    /setTimeout\(/,
+    'the wrapper must delegate timing to the monotonic core',
+  )
+})
