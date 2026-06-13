@@ -177,12 +177,15 @@ export function createAcpServer({ runTurn, sessions, send, env = process.env, se
   // false (denied). `allow_always` additionally REMEMBERS the tool for the rest
   // of the session, so subsequent calls of that tool auto-approve without a
   // round-trip.
-  async function requestPermission(sessionId, toolCall) {
+  async function requestPermission(sessionId, toolCall, signal) {
     const toolName = String(toolCall?.title ?? 'tool')
     if (sessionAlwaysAllow.get(sessionId)?.has(toolName)) return true
     if (typeof sendRequest !== 'function') return false
     let result
     try {
+      // Pass the turn's signal so session/cancel rejects this round-trip
+      // promptly (→ deny) instead of leaving the turn hung on the editor's
+      // 300s request timeout while it waits for an answer that won't come.
       result = await sendRequest('session/request_permission', {
         sessionId,
         toolCall,
@@ -191,7 +194,7 @@ export function createAcpServer({ runTurn, sessions, send, env = process.env, se
           { optionId: 'allow_always', name: 'Allow for the rest of this session', kind: 'allow_always' },
           { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
         ],
-      })
+      }, { signal })
     } catch {
       return false
     }
@@ -224,7 +227,8 @@ export function createAcpServer({ runTurn, sessions, send, env = process.env, se
         signal: abortController.signal,
         env,
         cwd: started.session?.cwd,
-        requestPermission: toolCall => requestPermission(sessionId, toolCall),
+        requestPermission: toolCall =>
+          requestPermission(sessionId, toolCall, abortController.signal),
       })
       let step = await iterator.next()
       while (!step.done) {

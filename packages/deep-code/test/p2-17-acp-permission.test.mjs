@@ -181,6 +181,28 @@ test('transport: a pending permission request is denied when the client disconne
   assert.equal(outcome, false)
 })
 
+test('transport: session/cancel rejects a pending permission request PROMPTLY (no 300s hang)', async () => {
+  let outcome = 'unset'
+  const runTurn = async function* ({ requestPermission }) {
+    // Blocks on the editor's permission answer, which never comes — only the
+    // cancel can unblock it.
+    outcome = await requestPermission({ toolCallId: 't1', title: 'Edit', kind: 'edit', rawInput: {} })
+    return 'end_turn'
+  }
+  const { out, send } = makeClient(runTurn)
+  send({ jsonrpc: '2.0', id: 1, method: 'session/new' })
+  const sessionId = (await waitFor(() => out.find(m => m.id === 1))).result.sessionId
+  send({ jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId, prompt: 'edit' } })
+  await waitFor(() => out.find(m => m.method === 'session/request_permission'))
+  // Cancel WITHOUT answering. Pre-fix the permission round-trip would hang until
+  // the 300s request timeout; the turn's signal must reject it promptly → deny.
+  send({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId } })
+  await waitFor(() => outcome !== 'unset') // default 2s waitFor — far under 300s
+  assert.equal(outcome, false)
+  // and the prompt reply lands (turn ends), not left dangling.
+  await waitFor(() => out.find(m => m.id === 2))
+})
+
 test('SECURITY: a write is permitted ONLY on an exact selected + allow* outcome', async () => {
   // Every malformed / edge / wrong-case permission response must DENY.
   const denyCases = [

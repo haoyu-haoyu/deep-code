@@ -63,17 +63,38 @@ export function startAcpServer({
   // which the permission gate maps to "denied".
   const pendingRequests = new Map()
   let nextRequestId = 1
-  const sendRequest = (method, params, { timeoutMs = 300_000 } = {}) =>
+  const sendRequest = (method, params, { timeoutMs = 300_000, signal } = {}) =>
     new Promise((resolve, reject) => {
       const id = `agent-${nextRequestId++}`
+      // Already-cancelled turn: don't even send the round-trip. Deny-safe.
+      if (signal?.aborted) {
+        reject(new Error(`ACP request aborted: ${method}`))
+        return
+      }
       const timer = setTimeout(() => {
         if (pendingRequests.delete(id)) reject(new Error(`ACP request timed out: ${method}`))
       }, timeoutMs)
       timer.unref?.()
+      // session/cancel aborts the turn's signal. A still-pending permission
+      // round-trip must reject PROMPTLY (→ deny) rather than waiting out the full
+      // timeoutMs (300s), which would leave the cancelled turn hung. Mirrors the
+      // disconnect path in finish(). once:true + removal below avoids a leak on
+      // the per-turn signal.
+      const onAbort = () => {
+        if (pendingRequests.delete(id)) {
+          clearTimeout(timer)
+          reject(new Error(`ACP request aborted: ${method}`))
+        }
+      }
+      const cleanup = () => {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onAbort)
+      }
       pendingRequests.set(id, {
-        resolve: value => { clearTimeout(timer); resolve(value) },
-        reject: error => { clearTimeout(timer); reject(error) },
+        resolve: value => { cleanup(); resolve(value) },
+        reject: error => { cleanup(); reject(error) },
       })
+      signal?.addEventListener('abort', onAbort, { once: true })
       send({ jsonrpc: '2.0', id, method, params })
     })
 
