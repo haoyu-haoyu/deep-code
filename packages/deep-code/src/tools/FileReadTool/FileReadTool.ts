@@ -1,4 +1,5 @@
 import type { Base64ImageSource } from '../../types/sdk-shim.js'
+import { classifyTextReadResult } from './textReadResult.mjs'
 import { readdir, readFile as readFileAsync } from 'fs/promises'
 import * as path from 'path'
 import { posix, win32 } from 'path'
@@ -689,19 +690,27 @@ export const FileReadTool = buildTool({
       case 'text': {
         let content: string
 
-        if (data.file.content) {
+        // Discriminate by numLines (lines actually selected), NOT totalLines: the
+        // fast read path returns totalLines>=1 even for a 0-byte file, so the
+        // "contents are empty" branch was unreachable and an empty file / a
+        // selected blank line wrongly got the "shorter than the provided offset"
+        // message. numLines===0 is the only honest "offset past EOF" signal.
+        const kind = classifyTextReadResult({
+          content: data.file.content,
+          numLines: data.file.numLines,
+        })
+        if (kind === 'content') {
           content =
             memoryFileFreshnessPrefix(data) +
             formatFileLines(data.file) +
             (shouldIncludeFileReadMitigation()
               ? CYBER_RISK_MITIGATION_REMINDER
               : '')
-        } else {
-          // Determine the appropriate warning message
+        } else if (kind === 'empty') {
           content =
-            data.file.totalLines === 0
-              ? '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>'
-              : `<system-reminder>Warning: the file exists but is shorter than the provided offset (${data.file.startLine}). The file has ${data.file.totalLines} lines.</system-reminder>`
+            '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>'
+        } else {
+          content = `<system-reminder>Warning: the file exists but is shorter than the provided offset (${data.file.startLine}). The file has ${data.file.totalLines} lines.</system-reminder>`
         }
 
         return {
