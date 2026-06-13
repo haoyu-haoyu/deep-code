@@ -149,6 +149,35 @@ test('redacts a key flush against a JSON string quote (last/first token of a mes
   assert.ok(!startWire.includes(SK), 'key starting a value (with trailing text) must not leak')
 })
 
+test('redacts a key on its OWN LINE / column — JSON escapes the newline/tab to \\n/\\t before sk-', () => {
+  // The most common multi-line paste: a key after a label on its own line, in a
+  // code fence, or in a tab-separated env dump. JSON.stringify turns the real
+  // \n/\t into the 2-char escape `\` + `n`/`t`, so the char literally before
+  // `sk-` is the LETTER n/t. The leading lookbehind must let the escaped form
+  // through (the letter is preceded by `\`) while still rejecting real word glue.
+  const ownLine = redactSensitiveInfo(JSON.stringify({ content: `My DeepSeek key:\n${SK}` }))
+  assert.ok(!ownLine.includes(SK), 'key on its own line must not leak')
+
+  const codeFence = redactSensitiveInfo(JSON.stringify({ content: '```\n' + SK + '\n```' }))
+  assert.ok(!codeFence.includes(SK), 'key in a code fence must not leak')
+
+  const tabbed = redactSensitiveInfo(JSON.stringify({ content: `DEEPSEEK_API_KEY\t${SK}` }))
+  assert.ok(!tabbed.includes(SK), 'tab-separated key must not leak')
+})
+
+test('sk- redaction does NOT touch hyphenated identifiers that merely contain "sk-"', () => {
+  // task-/risk-/disk- etc. contain `sk-` mid-word; the leading lookbehind must
+  // still reject them (the letter before `sk-` is preceded by another word char,
+  // not a backslash) — otherwise the escape-prefix fix would over-redact.
+  for (const id of [
+    'task-management-system-component-name-v2',
+    'risk-assessment-framework-modules-x1',
+    'disk-usage-monitor-daemon-service-01',
+  ]) {
+    assert.equal(redactSensitiveInfo(id), id, `${id} must be untouched`)
+  }
+})
+
 test('sk- redaction: short substrings and glued/prefixed tokens are NOT touched (low FP noise)', () => {
   // {20,} floor — a real key is 32+ chars; shorter `sk-` substrings stay.
   assert.equal(redactSensitiveInfo('sk-short1'), 'sk-short1')
