@@ -335,9 +335,15 @@ async function processSessionFiles(
             modelUsageAgg[model]!.cacheCreationInputTokens +=
               usage.cache_creation_input_tokens || 0
 
-            // Track daily tokens per model
+            // Track daily tokens per model. input_tokens is only the UNCACHED
+            // remainder, so the cache fields must be added to get the true total
+            // — otherwise a fully-cached DeepSeek turn (input_tokens 0) would
+            // count as output-only.
             const totalTokens =
-              (usage.input_tokens || 0) + (usage.output_tokens || 0)
+              (usage.input_tokens || 0) +
+              (usage.cache_read_input_tokens || 0) +
+              (usage.cache_creation_input_tokens || 0) +
+              (usage.output_tokens || 0)
             if (totalTokens > 0) {
               const dayTokens = dailyModelTokensMap.get(dateKey) || {}
               dayTokens[model] = (dayTokens[model] || 0) + totalTokens

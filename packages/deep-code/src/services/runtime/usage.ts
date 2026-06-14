@@ -1,4 +1,5 @@
 import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
+import { uncachedInputRemainder } from '../../deepcode/usageInputRemainder.mjs'
 
 export type NonNullableUsage = {
   input_tokens: number
@@ -63,15 +64,21 @@ export function updateUsage(
         cacheCreation.ephemeral_5m_input_tokens,
       )
     : undefined
-  const inferredInput =
-    cacheRead !== undefined || cacheCreationTokens !== undefined
-      ? (cacheRead ?? 0) + (cacheCreationTokens ?? 0)
-      : undefined
-
   return {
+    // The UNCACHED remainder, not the full prompt: a
+    // provider that reports prompt_tokens (DeepSeek/OpenAI) gives the FULL
+    // prompt, so summing it with the derived cache fields double-counts the
+    // cached portion. uncachedInputRemainder also subsumes the old
+    // cache-only inference (it returns 0 — the contract-correct remainder when
+    // the whole prompt was cached — instead of the full hit+miss). See
+    // usageInputRemainder.mjs.
     input_tokens:
-      firstNumber(source.input_tokens, source.prompt_tokens, inferredInput) ??
-      usage.input_tokens,
+      uncachedInputRemainder({
+        inputTokens: firstNumber(source.input_tokens),
+        promptTokens: firstNumber(source.prompt_tokens),
+        cacheRead,
+        cacheCreation: cacheCreationTokens,
+      }) ?? usage.input_tokens,
     output_tokens:
       firstNumber(source.output_tokens, source.completion_tokens) ??
       usage.output_tokens,

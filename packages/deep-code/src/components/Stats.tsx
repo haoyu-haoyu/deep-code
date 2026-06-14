@@ -26,6 +26,23 @@ import { getTheme, themeColorToAnsi } from '../utils/theme.js';
 import { Pane } from './design-system/Pane.js';
 import { Tab, Tabs, useTabHeaderFocus } from './design-system/Tabs.js';
 import { Spinner } from './Spinner.js';
+// Total tokens for a per-model usage record. input_tokens is only the UNCACHED
+// remainder (see usageInputRemainder.mjs), so the cache fields must be added;
+// otherwise a fully-cached DeepSeek model reports ~0 total tokens for the /stats
+// headline, favorite-model ranking, and per-model %.
+function modelUsageTokenTotal(usage: {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+}): number {
+  return (
+    usage.inputTokens +
+    usage.cacheReadInputTokens +
+    usage.cacheCreationInputTokens +
+    usage.outputTokens
+  );
+}
 function formatPeakDay(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString('en-US', {
@@ -383,9 +400,9 @@ function OverviewTab({
   const { t } = useTranslation();
 
   // Calculate favorite model and total tokens
-  const modelEntries = Object.entries(stats.modelUsage).sort(([, a], [, b]) => b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens));
+  const modelEntries = Object.entries(stats.modelUsage).sort(([, a], [, b]) => modelUsageTokenTotal(b) - modelUsageTokenTotal(a));
   const favoriteModel = modelEntries[0];
-  const totalTokens = modelEntries.reduce((sum, [, usage]) => sum + usage.inputTokens + usage.outputTokens, 0);
+  const totalTokens = modelEntries.reduce((sum, [, usage]) => sum + modelUsageTokenTotal(usage), 0);
 
   // Memoize the factoid so it doesn't change when switching tabs
   const factoid = useMemo(() => generateFunFactoid(stats, totalTokens), [stats, totalTokens]);
@@ -851,7 +868,7 @@ function _temp0(t0) {
 }
 function _temp9(sum, t0) {
   const [, usage] = t0;
-  return sum + usage.inputTokens + usage.outputTokens;
+  return sum + modelUsageTokenTotal(usage);
 }
 function _temp8(prev_0) {
   return Math.max(prev_0 - 2, 0);
@@ -859,7 +876,7 @@ function _temp8(prev_0) {
 function _temp7(t0, t1) {
   const [, a] = t0;
   const [, b] = t1;
-  return b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens);
+  return modelUsageTokenTotal(b) - modelUsageTokenTotal(a);
 }
 type ModelEntryProps = {
   model: string;
@@ -880,7 +897,7 @@ function ModelEntry(t0) {
   const {
     t
   } = useTranslation();
-  const modelTokens = usage.inputTokens + usage.outputTokens;
+  const modelTokens = modelUsageTokenTotal(usage);
   const t1 = modelTokens / totalTokens * 100;
   let t2;
   if ($[0] !== t1) {
@@ -1162,9 +1179,9 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   }
 
   // Calculate values
-  const modelEntries = Object.entries(stats.modelUsage).sort(([, a], [, b]) => b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens));
+  const modelEntries = Object.entries(stats.modelUsage).sort(([, a], [, b]) => modelUsageTokenTotal(b) - modelUsageTokenTotal(a));
   const favoriteModel = modelEntries[0];
-  const totalTokens = modelEntries.reduce((sum, [, usage]) => sum + usage.inputTokens + usage.outputTokens, 0);
+  const totalTokens = modelEntries.reduce((sum, [, usage]) => sum + modelUsageTokenTotal(usage), 0);
 
   // Row 1: Favorite model | Total tokens
   if (favoriteModel) {
@@ -1227,13 +1244,13 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
 }
 function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
   const lines: string[] = [];
-  const modelEntries = Object.entries(stats.modelUsage).sort(([, a], [, b]) => b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens));
+  const modelEntries = Object.entries(stats.modelUsage).sort(([, a], [, b]) => modelUsageTokenTotal(b) - modelUsageTokenTotal(a));
   if (modelEntries.length === 0) {
     lines.push(chalk.gray(getMessage('stats.models.empty')));
     return lines;
   }
   const favoriteModel = modelEntries[0];
-  const totalTokens = modelEntries.reduce((sum, [, usage]) => sum + usage.inputTokens + usage.outputTokens, 0);
+  const totalTokens = modelEntries.reduce((sum, [, usage]) => sum + modelUsageTokenTotal(usage), 0);
 
   // Generate chart if we have data - use fixed width for screenshot
   const chartOutput = generateTokenChart(stats.dailyModelTokens, modelEntries.map(([model]) => model), 80 // Fixed width for screenshot
@@ -1255,7 +1272,7 @@ function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
   // Model breakdown - only show top 3 for screenshot
   const topModels = modelEntries.slice(0, 3);
   for (const [model, usage] of topModels) {
-    const modelTokens = usage.inputTokens + usage.outputTokens;
+    const modelTokens = modelUsageTokenTotal(usage);
     const percentage = (modelTokens / totalTokens * 100).toFixed(1);
     lines.push(`${figures.bullet} ${chalk.bold(renderModelName(model))} ${chalk.gray(`(${percentage}%)`)}`);
     lines.push(chalk.dim(`  ${getMessage('stats.modelEntry.inOut', {
