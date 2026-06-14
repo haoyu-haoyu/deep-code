@@ -336,9 +336,9 @@ async function processSessionFiles(
               usage.cache_creation_input_tokens || 0
 
             // Track daily tokens per model. input_tokens is only the UNCACHED
-            // remainder (Anthropic contract), so the cache fields must be added
-            // to get the true total — otherwise a fully-cached DeepSeek turn
-            // (input_tokens 0) would count as output-only.
+            // remainder, so the cache fields must be added to get the true total
+            // — otherwise a fully-cached DeepSeek turn (input_tokens 0) would
+            // count as output-only.
             const totalTokens =
               (usage.input_tokens || 0) +
               (usage.cache_read_input_tokens || 0) +

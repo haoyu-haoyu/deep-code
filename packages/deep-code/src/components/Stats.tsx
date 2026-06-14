@@ -26,10 +26,10 @@ import { getTheme, themeColorToAnsi } from '../utils/theme.js';
 import { Pane } from './design-system/Pane.js';
 import { Tab, Tabs, useTabHeaderFocus } from './design-system/Tabs.js';
 import { Spinner } from './Spinner.js';
-// Total tokens for a per-model usage record. input_tokens is the UNCACHED
-// remainder (Anthropic contract — see usageInputRemainder.mjs), so the cache
-// fields must be added; otherwise a fully-cached DeepSeek model reports ~0 total
-// tokens for the /stats headline, favorite-model ranking, and per-model %.
+// Total tokens for a per-model usage record. input_tokens is only the UNCACHED
+// remainder (see usageInputRemainder.mjs), so the cache fields must be added;
+// otherwise a fully-cached DeepSeek model reports ~0 total tokens for the /stats
+// headline, favorite-model ranking, and per-model %.
 function modelUsageTokenTotal(usage: {
   inputTokens: number;
   outputTokens: number;

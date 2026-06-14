@@ -65,7 +65,7 @@ export function updateUsage(
       )
     : undefined
   return {
-    // The UNCACHED remainder (Anthropic contract), not the full prompt: a
+    // The UNCACHED remainder, not the full prompt: a
     // provider that reports prompt_tokens (DeepSeek/OpenAI) gives the FULL
     // prompt, so summing it with the derived cache fields double-counts the
     // cached portion. uncachedInputRemainder also subsumes the old

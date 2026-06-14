@@ -104,8 +104,8 @@ export function finalContextTokensFromLastResponse(
       }
       // No iterations → no server tool loop → top-level usage IS the final
       // window. Use the full cache-aware sum: input_tokens is now the UNCACHED
-      // remainder (Anthropic contract — see usageInputRemainder.mjs), so the
-      // true window is input + cache_creation + cache_read + output. The old
+      // remainder (see usageInputRemainder.mjs), so the true window is
+      // input + cache_creation + cache_read + output. The old
       // `input + output` here was a workaround for getTokenCountFromUsage
       // double-counting the cached prompt (input used to be the FULL prompt);
       // now that the mapper is contract-correct, that workaround would undercount

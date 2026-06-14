@@ -534,7 +534,7 @@ function extractToolStats(log: LogOption): {
         }
       ).usage
       if (usage) {
-        // input_tokens is the UNCACHED remainder (Anthropic contract — see
+        // input_tokens is only the UNCACHED remainder (see
         // usageInputRemainder.mjs), so add the cache fields to get the true
         // total input; otherwise a fully-cached DeepSeek session reports ~0
         // input tokens. Mirrors the stats.ts daily-total fix.

@@ -1,4 +1,4 @@
-// The Anthropic-shaped `input_tokens` field means the UNCACHED prompt remainder
+// The canonical `input_tokens` field means the UNCACHED prompt remainder
 // — NOT the full prompt. Every consumer that reconstructs the context/total
 // size sums it with the cache fields:
 //
@@ -16,8 +16,8 @@
 // uncachedInputRemainder is the single shared rule both usage mappers use to
 // derive the contract-correct remainder:
 //
-//   - inputTokens present  → already the Anthropic remainder (only Anthropic-
-//     shaped providers report this field), trust it verbatim.
+//   - inputTokens present  → already the uncached remainder (only providers
+//     that report a separate input_tokens field do this), trust it verbatim.
 //   - else promptTokens present → the FULL prompt (DeepSeek/OpenAI); the
 //     remainder is promptTokens − cacheRead − cacheCreation (== 0 for DeepSeek,
 //     where the whole prompt is either a hit or a miss). Never negative.
