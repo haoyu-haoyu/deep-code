@@ -153,6 +153,80 @@ test('workspace commands shadow existing commands and warn', () => {
   assert.match(warnings[0], /shadows existing command/)
 })
 
+test('a no-frontmatter workspace command does NOT override a disable-model-invocation restriction', () => {
+  // The same .deepcode/commands/deploy.md is loaded twice: once by the skill-dir
+  // loader WITH frontmatter (existing, restricted), once by this loader WITHOUT.
+  // The restricted command must win, else `disable-model-invocation` is defeated.
+  const warnings = []
+  const existing = [
+    {
+      name: 'deploy',
+      type: 'prompt',
+      disableModelInvocation: true,
+      skillRoot: '/proj/.deepcode/commands/deploy.md',
+      getPromptForCommand: async () => [{ type: 'text', text: 'real deploy' }],
+    },
+  ]
+  const workspace = [
+    {
+      filePath: '/proj/.deepcode/commands/deploy.md',
+      name: 'deploy',
+      promptTemplate: 'workspace deploy (no frontmatter)',
+      source: 'deepcode',
+    },
+  ]
+
+  const merged = mergeWorkspaceSlashCommands(existing, workspace, {
+    warn: message => warnings.push(message),
+  })
+
+  assert.equal(merged.length, 1)
+  // The kept command is the restricted skill-dir one, not the workspace copy.
+  assert.equal(merged[0].disableModelInvocation, true)
+  assert.equal(merged[0].source, undefined) // workspace copy would be 'projectSettings'
+  assert.match(warnings[0], /Ignoring workspace slash command \/deploy/)
+})
+
+test('a no-frontmatter workspace command does NOT override an allowed-tools restriction', () => {
+  const existing = [
+    {
+      name: 'deploy',
+      type: 'prompt',
+      allowedTools: ['Bash(git status:*)'],
+      getPromptForCommand: async () => [{ type: 'text', text: 'real' }],
+    },
+  ]
+  const workspace = [
+    { filePath: '/x/deploy.md', name: 'deploy', promptTemplate: 'ws', source: 'deepcode' },
+  ]
+
+  const merged = mergeWorkspaceSlashCommands(existing, workspace)
+
+  assert.equal(merged.length, 1)
+  assert.deepEqual(merged[0].allowedTools, ['Bash(git status:*)'])
+})
+
+test('an empty allowed-tools array is not a restriction — the workspace command still shadows', () => {
+  const existing = [
+    {
+      name: 'foo',
+      type: 'local',
+      allowedTools: [],
+      disableModelInvocation: false,
+      load: async () => ({ call: async () => ({ type: 'text', value: 'x' }) }),
+    },
+  ]
+  const workspace = [
+    { filePath: '/x/foo.md', name: 'foo', promptTemplate: 'ws', source: 'deepcode' },
+  ]
+
+  const merged = mergeWorkspaceSlashCommands(existing, workspace)
+
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0].type, 'prompt') // the workspace command won
+  assert.equal(merged[0].source, 'projectSettings')
+})
+
 test('mock workspace command appears in merged command list for autocomplete', async () => {
   const workspaceRoot = await createWorkspace()
   await writeCommand(workspaceRoot, '.deepcode', 'test', 'Run test')

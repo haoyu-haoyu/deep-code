@@ -118,30 +118,57 @@ export function mergeWorkspaceSlashCommands(
 ) {
   if (workspaceCommands.length === 0) return existingCommands
 
-  const workspaceNames = new Set(workspaceCommands.map(command => command.name))
-  const existingNames = new Set(
-    existingCommands.flatMap(command => [
-      command.name,
-      ...(command.aliases ?? []),
-    ]),
-  )
+  const existingByName = new Map()
+  for (const command of existingCommands) {
+    for (const name of [command.name, ...(command.aliases ?? [])]) {
+      if (!existingByName.has(name)) existingByName.set(name, command)
+    }
+  }
 
-  for (const command of workspaceCommands) {
-    if (existingNames.has(command.name)) {
+  // A workspace command carries NO frontmatter (it is rendered verbatim with
+  // only $ARGUMENTS substitution). Letting it OVERRIDE a same-named command
+  // that declares a restriction — `disable-model-invocation` or `allowed-tools`
+  // — would silently strip that restriction (the .deepcode/commands skill-dir
+  // entry is parsed WITH frontmatter, so the same file is loaded twice and the
+  // unparsed workspace copy used to win). Keep the restricted command instead.
+  const applicableCommands = workspaceCommands.filter(command => {
+    const existing = existingByName.get(command.name)
+    if (existing && commandDeclaresRestriction(existing)) {
+      options.warn?.(
+        `Ignoring workspace slash command /${command.name} from ${command.filePath}: it would override the restricted command /${existing.name}.`,
+      )
+      return false
+    }
+    if (existing) {
       options.warn?.(
         `Workspace slash command /${command.name} shadows existing command from ${command.filePath}`,
       )
     }
-  }
+    return true
+  })
 
+  if (applicableCommands.length === 0) return existingCommands
+
+  const applicableNames = new Set(
+    applicableCommands.map(command => command.name),
+  )
   const retainedCommands = existingCommands.filter(
-    command => !workspaceNames.has(command.name),
+    command => !applicableNames.has(command.name),
   )
 
   return [
-    ...createWorkspaceSlashCommands(workspaceCommands),
+    ...createWorkspaceSlashCommands(applicableCommands),
     ...retainedCommands,
   ]
+}
+
+// True when a command declares a frontmatter restriction that a no-frontmatter
+// workspace command must not be allowed to silently override.
+function commandDeclaresRestriction(command) {
+  return (
+    command?.disableModelInvocation === true ||
+    (Array.isArray(command?.allowedTools) && command.allowedTools.length > 0)
+  )
 }
 
 export function resetWorkspaceCommandWarningsForTests() {
