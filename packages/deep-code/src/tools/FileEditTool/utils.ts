@@ -93,9 +93,10 @@ export function findActualString(
   return null
 }
 
-// preserveQuoteStyle restores the file's curly-quote typography onto only the
-// UNCHANGED (common prefix/suffix) parts of new_string, so code/JSON/CLI the
-// model newly wrote is never curled. Extracted to a node-testable leaf.
+// preserveQuoteStyle returns new_string verbatim (a documented no-op). Curly
+// typography cannot be restored onto an edit without risking corruption of
+// code/JSON/shell the model newly wrote — see the leaf for the full rationale.
+// Extracted to a node-testable leaf.
 export { preserveQuoteStyle } from './preserveQuoteStyle.mjs'
 
 /**
