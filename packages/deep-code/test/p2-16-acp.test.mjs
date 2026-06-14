@@ -43,6 +43,38 @@ test('parseJsonRpcChunk buffers a partial trailing line and surfaces malformed l
   assert.equal(b.rest, '{"jsonrpc":"2.0","id":3}')
 })
 
+test('parseJsonRpcChunk discards a partial line past the cap and signals overflow', () => {
+  // A newline-free stream makes the whole input the trailing partial line; with
+  // no terminator the caller would buffer it forever. Past the cap it is
+  // discarded and an overflow is signalled (a small cap stands in for 64 MiB).
+  const cap = 16
+  const flood = 'x'.repeat(cap + 1)
+  const r = parseJsonRpcChunk(flood, cap)
+  assert.equal(r.overflow, true)
+  assert.equal(r.rest, '') // discarded, so `leftover` can't grow without bound
+  assert.deepEqual(r.messages, [])
+  assert.deepEqual(r.malformed, [])
+  // A partial AT the cap is still buffered (boundary is exclusive).
+  const atCap = parseJsonRpcChunk('y'.repeat(cap), cap)
+  assert.equal(atCap.overflow, false)
+  assert.equal(atCap.rest, 'y'.repeat(cap))
+})
+
+test('parseJsonRpcChunk still delivers complete messages before an overflowing partial', () => {
+  const cap = 16
+  const line = '{"jsonrpc":"2.0","id":1,"method":"a"}'
+  const r = parseJsonRpcChunk(line + '\n' + 'z'.repeat(cap + 1), cap)
+  assert.deepEqual(r.messages.map(m => m.id), [1]) // the complete line survives
+  assert.equal(r.overflow, true)
+  assert.equal(r.rest, '')
+})
+
+test('parseJsonRpcChunk default cap leaves an ordinary partial line intact', () => {
+  const r = parseJsonRpcChunk('{"jsonrpc":"2.0","id":2,')
+  assert.equal(r.overflow, false)
+  assert.equal(r.rest, '{"jsonrpc":"2.0","id":2,')
+})
+
 test('mapStopReason maps runtime/provider finish reasons to the ACP enum', () => {
   assert.equal(mapStopReason('stop'), 'end_turn')
   assert.equal(mapStopReason('tool_calls'), 'end_turn')
@@ -249,4 +281,45 @@ test('startAcpServer waits for an in-flight prompt before closing (no truncation
   await closed
   assert.deepEqual(out.find(m => m.id === 2).result, { stopReason: 'end_turn' })
   assert.ok(out.some(m => m.method === 'session/update' && m.params.update.content?.text === 'partial'))
+})
+
+test('startAcpServer answers a newline-free flood with a parse error and stays alive', async () => {
+  const stdin = new PassThrough()
+  const stdout = new PassThrough()
+  const out = []
+  let obuf = ''
+  stdout.on('data', d => {
+    obuf += d.toString()
+    let i
+    while ((i = obuf.indexOf('\n')) >= 0) {
+      const line = obuf.slice(0, i).trim()
+      obuf = obuf.slice(i + 1)
+      if (line) out.push(JSON.parse(line))
+    }
+  })
+  const runTurn = async function* () {}
+  // Tiny cap so the test doesn't allocate 64 MiB to trip the real ceiling.
+  const cap = 64
+  const { closed } = startAcpServer({ stdin, stdout, runTurn, maxMessageBytes: cap })
+
+  // Stream bytes with no '\n' terminator, past the cap. The partial line must be
+  // discarded (not buffered without bound) and answered with a parse error.
+  stdin.write('a'.repeat(cap + 10))
+  await new Promise(r => setTimeout(r, 15))
+  assert.ok(
+    out.some(m => m.error?.code === -32700 && m.id === null),
+    'a newline-free flood past the cap is answered with a JSON-RPC parse error',
+  )
+
+  // The connection is NOT wedged: a well-formed request after the next newline
+  // still gets a response (the stream resyncs).
+  stdin.write('\n' + JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'session/new' }) + '\n')
+  await new Promise(r => setTimeout(r, 15))
+  assert.ok(
+    out.find(m => m.id === 7)?.result?.sessionId,
+    'the stream resyncs at the next newline and serves later requests',
+  )
+
+  stdin.end()
+  await closed
 })
