@@ -16,6 +16,7 @@ import { lazySchema } from '../../utils/lazySchema.js'
 import { parseCellId } from '../../utils/notebook.js'
 import { checkWritePermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
+import { stripLeadingBom } from '../../utils/bom.mjs'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'
@@ -330,7 +331,10 @@ export const NotebookEditTool = buildTool({
       // any subsequent call() with the same file content.
       let notebook: NotebookContent
       try {
-        notebook = jsonParse(content) as NotebookContent
+        // Strip a leading BOM (readFileSyncWithMetadata keeps it) so a
+        // BOM-prefixed notebook isn't wrongly rejected as "not valid JSON" —
+        // matching validateInput's safeParseJSON, which already strips it.
+        notebook = jsonParse(stripLeadingBom(content)) as NotebookContent
       } catch {
         return {
           data: {

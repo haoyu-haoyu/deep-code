@@ -106,3 +106,22 @@ test('FileEditTool path: content already carrying a BOM is not double-encoded', 
   assert.notDeepEqual([written[2], written[3]], [0xff, 0xfe])
   assert.equal(stripLeadingBom(written.toString('utf16le')), 'edited')
 })
+
+test('notebook parse path: a BOM-prefixed .ipynb is unreadable raw but parses after stripLeadingBom', () => {
+  // readNotebook (buffer.toString('utf-8')) and NotebookEditTool.call
+  // (readFileSyncWithMetadata) keep a leading BOM, and raw JSON.parse throws on
+  // it ("Unexpected token") — so a PowerShell-written UTF-8-BOM notebook was
+  // unreadable and reported "not valid JSON". The parse sites now wrap the
+  // content in stripLeadingBom; verify that composition (jsonParse === JSON.parse
+  // for the BOM concern).
+  const notebook = { cells: [], metadata: {}, nbformat: 4, nbformat_minor: 5 }
+  const json = JSON.stringify(notebook)
+  const bomPrefixed = BOM + json
+  assert.throws(() => JSON.parse(bomPrefixed), SyntaxError) // the bug
+  assert.deepEqual(JSON.parse(stripLeadingBom(bomPrefixed)), notebook) // the fix
+  // A normal (no-BOM) notebook is unaffected (idempotent strip).
+  assert.deepEqual(JSON.parse(stripLeadingBom(json)), notebook)
+  // A UTF-16LE-decoded notebook (its BOM decodes to the same U+FEFF) also parses.
+  const utf16le = Buffer.from(bomPrefixed, 'utf16le').toString('utf16le')
+  assert.deepEqual(JSON.parse(stripLeadingBom(utf16le)), notebook)
+})
