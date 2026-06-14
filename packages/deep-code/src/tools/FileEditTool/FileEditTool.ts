@@ -71,8 +71,10 @@ import {
   areFileEditsInputsEquivalent,
   findActualString,
   getPatchForEdit,
+  normalizeQuotes,
   preserveQuoteStyle,
 } from './utils.js'
+import { countMissedQuoteVariants } from './quoteVariantUnderReplace.mjs'
 
 // V8/Bun string length limit is ~2^30 characters (~1 billion). For typical
 // ASCII/Latin-1 files, 1 byte on disk = 1 character, so 1 GiB in stat bytes
@@ -343,6 +345,33 @@ export const FileEditTool = buildTool({
           actualOldString,
         },
         errorCode: 9,
+      }
+    }
+
+    // The same token can appear under different quote styles (a curly “foo” and
+    // a straight "foo"). findActualString locks onto ONE variant, so a
+    // replace_all only rewrites that variant and silently leaves the others
+    // behind — while the tool reports "All occurrences were successfully
+    // replaced". Surface the mismatch instead of under-replacing: the model can
+    // then edit each quote style separately or add context.
+    if (replace_all) {
+      const missedQuoteVariants = countMissedQuoteVariants(
+        file,
+        actualOldString,
+        normalizeQuotes,
+      )
+      if (missedQuoteVariants > 0) {
+        const total = matches + missedQuoteVariants
+        return {
+          result: false,
+          behavior: 'ask',
+          message: `Found ${total} occurrences of the string, but ${missedQuoteVariants} use a different quote style (straight vs. curly quotes) that replace_all would not touch — only ${matches} would be replaced, silently leaving the rest behind. Edit each quote style separately, or add context to uniquely identify the intended occurrence.\nString: ${old_string}`,
+          meta: {
+            isFilePathAbsolute: String(isAbsolute(file_path)),
+            actualOldString,
+          },
+          errorCode: 11,
+        }
       }
     }
 
