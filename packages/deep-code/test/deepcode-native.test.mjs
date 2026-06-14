@@ -1223,6 +1223,24 @@ test('computeHighlightSpans aligns the highlight to the original text when toLow
     { text: 'b', highlighted: true },
     { text: 'c', highlighted: false },
   ])
+  // Greek final sigma: 'ΟΔΟΣ'.toLowerCase() is 'οδος' (final ς U+03C2), but an
+  // ISOLATED 'Σ' folds to medial 'σ' U+03C3. The haystack is folded
+  // whole-string (like the query) so a word ending in sigma still matches —
+  // folding per code point would silently drop the highlight.
+  assert.deepEqual(computeHighlightSpans('ΟΔΟΣ', 'οδος'), [
+    { text: 'ΟΔΟΣ', highlighted: true },
+  ])
+  // The same match embedded in surrounding text stays aligned.
+  assert.deepEqual(computeHighlightSpans('η ΟΔΟΣ εκει', 'οδος'), [
+    { text: 'η ', highlighted: false },
+    { text: 'ΟΔΟΣ', highlighted: true },
+    { text: ' εκει', highlighted: false },
+  ])
+  // Converse: a lone 'σ' query must NOT spuriously match a word-final 'Σ' (which
+  // whole-string folds to 'ς'), matching the pre-fix whole-string-fold behavior.
+  assert.deepEqual(computeHighlightSpans('ΟΔΟΣ', 'σ'), [
+    { text: 'ΟΔΟΣ', highlighted: false },
+  ])
   // Every case still reconstructs the original text verbatim and emits ordered,
   // non-overlapping runs.
   for (const [t, q] of [
@@ -1230,6 +1248,7 @@ test('computeHighlightSpans aligns the highlight to the original text when toLow
     ['İİİ', 'i'],
     ['AİB', 'i'],
     ['Σίσυφος', 'σ'],
+    ['ΟΔΟΣ', 'οδος'],
     ['😀x😀x', 'x'],
   ]) {
     const spans = computeHighlightSpans(t, q)

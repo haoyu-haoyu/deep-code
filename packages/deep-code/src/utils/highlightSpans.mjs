@@ -12,15 +12,27 @@
 // from the original substring length. Searching the folded haystack but slicing the ORIGINAL
 // text by a parallel source-index map keeps the highlighted run aligned to what the user
 // actually sees ('İstanbul' + query 'bul' highlights 'bul', not 'ul').
+//
+// The haystack is folded with WHOLE-STRING text.toLowerCase() (same as the query), so
+// context-sensitive folding matches consistently — notably Greek final sigma, where
+// 'ΟΔΟΣ'.toLowerCase() is 'οδος' (final ς U+03C2) but an isolated 'Σ' folds to medial
+// 'σ' U+03C3; folding per code point would silently drop that whole-word match. The
+// source-index map is still built from per-code-point fold LENGTHS, which stay aligned
+// with the whole-string fold because the only context-sensitive default-locale lowercase
+// rule (final sigma) is length-preserving, while the length-CHANGING folds ('İ' etc.) are
+// context-free. A guard falls back to the per-code-point fold if those lengths ever
+// diverge, so the map can never misalign with the haystack.
 export function computeHighlightSpans(text, query) {
   if (!query) return [{ text, highlighted: false }]
   const queryLower = query.toLowerCase()
 
-  // Build the case-folded haystack alongside, for each folded code unit, the
-  // [start, end) span of the ORIGINAL source code point it came from. Multiple
-  // folded units from one source code point all map to that code point's span,
-  // so a match covering any of them highlights the whole source code point.
-  let lowered = ''
+  // For each folded code unit, the [start, end) span of the ORIGINAL source code
+  // point it came from. Multiple folded units from one source code point all map
+  // to that code point's span, so a match covering any of them highlights the
+  // whole source code point. Lengths come from per-code-point folds; the haystack
+  // content comes from the whole-string fold (see the note above).
+  let lowered = text.toLowerCase()
+  let perCodePoint = ''
   const srcStart = []
   const srcEnd = []
   let i = 0
@@ -32,9 +44,15 @@ export function computeHighlightSpans(text, query) {
       srcStart.push(i)
       srcEnd.push(i + srcLen)
     }
-    lowered += folded
+    perCodePoint += folded
     i += srcLen
   }
+  // The per-code-point fold lengths must line up with the whole-string fold for
+  // the map to address `lowered`. They always do for default-locale folding (the
+  // only context-sensitive rule, final sigma, is length-preserving); if some
+  // exotic input ever breaks that, fall back to the per-code-point haystack —
+  // which the map is built from — trading final-sigma matching for a valid map.
+  if (lowered.length !== srcStart.length) lowered = perCodePoint
 
   let loweredIdx = lowered.indexOf(queryLower, 0)
   if (loweredIdx === -1) return [{ text, highlighted: false }]
