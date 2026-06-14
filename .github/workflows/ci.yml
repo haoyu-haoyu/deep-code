@@ -97,6 +97,7 @@ jobs:
             test/readonly-flag-parsing.test.mjs \
             test/tool-batch-concurrency.test.mjs \
             test/cost-status.test.mjs \
+            test/hook-if-condition-events.test.mjs \
             test/violation-feedback-tail.test.mjs \
             test/disk-shell-snapshot-cleanup.test.mjs \
             test/disk-snapshot-store-reclaim.test.mjs \

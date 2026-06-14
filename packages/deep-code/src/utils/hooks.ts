@@ -6,6 +6,7 @@
 import { basename } from 'path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { pathExists } from './file.js'
+import { eventSupportsIfCondition } from './hookIfConditionEvents.mjs'
 import { wrapSpawn } from './ShellCommand.js'
 import { TaskOutput } from './task/TaskOutput.js'
 import { getCwd } from './cwd.js'
@@ -1382,6 +1383,21 @@ function matchesPattern(matchQuery: string, matcher: string): boolean {
 
 type IfConditionMatcher = (ifCondition: string) => boolean
 
+// Narrow to the hook inputs that carry {tool_name, tool_input} and so support
+// an `if` condition. The canonical event set lives in hookIfConditionEvents.mjs
+// (kept in sync with executeHooks' tool_name matchQuery branch); this predicate
+// re-asserts the narrowing TS needs for the tool_name/tool_input access below.
+function inputSupportsIfCondition(
+  hookInput: HookInput,
+): hookInput is
+  | PreToolUseHookInput
+  | PostToolUseHookInput
+  | PostToolUseFailureHookInput
+  | PermissionRequestHookInput
+  | PermissionDeniedHookInput {
+  return eventSupportsIfCondition(hookInput.hook_event_name)
+}
+
 /**
  * Prepare a matcher for hook `if` conditions. Expensive work (tool lookup,
  * Zod validation, tree-sitter parsing for Bash) happens once here; the
@@ -1391,12 +1407,7 @@ async function prepareIfConditionMatcher(
   hookInput: HookInput,
   tools: Tools | undefined,
 ): Promise<IfConditionMatcher | undefined> {
-  if (
-    hookInput.hook_event_name !== 'PreToolUse' &&
-    hookInput.hook_event_name !== 'PostToolUse' &&
-    hookInput.hook_event_name !== 'PostToolUseFailure' &&
-    hookInput.hook_event_name !== 'PermissionRequest'
-  ) {
+  if (!inputSupportsIfCondition(hookInput)) {
     return undefined
   }
 
