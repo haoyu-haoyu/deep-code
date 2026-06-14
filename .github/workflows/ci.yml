@@ -112,6 +112,7 @@ jobs:
             test/paste-id.test.mjs \
             test/bom-handling.test.mjs \
             test/todo-resume-collapse.test.mjs \
+            test/filesuggestions-ignore.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \
             test/sandbox-fortress/integration/*.test.mjs \
             test/sandbox-fortress/redteam/*.test.mjs
