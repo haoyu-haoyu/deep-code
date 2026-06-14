@@ -1,4 +1,3 @@
-import { firstNonEmpty } from '../utils/configValue.mjs'
 import { DEFAULT_LOCALE, normalizeLocale } from './locales.js'
 import { EN_MESSAGES } from './messages/en.js'
 import { JA_MESSAGES } from './messages/ja.js'
@@ -25,17 +24,30 @@ export function getActiveLocale(): Locale {
   return activeLocale
 }
 
+// The first present env locale, skipping undefined and empty/whitespace-only
+// strings. Inlined (not imported from utils/configValue) so the i18n module
+// stays self-contained — the locale render tests copy only the i18n/ subtree.
+// Mirrors utils/configValue.firstNonEmpty.
+function firstNonEmptyEnvLocale(
+  ...values: (string | undefined)[]
+): string | undefined {
+  for (const value of values) {
+    if (value != null && value.trim() !== '') return value
+  }
+  return undefined
+}
+
 export function resolveLocale(options: ResolveLocaleOptions = {}): Locale {
   return normalizeLocale(
     options.override ??
       options.settingsLocale ??
       readSettingsLocale(options.settings) ??
-      // firstNonEmpty (not ??): POSIX treats an EMPTY LC_ALL as "not set", and
-      // `LC_ALL= LANG=zh_CN.UTF-8` (neutralize LC_ALL, keep LANG) is a common
-      // container/shell pattern. `??` stops at the empty LC_ALL and yields '' →
-      // normalizeLocale('') = 'en', ignoring the user's LANG. Skip empty env
-      // locales so LANG (then systemLocale/Intl) is consulted.
-      firstNonEmpty(options.env?.LC_ALL, options.env?.LANG) ??
+      // firstNonEmptyEnvLocale (not ??): POSIX treats an EMPTY LC_ALL as "not
+      // set", and `LC_ALL= LANG=zh_CN.UTF-8` (neutralize LC_ALL, keep LANG) is a
+      // common container/shell pattern. `??` stops at the empty LC_ALL and
+      // yields '' → normalizeLocale('') = 'en', ignoring the user's LANG. Skip
+      // empty env locales so LANG (then systemLocale/Intl) is consulted.
+      firstNonEmptyEnvLocale(options.env?.LC_ALL, options.env?.LANG) ??
       options.systemLocale ??
       getResolvedIntlLocale(),
   )
