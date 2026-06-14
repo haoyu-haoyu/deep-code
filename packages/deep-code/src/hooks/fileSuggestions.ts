@@ -1,6 +1,7 @@
 import { statSync } from 'fs'
 import ignore from 'ignore'
 import * as path from 'path'
+import { filterIgnoredGitPaths } from './fileSuggestionsIgnore.mjs'
 import {
   CLAUDE_CONFIG_DIRECTORIES,
   loadMarkdownFilesForSubdir,
@@ -283,18 +284,21 @@ async function getFilesUsingGit(
 
     const trackedFiles = trackedResult.stdout.trim().split('\n').filter(Boolean)
 
-    // Normalize paths relative to the current working directory
-    let normalizedTracked = normalizeGitPaths(trackedFiles, repoRoot, cwd)
-
-    // Apply .ignore/.rgignore patterns if present (faster than falling back to ripgrep)
+    // Apply .ignore/.rgignore patterns on the RAW repoRoot-relative paths
+    // (faster than falling back to ripgrep) BEFORE normalizing to cwd: the
+    // patterns are repoRoot-anchored, and the `ignore` lib throws on the
+    // '../'-prefixed paths that cwd-relative normalization produces from a
+    // subdirectory launch — which used to crash the git fast path.
     const ignorePatterns = await loadRipgrepIgnorePatterns(repoRoot, cwd)
+    const survivingTracked = filterIgnoredGitPaths(trackedFiles, ignorePatterns)
     if (ignorePatterns) {
-      const beforeCount = normalizedTracked.length
-      normalizedTracked = ignorePatterns.filter(normalizedTracked)
       logForDebugging(
-        `[FileIndex] applied ignore patterns: ${beforeCount} -> ${normalizedTracked.length} files`,
+        `[FileIndex] applied ignore patterns: ${trackedFiles.length} -> ${survivingTracked.length} files`,
       )
     }
+
+    // Normalize the survivors relative to the current working directory
+    const normalizedTracked = normalizeGitPaths(survivingTracked, repoRoot, cwd)
 
     // Cache tracked files for later merge with untracked
     cachedTrackedFiles = normalizedTracked
@@ -338,25 +342,29 @@ async function getFilesUsingGit(
               .split('\n')
               .filter(Boolean)
 
-            // Normalize paths BEFORE applying ignore patterns (consistent with tracked files)
-            let normalizedUntracked = normalizeGitPaths(
-              rawUntrackedFiles,
-              repoRoot,
-              cwd,
-            )
-
-            // Apply .ignore/.rgignore patterns to normalized untracked files
+            // Apply .ignore/.rgignore patterns on the RAW repoRoot-relative
+            // paths BEFORE normalizing to cwd (consistent with tracked files):
+            // the patterns are repoRoot-anchored, and the `ignore` lib throws on
+            // the '../'-prefixed paths that cwd-relative normalization produces
+            // from a subdirectory launch.
             const ignorePatterns = await loadRipgrepIgnorePatterns(
               repoRoot,
               cwd,
             )
-            if (ignorePatterns && normalizedUntracked.length > 0) {
-              const beforeCount = normalizedUntracked.length
-              normalizedUntracked = ignorePatterns.filter(normalizedUntracked)
+            const survivingUntracked = filterIgnoredGitPaths(
+              rawUntrackedFiles,
+              ignorePatterns,
+            )
+            if (ignorePatterns && rawUntrackedFiles.length > 0) {
               logForDebugging(
-                `[FileIndex] applied ignore patterns to untracked: ${beforeCount} -> ${normalizedUntracked.length} files`,
+                `[FileIndex] applied ignore patterns to untracked: ${rawUntrackedFiles.length} -> ${survivingUntracked.length} files`,
               )
             }
+            const normalizedUntracked = normalizeGitPaths(
+              survivingUntracked,
+              repoRoot,
+              cwd,
+            )
 
             logForDebugging(
               `[FileIndex] background untracked fetch: ${normalizedUntracked.length} files`,
