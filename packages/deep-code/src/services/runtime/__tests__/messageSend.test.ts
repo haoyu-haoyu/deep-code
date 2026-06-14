@@ -121,7 +121,9 @@ test('queryRuntimeWithoutStreaming returns assistant content, stop reason, and u
     role: 'assistant',
     content: [{ type: 'text', text: 'pong' }],
     usage: {
-      input_tokens: 11,
+      // input_tokens is the uncached remainder: prompt 11 = read 3 + creation 8
+      // -> 0 (the cached prompt is no longer double-counted into input).
+      input_tokens: 0,
       output_tokens: 7,
       cache_creation_input_tokens: 8,
       cache_read_input_tokens: 3,

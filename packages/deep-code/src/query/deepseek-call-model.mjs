@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mapDeepSeekFinishReason } from '../deepcode/deepseek-native.mjs'
+import { uncachedInputRemainder } from '../deepcode/usageInputRemainder.mjs'
 import {
   isDeepSeekProvider,
   resolveRuntimeModelProvider,
@@ -445,7 +446,15 @@ function mapUsageForClaudeCode(usage = {}, { provider } = {}) {
   const cacheHit = supportsCache ? usage.prompt_cache_hit_tokens ?? 0 : 0
   const cacheMiss = supportsCache ? usage.prompt_cache_miss_tokens ?? 0 : 0
   return {
-    input_tokens: usage.prompt_tokens ?? cacheHit + cacheMiss,
+    // input_tokens is the UNCACHED remainder, not the full prompt — otherwise
+    // every consumer that sums input + cache_read + cache_creation double-counts
+    // the cached prompt (~2x context). See usageInputRemainder.mjs.
+    input_tokens:
+      uncachedInputRemainder({
+        promptTokens: usage.prompt_tokens,
+        cacheRead: cacheHit,
+        cacheCreation: cacheMiss,
+      }) ?? 0,
     output_tokens: usage.completion_tokens ?? 0,
     cache_creation_input_tokens: cacheMiss,
     cache_read_input_tokens: cacheHit,

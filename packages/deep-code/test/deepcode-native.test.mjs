@@ -3356,7 +3356,10 @@ test('deepSeekResponseToAssistantMessage emits Claude Code compatible tool_use b
     },
   ])
   assert.deepEqual(message.message.usage, {
-    input_tokens: 10,
+    // input_tokens is the uncached remainder: prompt 10 = read 7 + creation 3,
+    // so 0. The four-way sum (0+3+7+5=15) equals the true context (prompt 10 +
+    // output 5) — not 25, which the old full-prompt mapping double-counted to.
+    input_tokens: 0,
     output_tokens: 5,
     cache_creation_input_tokens: 3,
     cache_read_input_tokens: 7,
