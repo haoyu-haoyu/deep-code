@@ -13,6 +13,7 @@ import type {
   NotebookContent,
   NotebookOutputImage,
 } from '../types/notebook.js'
+import { stripLeadingBom } from './bom.mjs'
 import { getFsImplementation } from './fsOperations.js'
 import { expandPath } from './path.js'
 import { jsonParse } from './slowOperations.js'
@@ -168,7 +169,11 @@ export async function readNotebook(
   const fullPath = expandPath(notebookPath)
   const buffer = await getFsImplementation().readFileBytes(fullPath)
   const content = buffer.toString('utf-8')
-  const notebook = jsonParse(content) as NotebookContent
+  // buffer.toString('utf-8') keeps a leading BOM (U+FEFF) for UTF-8-BOM /
+  // UTF-16LE .ipynb files (PowerShell Out-File defaults to UTF-8 BOM), and raw
+  // JSON.parse throws on it. Strip it first — every other JSON reader in the
+  // codebase already does — so a BOM-prefixed notebook is readable.
+  const notebook = jsonParse(stripLeadingBom(content)) as NotebookContent
   const language = notebook.metadata.language_info?.name ?? 'python'
   if (cellId) {
     const cell = notebook.cells.find(c => c.id === cellId)
