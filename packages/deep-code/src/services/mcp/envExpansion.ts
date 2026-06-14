@@ -1,6 +1,7 @@
 /**
  * Shared utilities for expanding environment variables in MCP server configurations
  */
+import { splitEnvVarDefault } from './splitEnvVarDefault.mjs'
 
 /**
  * Expand environment variables in a string value
@@ -14,8 +15,9 @@ export function expandEnvVarsInString(value: string): {
   const missingVars: string[] = []
 
   const expanded = value.replace(/\$\{([^}]+)\}/g, (match, varContent) => {
-    // Split on :- to support default values (limit to 2 parts to preserve :- in defaults)
-    const [varName, defaultValue] = varContent.split(':-', 2)
+    // Split on the FIRST ':-' only; the default may itself contain ':-'
+    // (varContent.split(':-', 2) would DISCARD the tail, not preserve it).
+    const { varName, defaultValue } = splitEnvVarDefault(varContent)
     const envValue = process.env[varName]
 
     if (envValue !== undefined) {
