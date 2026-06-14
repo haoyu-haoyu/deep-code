@@ -4921,6 +4921,51 @@ test('mapMessagesToDeepSeek keeps a tool_result adjacent to its assistant when a
     ['assistant', 'tool'],
     'a tool_result-only message produces no synthesized user message',
   )
+
+  // A parallel-tool turn: several tool_results + a text sibling in one user
+  // message must emit every tool message first (each pairs a distinct
+  // assistant tool_call), then the user text → [assistant, tool, tool, user].
+  const multiTool = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'A', name: 'bash', input: {} },
+          { type: 'tool_use', id: 'B', name: 'read', input: {} },
+        ],
+      },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 'A', content: 'a' },
+          { type: 'tool_result', tool_use_id: 'B', content: 'b' },
+          { type: 'text', text: 'note' },
+        ],
+      },
+    },
+  ])
+  assert.deepEqual(multiTool.map(m => m.role), ['assistant', 'tool', 'tool', 'user'])
+
+  // Block order in the source message is irrelevant: text BEFORE the tool_result
+  // still lands after the tool message on the wire (tool collected first).
+  const textFirst = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', id: 'C', name: 'edit', input: {} }] },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'text', text: 'leading note' },
+          { type: 'tool_result', tool_use_id: 'C', content: 'ok' },
+        ],
+      },
+    },
+  ])
+  assert.deepEqual(textFirst.map(m => m.role), ['assistant', 'tool', 'user'])
 })
 
 test('describeNonTextBlock returns a placeholder for image/document, null otherwise', () => {
