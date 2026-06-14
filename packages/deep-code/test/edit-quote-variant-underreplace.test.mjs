@@ -59,26 +59,42 @@ test('mixed single-quote styles are detected too', () => {
   assert.equal(countMissedQuoteVariants(file, "'x'", normalize), 1)
 })
 
-// Reviewer repros: an ALL-quote-character needle must NOT spuriously fire. The
-// split-delta over-counts there (adjacent differently-styled quote runs merge
-// under normalization into phantom cross-boundary pairs), but a real replaceAll
-// leaves nothing behind. These needles carry no token content and are skipped.
-test('all-quote needle "" against a curly-glued run does not over-fire (B repro)', () => {
-  // `msg = “"""` → actualOldString '""', real replaceAll leaves no genuine '""'.
+// Reviewer repros — OVERLAP must not phantom-count. A naive normalized−literal
+// split-delta over-counts when normalized occurrences overlap on a shared char;
+// the simulate-then-recount approach returns 0 because a real replaceAll
+// consumes the shared char and leaves no genuine sibling.
+test('overlap (B repro): "" against a curly-glued run leaves no genuine sibling', () => {
+  // `msg = “"""` → actualOldString '""'; real replaceAll('""') → no '"" ' remains.
   assert.equal(countMissedQuoteVariants(`msg = ${LD}"""`, '""', normalize), 0)
 })
 
-test('all-quote needle (single-quote variants glued) does not over-fire (A repro)', () => {
-  assert.equal(countMissedQuoteVariants(`''${LS}'`, `'${LS}`, normalize), 0)
+test('overlap (A repro): content-bearing b"b against b“b"b“b’ leaves no sibling', () => {
+  // The curly "b…b" regions overlap the literal b"b on the shared b's; replacing
+  // the literal consumes them, so nothing different-style survives.
+  const file = `b${LD}b"b${LD}b${RS}`
+  assert.equal(countMissedQuoteVariants(file, 'b"b', normalize), 0)
 })
 
-test('a lone quote character needle is skipped (degenerate, not a token)', () => {
-  assert.equal(countMissedQuoteVariants(`a "b" ${LD}c${RD}`, '"', normalize), 0)
-  assert.equal(countMissedQuoteVariants(`${LD}${LD}"`, `${LD}`, normalize), 0)
+test('all-quote needle WITH a real non-overlapping sibling IS counted', () => {
+  // A straight "" and a separate curly “” — the curly one genuinely survives a
+  // replaceAll('""'), so it must be reported (no blanket skip of quote needles).
+  assert.equal(countMissedQuoteVariants(`x "" y ${LD}${RD} z`, '""', normalize), 1)
 })
 
-test('a content-bearing needle that also contains quotes is still counted', () => {
-  // Non-quote content present → the split-delta is exact; the curly sibling counts.
+test('lone quote needle with surviving curly siblings is counted correctly', () => {
+  // replace_all('"') rewrites the straight quotes; the curly “c” normalizes to
+  // "c" — two surviving straight-quote-equivalents.
+  assert.equal(countMissedQuoteVariants(`"x" ${LD}c${RD}`, '"', normalize), 2)
+})
+
+test('a content-bearing needle that also contains quotes is counted', () => {
   const file = `${LD}a${RD} "a"`
   assert.equal(countMissedQuoteVariants(file, '"a"', normalize), 1)
+})
+
+test('overlapping siblings are counted NON-overlapping, like a real replaceAll', () => {
+  // normalize(“”“) = """ — three quotes. A replace_all can only consume two of
+  // them as one `""`, leaving one; so exactly ONE different-style sibling is
+  // missed, not two. (Counting overlaps would wrongly report 2.)
+  assert.equal(countMissedQuoteVariants(`${LD}${RD}${LD}`, '""', normalize), 1)
 })

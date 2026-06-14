@@ -7,35 +7,65 @@
 // siblings behind, while the tool still reports "All occurrences were
 // successfully replaced".
 //
-// This leaf estimates how many quote-insensitive occurrences a literal
-// replaceAll(actualOldString) would MISS, by comparing non-overlapping
-// occurrence counts in the original vs the quote-normalized string. The caller
-// injects `normalize` (utils.ts owns normalizeQuotes) so the leaf stays
-// dependency-free and node-testable. normalizeQuotes is length-preserving (each
-// curly quote is one code unit mapped to one straight ASCII char), so the two
-// strings align position-for-position.
+// This leaf returns how many quote-insensitive occurrences of the needle a
+// literal replaceAll(actualOldString) would leave behind — the genuine
+// different-style siblings. The caller injects `normalize` (utils.ts owns
+// normalizeQuotes).
 //
-// The count is exact for a token that carries non-quote content: every extra
-// occurrence in the normalized string corresponds to a genuine different-style
-// sibling that the literal replaceAll skips. It is NOT reliable when the needle
-// is composed ENTIRELY of quote characters: `String.split` counts non-overlapping
-// pairs, and merging an adjacent run of differently-styled quotes under
-// normalization can manufacture phantom cross-boundary pairs (e.g. needle `""`
-// against a file region `“"""` over-counts, even though a real replaceAll leaves
-// nothing behind). A bare-quote-run is not a meaningful token to track across
-// quote styles anyway, and a realistic string-literal edit always carries
-// non-quote content — so skip such needles entirely (they fall back to the prior
-// behavior, never a spurious "under-replace" rejection).
+// It is computed by SIMULATING the real replace and recounting, NOT by a
+// split-count delta. A naive `normalizedCount - literalCount` over-counts
+// whenever normalized occurrences OVERLAP on a shared character: normalizing the
+// file can manufacture extra (overlapping) matches that a real, non-overlapping
+// replaceAll never leaves behind (e.g. needle `b"b` against `b“b"b“b’`, or any
+// all-quote needle like `""` against `“"""`). So instead: replace every literal
+// occurrence of actualOldString with a sentinel char that the normalized needle
+// cannot contain (so no remaining match can span a replaced region — exactly the
+// non-overlapping semantics of String.replaceAll), then count how many
+// normalized-needle occurrences survive. Those are real siblings the literal
+// replace skips.
 export function countMissedQuoteVariants(file, actualOldString, normalize) {
   if (!actualOldString) {
     return 0
   }
   const normalizedNeedle = normalize(actualOldString)
-  // All-quote-character needle → unreliable split-delta (see header). Skip.
-  if (normalizedNeedle.replace(/["']/g, '') === '') {
+  const sentinel = pickAbsentChar(normalizedNeedle)
+  // split/join replaces the literal matches exactly as replaceAll would (greedy,
+  // left-to-right, non-overlapping). The sentinel breaks any cross-boundary span.
+  const afterLiteralReplace = file.split(actualOldString).join(sentinel)
+  return countNonOverlapping(normalize(afterLiteralReplace), normalizedNeedle)
+}
+
+// Count non-overlapping occurrences of `needle` in `haystack`, mirroring how
+// String.prototype.replaceAll consumes matches (advance past each match).
+function countNonOverlapping(haystack, needle) {
+  if (!needle) {
     return 0
   }
-  const literal = file.split(actualOldString).length - 1
-  const normalized = normalize(file).split(normalizedNeedle).length - 1
-  return Math.max(0, normalized - literal)
+  let count = 0
+  let i = haystack.indexOf(needle)
+  while (i !== -1) {
+    count++
+    i = haystack.indexOf(needle, i + needle.length)
+  }
+  return count
+}
+
+// A single character guaranteed absent from `needle`, so a `needle` match can
+// never overlap it. `needle` is finite, so one of a few fixed low/PUA code
+// points (none of which are curly quotes, so `normalize` leaves them intact) is
+// absent; fall back to a scan in the pathological case. Built from char codes so
+// no literal control bytes appear in source.
+function pickAbsentChar(needle) {
+  const candidates = [0x0, 0x1, 0x2, 0xe000, 0xffff]
+  for (const code of candidates) {
+    const c = String.fromCharCode(code)
+    if (!needle.includes(c)) {
+      return c
+    }
+  }
+  let code = 0x3
+  while (needle.includes(String.fromCharCode(code))) {
+    code++
+  }
+  return String.fromCharCode(code)
 }

@@ -354,22 +354,24 @@ export const FileEditTool = buildTool({
     // behind — while the tool reports "All occurrences were successfully
     // replaced". Surface the mismatch instead of under-replacing: the model can
     // then edit each quote style separately or add context.
-    const missedQuoteVariants = countMissedQuoteVariants(
-      file,
-      actualOldString,
-      normalizeQuotes,
-    )
-    if (replace_all && missedQuoteVariants > 0) {
-      const total = matches + missedQuoteVariants
-      return {
-        result: false,
-        behavior: 'ask',
-        message: `Found ${total} occurrences of the string, but ${missedQuoteVariants} use a different quote style (straight vs. curly quotes) that replace_all would not touch — only ${matches} would be replaced, silently leaving the rest behind. Edit each quote style separately, or add context to uniquely identify the intended occurrence.\nString: ${old_string}`,
-        meta: {
-          isFilePathAbsolute: String(isAbsolute(file_path)),
-          actualOldString,
-        },
-        errorCode: 11,
+    if (replace_all) {
+      const missedQuoteVariants = countMissedQuoteVariants(
+        file,
+        actualOldString,
+        normalizeQuotes,
+      )
+      if (missedQuoteVariants > 0) {
+        const total = matches + missedQuoteVariants
+        return {
+          result: false,
+          behavior: 'ask',
+          message: `Found ${total} occurrences of the string, but ${missedQuoteVariants} use a different quote style (straight vs. curly quotes) that replace_all would not touch — only ${matches} would be replaced, silently leaving the rest behind. Edit each quote style separately, or add context to uniquely identify the intended occurrence.\nString: ${old_string}`,
+          meta: {
+            isFilePathAbsolute: String(isAbsolute(file_path)),
+            actualOldString,
+          },
+          errorCode: 11,
+        }
       }
     }
 
