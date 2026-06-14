@@ -53,6 +53,7 @@ import {
   saveWorktreeState,
 } from './sessionStorage.js'
 import { isTodoV2Enabled } from './tasks.js'
+import { collapseCompletedTodos } from './todo/completion.mjs'
 import type { TodoList } from './todo/types.js'
 import { TodoListSchema } from './todo/types.js'
 import type { ContentReplacementRecord } from './toolResultStorage.js'
@@ -87,7 +88,10 @@ function extractTodosFromTranscript(messages: Message[]): TodoList {
     const parsed = TodoListSchema().safeParse(
       (input as Record<string, unknown>).todos,
     )
-    return parsed.success ? parsed.data : []
+    // Mirror TodoWriteTool.call: a fully-completed list is collapsed to []
+    // (the live tool cleared its app-state list), so resuming the transcript
+    // does not resurrect a list the session had already finished and cleared.
+    return parsed.success ? collapseCompletedTodos(parsed.data) : []
   }
   return []
 }
