@@ -85,12 +85,20 @@ export function resolveDeepSeekConfig({
   const thinkingEnabled = normalizeDeepSeekThinking(thinkingType) !== 'disabled'
 
   return {
-    apiKey:
-      overrides.apiKey ??
-      env.DEEPSEEK_API_KEY ??
-      env.DEEPCODE_API_KEY ??
-      env.API_KEY ??
+    // firstNonEmpty (not ??): an empty-string key env var (e.g.
+    // `export DEEPSEEK_API_KEY=` in a wrapper, or an inherited-but-blanked CI
+    // var) is not nullish, so the old `??` chain stopped at '' and shadowed a
+    // valid /login key saved on disk — every request then went out with NO
+    // Authorization header (DeepSeek 401). The model/baseUrl siblings below
+    // already use firstNonEmpty for the same reason. Unset/valid env is
+    // byte-identical, and apiKey is a header, not part of the cached prefix.
+    apiKey: firstNonEmpty(
+      overrides.apiKey,
+      env.DEEPSEEK_API_KEY,
+      env.DEEPCODE_API_KEY,
+      env.API_KEY,
       file?.apiKey,
+    ),
     // firstNonEmpty (not ??): an empty-string env var (DEEPSEEK_MODEL="") must fall through
     // to the default, not become a broken model:''/baseUrl:'' in the request. Unset env →
     // the default, byte-identical to the old `?? ` chain (the cache-prefix default path).

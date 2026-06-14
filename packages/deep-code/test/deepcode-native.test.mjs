@@ -351,6 +351,36 @@ test('resolveDeepSeekConfig treats an EMPTY model/baseUrl env var as unset (fall
   assert.equal(defaults.baseUrl, 'https://api.deepseek.com')
 })
 
+test('resolveDeepSeekConfig treats an EMPTY apiKey env var as unset (does not shadow the saved key)', () => {
+  // An empty string is not nullish, so the old `?? ` chain stopped at
+  // DEEPSEEK_API_KEY='' and never consulted the /login key on disk — every
+  // request then went out unauthenticated (401). firstNonEmpty skips '' and
+  // falls through to the file key.
+  const withEmptyEnv = resolveDeepSeekConfig({
+    env: { DEEPSEEK_API_KEY: '' },
+    fileConfig: { apiKey: 'sk-valid-from-login' },
+  })
+  assert.equal(withEmptyEnv.apiKey, 'sk-valid-from-login')
+  // DEEPCODE_API_KEY / API_KEY empties likewise don't shadow the file key.
+  const withEmptyAliases = resolveDeepSeekConfig({
+    env: { DEEPSEEK_API_KEY: '', DEEPCODE_API_KEY: '', API_KEY: '' },
+    fileConfig: { apiKey: 'sk-valid-from-login' },
+  })
+  assert.equal(withEmptyAliases.apiKey, 'sk-valid-from-login')
+
+  // Byte-identical for the normal cases: a real env key wins, unset falls
+  // through to the file key, and all-unset yields undefined (no auth header).
+  assert.equal(
+    resolveDeepSeekConfig({ env: { DEEPSEEK_API_KEY: 'sk-env' }, fileConfig: { apiKey: 'sk-file' } }).apiKey,
+    'sk-env',
+  )
+  assert.equal(
+    resolveDeepSeekConfig({ env: {}, fileConfig: { apiKey: 'sk-file' } }).apiKey,
+    'sk-file',
+  )
+  assert.equal(resolveDeepSeekConfig({ env: {}, fileConfig: null }).apiKey, undefined)
+})
+
 test('parseDeepCodeArgs rejects an empty =-form flag value', () => {
   // `--model=` (empty) is never meaningful and previously slipped through as DEEPSEEK_MODEL=''
   assert.throws(() => parseDeepCodeArgs(['--model=']), /requires a value/)
