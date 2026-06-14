@@ -4854,6 +4854,120 @@ test('mapMessagesToDeepSeek drops dangling assistant tool_calls (resume/fork mid
   assertNoDangling(happy)
 })
 
+test('mapMessagesToDeepSeek keeps a tool_result adjacent to its assistant when a text sibling shares the user message', () => {
+  // A file-edit turn lands a tool_result AND a text sibling (a
+  // <system-reminder> "the file X was modified", a <collapsed> note, or a
+  // queued prompt) in the SAME user message. The synthesized user-text must go
+  // AFTER the tool message — a role:'tool' has to immediately follow the
+  // assistant tool_calls it answers, or DeepSeek/OpenAI 400s ("messages with
+  // role tool must be a response to a preceding message with tool_calls"), and
+  // because the message persists in the transcript every later turn re-400s.
+  const mapped = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', id: 'T1', name: 'edit', input: {} }] },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 'T1', content: 'edited' },
+          { type: 'text', text: '<system-reminder>the file was modified</system-reminder>' },
+        ],
+      },
+    },
+  ])
+  assert.deepEqual(
+    mapped.map(m => m.role),
+    ['assistant', 'tool', 'user'],
+    'the tool message must immediately follow the assistant tool_calls; user text goes after',
+  )
+  // Every role:'tool' is immediately preceded by the assistant tool_calls (or a
+  // sibling tool message) — never by a user message.
+  for (let i = 0; i < mapped.length; i++) {
+    if (mapped[i].role === 'tool') {
+      const prev = mapped[i - 1]
+      assert.ok(
+        prev && (prev.role === 'assistant' || prev.role === 'tool'),
+        'a tool message must not be preceded by a user message',
+      )
+    }
+  }
+  // The text sibling survives (after the tool result), not dropped.
+  assert.ok(
+    mapped.some(m => m.role === 'user' && m.content.includes('the file was modified')),
+    'the text sibling is preserved',
+  )
+
+  // Byte-identical for the unchanged shapes (cache moat): a text-only user
+  // message stays a single leading user message...
+  const textOnly = mapMessagesToDeepSeek([
+    { type: 'user', message: { content: [{ type: 'text', text: 'hello' }] } },
+  ])
+  assert.deepEqual(textOnly, [{ role: 'user', content: 'hello' }])
+  // ...and a tool_result-only message emits just the tool message (no user msg).
+  const toolOnly = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', id: 'Q', name: 'read', input: {} }] },
+    },
+    {
+      type: 'user',
+      message: { content: [{ type: 'tool_result', tool_use_id: 'Q', content: 'ok' }] },
+    },
+  ])
+  assert.deepEqual(
+    toolOnly.map(m => m.role),
+    ['assistant', 'tool'],
+    'a tool_result-only message produces no synthesized user message',
+  )
+
+  // A parallel-tool turn: several tool_results + a text sibling in one user
+  // message must emit every tool message first (each pairs a distinct
+  // assistant tool_call), then the user text → [assistant, tool, tool, user].
+  const multiTool = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'A', name: 'bash', input: {} },
+          { type: 'tool_use', id: 'B', name: 'read', input: {} },
+        ],
+      },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'tool_result', tool_use_id: 'A', content: 'a' },
+          { type: 'tool_result', tool_use_id: 'B', content: 'b' },
+          { type: 'text', text: 'note' },
+        ],
+      },
+    },
+  ])
+  assert.deepEqual(multiTool.map(m => m.role), ['assistant', 'tool', 'tool', 'user'])
+
+  // Block order in the source message is irrelevant: text BEFORE the tool_result
+  // still lands after the tool message on the wire (tool collected first).
+  const textFirst = mapMessagesToDeepSeek([
+    {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', id: 'C', name: 'edit', input: {} }] },
+    },
+    {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'text', text: 'leading note' },
+          { type: 'tool_result', tool_use_id: 'C', content: 'ok' },
+        ],
+      },
+    },
+  ])
+  assert.deepEqual(textFirst.map(m => m.role), ['assistant', 'tool', 'user'])
+})
+
 test('describeNonTextBlock returns a placeholder for image/document, null otherwise', () => {
   assert.equal(
     describeNonTextBlock({ type: 'image', source: { media_type: 'image/png' } }),
