@@ -58,3 +58,27 @@ test('mixed single-quote styles are detected too', () => {
   const file = `${LS}x${RS} 'x'`
   assert.equal(countMissedQuoteVariants(file, "'x'", normalize), 1)
 })
+
+// Reviewer repros: an ALL-quote-character needle must NOT spuriously fire. The
+// split-delta over-counts there (adjacent differently-styled quote runs merge
+// under normalization into phantom cross-boundary pairs), but a real replaceAll
+// leaves nothing behind. These needles carry no token content and are skipped.
+test('all-quote needle "" against a curly-glued run does not over-fire (B repro)', () => {
+  // `msg = “"""` → actualOldString '""', real replaceAll leaves no genuine '""'.
+  assert.equal(countMissedQuoteVariants(`msg = ${LD}"""`, '""', normalize), 0)
+})
+
+test('all-quote needle (single-quote variants glued) does not over-fire (A repro)', () => {
+  assert.equal(countMissedQuoteVariants(`''${LS}'`, `'${LS}`, normalize), 0)
+})
+
+test('a lone quote character needle is skipped (degenerate, not a token)', () => {
+  assert.equal(countMissedQuoteVariants(`a "b" ${LD}c${RD}`, '"', normalize), 0)
+  assert.equal(countMissedQuoteVariants(`${LD}${LD}"`, `${LD}`, normalize), 0)
+})
+
+test('a content-bearing needle that also contains quotes is still counted', () => {
+  // Non-quote content present → the split-delta is exact; the curly sibling counts.
+  const file = `${LD}a${RD} "a"`
+  assert.equal(countMissedQuoteVariants(file, '"a"', normalize), 1)
+})
