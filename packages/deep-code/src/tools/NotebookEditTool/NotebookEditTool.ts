@@ -232,10 +232,11 @@ export const NotebookEditTool = buildTool({
     if (getFileModificationTime(fullPath) > readTimestamp.timestamp) {
       // mtime is newer than the read, but a bare touch (cloud sync, antivirus,
       // a no-op formatter — common on Windows/OneDrive) bumps mtime without
-      // changing content. Mirror FileEditTool's content-equality fallback: if a
-      // full read's re-derived processed cells are byte-identical to what was
-      // read, the notebook is genuinely unchanged — proceed instead of forcing
-      // a needless re-read. Re-derive cellsJson exactly as FileReadTool did.
+      // changing content. Mirror FileEditTool's content-equality fallback: if the
+      // re-derived processed cells are byte-identical to what was read, the
+      // notebook is genuinely unchanged — proceed instead of forcing a needless
+      // re-read. Re-derive cellsJson exactly as FileReadTool did (a notebook read
+      // always captures every cell, so the stored content is full-fidelity).
       let unchanged = false
       try {
         const currentCellsJson = jsonStringify(await readNotebook(fullPath))

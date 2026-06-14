@@ -7,37 +7,66 @@ import { notebookUnchangedDespiteMtime } from '../src/tools/NotebookEditTool/not
 // — exactly how FileReadTool produced readState.content — and passes both here.
 // These tests lock in the pure decision that lets NotebookEditTool mirror
 // FileEditTool's content-equality fallback (a bare mtime bump is a false positive).
+//
+// Gate is `!isPartialView`, NOT offset/limit: a notebook read always captures the
+// whole notebook, so its stored content is full-fidelity even when the default
+// offset=1 was stored. Only an injected/partial view (isPartialView) is distrusted.
 
-const full = content => ({ content, offset: undefined, limit: undefined })
-
-test('full read with byte-identical cells → unchanged (mtime bump is a false positive)', () => {
-  assert.equal(notebookUnchangedDespiteMtime('[{"cell":1}]', full('[{"cell":1}]')), true)
+test('byte-identical cells → unchanged (mtime bump is a false positive)', () => {
+  assert.equal(
+    notebookUnchangedDespiteMtime('[{"cell":1}]', { content: '[{"cell":1}]' }),
+    true,
+  )
 })
 
-test('full read with differing cells → changed (a real external edit)', () => {
-  assert.equal(notebookUnchangedDespiteMtime('[{"cell":2}]', full('[{"cell":1}]')), false)
+test('a normal Read-originated state (offset=1) still engages — the whole point', () => {
+  // FileReadTool stores offset=1 for a notebook Read, but the content is the
+  // complete notebook. The fallback MUST trust it (this is the common
+  // Read→touch→edit case an offset===undefined gate would have wrongly skipped).
+  assert.equal(
+    notebookUnchangedDespiteMtime('[{"cell":1}]', {
+      content: '[{"cell":1}]',
+      offset: 1,
+      limit: undefined,
+    }),
+    true,
+  )
+})
+
+test('an Edit-originated state (offset=undefined) engages too', () => {
+  assert.equal(
+    notebookUnchangedDespiteMtime('[{"cell":1}]', {
+      content: '[{"cell":1}]',
+      offset: undefined,
+      limit: undefined,
+    }),
+    true,
+  )
+})
+
+test('differing cells → changed (a real external edit)', () => {
+  assert.equal(
+    notebookUnchangedDespiteMtime('[{"cell":2}]', { content: '[{"cell":1}]' }),
+    false,
+  )
 })
 
 test('a one-character difference is detected as changed', () => {
   assert.equal(
-    notebookUnchangedDespiteMtime('[{"source":"a"}]', full('[{"source":"b"}]')),
+    notebookUnchangedDespiteMtime('[{"source":"a"}]', { content: '[{"source":"b"}]' }),
     false,
   )
 })
 
-test('partial/ranged read is never trusted for content equality', () => {
-  // Even byte-identical, a ranged read's stored content is not the whole
-  // notebook, so it cannot prove the rest is unchanged — match FileEditTool.
+test('an injected/partial view (isPartialView) is never trusted', () => {
+  // Memory-file attachments whose content differs from disk are flagged
+  // isPartialView; the stored content isn't the on-disk notebook, so even a
+  // byte match must not let the edit through — mirror FileWriteTool.
   assert.equal(
-    notebookUnchangedDespiteMtime('X', { content: 'X', offset: 5, limit: undefined }),
-    false,
-  )
-  assert.equal(
-    notebookUnchangedDespiteMtime('X', { content: 'X', offset: undefined, limit: 10 }),
-    false,
-  )
-  assert.equal(
-    notebookUnchangedDespiteMtime('X', { content: 'X', offset: 0, limit: 100 }),
+    notebookUnchangedDespiteMtime('[{"cell":1}]', {
+      content: '[{"cell":1}]',
+      isPartialView: true,
+    }),
     false,
   )
 })
@@ -47,6 +76,6 @@ test('missing read state → not unchanged (fail safe)', () => {
   assert.equal(notebookUnchangedDespiteMtime('X', null), false)
 })
 
-test('degenerate equal empty contents compare equal (pure string identity, no special-casing)', () => {
-  assert.equal(notebookUnchangedDespiteMtime('', full('')), true)
+test('degenerate equal empty contents compare equal (pure string identity)', () => {
+  assert.equal(notebookUnchangedDespiteMtime('', { content: '' }), true)
 })
