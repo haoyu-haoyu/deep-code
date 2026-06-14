@@ -230,7 +230,17 @@ function mapClaudeCodeUserMessage(message) {
     }
   }
   if (textParts.length > 0) {
-    result.unshift({ role: 'user', content: textParts.join('\n') })
+    const userMsg = { role: 'user', content: textParts.join('\n') }
+    // If this user message also carried tool_result(s) — the only entries pushed
+    // onto `result` above — the synthesized user text must go AFTER the tool
+    // messages. Each role:'tool' has to immediately follow the assistant
+    // tool_calls it answers; an intervening user message breaks that adjacency
+    // and DeepSeek/OpenAI reject the whole request with a 400, which persists in
+    // the transcript and re-fails every subsequent turn (a permanent wedge).
+    // Text-only and tool_result-only messages keep their exact prior shape
+    // (result is empty so unshift==push, or there is no userMsg) — cache moat safe.
+    if (result.length > 0) result.push(userMsg)
+    else result.unshift(userMsg)
   }
   return result
 }
