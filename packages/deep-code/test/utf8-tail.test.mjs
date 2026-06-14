@@ -1,7 +1,24 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { trimTrailingPartialUtf8 } from '../src/utils/utf8Tail.mjs'
+import {
+  decodeUtf8AtBoundary,
+  trimTrailingPartialUtf8,
+} from '../src/utils/utf8Tail.mjs'
+
+test('getTaskOutput scenario: a tail cut mid-CJK-codepoint decodes without a leading U+FFFD', () => {
+  // Mirrors getTaskOutput: a >maxBytes file is tailed from `size - maxBytes`,
+  // which can land in the middle of a multibyte codepoint. Decoding the raw
+  // tail buffer must skip the partial head codepoint, not emit U+FFFD for it.
+  const full = Buffer.from('中文abc', 'utf8') // 中 = [0xE4,0xB8,0xAD]
+  // Tail starting 1 byte into 中 (offset 1) — buffer begins on continuation bytes.
+  const tail = full.subarray(1)
+  const decoded = decodeUtf8AtBoundary(tail, 0, tail.length)
+  assert.equal(decoded, '文abc') // 中 dropped cleanly
+  assert.ok(!decoded.includes('�'), 'no replacement char at the head')
+  // The naive decode (what the old tailFile did) WOULD corrupt the head.
+  assert.ok(tail.toString('utf8').includes('�'))
+})
 
 test('a complete codepoint at the boundary is not trimmed', () => {
   const buf = Buffer.from('a€', 'utf8') // 0x61, 0xE2 0x82 0xAC
