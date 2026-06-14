@@ -37,6 +37,38 @@ test('preserveQuoteStyle: code/JSON/CLI quotes the model newly wrote are NOT cur
   assert.doesNotThrow(() => JSON.parse(json.slice(json.indexOf('{'), json.indexOf('}') + 1)))
 })
 
+test('preserveQuoteStyle: a model-new quote that ALIGNS in the shared suffix is NOT curled', () => {
+  // Regression: the closing `"` of `--env="prod"` lands in the unchanged ` now`
+  // tail and positionally aligns with the file's curly closing quote — a naive
+  // prefix/suffix transplant curls it, re-introducing the broken-flag corruption.
+  // Condition (a) (the changed middle `--env="prod` contains a quote) blocks it.
+  assert.equal(
+    preserveQuoteStyle('run "x" now', 'run ' + LD + 'x' + RD + ' now', 'run --env="prod" now'),
+    'run --env="prod" now',
+  )
+  // Prefix-side variant: the model's new opening quote sits after the shared
+  // `a "` prefix and must not be curled.
+  assert.equal(
+    preserveQuoteStyle('a "x" mid', 'a ' + LD + 'x' + RD + ' mid', 'a "env" CHANGED'),
+    'a "env" CHANGED',
+  )
+})
+
+test('preserveQuoteStyle: a changed quote COUNT (added/removed quote) disables curling', () => {
+  // Removing a quote (`"hi"` -> `bye"`) leaves a dangling `"` that aligns in the
+  // suffix but is NOT a preserved file quote. Condition (b) (per-type quote
+  // count must match) blocks it.
+  assert.equal(
+    preserveQuoteStyle('say "hi"', 'say ' + LD + 'hi' + RD, 'say bye"'),
+    'say bye"',
+  )
+  // Adding a quote pair likewise disables curling (count mismatch).
+  assert.equal(
+    preserveQuoteStyle('x "1" y', 'x ' + LD + '1' + RD + ' y', 'x "1" "2" y'),
+    'x "1" "2" y',
+  )
+})
+
 test('preserveQuoteStyle: a preserved-context quote gets the file\'s exact curly glyph', () => {
   // The opening and closing quotes are both in the unchanged surrounding context
   // (only the inner word changes), so both take the file's left/right glyph.
