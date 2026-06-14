@@ -60,6 +60,38 @@ test('initActiveLocale resolves unknown signals to English', () => {
   )
 })
 
+test('resolveLocale treats an EMPTY LC_ALL as unset and consults LANG', () => {
+  // POSIX defines an empty LC_ALL as "not set"; `LC_ALL= LANG=...` (neutralize
+  // LC_ALL, keep LANG) is a common container/shell pattern. An empty LC_ALL
+  // must not shadow a valid LANG (the `??` chain used to yield '' → English).
+  assert.equal(
+    evalTs("resolveLocale({ env: { LC_ALL: '', LANG: 'ja_JP.UTF-8' } })"),
+    'ja',
+  )
+  assert.equal(
+    evalTs("resolveLocale({ env: { LC_ALL: '', LANG: 'zh_CN.UTF-8' } })"),
+    'zh-Hans',
+  )
+  // a non-empty LC_ALL still wins over LANG (unchanged precedence)
+  assert.equal(
+    evalTs("resolveLocale({ env: { LC_ALL: 'zh_CN.UTF-8', LANG: 'en_US.UTF-8' } })"),
+    'zh-Hans',
+  )
+})
+
+test('normalizeLocale strips the POSIX codeset/modifier before parsing the region', () => {
+  // 'zh_CN.UTF-8' is the standard Chinese LANG; the '.UTF-8' codeset previously
+  // corrupted the region to 'cn.utf' so it fell through to English.
+  assert.equal(evalTs("normalizeLocale('zh_CN.UTF-8')"), 'zh-Hans')
+  assert.equal(evalTs("normalizeLocale('zh_SG.UTF-8')"), 'zh-Hans')
+  assert.equal(evalTs("normalizeLocale('ja_JP.UTF-8')"), 'ja')
+  assert.equal(evalTs("normalizeLocale('de_DE@euro')"), 'en')
+  // unchanged: already-canonical codes, the POSIX 'C' locale, and empty input
+  assert.equal(evalTs("normalizeLocale('en')"), 'en')
+  assert.equal(evalTs("normalizeLocale('zh-Hans')"), 'zh-Hans')
+  assert.equal(evalTs("normalizeLocale('C')"), 'en')
+})
+
 test('/locale command is registered as a local-jsx UI command', () => {
   const meta = evalTs(
     "(() => ({ name: locale.name, type: locale.type, hasLoad: typeof locale.load === 'function', description: locale.description }))()",

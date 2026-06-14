@@ -1,3 +1,4 @@
+import { firstNonEmpty } from '../utils/configValue.mjs'
 import { DEFAULT_LOCALE, normalizeLocale } from './locales.js'
 import { EN_MESSAGES } from './messages/en.js'
 import { JA_MESSAGES } from './messages/ja.js'
@@ -29,8 +30,12 @@ export function resolveLocale(options: ResolveLocaleOptions = {}): Locale {
     options.override ??
       options.settingsLocale ??
       readSettingsLocale(options.settings) ??
-      options.env?.LC_ALL ??
-      options.env?.LANG ??
+      // firstNonEmpty (not ??): POSIX treats an EMPTY LC_ALL as "not set", and
+      // `LC_ALL= LANG=zh_CN.UTF-8` (neutralize LC_ALL, keep LANG) is a common
+      // container/shell pattern. `??` stops at the empty LC_ALL and yields '' →
+      // normalizeLocale('') = 'en', ignoring the user's LANG. Skip empty env
+      // locales so LANG (then systemLocale/Intl) is consulted.
+      firstNonEmpty(options.env?.LC_ALL, options.env?.LANG) ??
       options.systemLocale ??
       getResolvedIntlLocale(),
   )
