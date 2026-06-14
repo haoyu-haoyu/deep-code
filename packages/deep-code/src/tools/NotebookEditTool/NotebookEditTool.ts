@@ -13,12 +13,13 @@ import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { parseCellId } from '../../utils/notebook.js'
+import { parseCellId, readNotebook } from '../../utils/notebook.js'
 import { checkWritePermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { stripLeadingBom } from '../../utils/bom.mjs'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from './constants.js'
+import { notebookUnchangedDespiteMtime } from './notebookStaleness.mjs'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 import {
   getToolUseSummary,
@@ -229,11 +230,29 @@ export const NotebookEditTool = buildTool({
       }
     }
     if (getFileModificationTime(fullPath) > readTimestamp.timestamp) {
-      return {
-        result: false,
-        message:
-          'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
-        errorCode: 10,
+      // mtime is newer than the read, but a bare touch (cloud sync, antivirus,
+      // a no-op formatter — common on Windows/OneDrive) bumps mtime without
+      // changing content. Mirror FileEditTool's content-equality fallback: if the
+      // re-derived processed cells are byte-identical to what was read, the
+      // notebook is genuinely unchanged — proceed instead of forcing a needless
+      // re-read. Re-derive cellsJson exactly as FileReadTool did (a notebook read
+      // always captures every cell, so the stored content is full-fidelity).
+      let unchanged = false
+      try {
+        const currentCellsJson = jsonStringify(await readNotebook(fullPath))
+        unchanged = notebookUnchangedDespiteMtime(currentCellsJson, readTimestamp)
+      } catch {
+        // Can't re-derive (deleted/corrupt/unreadable since read) — treat as
+        // genuinely modified and fall through to the rejection below.
+        unchanged = false
+      }
+      if (!unchanged) {
+        return {
+          result: false,
+          message:
+            'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+          errorCode: 10,
+        }
       }
     }
 
