@@ -10,7 +10,11 @@ import {
 import { join } from 'path'
 import { getSessionId } from '../../bootstrap/state.js'
 import { getErrnoCode } from '../errors.js'
-import { readFileRange, tailFile } from '../fsOperations.js'
+import {
+  decodeUtf8AtBoundary,
+  readFileRange,
+  tailFileRaw,
+} from '../fsOperations.js'
 import { logError } from '../log.js'
 import { getProjectTempDir } from '../permissions/filesystem.js'
 
@@ -338,10 +342,14 @@ export async function getTaskOutput(
   maxBytes: number = DEFAULT_MAX_READ_BYTES,
 ): Promise<string> {
   try {
-    const { content, bytesTotal, bytesRead } = await tailFile(
+    // tailFileRaw + decodeUtf8AtBoundary (not tailFile) so a tail cut that
+    // lands mid-codepoint drops the partial head cleanly instead of emitting a
+    // leading U+FFFD — mirrors the polling path (taskOutputPoll.mjs).
+    const { buffer, bytesTotal, bytesRead } = await tailFileRaw(
       getTaskOutputPath(taskId),
       maxBytes,
     )
+    const content = decodeUtf8AtBoundary(buffer, 0, bytesRead)
     if (bytesTotal > bytesRead) {
       return `[${Math.round((bytesTotal - bytesRead) / 1024)}KB of earlier output omitted]\n${content}`
     }
