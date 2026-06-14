@@ -101,6 +101,7 @@ jobs:
             test/violation-feedback-tail.test.mjs \
             test/disk-shell-snapshot-cleanup.test.mjs \
             test/disk-snapshot-store-reclaim.test.mjs \
+            test/async-mutex.test.mjs \
             test/keychain-argv.test.mjs \
             test/worktree-lsfiles-args.test.mjs \
             test/settings-source-order.test.mjs \

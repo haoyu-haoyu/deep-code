@@ -63,6 +63,7 @@ import type {
 } from '../types/message.js'
 import type { QueueOperationMessage } from '../types/messageQueueTypes.js'
 import { uniq } from './array.js'
+import { createMutex } from './asyncMutex.mjs'
 import { registerCleanup } from './cleanupRegistry.js'
 import { updateSessionName } from './concurrentSessions.js'
 import { getCwd } from './cwd.js'
@@ -476,6 +477,10 @@ class Project {
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private activeDrain: Promise<void> | null = null
   private FLUSH_INTERVAL_MS = 100
+  // Serializes every operation that mutates the session file — queue-drain
+  // appends and removeMessageByUuid's read+truncate — so a tombstone's
+  // truncate can never straddle (and discard) a concurrent append.
+  private fileMutex = createMutex()
   private readonly MAX_CHUNK_BYTES = 100 * 1024 * 1024
 
   constructor() {}
@@ -553,7 +558,13 @@ class Project {
     }
   }
 
-  private async drainWriteQueue(): Promise<void> {
+  private drainWriteQueue(): Promise<void> {
+    // Hold the file mutex for the whole batch so removeMessageByUuid's truncate
+    // can't interleave with these appends (and silently discard one).
+    return this.fileMutex(() => this.drainWriteQueueInner())
+  }
+
+  private async drainWriteQueueInner(): Promise<void> {
     for (const [filePath, queue] of this.writeQueues) {
       if (queue.length === 0) {
         continue
@@ -780,85 +791,94 @@ class Project {
    * positional write + truncate instead of rewriting the whole file.
    */
   async removeMessageByUuid(targetUuid: UUID): Promise<void> {
-    return this.trackWrite(async () => {
-      if (this.sessionFile === null) return
+    // trackWrite (pendingWriteCount, seen by flush) stays OUTSIDE the mutex so a
+    // tombstone queued behind a drain is still counted as pending; fileMutex
+    // INSIDE makes the read+truncate atomic against drainWriteQueue's appends —
+    // a concurrent append can no longer land between our stat() and truncate()
+    // and be silently discarded by the truncate.
+    return this.trackWrite(() =>
+      this.fileMutex(() => this.removeMessageByUuidInner(targetUuid)),
+    )
+  }
+
+  private async removeMessageByUuidInner(targetUuid: UUID): Promise<void> {
+    if (this.sessionFile === null) return
+    try {
+      let fileSize = 0
+      const fh = await fsOpen(this.sessionFile, 'r+')
       try {
-        let fileSize = 0
-        const fh = await fsOpen(this.sessionFile, 'r+')
-        try {
-          const { size } = await fh.stat()
-          fileSize = size
-          if (size === 0) return
+        const { size } = await fh.stat()
+        fileSize = size
+        if (size === 0) return
 
-          const chunkLen = Math.min(size, LITE_READ_BUF_SIZE)
-          const tailStart = size - chunkLen
-          const buf = Buffer.allocUnsafe(chunkLen)
-          const { bytesRead } = await fh.read(buf, 0, chunkLen, tailStart)
-          const tail = buf.subarray(0, bytesRead)
+        const chunkLen = Math.min(size, LITE_READ_BUF_SIZE)
+        const tailStart = size - chunkLen
+        const buf = Buffer.allocUnsafe(chunkLen)
+        const { bytesRead } = await fh.read(buf, 0, chunkLen, tailStart)
+        const tail = buf.subarray(0, bytesRead)
 
-          // Entries are serialized via JSON.stringify (no key-value
-          // whitespace). Search for the full `"uuid":"..."` pattern, not
-          // just the bare UUID, so we do not match the same value sitting
-          // in `parentUuid` of a child entry. UUIDs are pure ASCII so a
-          // byte-level search is correct.
-          const needle = `"uuid":"${targetUuid}"`
-          const matchIdx = tail.lastIndexOf(needle)
+        // Entries are serialized via JSON.stringify (no key-value
+        // whitespace). Search for the full `"uuid":"..."` pattern, not
+        // just the bare UUID, so we do not match the same value sitting
+        // in `parentUuid` of a child entry. UUIDs are pure ASCII so a
+        // byte-level search is correct.
+        const needle = `"uuid":"${targetUuid}"`
+        const matchIdx = tail.lastIndexOf(needle)
 
-          if (matchIdx >= 0) {
-            // 0x0a never appears inside a UTF-8 multi-byte sequence, so
-            // byte-scanning for line boundaries is safe even if the chunk
-            // starts mid-character.
-            const prevNl = tail.lastIndexOf(0x0a, matchIdx)
-            // If the preceding newline is outside our chunk and we did not
-            // read from the start of the file, the line is longer than the
-            // window - fall through to the slow path.
-            if (prevNl >= 0 || tailStart === 0) {
-              const lineStart = prevNl + 1 // 0 when prevNl === -1
-              const nextNl = tail.indexOf(0x0a, matchIdx + needle.length)
-              const lineEnd = nextNl >= 0 ? nextNl + 1 : bytesRead
+        if (matchIdx >= 0) {
+          // 0x0a never appears inside a UTF-8 multi-byte sequence, so
+          // byte-scanning for line boundaries is safe even if the chunk
+          // starts mid-character.
+          const prevNl = tail.lastIndexOf(0x0a, matchIdx)
+          // If the preceding newline is outside our chunk and we did not
+          // read from the start of the file, the line is longer than the
+          // window - fall through to the slow path.
+          if (prevNl >= 0 || tailStart === 0) {
+            const lineStart = prevNl + 1 // 0 when prevNl === -1
+            const nextNl = tail.indexOf(0x0a, matchIdx + needle.length)
+            const lineEnd = nextNl >= 0 ? nextNl + 1 : bytesRead
 
-              const absLineStart = tailStart + lineStart
-              const afterLen = bytesRead - lineEnd
-              // Truncate first, then re-append the trailing lines. In the
-              // common case (target is the last entry) afterLen is 0 and
-              // this is a single ftruncate.
-              await fh.truncate(absLineStart)
-              if (afterLen > 0) {
-                await fh.write(tail, lineEnd, afterLen, absLineStart)
-              }
-              return
+            const absLineStart = tailStart + lineStart
+            const afterLen = bytesRead - lineEnd
+            // Truncate first, then re-append the trailing lines. In the
+            // common case (target is the last entry) afterLen is 0 and
+            // this is a single ftruncate.
+            await fh.truncate(absLineStart)
+            if (afterLen > 0) {
+              await fh.write(tail, lineEnd, afterLen, absLineStart)
             }
+            return
           }
-        } finally {
-          await fh.close()
         }
-
-        // Slow path: target was not in the last 64KB. Rare - requires many
-        // large entries to have landed between the write and the tombstone.
-        if (fileSize > MAX_TOMBSTONE_REWRITE_BYTES) {
-          logForDebugging(
-            `Skipping tombstone removal: session file too large (${formatFileSize(fileSize)})`,
-            { level: 'warn' },
-          )
-          return
-        }
-        const content = await readFile(this.sessionFile, { encoding: 'utf-8' })
-        const lines = content.split('\n').filter((line: string) => {
-          if (!line.trim()) return true
-          try {
-            const entry = jsonParse(line)
-            return entry.uuid !== targetUuid
-          } catch {
-            return true // Keep malformed lines
-          }
-        })
-        await writeFile(this.sessionFile, lines.join('\n'), {
-          encoding: 'utf8',
-        })
-      } catch {
-        // Silently ignore errors - the file might not exist yet
+      } finally {
+        await fh.close()
       }
-    })
+
+      // Slow path: target was not in the last 64KB. Rare - requires many
+      // large entries to have landed between the write and the tombstone.
+      if (fileSize > MAX_TOMBSTONE_REWRITE_BYTES) {
+        logForDebugging(
+          `Skipping tombstone removal: session file too large (${formatFileSize(fileSize)})`,
+          { level: 'warn' },
+        )
+        return
+      }
+      const content = await readFile(this.sessionFile, { encoding: 'utf-8' })
+      const lines = content.split('\n').filter((line: string) => {
+        if (!line.trim()) return true
+        try {
+          const entry = jsonParse(line)
+          return entry.uuid !== targetUuid
+        } catch {
+          return true // Keep malformed lines
+        }
+      })
+      await writeFile(this.sessionFile, lines.join('\n'), {
+        encoding: 'utf8',
+      })
+    } catch {
+      // Silently ignore errors - the file might not exist yet
+    }
   }
 
   /**
