@@ -21,17 +21,32 @@ export function encodeMessage(message) {
   return JSON.stringify(message) + '\n'
 }
 
+// Cap the buffered, un-terminated trailing line. ACP is newline-delimited, so a
+// partial line with no '\n' yet is returned as `rest` and prepended to the next
+// chunk by the caller. A peer that streams bytes without ever sending a newline
+// would grow that buffer without limit (OOM). 64 MiB (counted in decoded UTF-16
+// code units) is far above any legitimate single JSON-RPC message yet bounds the
+// memory a hostile or broken peer can force us to hold. Mirrors the LSP framing
+// cap (services/lsp/core.mjs).
+export const ACP_MAX_MESSAGE_BYTES = 64 * 1024 * 1024
+
 /**
  * Split accumulated stdin text into complete JSON-RPC messages, returning any
  * trailing partial line as `rest` to prepend to the next chunk. Malformed lines
  * are skipped (a hostile/garbled line must not wedge the stream).
  *
+ * `overflow` is true when the trailing partial line grew past `maxMessageBytes`
+ * with no newline terminator: it is discarded (rest reset to '') so the caller's
+ * buffer can't grow without bound, and the caller answers with a JSON-RPC parse
+ * error. The stream resyncs at the next newline.
+ *
  * @param {string} text
- * @returns {{ messages: any[], rest: string }}
+ * @param {number} [maxMessageBytes]
+ * @returns {{ messages: any[], rest: string, malformed: string[], overflow: boolean }}
  */
-export function parseJsonRpcChunk(text) {
+export function parseJsonRpcChunk(text, maxMessageBytes = ACP_MAX_MESSAGE_BYTES) {
   const parts = String(text).split('\n')
-  const rest = parts.pop() ?? ''
+  let rest = parts.pop() ?? ''
   const messages = []
   const malformed = []
   for (const line of parts) {
@@ -45,7 +60,15 @@ export function parseJsonRpcChunk(text) {
       malformed.push(trimmed)
     }
   }
-  return { messages, rest, malformed }
+  // Bound the un-terminated trailing line. Without a '\n' the caller prepends an
+  // ever-growing `rest` to the next chunk; past the cap, discard it and signal
+  // an overflow so the transport answers with a parse error instead of OOMing.
+  let overflow = false
+  if (rest.length > maxMessageBytes) {
+    overflow = true
+    rest = ''
+  }
+  return { messages, rest, malformed, overflow }
 }
 
 // --- ACP method helpers (pure) -------------------------------------------

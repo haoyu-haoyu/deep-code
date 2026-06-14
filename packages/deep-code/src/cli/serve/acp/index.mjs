@@ -6,6 +6,7 @@ import { StringDecoder } from 'node:string_decoder'
 import { createSessionRegistry } from '../sessions.mjs'
 import { acpAgentTurn } from './agentTurn.mjs'
 import {
+  ACP_MAX_MESSAGE_BYTES,
   createAcpServer,
   encodeMessage,
   mapRuntimeEventToAcp,
@@ -55,6 +56,9 @@ export function startAcpServer({
   // remains as the no-tools echo fallback.
   runTurn = acpAgentTurn,
   sessions = createSessionRegistry(),
+  // Framing cap for the buffered partial line; overridable for tests. A real
+  // instance uses the default (see ACP_MAX_MESSAGE_BYTES).
+  maxMessageBytes = ACP_MAX_MESSAGE_BYTES,
 } = {}) {
   const send = message => stdout.write(encodeMessage(message))
 
@@ -115,8 +119,14 @@ export function startAcpServer({
 
   const onData = chunk => {
     const text = Buffer.isBuffer(chunk) ? decoder.write(chunk) : String(chunk)
-    const { messages, rest, malformed } = parseJsonRpcChunk(leftover + text)
+    const { messages, rest, malformed, overflow } = parseJsonRpcChunk(leftover + text, maxMessageBytes)
     leftover = rest
+    if (overflow) {
+      // The peer streamed a single line past the framing cap with no newline
+      // terminator; the partial was discarded to bound memory. Answer with a
+      // parse error (the stream resyncs at the next newline) rather than OOMing.
+      send({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })
+    }
     for (let i = 0; i < malformed.length; i++) {
       send({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } })
     }
