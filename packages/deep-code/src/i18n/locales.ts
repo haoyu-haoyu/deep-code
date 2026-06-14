@@ -12,7 +12,12 @@ export function normalizeLocale(input: string | null | undefined): Locale {
   const raw = input?.trim()
   if (!raw) return DEFAULT_LOCALE
 
-  const canonical = raw.replace(/_/g, '-')
+  // POSIX locale strings carry a codeset and/or modifier suffix —
+  // 'zh_CN.UTF-8', 'de_DE@euro' — that must be stripped before parsing the
+  // language-region. Without this, 'zh_CN.UTF-8' splits to region 'cn.utf'
+  // (not in SIMPLIFIED_CHINESE_REGIONS) and falls through to 'en', so a user
+  // with the standard LANG=zh_CN.UTF-8 wrongly gets an English UI.
+  const canonical = raw.replace(/_/g, '-').split(/[.@]/)[0]!
   if (SUPPORTED_LOCALE_SET.has(canonical)) return canonical as Locale
 
   const lower = canonical.toLowerCase()
