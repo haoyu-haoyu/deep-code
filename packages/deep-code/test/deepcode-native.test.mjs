@@ -1200,6 +1200,43 @@ test('computeHighlightSpans splits text into ordered runs, marking case-insensit
   }
 })
 
+test('computeHighlightSpans aligns the highlight to the original text when toLowerCase changes length', () => {
+  // 'İ' (U+0130) lowercases to TWO code units ('i' + combining dot U+0307), so an
+  // index found in text.toLowerCase() is shifted relative to the original text.
+  // The highlighted run must still cover what the user sees ('bul'), not the
+  // index-drifted 'ul' the naive text.slice(idx, idx + query.length) produced.
+  assert.deepEqual(computeHighlightSpans('İstanbul', 'bul'), [
+    { text: 'İstan', highlighted: false },
+    { text: 'bul', highlighted: true },
+  ])
+  // A query that case-folds onto a length-changing source char highlights the
+  // WHOLE source code point (the 'i' fold came from 'İ').
+  assert.deepEqual(computeHighlightSpans('AİB', 'i'), [
+    { text: 'A', highlighted: false },
+    { text: 'İ', highlighted: true },
+    { text: 'B', highlighted: false },
+  ])
+  // Astral (surrogate-pair) code points are sliced on code-unit boundaries, so a
+  // match after one stays aligned and never splits the pair.
+  assert.deepEqual(computeHighlightSpans('😀abc', 'b'), [
+    { text: '😀a', highlighted: false },
+    { text: 'b', highlighted: true },
+    { text: 'c', highlighted: false },
+  ])
+  // Every case still reconstructs the original text verbatim and emits ordered,
+  // non-overlapping runs.
+  for (const [t, q] of [
+    ['İstanbul', 'bul'],
+    ['İİİ', 'i'],
+    ['AİB', 'i'],
+    ['Σίσυφος', 'σ'],
+    ['😀x😀x', 'x'],
+  ]) {
+    const spans = computeHighlightSpans(t, q)
+    assert.equal(spans.map(s => s.text).join(''), t)
+  }
+})
+
 test('parseAtMentionedFileLines normalizes an inverted #L range instead of a blank attachment', () => {
   assert.deepEqual(parseAtMentionedFileLines('file.txt#L10-20'), {
     filename: 'file.txt',
