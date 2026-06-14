@@ -50,11 +50,18 @@ function countNonOverlapping(haystack, needle) {
   return count
 }
 
-// A single character guaranteed absent from `needle`, so a `needle` match can
-// never overlap it. `needle` is finite, so one of a few fixed low/PUA code
-// points (none of which are curly quotes, so `normalize` leaves them intact) is
-// absent; fall back to a scan in the pathological case. Built from char codes so
-// no literal control bytes appear in source.
+// Return a single character that is absent from `needle` AND maps to itself
+// under `normalize`. Both properties matter: the sentinel must be absent so no
+// surviving needle match can span a replaced region, AND it must be
+// normalize-stable so that after `normalize(afterLiteralReplace)` it still can't
+// participate in a match (a curly-quote sentinel would normalize to ' or " and
+// could fabricate one). `needle` is finite, so such a character always exists.
+//
+// The fixed candidates are non-curly low/PUA code points. The fallback scans with
+// String.fromCodePoint — which, unlike fromCharCode, never wraps at 0x10000 (so
+// it can't loop forever) — and skips lone surrogates and the curly quotes
+// U+2018–U+201D that `normalize` rewrites. Built from char codes so no literal
+// control bytes appear in source.
 function pickAbsentChar(needle) {
   const candidates = [0x0, 0x1, 0x2, 0xe000, 0xffff]
   for (const code of candidates) {
@@ -63,9 +70,19 @@ function pickAbsentChar(needle) {
       return c
     }
   }
-  let code = 0x3
-  while (needle.includes(String.fromCharCode(code))) {
-    code++
+  for (let code = 0x3; code <= 0x10ffff; code++) {
+    if (code >= 0xd800 && code <= 0xdfff) {
+      continue // lone surrogate — not a usable standalone sentinel
+    }
+    if (code >= 0x2018 && code <= 0x201d) {
+      continue // curly quotes: normalize rewrites these, breaking stability
+    }
+    const c = String.fromCodePoint(code)
+    if (!needle.includes(c)) {
+      return c
+    }
   }
-  return String.fromCharCode(code)
+  // Unreachable: a finite needle cannot contain every code point. Return a
+  // non-curly PUA char rather than nothing if somehow reached.
+  return String.fromCharCode(0xe001)
 }

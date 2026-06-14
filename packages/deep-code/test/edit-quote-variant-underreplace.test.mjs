@@ -98,3 +98,18 @@ test('overlapping siblings are counted NON-overlapping, like a real replaceAll',
   // missed, not two. (Counting overlaps would wrongly report 2.)
   assert.equal(countMissedQuoteVariants(`${LD}${RD}${LD}`, '""', normalize), 1)
 })
+
+test('sentinel fallback (needle holds every fixed candidate) terminates and is correct', () => {
+  // A needle containing all 5 fixed sentinel candidates {0,1,2,0xE000,0xFFFF}
+  // forces pickAbsentChar's scan fallback. It must terminate (fromCodePoint, no
+  // wrap) and pick a normalize-stable absent char — a correct count, not a hang.
+  // Built via fromCharCode so no literal control bytes appear in source.
+  const allCandidates = String.fromCharCode(0x0, 0x1, 0x2, 0xe000, 0xffff)
+  const weird = `${allCandidates}Z`
+  // weird appears twice literally and has no quote-variant sibling → 0.
+  assert.equal(countMissedQuoteVariants(`${weird} ${weird}`, weird, normalize), 0)
+  // weird wrapping a curly-vs-straight token still counts the real sibling.
+  const needle = `${weird}"q"${weird}`
+  const sibling = `${weird}${LD}q${RD}${weird}`
+  assert.equal(countMissedQuoteVariants(`${needle} and ${sibling}`, needle, normalize), 1)
+})
