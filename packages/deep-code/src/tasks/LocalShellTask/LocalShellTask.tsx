@@ -7,7 +7,10 @@ import type { LocalShellSpawnInput, SetAppState, Task, TaskContext, TaskHandle }
 import { createTaskStateBase } from '../../Task.js';
 import type { AgentId } from '../../types/ids.js';
 import { registerCleanup } from '../../utils/cleanupRegistry.js';
-import { tailFile } from '../../utils/fsOperations.js';
+import {
+  decodeUtf8AtBoundary,
+  tailFileRaw,
+} from '../../utils/fsOperations.js';
 import { logError } from '../../utils/log.js';
 import { enqueuePendingNotification } from '../../utils/messageQueueManager.js';
 import type { ShellCommand } from '../../utils/ShellCommand.js';
@@ -57,9 +60,13 @@ function startStallWatchdog(taskId: string, description: string, kind: BashTaskK
         return;
       }
       if (Date.now() - lastGrowth < STALL_THRESHOLD_MS) return;
-      void tailFile(outputPath, STALL_TAIL_BYTES).then(({
-        content
+      void tailFileRaw(outputPath, STALL_TAIL_BYTES).then(({
+        buffer,
+        bytesRead
       }) => {
+        // Decode at the UTF-8 boundary so a mid-codepoint tail cut drops the
+        // partial head cleanly (no leading U+FFFD) before looksLikePrompt.
+        const content = decodeUtf8AtBoundary(buffer, 0, bytesRead);
         if (cancelled) return;
         if (!looksLikePrompt(content)) {
           // Not a prompt — keep watching. Reset so the next check is

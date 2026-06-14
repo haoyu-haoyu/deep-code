@@ -8,7 +8,10 @@ import { Box, Text } from '../../ink.js';
 import { useKeybindings } from '../../keybindings/useKeybinding.js';
 import type { LocalShellTaskState } from '../../tasks/LocalShellTask/guards.js';
 import { formatDuration, formatFileSize, truncateToWidth } from '../../utils/format.js';
-import { tailFile } from '../../utils/fsOperations.js';
+import {
+  decodeUtf8AtBoundary,
+  tailFileRaw,
+} from '../../utils/fsOperations.js';
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
 import { Byline } from '../design-system/Byline.js';
 import { Dialog } from '../design-system/Dialog.js';
@@ -34,9 +37,12 @@ type TaskOutputResult = {
 async function getTaskOutput(shell: DeepImmutable<LocalShellTaskState>): Promise<TaskOutputResult> {
   const path = getTaskOutputPath(shell.id);
   try {
-    const result = await tailFile(path, SHELL_DETAIL_TAIL_BYTES);
+    // tailFileRaw + decodeUtf8AtBoundary (not tailFile) so a tail cut that
+    // lands mid-codepoint drops the partial head cleanly instead of showing a
+    // leading U+FFFD in the dialog — same fix as getTaskOutput (diskOutput.ts).
+    const result = await tailFileRaw(path, SHELL_DETAIL_TAIL_BYTES);
     return {
-      content: result.content,
+      content: decodeUtf8AtBoundary(result.buffer, 0, result.bytesRead),
       bytesTotal: result.bytesTotal
     };
   } catch {
