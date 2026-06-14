@@ -72,9 +72,14 @@ export function tokenCountFromLastAPIResponse(messages: Message[]): number {
  * the pre-compact final window, not billing spend. See monorepo
  * api/api/sampling/prompt/renderer.py:292 for the server-side computation.
  *
- * Falls back to top-level input_tokens + output_tokens when iterations is
- * absent (no server-side tool loops, so top-level usage IS the final window).
- * Both paths exclude cache tokens to match #304930's formula.
+ * Falls back to the top-level usage when iterations is absent (no server-side
+ * tool loops, so top-level usage IS the final window). The iterations path keeps
+ * #304930's non-cache `input + output` (per-iteration usage carries no cache
+ * fields). The top-level path uses the full cache-aware window
+ * (getTokenCountFromUsage): input_tokens is the UNCACHED remainder now (see
+ * usageInputRemainder.mjs), and the cached prompt still occupies the context
+ * window, so the budget must count it — this preserves the prior DeepSeek
+ * behavior, where input_tokens was the full prompt and so already included it.
  */
 export function finalContextTokensFromLastResponse(
   messages: Message[],
@@ -98,13 +103,16 @@ export function finalContextTokensFromLastResponse(
         return last.input_tokens + last.output_tokens
       }
       // No iterations → no server tool loop → top-level usage IS the final
-      // window. Match the iterations path's formula (input + output, no cache)
-      // rather than getTokenCountFromUsage — #304930 defines final window as
-      // non-cache input + output. Whether the server's budget countdown
-      // (renderer.py:292 calculate_context_tokens) counts cache the same way
-      // is an open question; aligning with the iterations path keeps the two
-      // branches consistent until that's resolved.
-      return usage.input_tokens + usage.output_tokens
+      // window. Use the full cache-aware sum: input_tokens is now the UNCACHED
+      // remainder (Anthropic contract — see usageInputRemainder.mjs), so the
+      // true window is input + cache_creation + cache_read + output. The old
+      // `input + output` here was a workaround for getTokenCountFromUsage
+      // double-counting the cached prompt (input used to be the FULL prompt);
+      // now that the mapper is contract-correct, that workaround would undercount
+      // (output-only for a fully-cached DeepSeek turn), so route through
+      // getTokenCountFromUsage. (The iterations branch above keeps input+output:
+      // per-iteration usage objects carry no cache fields to add.)
+      return getTokenCountFromUsage(usage)
     }
     i--
   }
