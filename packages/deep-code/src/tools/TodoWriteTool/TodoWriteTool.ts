@@ -5,6 +5,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../utils/featureFlags.js
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { isTodoV2Enabled } from '../../utils/tasks.js'
+import { allTodosCompleted } from '../../utils/todo/completion.mjs'
 import { TodoListSchema } from '../../utils/todo/types.js'
 import { VERIFICATION_AGENT_TYPE } from '../AgentTool/constants.js'
 import { TODO_WRITE_TOOL_NAME } from './constants.js'
@@ -66,7 +67,7 @@ export const TodoWriteTool = buildTool({
     const appState = context.getAppState()
     const todoKey = context.agentId ?? getSessionId()
     const oldTodos = appState.todos[todoKey] ?? []
-    const allDone = todos.every(_ => _.status === 'completed')
+    const allDone = allTodosCompleted(todos)
     const newTodos = allDone ? [] : todos
 
     // Structural nudge: if the main-thread agent is closing out a 3+ item
