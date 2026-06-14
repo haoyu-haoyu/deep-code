@@ -13,6 +13,7 @@ import {
   sep,
 } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
+import { ensureLeadingBom } from './bom.mjs'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
 import { getCwd } from '../utils/cwd.js'
 import { logForDebugging } from './debug.js'
@@ -92,6 +93,17 @@ export function writeTextContent(
     // Normalize any existing CRLF to LF first so a new_string that already
     // contains \r\n (raw model output) doesn't become \r\r\n after the join.
     toWrite = content.replaceAll('\r\n', '\n').split('\n').join('\r\n')
+  }
+
+  // A UTF-16LE file is auto-detected on the next read solely by its leading BOM
+  // bytes (FF FE), and Node's utf16le encoder does not emit them. Re-add the
+  // marker so an overwritten UTF-16LE file stays UTF-16LE rather than being
+  // re-detected as UTF-8 and decoded into interleaved-null garbage. Idempotent:
+  // content carried over from a read (FileEditTool) already begins with the BOM,
+  // so this is a no-op there and only restores it for a full replacement
+  // (FileWriteTool) whose model-supplied content has none.
+  if (encoding === 'utf16le') {
+    toWrite = ensureLeadingBom(toWrite)
   }
 
   writeFileSyncAndFlush_DEPRECATED(filePath, toWrite, { encoding })

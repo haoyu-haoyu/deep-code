@@ -27,6 +27,7 @@ import {
   fileHistoryEnabled,
   fileHistoryTrackEdit,
 } from '../../utils/fileHistory.js'
+import { stripLeadingBom } from '../../utils/bom.mjs'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import {
   type LineEndingType,
@@ -293,7 +294,13 @@ export const FileEditTool = buildTool({
         const isFullRead =
           readTimestamp.offset === undefined &&
           readTimestamp.limit === undefined
-        if (isFullRead && fileContent === readTimestamp.content) {
+        // Normalize a leading BOM on both sides: this fileContent keeps it
+        // (readFileBytes.toString) while readFileState.content was stripped by
+        // the range reader, so an unmodified BOM file must not read as changed.
+        if (
+          isFullRead &&
+          stripLeadingBom(fileContent) === stripLeadingBom(readTimestamp.content)
+        ) {
           // Content unchanged, safe to proceed
         } else {
           return {
@@ -456,8 +463,12 @@ export const FileEditTool = buildTool({
           lastRead &&
           lastRead.offset === undefined &&
           lastRead.limit === undefined
+        // originalFileContents (readFileSyncWithMetadata) keeps a leading BOM;
+        // lastRead.content (range reader) stripped it. Normalize both so an
+        // unmodified BOM file isn't falsely flagged FILE_UNEXPECTEDLY_MODIFIED.
         const contentUnchanged =
-          isFullRead && originalFileContents === lastRead.content
+          isFullRead &&
+          stripLeadingBom(originalFileContents) === stripLeadingBom(lastRead.content)
         if (!contentUnchanged) {
           throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
         }

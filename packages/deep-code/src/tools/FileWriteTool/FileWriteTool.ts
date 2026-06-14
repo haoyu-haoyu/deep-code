@@ -15,6 +15,7 @@ import type { ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
 import { countLinesChanged, getPatchForDisplay } from '../../utils/diff.js'
+import { stripLeadingBom } from '../../utils/bom.mjs'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
@@ -284,8 +285,14 @@ export const FileWriteTool = buildTool({
           lastRead &&
           lastRead.offset === undefined &&
           lastRead.limit === undefined
-        // meta.content is CRLF-normalized — matches readFileState's normalized form.
-        if (!isFullRead || meta.content !== lastRead.content) {
+        // meta.content is CRLF-normalized — matches readFileState's normalized
+        // form. Normalize a leading BOM on both sides too: meta.content
+        // (readFileSyncWithMetadata) keeps it while readFileState.content (range
+        // reader) stripped it, so an unmodified BOM file isn't falsely flagged.
+        if (
+          !isFullRead ||
+          stripLeadingBom(meta.content) !== stripLeadingBom(lastRead.content)
+        ) {
           throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
         }
       }

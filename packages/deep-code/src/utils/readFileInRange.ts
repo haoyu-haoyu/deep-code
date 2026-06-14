@@ -39,6 +39,7 @@
 
 import { createReadStream, fstat } from 'fs'
 import { stat as fsStat, readFile } from 'fs/promises'
+import { stripLeadingBom } from './bom.mjs'
 import { formatFileSize } from './format.js'
 
 const FAST_PATH_MAX_SIZE = 10 * 1024 * 1024 // 10 MB
@@ -134,8 +135,9 @@ function readFileInRangeFast(
 ): ReadFileRangeResult {
   const endLine = maxLines !== undefined ? offset + maxLines : Infinity
 
-  // Strip BOM.
-  const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
+  // Strip BOM (shared with the staleness-comparison normalization in
+  // FileEditTool/FileWriteTool so both agree on what the BOM is).
+  const text = stripLeadingBom(raw)
 
   // Split lines, strip \r, select range.
   const selectedLines: string[] = []
@@ -224,9 +226,7 @@ function streamOnOpen(this: StreamState, fd: number): void {
 function streamOnData(this: StreamState, chunk: string): void {
   if (this.isFirstChunk) {
     this.isFirstChunk = false
-    if (chunk.charCodeAt(0) === 0xfeff) {
-      chunk = chunk.slice(1)
-    }
+    chunk = stripLeadingBom(chunk)
   }
 
   this.totalBytesRead += Buffer.byteLength(chunk)
