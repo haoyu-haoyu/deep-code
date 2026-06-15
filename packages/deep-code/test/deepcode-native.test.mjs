@@ -3662,7 +3662,8 @@ test('createDeepSeekCallModel forwards query runtime controls to DeepSeek provid
   }
 
   assert.equal(requests[0].model, process.env.DEEPSEEK_MODEL ?? process.env.DEEPCODE_MODEL)
-  assert.equal(requests[0].reasoningEffort, 'max')
+  // xhigh is forwarded faithfully (was previously collapsed to 'max').
+  assert.equal(requests[0].reasoningEffort, 'xhigh')
   assert.equal(requests[0].signal, controller.signal)
   assert.equal(requests[0].fetch, fetchOverride)
 })
@@ -3799,13 +3800,19 @@ test('resolveDeepSeekRuntimeModel avoids forwarding Claude model names to DeepSe
   }
 })
 
-test('resolveDeepSeekReasoningEffort maps Claude Code effort levels to DeepSeek', () => {
-  assert.equal(resolveDeepSeekReasoningEffort('low'), 'high')
-  assert.equal(resolveDeepSeekReasoningEffort('medium'), 'high')
+test('resolveDeepSeekReasoningEffort passes the server effort ladder through faithfully', () => {
+  // The deepseek-v4 API accepts a graded enum {low,medium,high,max,xhigh} (probe-
+  // confirmed); the prior {high,max} collapse silently upgraded low/medium and
+  // downgraded xhigh (the deepest tier). Each tier now reaches the server as-is.
+  assert.equal(resolveDeepSeekReasoningEffort('low'), 'low')
+  assert.equal(resolveDeepSeekReasoningEffort('medium'), 'medium')
   assert.equal(resolveDeepSeekReasoningEffort('high'), 'high')
   assert.equal(resolveDeepSeekReasoningEffort('max'), 'max')
-  assert.equal(resolveDeepSeekReasoningEffort('xhigh'), 'max')
+  assert.equal(resolveDeepSeekReasoningEffort('xhigh'), 'xhigh')
+  // unset stays undefined so resolveDeepSeekConfig's ?? chain falls through;
+  // unrecognized values still fall back to 'high'.
   assert.equal(resolveDeepSeekReasoningEffort(undefined), undefined)
+  assert.equal(resolveDeepSeekReasoningEffort('bogus'), 'high')
 })
 
 test('createDeepSeekDoctorReport validates DeepSeek-native request shape offline', async () => {
