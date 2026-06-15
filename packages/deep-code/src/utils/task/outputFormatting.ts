@@ -1,5 +1,6 @@
 import { validateBoundedIntEnvVar } from '../envValidation.js'
 import { getTaskOutputPath } from './diskOutput.js'
+import { truncateTaskOutput } from './taskOutputTruncate.mjs'
 
 export const TASK_MAX_OUTPUT_UPPER_LIMIT = 160_000
 export const TASK_MAX_OUTPUT_DEFAULT = 32_000
@@ -31,8 +32,5 @@ export function formatTaskOutput(
 
   const filePath = getTaskOutputPath(taskId)
   const header = `[Truncated. Full output: ${filePath}]\n\n`
-  const availableSpace = maxLen - header.length
-  const truncated = output.slice(-availableSpace)
-
-  return { content: header + truncated, wasTruncated: true }
+  return truncateTaskOutput(output, maxLen, header)
 }
