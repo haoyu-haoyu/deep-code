@@ -117,6 +117,7 @@ jobs:
             test/filesuggestions-ignore.test.mjs \
             test/mcp-env-default-split.test.mjs \
             test/mcp-result-persistid.test.mjs \
+            test/mcp-error-text.test.mjs \
             test/preserve-quote-style.test.mjs \
             test/notebook-staleness.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \
