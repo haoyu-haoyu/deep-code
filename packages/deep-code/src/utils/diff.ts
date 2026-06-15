@@ -4,6 +4,7 @@ import { getLocCounter } from '../bootstrap/state.js'
 import { addToTotalLinesChanged } from '../cost-tracker.js'
 import type { FileEdit } from '../tools/FileEditTool/types.js'
 import { count } from './array.js'
+import { escapeForDiff, unescapeFromDiff } from './escapeForDiff.mjs'
 import { convertLeadingTabsToSpaces } from './file.js'
 
 export const CONTEXT_LINES = 3
@@ -24,20 +25,6 @@ export function adjustHunkLineNumbers(
     oldStart: h.oldStart + offset,
     newStart: h.newStart + offset,
   }))
-}
-
-// For some reason, & confuses the diff library, so we replace it with a token,
-// then substitute it back in after the diff is computed.
-const AMPERSAND_TOKEN = '<<:AMPERSAND_TOKEN:>>'
-
-const DOLLAR_TOKEN = '<<:DOLLAR_TOKEN:>>'
-
-function escapeForDiff(s: string): string {
-  return s.replaceAll('&', AMPERSAND_TOKEN).replaceAll('$', DOLLAR_TOKEN)
-}
-
-function unescapeFromDiff(s: string): string {
-  return s.replaceAll(AMPERSAND_TOKEN, '&').replaceAll(DOLLAR_TOKEN, '$')
 }
 
 /**
