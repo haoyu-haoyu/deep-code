@@ -61,6 +61,7 @@ import {
   parseSlashCommandToolsFromFrontmatter,
 } from '../utils/markdownConfigLoader.js'
 import { parseUserSpecifiedModel } from '../utils/model/model.js'
+import { resolveFrontmatterModel } from '../utils/frontmatterModel.mjs'
 import { executeShellCommandsInPrompt } from '../utils/promptShellExecution.js'
 import type { SettingSource } from '../utils/settings/constants.js'
 import { isSettingSourceEnabled } from '../utils/settings/constants.js'
@@ -255,12 +256,9 @@ export function parseSkillFrontmatterFields(
       ? true
       : parseBooleanFrontmatter(frontmatter['user-invocable'])
 
+  const modelStr = resolveFrontmatterModel(frontmatter.model)
   const model =
-    frontmatter.model === 'inherit'
-      ? undefined
-      : frontmatter.model
-        ? parseUserSpecifiedModel(frontmatter.model as string)
-        : undefined
+    modelStr === undefined ? undefined : parseUserSpecifiedModel(modelStr)
 
   const effortRaw = frontmatter['effort']
   const effort =

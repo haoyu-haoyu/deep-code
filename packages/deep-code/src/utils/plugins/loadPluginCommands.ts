@@ -26,6 +26,7 @@ import {
   parseSlashCommandToolsFromFrontmatter,
 } from '../markdownConfigLoader.js'
 import { parseUserSpecifiedModel } from '../model/model.js'
+import { resolveFrontmatterModel } from '../frontmatterModel.mjs'
 import { executeShellCommandsInPrompt } from '../promptShellExecution.js'
 import { loadAllPluginsCacheOnly } from './pluginLoader.js'
 import {
@@ -265,12 +266,9 @@ function createPluginCommand(
     const displayName = frontmatter.name as string | undefined
 
     // Handle model configuration, resolving aliases like 'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'
+    const modelStr = resolveFrontmatterModel(frontmatter.model)
     const model =
-      frontmatter.model === 'inherit'
-        ? undefined
-        : frontmatter.model
-          ? parseUserSpecifiedModel(frontmatter.model as string)
-          : undefined
+      modelStr === undefined ? undefined : parseUserSpecifiedModel(modelStr)
 
     const effortRaw = frontmatter['effort']
     const effort =
