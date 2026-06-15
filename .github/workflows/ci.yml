@@ -62,6 +62,7 @@ jobs:
             test/usage-input-remainder.test.mjs \
             test/p2-3-cache.test.mjs \
             test/p2-3-cache-sim.test.mjs \
+            test/dsh-schema-hint-stable.test.mjs \
             test/p2-4-snapshot.test.mjs \
             test/p2-5-lsp.test.mjs \
             test/p2-6-serve.test.mjs \
