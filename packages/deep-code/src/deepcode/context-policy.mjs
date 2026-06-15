@@ -109,8 +109,16 @@ export function isDeepSeekV4Model(model) {
 }
 
 function resolveContextWindowTokens({ env, model }) {
+  // Honor the legacy CLAUDE_CODE_ alias too. getContextWindowForModel
+  // (utils/context.ts) clamps the runtime window with all three prefixes, so
+  // without it this policy — which drives /status, the welcome banner, and
+  // supportsOneMillionContext — would report 1M while the actual window is
+  // capped. Mirrors isDeepCode1mContextDisabled's DEEPCODE_/DEEPSEEK_/CLAUDE_CODE_
+  // chain.
   const override = parsePositiveInteger(
-    env.DEEPCODE_MAX_CONTEXT_TOKENS ?? env.DEEPSEEK_MAX_CONTEXT_TOKENS,
+    env.DEEPCODE_MAX_CONTEXT_TOKENS ??
+      env.DEEPSEEK_MAX_CONTEXT_TOKENS ??
+      env.CLAUDE_CODE_MAX_CONTEXT_TOKENS,
   )
   if (override) return override
 
