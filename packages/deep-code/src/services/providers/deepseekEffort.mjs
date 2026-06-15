@@ -26,6 +26,25 @@ export const DEEPSEEK_REASONING_EFFORTS = Object.freeze([
 const DEEPSEEK_EFFORT_SET = new Set(DEEPSEEK_REASONING_EFFORTS)
 
 /**
+ * Resolve the starting index for a reasoning-effort picker whose options are
+ * `efforts`, given the session's current effort. Falls back to `fallback`'s
+ * index (default 'max') when the current value isn't an offered option — and to
+ * 0 if even the fallback isn't present — so a corrupt/unknown config never lands
+ * the picker on an unintended (e.g. the deepest) tier.
+ * @param {readonly string[]} efforts
+ * @param {unknown} current
+ * @param {string} [fallback]
+ * @returns {number}
+ */
+export function resolveEffortPickerIndex(efforts, current, fallback = 'max') {
+  const normalized = current == null ? '' : String(current).toLowerCase()
+  const i = efforts.indexOf(normalized)
+  if (i !== -1) return i
+  const f = efforts.indexOf(fallback)
+  return f !== -1 ? f : 0
+}
+
+/**
  * Coerce an arbitrary requested effort to a server-valid tier.
  * @param {unknown} value
  * @param {{ unset?: string | undefined, fallback?: string }} [opts]

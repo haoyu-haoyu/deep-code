@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   coerceDeepSeekEffort,
   DEEPSEEK_REASONING_EFFORTS,
+  resolveEffortPickerIndex,
 } from '../src/services/providers/deepseekEffort.mjs'
 
 // Reconstructions of the TWO old collapse functions (deepseek.mjs normalizeDeepSeekEffort
@@ -28,6 +29,26 @@ const newResolve = v => coerceDeepSeekEffort(v, { unset: undefined, fallback: 'h
 
 test('the server enum is the 5 probe-confirmed tiers', () => {
   assert.deepEqual([...DEEPSEEK_REASONING_EFFORTS], ['low', 'medium', 'high', 'max', 'xhigh'])
+})
+
+test('resolveEffortPickerIndex: current tier maps to its index across the full ladder', () => {
+  const efforts = DEEPSEEK_REASONING_EFFORTS
+  assert.equal(resolveEffortPickerIndex(efforts, 'low'), 0)
+  assert.equal(resolveEffortPickerIndex(efforts, 'medium'), 1)
+  assert.equal(resolveEffortPickerIndex(efforts, 'high'), 2)
+  assert.equal(resolveEffortPickerIndex(efforts, 'max'), 3)
+  assert.equal(resolveEffortPickerIndex(efforts, 'xhigh'), 4)
+  assert.equal(resolveEffortPickerIndex(efforts, 'MAX'), 3, 'case-insensitive')
+})
+
+test('resolveEffortPickerIndex: unknown/unset falls back to the max index, never the deepest tier', () => {
+  const efforts = DEEPSEEK_REASONING_EFFORTS
+  for (const v of [undefined, null, '', 'bogus', 'auto']) {
+    assert.equal(resolveEffortPickerIndex(efforts, v), 3, `fallback for ${JSON.stringify(v)} = max index`)
+  }
+  // fallback absent from the option list → 0 (never out of range)
+  assert.equal(resolveEffortPickerIndex(['low', 'high'], 'bogus'), 0)
+  assert.equal(resolveEffortPickerIndex(['low', 'high'], 'high'), 1)
 })
 
 test('the graded ladder now passes through faithfully (the fix)', () => {

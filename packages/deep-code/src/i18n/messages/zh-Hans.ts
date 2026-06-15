@@ -745,7 +745,7 @@ export const ZH_HANS_MESSAGES = {
   "modelPicker.effort.notSupportedFor": " 对于 {model}",
   "modelPicker.header": "选择模型",
   "modelPicker.hiddenOptionsMore": "还有 {count} 个…",
-  "modelPicker.notice.deepseekEffort": "DeepSeek 思考使用 reasoning_effort。使用 ←/→ 选择 low、medium、high 或 max。",
+  "modelPicker.notice.deepseekEffort": "DeepSeek 思考使用 reasoning_effort。使用 ←/→ 选择 low、medium、high、max 或 xhigh。",
   "modelPicker.notice.fastModeAvailable": "使用 {fast} 开启快速模式（仅限 {model}）。",
   "modelPicker.notice.fastModeOn": "快速模式 {on}，仅在 {model} 下可用 (/fast)。切换到其他模型将关闭快速模式。",
   "modelPicker.notice.fastModeOnLabel": "开启",
