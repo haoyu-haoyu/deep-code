@@ -108,6 +108,7 @@ jobs:
             test/settings-source-order.test.mjs \
             test/edit-delete-occurrences.test.mjs \
             test/edit-quote-variant-underreplace.test.mjs \
+            test/edits-from-patch-newline.test.mjs \
             test/utf8-tail.test.mjs \
             test/word-diff-guard.test.mjs \
             test/paste-id.test.mjs \
