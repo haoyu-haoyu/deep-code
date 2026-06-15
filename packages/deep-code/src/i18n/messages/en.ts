@@ -740,7 +740,7 @@ export const EN_MESSAGES = {
   'modelPicker.effort.notSupportedFor': ' for {model}',
   'modelPicker.header': 'Select model',
   'modelPicker.hiddenOptionsMore': 'and {count} more…',
-  'modelPicker.notice.deepseekEffort': 'DeepSeek thinking uses reasoning_effort. Use ←/→ to choose low, medium, high, or max.',
+  'modelPicker.notice.deepseekEffort': 'DeepSeek thinking uses reasoning_effort. Use ←/→ to choose low, medium, high, max, or xhigh.',
   'modelPicker.notice.fastModeAvailable': 'Use {fast} to turn on Fast mode ({model} only).',
   'modelPicker.notice.fastModeOn': 'Fast mode is {on} and available with {model} only (/fast). Switching to other models turn off fast mode.',
   'modelPicker.notice.fastModeOnLabel': 'ON',

@@ -745,7 +745,7 @@ export const JA_MESSAGES = {
   "modelPicker.effort.notSupportedFor": " {model} の場合",
   "modelPicker.header": "モデルを選択",
   "modelPicker.hiddenOptionsMore": "他 {count} 件…",
-  "modelPicker.notice.deepseekEffort": "DeepSeek の思考は reasoning_effort を使用します。←/→ で low、medium、high、max を選択します。",
+  "modelPicker.notice.deepseekEffort": "DeepSeek の思考は reasoning_effort を使用します。←/→ で low、medium、high、max、xhigh を選択します。",
   "modelPicker.notice.fastModeAvailable": "{fast} を使用して高速モードをオンにします（{model} のみ）。",
   "modelPicker.notice.fastModeOn": "高速モードは {on} で、{model} のみで利用できます (/fast)。他のモデルに切り替えると高速モードはオフになります。",
   "modelPicker.notice.fastModeOnLabel": "オン",

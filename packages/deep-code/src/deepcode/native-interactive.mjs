@@ -1,6 +1,10 @@
 import readline from 'node:readline/promises'
 import { shouldUseColor } from './colorSupport.mjs'
 import {
+  DEEPSEEK_REASONING_EFFORTS,
+  resolveEffortPickerIndex,
+} from '../services/providers/deepseekEffort.mjs'
+import {
   formatDeepCodeModelPicker,
   formatDeepCodePrompt,
   formatDeepCodeSlashPalette,
@@ -46,7 +50,10 @@ export const DEEP_CODE_MODEL_OPTIONS = [
   },
 ]
 
-const DEEP_CODE_EFFORTS = ['high', 'max']
+// Offer exactly the tiers the deepseek-v4 server accepts (probe-confirmed):
+// low < medium < high < max < xhigh. Shares the wire SSOT so the picker can
+// never offer a tier the request builder would reject or collapse.
+const DEEP_CODE_EFFORTS = DEEPSEEK_REASONING_EFFORTS
 const DEEP_CODE_BLUE = '\x1b[38;2;77;107;254m'
 const DEEP_CODE_BLUE_SHIMMER = '\x1b[38;2;121;150;255m'
 const DEEP_CODE_MUTED = '\x1b[38;2;150;160;180m'
@@ -310,8 +317,10 @@ class KeyDrivenInteractiveReader {
       0,
       DEEP_CODE_MODEL_OPTIONS.findIndex(option => option.model === config.model),
     )
-    let effortIndex = DEEP_CODE_EFFORTS.indexOf(config.reasoningEffort)
-    if (effortIndex === -1) effortIndex = DEEP_CODE_EFFORTS.length - 1
+    let effortIndex = resolveEffortPickerIndex(
+      DEEP_CODE_EFFORTS,
+      config.reasoningEffort,
+    )
     let renderedBlock = ''
     renderedBlock = this.renderModelPicker(selectedIndex, effortIndex, config, renderedBlock)
 
