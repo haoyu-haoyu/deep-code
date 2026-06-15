@@ -20,6 +20,7 @@ import {
 } from '../../tools/deepseek-schema.mjs'
 import { mapDeepSeekHttpError } from './deepseek-recovery.mjs'
 import { loadDeepSeekConfigFile } from './deepseek-config-store.mjs'
+import { coerceDeepSeekEffort } from './deepseekEffort.mjs'
 
 export { mapMessagesToDeepSeek } from '../../messages/deepseek-normalizer.mjs'
 export {
@@ -763,9 +764,9 @@ function systemPromptToMessages(systemPrompt) {
 }
 
 function normalizeDeepSeekEffort(value) {
-  const normalized = String(value ?? 'max').toLowerCase()
-  if (normalized === 'max' || normalized === 'xhigh') return 'max'
-  return 'high'
+  // Pass the server's graded enum through (low/medium/high/max/xhigh); an unset
+  // effort still resolves to 'max' so the default request prefix is byte-identical.
+  return coerceDeepSeekEffort(value, { unset: 'max', fallback: 'high' })
 }
 
 function ensureBetaBaseUrl(baseUrl) {

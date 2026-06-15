@@ -19,6 +19,7 @@ import { recordTurn as recordDeepSeekCacheTurn } from '../cache/deepseek-cache.m
 import { providerSupports } from '../deepcode/provider-capabilities.mjs'
 import { createDeepCodeStablePrefix } from '../deepcode/stable-prefix.mjs'
 import { resolveDeepCodeRequestMaxTokens } from '../deepcode/context-policy.mjs'
+import { coerceDeepSeekEffort } from '../services/providers/deepseekEffort.mjs'
 import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
 
 export function createDeepSeekCallModel({
@@ -369,13 +370,10 @@ export function resolveDeepSeekRuntimeModel(model, { provider } = {}) {
 }
 
 export function resolveDeepSeekReasoningEffort(effortValue) {
-  if (effortValue === undefined || effortValue === null) return undefined
-  const normalized =
-    typeof effortValue === 'string'
-      ? effortValue.toLowerCase()
-      : String(effortValue).toLowerCase()
-  if (normalized === 'max' || normalized === 'xhigh') return 'max'
-  return 'high'
+  // Per-call pre-normalizer: preserve `undefined` for a nullish value so the
+  // resolveDeepSeekConfig `??` chain can fall through, but pass the server's
+  // graded enum (low/medium/high/max/xhigh) through faithfully otherwise.
+  return coerceDeepSeekEffort(effortValue, { unset: undefined, fallback: 'high' })
 }
 
 export function deepSeekResponseToAssistantMessage(
