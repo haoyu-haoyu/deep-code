@@ -108,6 +108,7 @@ import {
 import { buildMcpToolName } from './mcpStringUtils.js'
 import { normalizeNameForMCP } from './normalization.js'
 import { mcpLargeResultPersistId } from './mcpResultPersistId.mjs'
+import { extractMcpErrorText } from './extractMcpErrorText.mjs'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -3089,24 +3090,10 @@ async function callMCPTool({
     })
 
     if ('isError' in result && result.isError) {
-      let errorDetails = 'Unknown error'
-      if (
-        'content' in result &&
-        Array.isArray(result.content) &&
-        result.content.length > 0
-      ) {
-        const firstContent = result.content[0]
-        if (
-          firstContent &&
-          typeof firstContent === 'object' &&
-          'text' in firstContent
-        ) {
-          errorDetails = firstContent.text
-        }
-      } else if ('error' in result) {
-        // Fallback for legacy error format
-        errorDetails = String(result.error)
-      }
+      // Scan ALL text blocks, not just content[0] — a spec-valid MCP error may
+      // lead with a non-text block (image/resource) and carry the real message in
+      // a later text block; content[0]-only left it as "Unknown error".
+      const errorDetails = extractMcpErrorText(result)
       logMCPError(name, errorDetails)
       throw new McpToolCallError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS(
         errorDetails,
