@@ -6,7 +6,7 @@ export default {
   type: 'local-jsx',
   name: 'effort',
   description: translate('en', 'command.effort.description'),
-  argumentHint: '[low|medium|high|max|auto]',
+  argumentHint: '[low|medium|high|max|xhigh|auto]',
   get immediate() {
     return shouldInferenceConfigCommandBeImmediate()
   },

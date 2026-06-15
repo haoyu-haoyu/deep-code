@@ -34,6 +34,10 @@ export function effortLevelToSymbol(level: EffortLevel): string {
       return EFFORT_HIGH
     case 'max':
       return EFFORT_MAX
+    case 'xhigh':
+      // DeepSeek-only tier deeper than max; share the max glyph (the "xhigh"
+      // label distinguishes it). Clamped to max for non-DeepSeek models upstream.
+      return EFFORT_MAX
     default:
       // Defensive: level can originate from remote config. If an unknown
       // value slips through, render the high symbol rather than undefined.

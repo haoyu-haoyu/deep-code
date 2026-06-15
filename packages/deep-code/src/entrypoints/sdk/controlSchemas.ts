@@ -506,8 +506,9 @@ export const SDKControlGetSettingsResponseSchema = lazySchema(() =>
         .object({
           model: z.string(),
           // String levels only — numeric effort is ant-only and the
-          // Zod→proto generator can't emit enum∪number unions.
-          effort: z.enum(['low', 'medium', 'high', 'max']).nullable(),
+          // Zod→proto generator can't emit enum∪number unions. 'xhigh' is the
+          // DeepSeek-v4 deepest tier, emitted via get_settings on a DeepSeek model.
+          effort: z.enum(['low', 'medium', 'high', 'max', 'xhigh']).nullable(),
         })
         .optional()
         .describe(
