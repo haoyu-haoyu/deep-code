@@ -60,6 +60,7 @@ jobs:
             test/runtime-provider.test.mjs \
             test/deepseek-thinking.test.mjs \
             test/dsh-reasoning-effort-ladder.test.mjs \
+            test/dsh-effort-clamp.test.mjs \
             test/usage-input-remainder.test.mjs \
             test/p2-3-cache.test.mjs \
             test/p2-3-cache-sim.test.mjs \

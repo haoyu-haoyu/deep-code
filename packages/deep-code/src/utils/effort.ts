@@ -5,6 +5,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
 import { getAPIProvider } from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
+import { clampUnsupportedEffort } from './effortClamp.mjs'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 
 export type { EffortLevel }
@@ -14,6 +15,10 @@ export const EFFORT_LEVELS = [
   'medium',
   'high',
   'max',
+  // 'xhigh' is DeepSeek-v4 only (probe-confirmed: the server accepts
+  // low<medium<high<max<xhigh, xhigh giving ~2x max's reasoning depth). It is
+  // clamped to 'max' for any non-DeepSeek model in resolveAppliedEffort.
+  'xhigh',
 ] as const satisfies readonly EffortLevel[]
 
 export type EffortValue = EffortLevel | number
@@ -77,6 +82,12 @@ export function modelSupportsMaxEffort(model: string): boolean {
   return false
 }
 
+// 'xhigh' is a DeepSeek-v4-only tier (probe-confirmed). Any other provider
+// rejects it, so resolveAppliedEffort clamps xhigh → max for non-DeepSeek models.
+export function modelSupportsXhighEffort(model: string): boolean {
+  return isDeepSeekModel(model)
+}
+
 export function isEffortLevel(value: string): value is EffortLevel {
   return (EFFORT_LEVELS as readonly string[]).includes(value)
 }
@@ -114,6 +125,10 @@ export function toPersistableEffort(
   if (value === 'max' && process.env.USER_TYPE === 'ant') {
     return value
   }
+  // 'xhigh' is always session-scoped: it is DeepSeek-only and intentionally NOT
+  // in the persisted effortLevel settings enum (settings/types.ts), so a write
+  // would be silently dropped on the next read. /effort xhigh still applies for
+  // the session via effortUpdate (with the "session only" note), like /effort max.
   return undefined
 }
 
@@ -172,11 +187,12 @@ export function resolveAppliedEffort(
   }
   const resolved =
     envOverride ?? appStateEffortValue ?? getDefaultEffortForModel(model)
-  // API rejects 'max' on non-Opus-4.6 models — downgrade to 'high'.
-  if (resolved === 'max' && !modelSupportsMaxEffort(model)) {
-    return 'high'
-  }
-  return resolved
+  // The API rejects a tier the model doesn't support — clamp deepest-first:
+  // xhigh → max (DeepSeek-only), then max → high (Opus-4.6 / DeepSeek only).
+  return clampUnsupportedEffort(resolved, {
+    supportsMax: modelSupportsMaxEffort(model),
+    supportsXhigh: modelSupportsXhighEffort(model),
+  })
 }
 
 /**
@@ -244,6 +260,8 @@ export function getEffortLevelDescription(level: EffortLevel): string {
       return 'Comprehensive implementation with extensive testing and documentation'
     case 'max':
       return 'Maximum capability with deepest reasoning'
+    case 'xhigh':
+      return 'DeepSeek-only: extra-high reasoning effort, deeper than max'
   }
 }
 
