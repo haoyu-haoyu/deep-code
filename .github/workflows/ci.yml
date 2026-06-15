@@ -113,6 +113,7 @@ jobs:
             test/reconcile-patch-edits.test.mjs \
             test/utf8-tail.test.mjs \
             test/word-diff-guard.test.mjs \
+            test/escape-for-diff.test.mjs \
             test/paste-id.test.mjs \
             test/bom-handling.test.mjs \
             test/todo-resume-collapse.test.mjs \
