@@ -115,6 +115,7 @@ jobs:
             test/todo-resume-collapse.test.mjs \
             test/filesuggestions-ignore.test.mjs \
             test/mcp-env-default-split.test.mjs \
+            test/mcp-result-persistid.test.mjs \
             test/preserve-quote-style.test.mjs \
             test/notebook-staleness.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \

@@ -107,6 +107,7 @@ import {
 } from './elicitationHandler.js'
 import { buildMcpToolName } from './mcpStringUtils.js'
 import { normalizeNameForMCP } from './normalization.js'
+import { mcpLargeResultPersistId } from './mcpResultPersistId.mjs'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -2725,9 +2726,14 @@ export async function processMCPResult(
     return await truncateMcpContentIfNeeded(content)
   }
 
-  // Generate a unique ID for the persisted file (server__tool-timestamp)
-  const timestamp = Date.now()
-  const persistId = `mcp-${normalizeNameForMCP(name)}-${normalizeNameForMCP(tool)}-${timestamp}`
+  // Generate a unique ID for the persisted file. The random suffix is REQUIRED:
+  // persistToolResult's EEXIST-skip is only safe for a per-invocation-unique id,
+  // and two concurrent same-server/same-tool calls can share a Date.now()
+  // millisecond (mirrors persistBlobToTextBlock above).
+  const persistId = mcpLargeResultPersistId(
+    normalizeNameForMCP(name),
+    normalizeNameForMCP(tool),
+  )
   // Convert to string for persistence (persistToolResult expects string or specific block types)
   const contentStr =
     typeof content === 'string' ? content : jsonStringify(content, null, 2)
