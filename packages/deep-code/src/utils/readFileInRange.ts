@@ -40,6 +40,8 @@
 import { createReadStream, fstat } from 'fs'
 import { stat as fsStat, readFile } from 'fs/promises'
 import { stripLeadingBom } from './bom.mjs'
+import { detectEncodingFromHeadBytes } from './fileEncoding.mjs'
+import { detectEncodingForResolvedPath } from './fileRead.js'
 import { formatFileSize } from './format.js'
 
 const FAST_PATH_MAX_SIZE = 10 * 1024 * 1024 // 10 MB
@@ -102,9 +104,15 @@ export async function readFileInRange(
       throw new FileTooLargeError(stats.size, maxBytes)
     }
 
-    const text = await readFile(filePath, { encoding: 'utf8', signal })
+    // Read the raw bytes, detect the encoding from the in-memory buffer (no
+    // extra syscall), then decode. Reading as utf8 unconditionally turned a
+    // UTF-16LE file (BOM FF FE) into interleaved-null garbage. The leading BOM
+    // is dropped downstream by stripLeadingBom (readFileInRangeFast), which the
+    // bom.mjs design already expects this path to do.
+    const buffer = await readFile(filePath, { signal })
+    const encoding = detectEncodingFromHeadBytes(buffer, buffer.length)
     return readFileInRangeFast(
-      text,
+      buffer.toString(encoding),
       stats.mtimeMs,
       offset,
       maxLines,
@@ -112,6 +120,12 @@ export async function readFileInRange(
     )
   }
 
+  // Streaming path: large regular files / FIFOs / devices. Detect the encoding
+  // only for regular files — openSync('r') on a FIFO blocks until a writer
+  // appears, and a non-regular stream can't carry a leading BOM anyway.
+  const encoding: BufferEncoding = stats.isFile()
+    ? detectEncodingForResolvedPath(filePath)
+    : 'utf8'
   return readFileInRangeStreaming(
     filePath,
     offset,
@@ -119,6 +133,7 @@ export async function readFileInRange(
     maxBytes,
     truncateOnByteLimit,
     signal,
+    encoding,
   )
 }
 
@@ -348,11 +363,12 @@ function readFileInRangeStreaming(
   maxBytes: number | undefined,
   truncateOnByteLimit: boolean,
   signal?: AbortSignal,
+  encoding: BufferEncoding = 'utf8',
 ): Promise<ReadFileRangeResult> {
   return new Promise((resolve, reject) => {
     const state: StreamState = {
       stream: createReadStream(filePath, {
-        encoding: 'utf8',
+        encoding,
         highWaterMark: 512 * 1024,
         ...(signal ? { signal } : undefined),
       }),

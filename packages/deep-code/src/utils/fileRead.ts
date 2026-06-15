@@ -13,6 +13,7 @@
  */
 
 import { logForDebugging } from './debug.js'
+import { detectEncodingFromHeadBytes } from './fileEncoding.mjs'
 import { getFsImplementation, safeResolvePath } from './fsOperations.js'
 
 export type LineEndingType = 'CRLF' | 'LF'
@@ -23,29 +24,7 @@ export function detectEncodingForResolvedPath(
   const { buffer, bytesRead } = getFsImplementation().readSync(resolvedPath, {
     length: 4096,
   })
-
-  // Empty files should default to utf8, not ascii
-  // This fixes a bug where writing emojis/CJK to empty files caused corruption
-  if (bytesRead === 0) {
-    return 'utf8'
-  }
-
-  if (bytesRead >= 2) {
-    if (buffer[0] === 0xff && buffer[1] === 0xfe) return 'utf16le'
-  }
-
-  if (
-    bytesRead >= 3 &&
-    buffer[0] === 0xef &&
-    buffer[1] === 0xbb &&
-    buffer[2] === 0xbf
-  ) {
-    return 'utf8'
-  }
-
-  // For non-empty files, default to utf8 since it's a superset of ascii
-  // and handles all Unicode characters properly
-  return 'utf8'
+  return detectEncodingFromHeadBytes(buffer, bytesRead)
 }
 
 export function detectLineEndingsForString(content: string): LineEndingType {
