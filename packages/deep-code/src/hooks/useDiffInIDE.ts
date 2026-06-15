@@ -13,9 +13,11 @@ import type {
 import type { ToolUseContext } from '../Tool.js'
 import type { FileEdit } from '../tools/FileEditTool/types.js'
 import {
+  applyEditToFile,
   getEditsForPatch,
   getPatchForEdits,
 } from '../tools/FileEditTool/utils.js'
+import { reconcileEditsToContents } from './reconcilePatchEdits.mjs'
 import { getGlobalConfig } from '../utils/config.js'
 import { getPatchFromContents } from '../utils/diff.js'
 import { isENOENT } from '../utils/errors.js'
@@ -195,8 +197,18 @@ export function computeEditsFromContents(
     )
   }
 
-  // Re-compute the edits to match the patch
-  return getEditsForPatch(patch)
+  // Re-compute the edits to match the patch. getEditsForPatch can't recover
+  // trailing-newline state from the patch text (a context line may differ in its
+  // final newline between old and new), so a newline-only change reconstructs to
+  // a no-op and a content+newline change drops the newline — the accepted edit
+  // then fails to apply. Verify the reconstruction round-trips against the real
+  // contents and fall back to a whole-file edit when it doesn't.
+  return reconcileEditsToContents(
+    getEditsForPatch(patch),
+    oldContent,
+    newContent,
+    applyEditToFile,
+  )
 }
 
 /**
