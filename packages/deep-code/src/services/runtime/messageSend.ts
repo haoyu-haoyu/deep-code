@@ -12,6 +12,7 @@ import {
 } from '../providers/runtime-provider.mjs'
 import { routeTurn, type AutoRouteDecision } from '../autoMode/router.js'
 import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
+import { stableJsonStringifySafe } from '../../cache/deepseek-cache.mjs'
 // @ts-expect-error DeepSeek call-model adapter is JS; runtime native primitives use it
 // internally for non-streaming collection. Exposed externally via the
 // local re-export at the bottom of this file.
@@ -710,7 +711,7 @@ export async function queryRuntimeHaiku(args: {
   const effectiveSystemPrompt = args.outputFormat
     ? [
         ...baseSystemPrompt,
-        `Respond with JSON conforming to this schema: ${safeJsonStringify(args.outputFormat)}`,
+        `Respond with JSON conforming to this schema: ${stableJsonStringifySafe(args.outputFormat)}`,
       ]
     : baseSystemPrompt
 
@@ -761,7 +762,7 @@ export async function queryRuntimeWithModelNonStreaming(args: {
   const effectiveSystemPrompt = args.outputFormat
     ? [
         ...baseSystemPrompt,
-        `Respond with JSON conforming to this schema: ${safeJsonStringify(args.outputFormat)}`,
+        `Respond with JSON conforming to this schema: ${stableJsonStringifySafe(args.outputFormat)}`,
       ]
     : baseSystemPrompt
 
@@ -801,14 +802,6 @@ export function queryRuntimeModelWithStreaming(args: {
 }): ReturnType<ReturnType<typeof createDeepSeekCallModel>> {
   const callModel = createRuntimeCallModel()
   return callModel(args) as ReturnType<ReturnType<typeof createDeepSeekCallModel>>
-}
-
-function safeJsonStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
 }
 
 type RuntimeCallModelFactoryOptions = {

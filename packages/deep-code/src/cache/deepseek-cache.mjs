@@ -120,6 +120,20 @@ export function stableJsonStringify(value) {
   return JSON.stringify(sortJsonValue(value))
 }
 
+// Key-stable JSON for content embedded in the cached request prefix — e.g. a
+// structured-output schema hint appended to the system prompt — with the same
+// cyclic/unstringifiable fallback (String(value)) a plain safe stringify has.
+// Every other prefix component (tool/skill manifests) already canonicalizes via
+// stableJsonStringify; this lets schema-hint callers do the same so a schema
+// passed with differently-ordered keys does not bust the prefix cache.
+export function stableJsonStringifySafe(value) {
+  try {
+    return stableJsonStringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
 export function sortJsonValue(value) {
   if (Array.isArray(value)) return value.map(sortJsonValue)
   if (!value || typeof value !== 'object') return value
