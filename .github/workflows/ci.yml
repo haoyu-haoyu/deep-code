@@ -106,6 +106,7 @@ jobs:
             test/keychain-argv.test.mjs \
             test/worktree-lsfiles-args.test.mjs \
             test/settings-source-order.test.mjs \
+            test/permission-rule-classify.test.mjs \
             test/edit-delete-occurrences.test.mjs \
             test/edit-quote-variant-underreplace.test.mjs \
             test/utf8-tail.test.mjs \
