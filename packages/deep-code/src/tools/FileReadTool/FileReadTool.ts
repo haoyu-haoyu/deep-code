@@ -1,4 +1,5 @@
 import type { Base64ImageSource } from '../../types/sdk-shim.js'
+import { resolveReadLineOffsets } from './readLineOffsets.mjs'
 import { classifyTextReadResult } from './textReadResult.mjs'
 import { readdir, readFile as readFileAsync } from 'fs/promises'
 import * as path from 'path'
@@ -1021,7 +1022,7 @@ async function callInner(
   }
 
   // --- Text file (single async read via readFileInRange) ---
-  const lineOffset = offset === 0 ? 0 : offset - 1
+  const { lineOffset, startLine } = resolveReadLineOffsets(offset)
   const { content, lineCount, totalLines, totalBytes, readBytes, mtimeMs } =
     await readFileInRange(
       resolvedFilePath,
@@ -1053,7 +1054,7 @@ async function callInner(
       filePath: file_path,
       content,
       numLines: lineCount,
-      startLine: offset,
+      startLine,
       totalLines,
     },
   }
