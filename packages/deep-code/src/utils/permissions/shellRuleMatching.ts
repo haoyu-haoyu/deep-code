@@ -8,6 +8,7 @@
  */
 
 import type { PermissionUpdate } from './PermissionUpdateSchema.js'
+import { classifyPermissionRule } from './permissionRuleClassify.mjs'
 
 // Null-byte sentinel placeholders for wildcard pattern escaping — module-level
 // so the RegExp objects are compiled once instead of per permission check.
@@ -159,28 +160,15 @@ export function matchWildcardPattern(
 export function parsePermissionRule(
   permissionRule: string,
 ): ShellPermissionRule {
-  // Check for legacy :* prefix syntax first (backwards compatibility)
-  const prefix = permissionRuleExtractPrefix(permissionRule)
-  if (prefix !== null) {
-    return {
-      type: 'prefix',
-      prefix,
-    }
-  }
-
-  // Check for new wildcard syntax (contains * but not :* at end)
-  if (hasWildcards(permissionRule)) {
-    return {
-      type: 'wildcard',
-      pattern: permissionRule,
-    }
-  }
-
-  // Otherwise, it's an exact match
-  return {
-    type: 'exact',
-    command: permissionRule,
-  }
+  // Routing lives in a node-testable leaf. It fixes a precedence bug: the legacy
+  // `:*` prefix syntax used to win even for a rule that also has an earlier `*`
+  // wildcard (e.g. `docker run -v *:*`), classifying it as a literal prefix whose
+  // `*` is matched literally — making the (often deny) rule silently inert.
+  return classifyPermissionRule(
+    permissionRule,
+    permissionRuleExtractPrefix,
+    hasWildcards,
+  ) as ShellPermissionRule
 }
 
 /**
