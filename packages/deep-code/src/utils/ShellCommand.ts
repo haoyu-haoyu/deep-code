@@ -9,6 +9,7 @@ import {
   MAX_TASK_OUTPUT_BYTES_DISPLAY,
 } from './task/diskOutput.js'
 import { TaskOutput } from './task/TaskOutput.js'
+import { shellExitCode } from './shellExitCode.mjs'
 
 export type ExecResult = {
   stdout: string
@@ -120,6 +121,11 @@ class ShellCommandImpl implements ShellCommand {
   #timeoutId: NodeJS.Timeout | null = null
   #sizeWatchdog: NodeJS.Timeout | null = null
   #killedForSize = false
+  // Set when OUR timeout fired and killed the child. Drives the "Command timed
+  // out" message instead of overloading the reported exit code (143) — so an
+  // EXTERNAL SIGTERM, which now also reports 143, doesn't masquerade as a
+  // timeout.
+  #timedOut = false
   #maxOutputBytes: number
   #abortSignal: AbortSignal
   #onTimeoutCallback:
@@ -136,6 +142,7 @@ class ShellCommandImpl implements ShellCommand {
     if (self.#shouldAutoBackground && self.#onTimeoutCallback) {
       self.#onTimeoutCallback(self.background.bind(self))
     } else {
+      self.#timedOut = true
       self.#doKill(SIGTERM)
     }
   }
@@ -193,13 +200,11 @@ class ShellCommandImpl implements ShellCommand {
   }
 
   #exitHandler(code: number | null, signal: NodeJS.Signals | null): void {
-    const exitCode =
-      code !== null && code !== undefined
-        ? code
-        : signal === 'SIGTERM'
-          ? 144
-          : 1
-    this.#resolveExitCode(exitCode)
+    // Report the shell-convention code (128 + signum): a SIGTERM'd child is
+    // 143, not the old 144 (SIGUSR1's code). The timeout message is gated on
+    // #timedOut, not this code, so external SIGTERM (143) no longer collides
+    // with the internal timeout sentinel.
+    this.#resolveExitCode(shellExitCode(code, signal))
   }
 
   #errorHandler(): void {
@@ -320,7 +325,7 @@ class ShellCommandImpl implements ShellCommand {
         `Background command killed: output file exceeded ${MAX_TASK_OUTPUT_BYTES_DISPLAY}`,
         result.stderr,
       )
-    } else if (code === SIGTERM) {
+    } else if (this.#timedOut) {
       result.stderr = prependStderr(
         `Command timed out after ${formatDuration(this.#timeout)}`,
         result.stderr,

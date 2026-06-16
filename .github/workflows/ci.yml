@@ -48,6 +48,7 @@ jobs:
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
             test/shell-interrupt-decision.test.mjs \
+            test/shell-exit-code.test.mjs \
             test/a4-paste-cleanup.test.mjs \
             test/tokenizer-meta-input.test.mjs \
             test/bash-command-stripping.test.mjs \
