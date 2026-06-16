@@ -1,9 +1,72 @@
-import {
-  ansiCodesToString,
-  reduceAnsiCodes,
-  tokenize,
-  undoAnsiCodes,
-} from '@alcalzone/ansi-tokenize'
+// The @alcalzone/ansi-tokenize "deepcode-shim" is a git-tracked vendored package
+// that is NOT declared in package.json — `npm ci` wipes it on CI, so a bare
+// import from this .mjs leaf (or its test) fails with ERR_MODULE_NOT_FOUND. The
+// production runtime is unaffected because sliceAnsi.ts is bundled into dist
+// (the shim inlined), but a node --test leaf is not. So the four functions this
+// leaf needs are vendored here VERBATIM from that shim's entry (index.js,
+// version 0.0.0-deepcode-shim) — byte-identical to the bundled production
+// behavior, and self-contained so it runs under a clean `npm ci`.
+const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][\s\S]*?(?:\x07|\x1b\\)/g
+
+function endCodeFor(code) {
+  if (code === '\x1b[0m') return code
+  if (code === '\x1b[7m') return '\x1b[27m'
+  if (code.startsWith('\x1b]8;')) return '\x1b]8;;\x1b\\'
+  return '\x1b[0m'
+}
+
+export function tokenize(input = '') {
+  const text = String(input)
+  const tokens = []
+  let lastIndex = 0
+  let match
+
+  while ((match = ANSI_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({
+        type: 'text',
+        value: text.slice(lastIndex, match.index),
+        fullWidth: false,
+      })
+    }
+    tokens.push({
+      type: 'ansi',
+      code: match[0],
+      value: match[0],
+      endCode: endCodeFor(match[0]),
+    })
+    lastIndex = match.index + match[0].length
+  }
+
+  if (lastIndex < text.length) {
+    tokens.push({ type: 'text', value: text.slice(lastIndex), fullWidth: false })
+  }
+
+  return tokens
+}
+
+export function reduceAnsiCodes(codes = []) {
+  const result = []
+  for (const code of codes) {
+    if (!code) continue
+    if (code.code === '\x1b[0m' || code.code === code.endCode) {
+      result.length = 0
+      continue
+    }
+    result.push(code)
+  }
+  return result
+}
+
+export function undoAnsiCodes(codes = []) {
+  return [...codes]
+    .reverse()
+    .map(code => ({ ...code, code: code.endCode, endCode: code.endCode }))
+}
+
+export function ansiCodesToString(codes = []) {
+  return codes.map(code => code.code || '').join('')
+}
 
 // A code is an "end code" if its code equals its endCode (e.g., hyperlink close).
 function isEndCode(code) {
