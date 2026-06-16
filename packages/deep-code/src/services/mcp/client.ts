@@ -1706,6 +1706,20 @@ export function mcpToolInputToAutoClassifierInput(
     : toolName
 }
 
+// Surface a paginated list that was cut short by a safety rail, so dropped
+// tools/resources/prompts aren't silently invisible (the very failure this
+// pagination fixes — just at a far higher, pathological-server threshold).
+function logMcpListTruncation(
+  serverName: string,
+  kind: 'tools' | 'resources' | 'prompts',
+  info: { reason: 'maxItems' | 'maxPages' | 'cursorCycle'; pages: number; items: number },
+): void {
+  logMCPError(
+    serverName,
+    `${kind}/list pagination stopped early (${info.reason}) after ${info.pages} page(s) / ${info.items} item(s); some ${kind} may be missing`,
+  )
+}
+
 export const fetchToolsForClient = memoizeWithLRU(
   async (client: MCPServerConnection): Promise<Tool[]> => {
     if (client.type !== 'connected') return []
@@ -1727,6 +1741,7 @@ export const fetchToolsForClient = memoizeWithLRU(
             ListToolsResultSchema,
           ) as Promise<ListToolsResult>,
         (result: ListToolsResult) => result.tools ?? [],
+        { onTruncated: info => logMcpListTruncation(client.name, 'tools', info) },
       )
 
       // Sanitize tool data from MCP server
@@ -1985,6 +2000,7 @@ export const fetchResourcesForClient = memoizeWithLRU(
             ListResourcesResultSchema,
           ),
         result => result.resources ?? [],
+        { onTruncated: info => logMcpListTruncation(client.name, 'resources', info) },
       )
 
       // Add server name to each resource
@@ -2024,6 +2040,7 @@ export const fetchCommandsForClient = memoizeWithLRU(
             ListPromptsResultSchema,
           ) as Promise<ListPromptsResult>,
         (result: ListPromptsResult) => result.prompts ?? [],
+        { onTruncated: info => logMcpListTruncation(client.name, 'prompts', info) },
       )
 
       // Sanitize prompt data from MCP server

@@ -18,18 +18,21 @@
  *
  * Safety rails for a buggy/malicious server: stop after `maxPages`, after
  * `maxItems` accumulated, or when a `nextCursor` repeats one already followed
- * (a cycle) — never loop forever.
+ * (a cycle) — never loop forever. When a rail trips while the server still
+ * advertised more pages, `onTruncated({reason, pages, items})` is called so the
+ * caller can surface that some entries were dropped (no silent truncation).
  *
  * @template T
  * @param {(cursor: string | undefined) => Promise<any>} requestPage
  * @param {(result: any) => T[]} pickArray
- * @param {{ maxPages?: number, maxItems?: number }} [opts]
+ * @param {{ maxPages?: number, maxItems?: number,
+ *           onTruncated?: (info: { reason: 'maxItems' | 'maxPages' | 'cursorCycle', pages: number, items: number }) => void }} [opts]
  * @returns {Promise<T[]>}
  */
 export async function paginateMcpList(
   requestPage,
   pickArray,
-  { maxPages = 100, maxItems = 10000 } = {},
+  { maxPages = 100, maxItems = 10000, onTruncated } = {},
 ) {
   const items = []
   let cursor
@@ -39,14 +42,24 @@ export async function paginateMcpList(
     const pageItems = pickArray(result) ?? []
     for (const item of pageItems) {
       items.push(item)
-      if (items.length >= maxItems) return items
+      if (items.length >= maxItems) {
+        onTruncated?.({ reason: 'maxItems', pages: page + 1, items: items.length })
+        return items
+      }
     }
     const next = result == null ? undefined : result.nextCursor
     if (next == null || next === '') break
     // Cycle guard: a server that keeps returning the same cursor must not spin.
-    if (followed.has(next)) break
+    if (followed.has(next)) {
+      onTruncated?.({ reason: 'cursorCycle', pages: page + 1, items: items.length })
+      break
+    }
     followed.add(next)
     cursor = next
+    // The server advertised another page but we've exhausted the page budget.
+    if (page + 1 >= maxPages) {
+      onTruncated?.({ reason: 'maxPages', pages: maxPages, items: items.length })
+    }
   }
   return items
 }

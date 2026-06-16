@@ -93,6 +93,45 @@ test('a repeated nextCursor is a cycle and halts (no infinite loop)', async () =
 
 // --- degenerate results ---
 
+// --- onTruncated fires (no silent cap) for each rail, not on normal end ---
+
+test('onTruncated reports maxItems / maxPages / cursorCycle, but not a clean finish', async () => {
+  const calls = []
+  const onTruncated = info => calls.push(info)
+
+  // maxItems
+  await paginateMcpList(
+    () => Promise.resolve({ tools: [{ name: 'a' }, { name: 'b' }], nextCursor: 'c' }),
+    pickTools,
+    { maxItems: 1, onTruncated },
+  )
+  // maxPages (server keeps advertising more)
+  let n = 0
+  await paginateMcpList(
+    () => Promise.resolve({ tools: [{ name: String(n++) }], nextCursor: `c${n}` }),
+    pickTools,
+    { maxPages: 2, onTruncated },
+  )
+  // cursorCycle
+  await paginateMcpList(
+    () => Promise.resolve({ tools: [{ name: 'x' }], nextCursor: 'loop' }),
+    pickTools,
+    { onTruncated },
+  )
+  // clean finish — must NOT fire
+  await paginateMcpList(
+    () => Promise.resolve({ tools: [{ name: 'done' }] }),
+    pickTools,
+    { onTruncated },
+  )
+
+  assert.deepEqual(
+    calls.map(c => c.reason),
+    ['maxItems', 'maxPages', 'cursorCycle'],
+  )
+  assert.ok(calls.every(c => typeof c.pages === 'number' && typeof c.items === 'number'))
+})
+
 test('a missing/undefined array on a page is treated as empty', async () => {
   const items = await paginateMcpList(
     () => Promise.resolve({}), // no tools key
