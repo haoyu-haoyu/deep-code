@@ -709,8 +709,43 @@ export function parseDeepSeekSSELines(lines) {
     if (chunk.usage) {
       events.push({ type: 'usage', usage: mapDeepSeekUsage(chunk.usage) })
     }
+    // A mid-stream top-level `{"error": {...}}` chunk (the OpenAI/DeepSeek
+    // shape for a fault that occurs AFTER the 200 response has begun) carries
+    // neither `choices` nor `usage`, so it matched no branch above and was
+    // silently dropped — the turn then committed whatever partial text had
+    // already streamed as a SUCCESS (no error, no retry). Surface it as an
+    // `error` event (emitted AFTER any same-chunk content) so consumers fail
+    // the turn loudly. The happy path is untouched (this only fires when
+    // `chunk.error` is present).
+    if (chunk.error) {
+      events.push({ type: 'error', error: chunk.error })
+    }
   }
   return events
+}
+
+/**
+ * Build a loud, non-abort Error from a mid-stream DeepSeek `error` event so the
+ * turn unwinds instead of committing a truncated response as success. The
+ * server's `code`/`type` are stored under `deepSeekCode`/`deepSeekType` — NOT
+ * `code`/`name` — so a server code of `ABORT_ERR` can never make isAbortError
+ * misclassify this as a cancellation.
+ */
+export function createDeepSeekStreamError(error) {
+  const message =
+    (error && typeof error === 'object' && typeof error.message === 'string'
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '') || 'unknown error'
+  const err = new Error(`DeepSeek stream error: ${message}`)
+  err.name = 'DeepSeekStreamError'
+  err.deepSeekStreamError = true
+  if (error && typeof error === 'object') {
+    if (error.type !== undefined) err.deepSeekType = error.type
+    if (error.code !== undefined) err.deepSeekCode = error.code
+  }
+  return err
 }
 
 export function mapDeepSeekUsage(usage = {}) {

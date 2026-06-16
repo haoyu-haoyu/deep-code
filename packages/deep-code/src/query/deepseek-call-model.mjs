@@ -20,7 +20,10 @@ import { providerSupports } from '../deepcode/provider-capabilities.mjs'
 import { createDeepCodeStablePrefix } from '../deepcode/stable-prefix.mjs'
 import { resolveDeepCodeRequestMaxTokens } from '../deepcode/context-policy.mjs'
 import { coerceDeepSeekEffort } from '../services/providers/deepseekEffort.mjs'
-import { resolveDeepSeekConfig } from '../services/providers/deepseek.mjs'
+import {
+  createDeepSeekStreamError,
+  resolveDeepSeekConfig,
+} from '../services/providers/deepseek.mjs'
 
 export function createDeepSeekCallModel({
   // Defaults to the config-resolved provider (DEEPCODE_PROVIDER / config file).
@@ -97,6 +100,12 @@ export function createDeepSeekCallModel({
 
     for await (const event of stream) {
       if (signal?.aborted) break
+
+      // A mid-stream server error must unwind the turn, not be silently
+      // dropped (which would commit the partial text as a successful end_turn).
+      if (event.type === 'error') {
+        throw createDeepSeekStreamError(event.error)
+      }
 
       if (event.type === 'reasoning_delta') {
         if (!providerSupports(provider, 'reasoning_content')) continue
