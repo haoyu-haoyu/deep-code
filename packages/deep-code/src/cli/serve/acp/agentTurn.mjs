@@ -18,6 +18,7 @@ import {
 } from '../../../deepcode/deepseek-native.mjs'
 import { createDeepSeekLocalTools } from '../../../deepcode/local-toolchain.mjs'
 import { providerSupports } from '../../../deepcode/provider-capabilities.mjs'
+import { createDeepSeekStreamError } from '../../../services/providers/deepseek.mjs'
 import { resolveRuntimeModelProvider } from '../../../services/providers/runtime-provider.mjs'
 
 export const ACP_AGENT_SYSTEM_PROMPT = [
@@ -167,6 +168,10 @@ function makeStreamingComplete({ push, signal, state, provider }) {
         if (event.type === 'reasoning_delta') reasoning += event.text
         else content += event.text
         push(update)
+      } else if (event.type === 'error') {
+        // A mid-stream server error must fail the turn, not commit the partial
+        // content as a successful ACP turn.
+        throw createDeepSeekStreamError(event.error)
       } else if (event.type === 'tool_call_delta') {
         mergeDeepSeekToolCallDelta(toolCalls, event)
         if (event.finishReason) finishReason = event.finishReason

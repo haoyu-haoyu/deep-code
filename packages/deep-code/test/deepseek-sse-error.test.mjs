@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import {
+  collectDeepSeekStreamEvents,
   createDeepSeekStreamError,
   parseDeepSeekSSELines,
 } from '../src/services/providers/deepseek.mjs'
@@ -9,6 +10,10 @@ import {
 // mirrors the production isAbortError (deepseek.mjs) — the stream error must
 // NEVER be classified as a cancellation, even if the server code is ABORT_ERR.
 const isAbortError = e => e?.name === 'AbortError' || e?.code === 'ABORT_ERR'
+
+async function* eventsOf(...events) {
+  for (const e of events) yield e
+}
 
 // --- the bug: a top-level {"error":{...}} SSE chunk was silently dropped ---
 
@@ -92,4 +97,35 @@ test('createDeepSeekStreamError tolerates a string or empty error', () => {
   assert.match(createDeepSeekStreamError('boom').message, /boom/)
   assert.match(createDeepSeekStreamError(undefined).message, /unknown error/)
   assert.match(createDeepSeekStreamError({}).message, /unknown error/)
+})
+
+// --- the non-streaming collector (runDeepSeekAgent / /compact / doctor) ---
+
+test('collectDeepSeekStreamEvents throws on a mid-stream error event', async () => {
+  await assert.rejects(
+    collectDeepSeekStreamEvents(
+      eventsOf(
+        { type: 'content_delta', text: 'partial' },
+        { type: 'error', error: { message: 'Internal server error' } },
+      ),
+    ),
+    err => {
+      assert.equal(err.name, 'DeepSeekStreamError')
+      assert.match(err.message, /Internal server error/)
+      assert.equal(isAbortError(err), false)
+      return true
+    },
+  )
+})
+
+test('collectDeepSeekStreamEvents still aggregates a clean stream', async () => {
+  const result = await collectDeepSeekStreamEvents(
+    eventsOf(
+      { type: 'content_delta', text: 'he' },
+      { type: 'content_delta', text: 'llo' },
+      { type: 'finish', finishReason: 'stop' },
+    ),
+  )
+  assert.equal(result.content, 'hello')
+  assert.equal(result.finishReason, 'stop')
 })

@@ -604,6 +604,11 @@ export async function collectDeepSeekStreamEvents(events, { onContent } = {}) {
     } else if (event.type === 'content_delta') {
       content += event.text
       onContent?.(event.text)
+    } else if (event.type === 'error') {
+      // A mid-stream server error must fail the collection (runDeepSeekAgent
+      // non-streaming, /compact, doctor, cache warmup), not return the partial
+      // content as a complete response.
+      throw createDeepSeekStreamError(event.error)
     } else if (event.type === 'tool_call_delta') {
       mergeDeepSeekToolCallDelta(toolCalls, event)
       if (event.finishReason) finishReason = event.finishReason
