@@ -128,6 +128,7 @@ jobs:
             test/todo-resume-collapse.test.mjs \
             test/filesuggestions-ignore.test.mjs \
             test/mcp-env-default-split.test.mjs \
+            test/mcp-list-pagination.test.mjs \
             test/mcp-result-persistid.test.mjs \
             test/mcp-error-text.test.mjs \
             test/preserve-quote-style.test.mjs \

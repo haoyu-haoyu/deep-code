@@ -41,6 +41,7 @@ import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
+import { paginateMcpList } from './paginateMcpList.mjs'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import { getOauthConfig } from '../../constants/oauth.js'
@@ -1714,13 +1715,22 @@ export const fetchToolsForClient = memoizeWithLRU(
         return []
       }
 
-      const result = (await client.client.request(
-        { method: 'tools/list' },
-        ListToolsResultSchema,
-      )) as ListToolsResult
+      // Follow nextCursor pagination so tools past page 1 aren't dropped. The
+      // first request (cursor undefined) is byte-identical to the old single
+      // `{ method: 'tools/list' }` call, so non-paginating servers are unaffected.
+      const tools = await paginateMcpList(
+        cursor =>
+          client.client.request(
+            cursor
+              ? { method: 'tools/list', params: { cursor } }
+              : { method: 'tools/list' },
+            ListToolsResultSchema,
+          ) as Promise<ListToolsResult>,
+        (result: ListToolsResult) => result.tools ?? [],
+      )
 
       // Sanitize tool data from MCP server
-      const toolsToProcess = recursivelySanitizeUnicode(result.tools)
+      const toolsToProcess = recursivelySanitizeUnicode(tools)
 
       // Check if we should skip the mcp__ prefix for SDK MCP servers
       const skipPrefix =
@@ -1965,15 +1975,20 @@ export const fetchResourcesForClient = memoizeWithLRU(
         return []
       }
 
-      const result = await client.client.request(
-        { method: 'resources/list' },
-        ListResourcesResultSchema,
+      // Follow nextCursor pagination so resources past page 1 aren't dropped.
+      const resources = await paginateMcpList(
+        cursor =>
+          client.client.request(
+            cursor
+              ? { method: 'resources/list', params: { cursor } }
+              : { method: 'resources/list' },
+            ListResourcesResultSchema,
+          ),
+        result => result.resources ?? [],
       )
 
-      if (!result.resources) return []
-
       // Add server name to each resource
-      return result.resources.map(resource => ({
+      return resources.map(resource => ({
         ...resource,
         server: client.name,
       }))
@@ -1998,16 +2013,21 @@ export const fetchCommandsForClient = memoizeWithLRU(
         return []
       }
 
-      // Request prompts list from client
-      const result = (await client.client.request(
-        { method: 'prompts/list' },
-        ListPromptsResultSchema,
-      )) as ListPromptsResult
-
-      if (!result.prompts) return []
+      // Request prompts list from client, following nextCursor pagination so
+      // prompts past page 1 aren't dropped.
+      const prompts = await paginateMcpList(
+        cursor =>
+          client.client.request(
+            cursor
+              ? { method: 'prompts/list', params: { cursor } }
+              : { method: 'prompts/list' },
+            ListPromptsResultSchema,
+          ) as Promise<ListPromptsResult>,
+        (result: ListPromptsResult) => result.prompts ?? [],
+      )
 
       // Sanitize prompt data from MCP server
-      const promptsToProcess = recursivelySanitizeUnicode(result.prompts)
+      const promptsToProcess = recursivelySanitizeUnicode(prompts)
 
       // Convert MCP prompts to our Command format
       return promptsToProcess.map(prompt => {
