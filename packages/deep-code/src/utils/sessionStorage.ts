@@ -64,6 +64,7 @@ import type {
 import type { QueueOperationMessage } from '../types/messageQueueTypes.js'
 import { uniq } from './array.js'
 import { createMutex } from './asyncMutex.mjs'
+import { selectResumeLeaf } from './sessionResumeLeaf.mjs'
 import { registerCleanup } from './cleanupRegistry.js'
 import { updateSessionName } from './concurrentSessions.js'
 import { getCwd } from './cwd.js'
@@ -3764,6 +3765,7 @@ async function loadSessionFile(sessionId: UUID): Promise<{
   contentReplacements: Map<UUID, ContentReplacementRecord[]>
   contextCollapseCommits: ContextCollapseCommitEntry[]
   contextCollapseSnapshot: ContextCollapseSnapshotEntry | undefined
+  leafUuids: Set<UUID>
 }> {
   const sessionFile = join(
     getSessionProjectDir() ?? getProjectDir(getOriginalCwd()),
@@ -3819,6 +3821,7 @@ export async function getLastSessionLog(
     contentReplacements,
     contextCollapseCommits,
     contextCollapseSnapshot,
+    leafUuids,
   } = await loadSessionFile(sessionId)
   if (messages.size === 0) return null
   // Prime getSessionMessages cache so recordTranscript (called after REPL
@@ -3833,8 +3836,11 @@ export async function getLastSessionLog(
     )
   }
 
-  // Find the most recent non-sidechain message
-  const lastMessage = findLatestMessage(messages.values(), m => !m.isSidechain)
+  // Anchor on the same leaf rule every other reconstruction site uses (latest
+  // user/assistant LEAF), so `--resume <sid>` reconstructs the identical chain
+  // as --continue / loadFullLog instead of a raw max-timestamp non-sidechain
+  // pick that can land on a system/attachment entry or an interior node.
+  const lastMessage = selectResumeLeaf(messages.values(), leafUuids)
   if (!lastMessage) return null
 
   // Build the transcript chain from the last message
