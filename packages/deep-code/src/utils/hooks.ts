@@ -7,6 +7,7 @@ import { basename } from 'path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { pathExists } from './file.js'
 import { eventSupportsIfCondition } from './hookIfConditionEvents.mjs'
+import { hookOutputBlocks } from './hooks/hookOutputBlocks.mjs'
 import { wrapSpawn } from './ShellCommand.js'
 import { TaskOutput } from './task/TaskOutput.js'
 import { getCwd } from './cwd.js'
@@ -2565,6 +2566,40 @@ async function* executeHooks({
           durationMs,
         })
 
+        // Exit code 2 is a blocking signal even when the hook ALSO printed JSON
+        // to stdout. An empty `{}` validates, so the historical exit-2 branch
+        // below is unreachable once `json` is truthy — PreToolUse /
+        // UserPromptSubmit / Stop deny-hooks that emit JSON were silently
+        // failing OPEN here while the headless path (executeHooksOutsideREPL)
+        // blocked correctly. Mirror that path via the shared hookOutputBlocks
+        // leaf. A JSON `decision: "block"` already set processed.blockingError
+        // above, so the `!processed.blockingError` guard scopes this to the
+        // exit-2 case and leaves the JSON-block path untouched.
+        if (
+          hookOutputBlocks({ status: result.status, json }) &&
+          !processed.blockingError
+        ) {
+          emitHookResponse({
+            hookId,
+            hookName,
+            hookEvent,
+            output: result.output,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.status,
+            outcome: 'error',
+          })
+          yield {
+            blockingError: {
+              blockingError: `[${hook.command}]: ${result.stderr || 'No stderr output'}`,
+              command: hook.command,
+            },
+            outcome: 'blocking' as const,
+            hook,
+          }
+          return
+        }
+
         // Handle suppressOutput (skip for async responses)
         if (
           isSyncHookJSONOutput(json) &&
@@ -3336,13 +3371,14 @@ async function executeHooksOutsideREPL({
           )
         }
 
-        // Blocked if exit code 2 or JSON decision: 'block'
-        const jsonBlocked =
-          json &&
-          !isAsyncHookJSONOutput(json) &&
-          isSyncHookJSONOutput(json) &&
-          json.decision === 'block'
-        const blocked = result.status === 2 || !!jsonBlocked
+        // Blocked if exit code 2 or JSON decision: 'block'. Shared with the
+        // REPL path (executeHooks) via the hookOutputBlocks leaf so the two
+        // can't drift again.
+        const blocked = hookOutputBlocks({
+          status: result.status,
+          json,
+          isAsync: !!json && isAsyncHookJSONOutput(json),
+        })
 
         // For successful hooks (exit code 0), use stdout; for failed hooks, use stderr
         const output =
