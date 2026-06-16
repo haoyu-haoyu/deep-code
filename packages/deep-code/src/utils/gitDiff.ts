@@ -4,6 +4,11 @@ import { dirname, join, relative, sep } from 'path'
 import { getCwd } from './cwd.js'
 import { getCachedRepository } from './detectRepository.js'
 import { execFileNoThrow, execFileNoThrowWithCwd } from './execFileNoThrow.js'
+import {
+  gitDiffHunksArgs,
+  gitDiffNumstatArgs,
+  gitDiffShortstatArgs,
+} from './gitDiffArgs.mjs'
 import { isFileWithinReadSizeLimit } from './file.js'
 import {
   findGitRoot,
@@ -61,7 +66,7 @@ export async function fetchGitDiff(): Promise<GitDiffResult | null> {
   // before committing to expensive operations.
   const { stdout: shortstatOut, code: shortstatCode } = await execFileNoThrow(
     gitExe(),
-    ['--no-optional-locks', 'diff', 'HEAD', '--shortstat'],
+    [...gitDiffShortstatArgs],
     { timeout: GIT_TIMEOUT_MS, preserveOutputOnError: false },
   )
 
@@ -81,7 +86,7 @@ export async function fetchGitDiff(): Promise<GitDiffResult | null> {
   // Get stats via --numstat (all uncommitted changes vs HEAD)
   const { stdout: numstatOut, code: numstatCode } = await execFileNoThrow(
     gitExe(),
-    ['--no-optional-locks', 'diff', 'HEAD', '--numstat'],
+    [...gitDiffNumstatArgs],
     { timeout: GIT_TIMEOUT_MS, preserveOutputOnError: false },
   )
 
@@ -123,7 +128,7 @@ export async function fetchGitDiffHunks(): Promise<
 
   const { stdout: diffOut, code: diffCode } = await execFileNoThrow(
     gitExe(),
-    ['--no-optional-locks', 'diff', 'HEAD'],
+    [...gitDiffHunksArgs],
     { timeout: GIT_TIMEOUT_MS, preserveOutputOnError: false },
   )
 
