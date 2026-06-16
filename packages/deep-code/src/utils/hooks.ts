@@ -8,6 +8,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { pathExists } from './file.js'
 import { eventSupportsIfCondition } from './hookIfConditionEvents.mjs'
 import { hookOutputBlocks } from './hooks/hookOutputBlocks.mjs'
+import {
+  emptyPermissionState,
+  reducePermission,
+} from './hooks/permissionAggregate.mjs'
 import { wrapSpawn } from './ShellCommand.js'
 import { TaskOutput } from './task/TaskOutput.js'
 import { getCwd } from './cwd.js'
@@ -2784,7 +2788,7 @@ async function* executeHooks({
     cancelled: 0,
   }
 
-  let permissionBehavior: PermissionResult['behavior'] | undefined
+  let permState = emptyPermissionState()
 
   // Run all hooks in parallel and wait for all to complete
   for await (const result of all(hookPromises)) {
@@ -2863,53 +2867,35 @@ async function* executeHooks({
       }
     }
 
-    // Check for permission behavior with precedence: deny > ask > allow
+    // Aggregate the permission decision (precedence deny > ask > allow), binding
+    // the reason + updatedInput to the WINNING hook — not to whichever hook
+    // happened to finish last (the contamination bug). reducePermission returns
+    // the same state object when this hook doesn't beat the surviving decision,
+    // so we only re-yield (and the consumer's last-writer-wins only sees) the
+    // hook that actually owns the aggregate.
     if (result.permissionBehavior) {
       logForDebugging(
         `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) returned permissionDecision: ${result.permissionBehavior}${result.hookPermissionDecisionReason ? ` (reason: ${result.hookPermissionDecisionReason})` : ''}`,
       )
-      // Apply precedence rules
-      switch (result.permissionBehavior) {
-        case 'deny':
-          // deny always takes precedence
-          permissionBehavior = 'deny'
-          break
-        case 'ask':
-          // ask takes precedence over allow but not deny
-          if (permissionBehavior !== 'deny') {
-            permissionBehavior = 'ask'
-          }
-          break
-        case 'allow':
-          // allow only if no other behavior set
-          if (!permissionBehavior) {
-            permissionBehavior = 'allow'
-          }
-          break
-        case 'passthrough':
-          // passthrough doesn't set permission behavior
-          break
-      }
-    }
-
-    // Yield permission behavior and updatedInput if provided (from allow or ask behavior)
-    if (permissionBehavior !== undefined) {
-      const updatedInput =
-        result.updatedInput &&
-        (result.permissionBehavior === 'allow' ||
-          result.permissionBehavior === 'ask')
-          ? result.updatedInput
-          : undefined
-      if (updatedInput) {
-        logForDebugging(
-          `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) modified tool input keys: [${Object.keys(updatedInput).join(', ')}]`,
-        )
-      }
-      yield {
-        permissionBehavior,
-        hookPermissionDecisionReason: result.hookPermissionDecisionReason,
+      const nextPermState = reducePermission(permState, {
+        behavior: result.permissionBehavior,
+        reason: result.hookPermissionDecisionReason,
+        updatedInput: result.updatedInput,
         hookSource: matchingHooks.find(m => m.hook === result.hook)?.hookSource,
-        updatedInput,
+      })
+      if (nextPermState !== permState) {
+        permState = nextPermState
+        if (permState.updatedInput) {
+          logForDebugging(
+            `Hook ${hookEvent} (${getHookDisplayText(result.hook)}) modified tool input keys: [${Object.keys(permState.updatedInput).join(', ')}]`,
+          )
+        }
+        yield {
+          permissionBehavior: permState.behavior,
+          hookPermissionDecisionReason: permState.reason,
+          hookSource: permState.hookSource,
+          updatedInput: permState.updatedInput,
+        }
       }
     }
 
