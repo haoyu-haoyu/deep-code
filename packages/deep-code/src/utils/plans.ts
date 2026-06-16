@@ -18,6 +18,7 @@ import { getClaudeConfigHomeDir } from './envUtils.js'
 import { isENOENT } from './errors.js'
 import { getEnvironmentKind } from './filePersistence/outputsScanner.js'
 import { getFsImplementation } from './fsOperations.js'
+import { isValidPlanSlug } from './isValidPlanSlug.mjs'
 import { logError } from './log.js'
 import { getInitialSettings } from './settings/settings.js'
 import { generateWordSlug } from './words.js'
@@ -147,7 +148,13 @@ export function getPlan(agentId?: AgentId): string | null {
  * Extract the plan slug from a log's message history.
  */
 function getSlugFromLog(log: LogOption): string | undefined {
-  return log.messages.find(m => m.slug)?.slug
+  const slug = log.messages.find(m => m.slug)?.slug
+  // The slug is a free-form persisted transcript field; it flows into
+  // join(getPlansDirectory(), `${slug}.md`) and on to getPlan() reads and
+  // ExitPlanMode/fork writes. Reject anything that isn't a safe single path
+  // segment so an untrusted resumed session can't escape the plans directory
+  // (mirrors validateWorktreeSlug for the equivalent worktree surface).
+  return slug && isValidPlanSlug(slug) ? slug : undefined
 }
 
 /**
