@@ -202,33 +202,36 @@ export function walkChainBeforeParse(buf) {
     }
   }
 
-  // Anchor on the LATEST (max-timestamp) non-sidechain TERMINAL — the same
-  // chronological rule findLatestMessage / selectResumeLeaf apply after parse —
-  // not the physically-last line. Under a monotonic wall clock the two agree
-  // (the live tip is appended last AND carries the max timestamp), so this is
-  // behavior-identical on every well-behaved session. They diverge only when
-  // the clock stepped backward (NTP correction, suspend/resume) or branches got
-  // interleaved with out-of-order stamps: there the old file-order pick anchored
-  // a stale branch, and the post-parse loader — which anchors by max timestamp —
-  // would then reconstruct a DIFFERENT chain than the one the prune kept, i.e.
-  // silently load the wrong/truncated conversation. Matching the comparison here
-  // keeps the prune transparent to the loader.
+  // We keep the chains of TWO anchors and union them, because the prune must be
+  // transparent to whatever leaf the post-parse loader anchors on — and the
+  // loader's rule (findLatestMessage / selectResumeLeaf) is "the latest
+  // non-sidechain user/assistant nearest-ancestor of a terminal", which a
+  // byte-level pass cannot reproduce exactly (it can't decode `type`, and it
+  // can't replay the progress-bridge that deletes `progress` entries from the
+  // graph). Either anchor alone drops the loader's leaf in a real topology:
+  //
+  //   L = the physically-LAST non-sidechain line (the historical pick). Under a
+  //       monotonic, append-only clock this IS the loader's anchor's branch —
+  //       even when the live tip is a NON-terminal whose only children are
+  //       sidechain/progress entries the loader bridges out (a subagent turn, a
+  //       progress tick): those children don't move the live tip, so the last
+  //       non-sidechain line still walks the live chain. Keeping L is the safety
+  //       net that makes this prune never reconstruct worse than before.
+  //   P = the latest-TIMESTAMP non-sidechain terminal (else any non-sidechain
+  //       entry). This recovers the loader's anchor when the clock stepped
+  //       backward (NTP/suspend) or branches interleaved so file order no longer
+  //       equals timestamp order — the case L (file order) gets wrong.
+  //
+  // Keeping BOTH chains is provably no worse than the old single L pick (the
+  // union is a superset of L's chain) and additionally fixes the clock-step
+  // cases. No surviving leaf can out-rank the loader's true max-timestamp anchor
+  // (survivors are a subset of the whole file), so whenever the anchor's chain
+  // is among the kept bytes the loader reconstructs it identically.
   //
   // Timestamps are compared as bytes: create*-written stamps are fixed-width
   // `toISOString()` UTC (`...Z`), so lexical order equals chronological order
   // and ties (identical bytes = same instant) keep the first-iterated entry,
   // matching findLatestMessage's strict `>`.
-  //
-  // selectResumeLeaf (and the other reconstruction sites) anchor in two tiers:
-  // the latest non-sidechain user/assistant LEAF, else the latest non-sidechain
-  // entry of any kind. We reproduce both byte-level. The leaf tier uses
-  // "non-sidechain TERMINAL" (a uuid with no children) as the type-free proxy
-  // for "user/assistant leaf": on a real transcript the tip is a user/assistant
-  // turn, so the max-timestamp non-sidechain terminal's chain contains exactly
-  // the leaf the loader would anchor on. The any tier matches the fallback
-  // verbatim. (We can't decode `type` cheaply — the top-level `type` key is not
-  // positionally stable and content blocks carry nested `"type":"…"` — so a
-  // non-user/assistant physical tip stays an approximation, as it was before.)
   const pickLatest = requireTerminal => {
     let slot = -1
     let bestStart = -1
@@ -257,46 +260,49 @@ export function walkChainBeforeParse(buf) {
     return slot
   }
 
-  // Tier 1: latest non-sidechain terminal (≈ the user/assistant leaf anchor).
-  // Tier 2: latest non-sidechain entry of any kind (the loader's own fallback,
-  // reached when every terminal is a sidechain — e.g. a subagent turn is the
-  // physical tip).
-  let leafSlot = pickLatest(true)
-  if (leafSlot < 0) leafSlot = pickLatest(false)
-  if (leafSlot < 0) {
-    // Tier 3, degenerate: no entry carries a usable timestamp. The loader's
-    // findLatestMessage would Date.parse nothing here; preserve the historical
-    // pick — the physically-last non-sidechain entry — so a malformed transcript
-    // still resolves the same chain it did before.
-    for (let i = msgIdx.length - 4; i >= 0; i -= 4) {
-      const sc = buf.indexOf(SIDECHAIN_TRUE, msgIdx[i])
-      if (sc === -1 || sc >= msgIdx[i + 1]) {
-        leafSlot = i
-        break
-      }
+  // L: physically-last non-sidechain line (the historical anchor / safety net).
+  let fileOrderLast = -1
+  for (let i = msgIdx.length - 4; i >= 0; i -= 4) {
+    const sc = buf.indexOf(SIDECHAIN_TRUE, msgIdx[i])
+    if (sc === -1 || sc >= msgIdx[i + 1]) {
+      fileOrderLast = i
+      break
     }
   }
-  if (leafSlot < 0) return buf
+  // P: latest-timestamp non-sidechain terminal, else any non-sidechain entry
+  // (the loader's own fallback, reached when every terminal is a sidechain).
+  let chrono = pickLatest(true)
+  if (chrono < 0) chrono = pickLatest(false)
+  if (fileOrderLast < 0 && chrono < 0) return buf
 
-  // Walk parentUuid to root. Collect kept-message line starts and sum their
-  // byte lengths so we can decide whether the concat is worth it. A dangling
-  // parent (uuid not in file) is the normal termination for forked sessions
-  // and post-boundary chains -- same semantics as buildConversationChain.
-  // Correctness against index poisoning rests on the timestamp suffix check
-  // above: a nested `"uuid":"` match without the suffix never becomes uk.
+  // Walk parentUuid to root from BOTH anchors into one shared chain set. A
+  // dangling parent (uuid not in file) is the normal termination for forked
+  // sessions and post-boundary chains -- same semantics as
+  // buildConversationChain. The shared `seen` set both guards cycles and stops
+  // the second walk as soon as it merges into the first's chain. Correctness
+  // against index poisoning rests on the timestamp suffix check above: a nested
+  // `"uuid":"` match without the suffix never becomes uk.
   const seen = new Set()
   const chain = new Set()
+  const walk = startSlot => {
+    let slot = startSlot
+    while (slot !== undefined && !seen.has(slot)) {
+      seen.add(slot)
+      chain.add(msgIdx[slot])
+      const parentStart = msgIdx[slot + 2]
+      if (parentStart < 0) break
+      const parent = buf.toString('latin1', parentStart, parentStart + UUID_LEN)
+      slot = uuidToSlot.get(parent)
+    }
+  }
+  if (fileOrderLast >= 0) walk(fileOrderLast)
+  if (chrono >= 0) walk(chrono)
+
+  // Sum kept bytes from the union (a slot may be on both chains; the set
+  // dedupes) to decide whether the concat is worth it.
   let chainBytes = 0
-  let slot = leafSlot
-  while (slot !== undefined) {
-    if (seen.has(slot)) break
-    seen.add(slot)
-    chain.add(msgIdx[slot])
-    chainBytes += msgIdx[slot + 1] - msgIdx[slot]
-    const parentStart = msgIdx[slot + 2]
-    if (parentStart < 0) break
-    const parent = buf.toString('latin1', parentStart, parentStart + UUID_LEN)
-    slot = uuidToSlot.get(parent)
+  for (let i = 0; i < msgIdx.length; i += 4) {
+    if (chain.has(msgIdx[i])) chainBytes += msgIdx[i + 1] - msgIdx[i]
   }
 
   // parseJSONL cost scales with bytes, not entry count. A session can have
