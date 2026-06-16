@@ -185,13 +185,13 @@ test('OSC-8 hyperlink token is treated atomically (width 0), not split', () => {
   assert.equal(stringWidth(slice(s, 0, 3)), 3)
 })
 
-// --- NON-ADDITIVE width oracle (models Bun.stringWidth) — the regression class ---
+// --- NON-ADDITIVE width oracle (models Bun.stringWidth) ---
 // Bun.stringWidth is NOT additive over grapheme clusters: an isolated
 // emoji-presentation cluster (e.g. "#️") measures 2, but its contribution
-// inside a longer string is 1. Summing isolated per-grapheme widths drifts
-// `position` and drops the trailing grapheme. naWidth reproduces that exact
-// asymmetry deterministically: a cluster containing U+FE0F is width 2 when it
-// IS the whole string, width 1 in context.
+// inside a longer string is 1. The leaf detects this (Σ isolated ≠ runWidth)
+// and falls back to whole-token atomic handling, which is lossless for wrap
+// tiling. naWidth reproduces that asymmetry deterministically: a cluster
+// containing U+FE0F is width 2 when it IS the whole string, width 1 in context.
 function naWidth(str) {
   if (str.includes('\x1b')) str = stripAnsi(str)
   const clusters = []
@@ -245,13 +245,13 @@ test('non-additive oracle: wrap-loop tiling is lossless across many strings/widt
   }
 })
 
-// --- NON-MONOTONIC width oracle (models Bun.stringWidth) — the round-2 class ---
+// --- NON-MONOTONIC width oracle (models Bun.stringWidth) ---
 // Bun.stringWidth is also NON-MONOTONIC over prefixes: appending a zero-width
 // char can SHRINK the measured width (stringWidth("#"+VS16)=2, but
-// stringWidth("#"+VS16+BOM)=1). A raw prefix delta then goes negative and the
-// walk would step `position` backwards, dropping/duplicating a grapheme. nmWidth
-// reproduces that: a VS16-presentation cluster contributes 2, but only 1 when
-// the NEXT cluster is zero-width (a separator/BOM right after it).
+// stringWidth("#"+VS16+BOM)=1). Such runs are also non-additive, so the leaf
+// falls back to atomic handling (lossless tiling). nmWidth reproduces the dip:
+// a VS16-presentation cluster contributes 2, but only 1 when the NEXT cluster
+// is zero-width (a separator/BOM right after it).
 const BOM = '\uFEFF'
 const ZWSP = '\u200B'
 const VS16 = '\uFE0F'
@@ -282,7 +282,7 @@ function nmWidth(str) {
 const nmDeps = { stringWidth: nmWidth, splitGraphemes }
 const nmSlice = (s, a, b) => sliceAnsiCore(s, a, b, nmDeps)
 
-test('non-monotonic oracle: nmWidth actually dips (the negative-delta trap)', () => {
+test('non-monotonic oracle: nmWidth actually dips (forces the atomic fallback)', () => {
   assert.equal(nmWidth('#' + VS16), 2)
   assert.equal(nmWidth('#' + VS16 + BOM), 1) // appending BOM SHRINKS the width
 })
@@ -331,6 +331,81 @@ test('non-monotonic oracle: lossless tiling fuzz over BOM/ZWSP/VS16 content', ()
     if (total === 0) rebuilt = nmSlice(s, 0, w)
     assert.equal(stripAnsi(rebuilt), stripAnsi(s), `lossy s=${JSON.stringify(s)} w=${w}`)
   }
+})
+
+// --- the ≤window overshoot contract (sliceFit / output.ts clip rely on it) ---
+// wrap-text.ts sliceFit retries once with end-1 if the slice is over-width. The
+// leaf must guarantee that one retry suffices: for ADDITIVE runs it sub-cuts
+// exactly; for NON-ADDITIVE runs it falls back to atomic, so an interior-start
+// slice yields '' (never an over-width interior slice that the retry can't trim
+// and that would overwrite a sibling column).
+const sliceFit = (oracle, s, a, b) => {
+  const d = { stringWidth: oracle, splitGraphemes }
+  const out = sliceAnsiCore(s, a, b, d)
+  return oracle(out) > b - a ? sliceAnsiCore(s, a, b - 1, d) : out
+}
+
+test('additive content: sliceFit never exceeds the window (fuzz)', () => {
+  const pieces = ['a', 'b', 'c', ' ', '中', '文', '😀', 'z']
+  let seed = 0xa11ce
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)
+  for (let iter = 0; iter < 4000; iter++) {
+    const n = Math.floor(rnd() * 8)
+    let s = ''
+    for (let j = 0; j < n; j++) s += pieces[Math.floor(rnd() * pieces.length)]
+    const total = stringWidth(s)
+    const a = Math.floor(rnd() * (total + 1))
+    const b = a + 1 + Math.floor(rnd() * (total + 1))
+    assert.ok(
+      stringWidth(sliceFit(stringWidth, s, a, b)) <= b - a,
+      `over-width s=${JSON.stringify(s)} [${a},${b}]`,
+    )
+  }
+})
+
+// A non-additive oracle modelling Bun's "❤️ + CJK" collapse: a wide cluster
+// immediately after a VS16 emoji-presentation cluster contributes 1, not 2
+// (stringWidth("❤️"+"文") = 3, not 4). The round-3 reviewer's repro.
+function collapseWidth(str) {
+  if (str.includes('\x1b')) str = stripAnsi(str)
+  const clusters = []
+  for (const { segment } of SEG.segment(str)) clusters.push(segment)
+  let width = 0
+  for (let i = 0; i < clusters.length; i++) {
+    const g = clusters[i]
+    const cw = clusterWidth(g)
+    const prevIsVs16 = i > 0 && clusters[i - 1].includes(VS16)
+    width += cw === 2 && prevIsVs16 && !g.includes(VS16) ? 1 : cw
+  }
+  return width
+}
+
+test('non-additive collapse: an interior-start slice does not overshoot (no sibling overwrite)', () => {
+  // "❤️文報b": collapseWidth = 2 + 1 + 2 + 1 = 6, Σ isolated = 2+2+2+1 = 7 →
+  // non-additive → atomic fallback. sliceFit from an interior start must fit.
+  const s = '❤️文報b'
+  assert.equal(collapseWidth(s), 6)
+  for (const [a, b] of [
+    [2, 5],
+    [1, 4],
+    [3, 5],
+    [2, 4],
+  ]) {
+    assert.ok(
+      collapseWidth(sliceFit(collapseWidth, s, a, b)) <= b - a,
+      `interior-start overshoot [${a},${b}]`,
+    )
+  }
+  // and tiling is still lossless (atomic over-includes the whole token in tile 0)
+  let pos = 0
+  let rebuilt = ''
+  const total = collapseWidth(s)
+  const d = { stringWidth: collapseWidth, splitGraphemes }
+  while (pos < total) {
+    rebuilt += sliceAnsiCore(s, pos, pos + 2, d)
+    pos += 2
+  }
+  assert.equal(stripAnsi(rebuilt), s)
 })
 
 // --- differential vs the pre-change implementation (git HEAD sliceAnsi.ts) ---

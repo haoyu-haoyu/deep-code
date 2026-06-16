@@ -79,50 +79,27 @@ function filterStartCodes(codes) {
 }
 
 /**
- * Per-grapheme cell widths for one text run whose total width is `runWidth`.
+ * Isolated per-grapheme widths IF the width oracle is ADDITIVE over this run
+ * (`Σ stringWidth(gᵢ) === runWidth`) — i.e. each grapheme's standalone width
+ * equals its in-context contribution, so the widths are exact and a cut at any
+ * cell boundary measures correctly. Returns `null` when the oracle is NOT
+ * additive over the run, signalling the caller to NOT sub-cut it.
  *
- * Walking the run must advance `position` monotonically and (in the common
- * case) land on exactly the same cell the atomic path would — otherwise the cut
- * drifts and drops/duplicates a grapheme. The width oracle (`Bun.stringWidth`)
- * is neither additive NOR monotonic over grapheme prefixes for some content:
- *   - non-additive: `Σ stringWidth(gᵢ) ≠ stringWidth(run)` (VS16
- *     emoji-presentation, keycaps, regional-indicator flags, some Thai /
- *     Devanagari) — summing isolated widths drifts `position`;
- *   - non-monotonic: appending a zero-width char can SHRINK the measured prefix
- *     (e.g. `stringWidth("#"+U+FE0F) = 2`, but appending a U+FEFF BOM gives 1),
- *     so a raw prefix delta can be NEGATIVE — which would walk `position`
- *     backwards and re-emit/drop a grapheme.
- * So:
- *   - fast path: if the isolated per-grapheme widths already sum to `runWidth`,
- *     use them directly (the overwhelmingly common ASCII/CJK/plain case);
- *   - else: derive each grapheme's width from the in-context PREFIX deltas of a
- *     cumulative width CLAMPED to be non-decreasing, so widths are never
- *     negative (monotonic `position`) and still telescope to `stringWidth(run)`
- *     whenever the prefix maximum is the whole run (the realistic case).
+ * `Bun.stringWidth` (the production oracle) is non-additive for some content —
+ * a VS16 emoji-presentation char abutting a wide/CJK char, keycaps,
+ * regional-indicator flags, some Thai / Devanagari: `stringWidth(a+b) ≠
+ * stringWidth(a)+stringWidth(b)`. For such a run there is NO per-grapheme cell
+ * assignment that matches `stringWidth` of an arbitrary sub-range (a substring's
+ * standalone width differs from its in-context contribution), so any sub-cut
+ * can render wider than its window and overwrite sibling columns. Those runs
+ * fall back to whole-token atomic handling — lossless for wrap tiling and
+ * identical to the pre-change behavior, so no regression.
  */
-function measureGraphemeWidths(runValue, graphemes, runWidth, stringWidth) {
+function additiveGraphemeWidths(graphemes, runWidth, stringWidth) {
   const isolated = graphemes.map(g => stringWidth(g))
   let sum = 0
   for (const w of isolated) sum += w
-  if (sum === runWidth) return isolated
-
-  const widths = new Array(graphemes.length)
-  let consumed = 0
-  let prevCum = 0
-  for (let i = 0; i < graphemes.length; i++) {
-    consumed += graphemes[i].length
-    const rawCum = stringWidth(runValue.slice(0, consumed))
-    // Clamp the cumulative width to be non-decreasing (a non-monotonic oracle
-    // must never step the walk backward) AND capped at `runWidth` (a dip that
-    // later recovers higher must not push the cumulative past the run's own
-    // total, or the tail beyond `runWidth` becomes unreachable to a wrap loop
-    // that iterates `[0, runWidth)`). The last grapheme's rawCum IS `runWidth`,
-    // so this telescopes exactly to `runWidth`.
-    const cum = Math.min(runWidth, Math.max(prevCum, rawCum))
-    widths[i] = cum - prevCum
-    prevCum = cum
-  }
-  return widths
+  return sum === runWidth ? isolated : null
 }
 
 /**
@@ -134,10 +111,11 @@ function measureGraphemeWidths(runValue, graphemes, runWidth, stringWidth) {
  * 11-cell string (truncate / overflow=hidden defeated), and a truncate-start
  * `sliceAnsi(s, 30, 49)` jumped 0→49 in one step and returned '' (visible-tail
  * data loss). The fix walks a TEXT token grapheme-by-grapheme — but only when
- * it straddles `start` or `end`. Tokens that lie entirely before `start`,
- * entirely within `[start, end)`, or entirely past `end` keep the original
- * atomic handling, so the common case stays byte-identical and does no
- * per-grapheme work.
+ * it straddles `start`/`end` AND the width oracle is additive over its
+ * graphemes (see additiveGraphemeWidths). Tokens that lie entirely before
+ * `start`, within `[start, end)`, past `end`, are full-width, or are a
+ * non-additive run keep the original atomic handling, so the common case stays
+ * byte-identical and does no per-grapheme work.
  *
  * deps:
  *   stringWidth(str): number        — display width in cells
@@ -171,17 +149,30 @@ export default function sliceAnsi(str, start, end, deps) {
     }
 
     const width = token.fullWidth ? 2 : stringWidth(token.value)
-    // A full-width token is a single wide char that can't be sub-cut — keep it
-    // atomic (overshoots `end` by at most one cell, which sliceFit/output.ts
-    // already retry away). Only narrow text runs are walked grapheme-by-grapheme.
-    const explodable = !token.fullWidth
-    const crossesStart =
-      explodable && !include && position < start && position + width > start
-    const crossesEnd =
-      explodable && end !== undefined && position < end && position + width > end
+    // Sub-cut a straddling text token grapheme-by-grapheme ONLY when (a) it is
+    // not a single full-width char and (b) the width oracle is additive over
+    // its graphemes. A full-width char can't be sub-cut; a non-additive run has
+    // no faithful per-grapheme cell mapping (see additiveGraphemeWidths). Both
+    // fall through to the historical atomic handling.
+    let graphemes = null
+    let graphemeWidths = null
+    if (!token.fullWidth) {
+      const wouldStraddle =
+        (!include && position < start && position + width > start) ||
+        (end !== undefined && position < end && position + width > end)
+      if (wouldStraddle) {
+        const gs = splitGraphemes(token.value)
+        const widths = additiveGraphemeWidths(gs, width, stringWidth)
+        if (widths !== null) {
+          graphemes = gs
+          graphemeWidths = widths
+        }
+      }
+    }
 
-    if (!crossesStart && !crossesEnd) {
-      // Atomic fast path — byte-identical to the historical per-token behavior.
+    if (graphemes === null) {
+      // Atomic path — byte-identical to the historical per-token behavior.
+      // Covers non-straddling tokens, full-width chars, and non-additive runs.
       if (end !== undefined && position >= end) {
         // Break AFTER trailing zero-width marks: a width-0 mark attaches to the
         // preceding base char, so it must ride along even past `end`.
@@ -198,16 +189,9 @@ export default function sliceAnsi(str, start, end, deps) {
       continue
     }
 
-    // Straddling text token: walk graphemes so the cut lands on a real cell
-    // boundary. Grapheme clustering keeps emoji ZWJ sequences and base+combining
-    // pairs intact (never split mid-cluster).
-    const graphemes = splitGraphemes(token.value)
-    const graphemeWidths = measureGraphemeWidths(
-      token.value,
-      graphemes,
-      width,
-      stringWidth,
-    )
+    // Straddling additive text token: walk graphemes so the cut lands on a real
+    // cell boundary. The isolated widths are exact (additive), and grapheme
+    // clustering keeps emoji ZWJ sequences and base+combining pairs intact.
     let stop = false
     for (let i = 0; i < graphemes.length; i++) {
       const grapheme = graphemes[i]
