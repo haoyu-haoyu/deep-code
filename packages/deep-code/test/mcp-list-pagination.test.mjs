@@ -132,6 +132,20 @@ test('onTruncated reports maxItems / maxPages / cursorCycle, but not a clean fin
   assert.ok(calls.every(c => typeof c.pages === 'number' && typeof c.items === 'number'))
 })
 
+test('reaching maxItems on the final item of a cursor-less page is NOT a truncation', async () => {
+  // Boundary: a server returns exactly maxItems items with no nextCursor.
+  // Nothing was left behind, so onTruncated must NOT fire (no false "may be
+  // missing" warning), and the full list is returned.
+  const calls = []
+  const items = await paginateMcpList(
+    () => Promise.resolve({ tools: [{ name: 'a' }, { name: 'b' }] }), // no nextCursor
+    pickTools,
+    { maxItems: 2, onTruncated: info => calls.push(info) },
+  )
+  assert.deepEqual(items, [{ name: 'a' }, { name: 'b' }])
+  assert.deepEqual(calls, []) // clean finish exactly at the cap
+})
+
 test('a missing/undefined array on a page is treated as empty', async () => {
   const items = await paginateMcpList(
     () => Promise.resolve({}), // no tools key

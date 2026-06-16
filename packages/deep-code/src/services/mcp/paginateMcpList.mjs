@@ -40,15 +40,23 @@ export async function paginateMcpList(
   for (let page = 0; page < maxPages; page++) {
     const result = await requestPage(cursor)
     const pageItems = pickArray(result) ?? []
+    let consumed = 0
     for (const item of pageItems) {
+      if (items.length >= maxItems) break
       items.push(item)
-      if (items.length >= maxItems) {
-        onTruncated?.({ reason: 'maxItems', pages: page + 1, items: items.length })
-        return items
-      }
+      consumed++
     }
     const next = result == null ? undefined : result.nextCursor
-    if (next == null || next === '') break
+    const hasNext = next != null && next !== ''
+    // Truncation by maxItems is REAL only if entries were left behind — either
+    // this page had more items than we consumed, or there is another page we
+    // won't fetch. Hitting the cap on the final item of a cursor-less final page
+    // is a clean finish, not a truncation (don't cry wolf).
+    if (items.length >= maxItems && (consumed < pageItems.length || hasNext)) {
+      onTruncated?.({ reason: 'maxItems', pages: page + 1, items: items.length })
+      return items
+    }
+    if (!hasNext) break
     // Cycle guard: a server that keeps returning the same cursor must not spin.
     if (followed.has(next)) {
       onTruncated?.({ reason: 'cursorCycle', pages: page + 1, items: items.length })
