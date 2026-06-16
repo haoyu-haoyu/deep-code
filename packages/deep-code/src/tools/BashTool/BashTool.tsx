@@ -45,6 +45,7 @@ import { interpretCommandResult } from './commandSemantics.js';
 import { getDefaultTimeoutMs, getMaxTimeoutMs, getSimplePrompt } from './prompt.js';
 import { checkReadOnlyConstraints } from './readOnlyValidation.js';
 import { parseSedEditCommand } from './sedEditParser.js';
+import { decideInterruptAction } from './shellInterruptDecision.mjs';
 import { shouldUseSandbox } from './shouldUseSandbox.js';
 import { BASH_TOOL_NAME } from './toolName.js';
 import { BackgroundHint, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseQueuedMessage } from './UI.js';
@@ -1018,6 +1019,9 @@ async function* runShellCommand({
   // than waiting the full 2s background-hint window first.
   const startTime = Date.now();
   let foregroundTaskId: string | undefined = undefined;
+  // Latches once we've handled an abort('interrupt') by backgrounding the
+  // running command, so the progress loop doesn't re-enter the branch.
+  let interruptBackgroundingStarted = false;
   {
     const initialResult = await Promise.race([resultPromise, new Promise<null>(resolve => {
       const t = setTimeout((r: (v: null) => void) => r(null), PROGRESS_DISPLAY_THRESHOLD_MS, resolve);
@@ -1092,13 +1096,39 @@ async function* runShellCommand({
       // Check if command was backgrounded (either via old mechanism or new backgroundAll)
       if (backgroundShellId) {
         return {
-          stdout: '',
+          // Surface the partial output captured before the interrupt-background
+          // (mirrors PowerShellTool); '' for the timeout/Ctrl+B background paths.
+          stdout: interruptBackgroundingStarted ? fullOutput : '',
           stderr: '',
           code: 0,
           interrupted: false,
           backgroundTaskId: backgroundShellId,
           assistantAutoBackgrounded
         };
+      }
+
+      // User submitted a new 'now'-priority message → abort('interrupt'). The
+      // child is intentionally NOT killed by ShellCommand on 'interrupt', and no
+      // other loop exit fires, so without this the loop spins until the child
+      // exits or the 30-min timeout. Mirror PowerShellTool: background the
+      // running command instead of killing it (or kill if backgrounding is off).
+      const interruptAction = decideInterruptAction({
+        aborted: abortController.signal.aborted,
+        reason: abortController.signal.reason,
+        interruptBackgroundingStarted,
+        isBackgroundTasksDisabled
+      });
+      if (interruptAction !== 'none') {
+        interruptBackgroundingStarted = true;
+        if (interruptAction === 'background') {
+          startBackgrounding('tengu_bash_command_interrupt_backgrounded');
+          // Reloop so the backgroundShellId check (above) catches the sync
+          // foregroundTaskId→background path. Without this we fall through to
+          // the Ctrl+B status==='backgrounded' branch and mislabel it
+          // backgroundedByUser:true. (mirrors PowerShellTool bugs 020/021)
+          continue;
+        }
+        shellCommand.kill();
       }
 
       // Check if this foreground task was backgrounded via backgroundAll()
