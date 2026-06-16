@@ -18,17 +18,24 @@ function filterStartCodes(codes) {
 /**
  * Per-grapheme cell widths for one text run whose total width is `runWidth`.
  *
- * The cumulative widths MUST telescope back to `runWidth` so that walking the
- * run advances `position` to exactly the same cell the atomic path would —
- * otherwise the cut drifts and drops/duplicates a grapheme. The width oracle
- * (`Bun.stringWidth`) is NOT additive over grapheme clusters for some content
- * (VS16 emoji-presentation, keycaps, regional-indicator flags, some Thai /
- * Devanagari): `Σ stringWidth(gᵢ) ≠ stringWidth(run)`. So:
+ * Walking the run must advance `position` monotonically and (in the common
+ * case) land on exactly the same cell the atomic path would — otherwise the cut
+ * drifts and drops/duplicates a grapheme. The width oracle (`Bun.stringWidth`)
+ * is neither additive NOR monotonic over grapheme prefixes for some content:
+ *   - non-additive: `Σ stringWidth(gᵢ) ≠ stringWidth(run)` (VS16
+ *     emoji-presentation, keycaps, regional-indicator flags, some Thai /
+ *     Devanagari) — summing isolated widths drifts `position`;
+ *   - non-monotonic: appending a zero-width char can SHRINK the measured prefix
+ *     (e.g. `stringWidth("#"+U+FE0F) = 2`, but appending a U+FEFF BOM gives 1),
+ *     so a raw prefix delta can be NEGATIVE — which would walk `position`
+ *     backwards and re-emit/drop a grapheme.
+ * So:
  *   - fast path: if the isolated per-grapheme widths already sum to `runWidth`,
  *     use them directly (the overwhelmingly common ASCII/CJK/plain case);
- *   - else: derive each grapheme's width from the in-context PREFIX deltas
- *     `stringWidth(run[0..k]) − stringWidth(run[0..k-1])`, which telescope to
- *     `stringWidth(run) === runWidth` by construction.
+ *   - else: derive each grapheme's width from the in-context PREFIX deltas of a
+ *     cumulative width CLAMPED to be non-decreasing, so widths are never
+ *     negative (monotonic `position`) and still telescope to `stringWidth(run)`
+ *     whenever the prefix maximum is the whole run (the realistic case).
  */
 function measureGraphemeWidths(runValue, graphemes, runWidth, stringWidth) {
   const isolated = graphemes.map(g => stringWidth(g))
@@ -38,12 +45,19 @@ function measureGraphemeWidths(runValue, graphemes, runWidth, stringWidth) {
 
   const widths = new Array(graphemes.length)
   let consumed = 0
-  let prev = 0
+  let prevCum = 0
   for (let i = 0; i < graphemes.length; i++) {
     consumed += graphemes[i].length
-    const cum = stringWidth(runValue.slice(0, consumed))
-    widths[i] = cum - prev
-    prev = cum
+    const rawCum = stringWidth(runValue.slice(0, consumed))
+    // Clamp the cumulative width to be non-decreasing (a non-monotonic oracle
+    // must never step the walk backward) AND capped at `runWidth` (a dip that
+    // later recovers higher must not push the cumulative past the run's own
+    // total, or the tail beyond `runWidth` becomes unreachable to a wrap loop
+    // that iterates `[0, runWidth)`). The last grapheme's rawCum IS `runWidth`,
+    // so this telescopes exactly to `runWidth`.
+    const cum = Math.min(runWidth, Math.max(prevCum, rawCum))
+    widths[i] = cum - prevCum
+    prevCum = cum
   }
   return widths
 }

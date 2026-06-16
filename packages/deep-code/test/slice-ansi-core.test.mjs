@@ -226,6 +226,100 @@ test('non-additive oracle: wrap-loop tiling is lossless across many strings/widt
   }
 })
 
+// --- NON-MONOTONIC width oracle (models Bun.stringWidth) — the round-2 class ---
+// Bun.stringWidth is also NON-MONOTONIC over prefixes: appending a zero-width
+// char can SHRINK the measured width (stringWidth("#"+VS16)=2, but
+// stringWidth("#"+VS16+BOM)=1). A raw prefix delta then goes negative and the
+// walk would step `position` backwards, dropping/duplicating a grapheme. nmWidth
+// reproduces that: a VS16-presentation cluster contributes 2, but only 1 when
+// the NEXT cluster is zero-width (a separator/BOM right after it).
+const BOM = '\uFEFF'
+const ZWSP = '\u200B'
+const VS16 = '\uFE0F'
+function isZeroWidthCluster(g) {
+  for (const ch of g) {
+    if (!isZeroWidth(ch.codePointAt(0))) return false
+  }
+  return g.length > 0
+}
+function nmWidth(str) {
+  if (str.includes('\x1b')) str = stripAnsi(str)
+  const clusters = []
+  for (const { segment } of SEG.segment(str)) clusters.push(segment)
+  let width = 0
+  for (let i = 0; i < clusters.length; i++) {
+    const g = clusters[i]
+    if (isZeroWidthCluster(g)) continue
+    if (g.includes(VS16)) {
+      const nextZeroWidth =
+        i + 1 < clusters.length && isZeroWidthCluster(clusters[i + 1])
+      width += nextZeroWidth ? 1 : 2
+      continue
+    }
+    for (const ch of g) {
+      const cp = ch.codePointAt(0)
+      if (!isZeroWidth(cp)) {
+        width += eastAsianWidth(cp, { ambiguousAsWide: false })
+        break
+      }
+    }
+  }
+  return width
+}
+const nmDeps = { stringWidth: nmWidth, splitGraphemes }
+const nmSlice = (s, a, b) => sliceAnsiCore(s, a, b, nmDeps)
+
+test('non-monotonic oracle: nmWidth actually dips (the negative-delta trap)', () => {
+  assert.equal(nmWidth('#' + VS16), 2)
+  assert.equal(nmWidth('#' + VS16 + BOM), 1) // appending BOM SHRINKS the width
+})
+
+test('non-monotonic oracle: a backward dip never drops or duplicates a grapheme', () => {
+  // reviewer repros (each a single no-ANSI text token; the leaf is fully
+  // responsible): wrap-loop tiling must reconstruct the whole string exactly.
+  const repros = [
+    '#' + VS16 + ZWSP + 'a',
+    'a#' + VS16 + ZWSP + 'b',
+    '*' + VS16 + BOM + 'cd',
+  ]
+  for (const s of repros) {
+    for (const w of [1, 2, 3]) {
+      const total = nmWidth(s)
+      let pos = 0
+      let rebuilt = ''
+      let guard = 0
+      while (pos < total && guard++ < 1000) {
+        rebuilt += nmSlice(s, pos, pos + w)
+        pos += w
+      }
+      if (total === 0) rebuilt = nmSlice(s, 0, w)
+      assert.equal(stripAnsi(rebuilt), s, `lossy tiling s=${JSON.stringify(s)} w=${w}`)
+    }
+  }
+})
+
+test('non-monotonic oracle: lossless tiling fuzz over BOM/ZWSP/VS16 content', () => {
+  const pieces = ['a', 'b', '中', '#' + VS16, '*' + VS16, BOM, ZWSP, 'é', 'z']
+  let seed = 0xbeef
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)
+  for (let iter = 0; iter < 3000; iter++) {
+    const n = Math.floor(rnd() * 7)
+    let s = ''
+    for (let j = 0; j < n; j++) s += pieces[Math.floor(rnd() * pieces.length)]
+    const total = nmWidth(s)
+    const w = 1 + Math.floor(rnd() * 4)
+    let pos = 0
+    let rebuilt = ''
+    let guard = 0
+    while (pos < total && guard++ < 2000) {
+      rebuilt += nmSlice(s, pos, pos + w)
+      pos += w
+    }
+    if (total === 0) rebuilt = nmSlice(s, 0, w)
+    assert.equal(stripAnsi(rebuilt), stripAnsi(s), `lossy s=${JSON.stringify(s)} w=${w}`)
+  }
+})
+
 // --- differential vs the pre-change implementation (git HEAD sliceAnsi.ts) ---
 // Ported verbatim from HEAD:src/utils/sliceAnsi.ts so we can prove the new leaf
 // is byte-identical on slices that don't cut inside a token, and strictly more
