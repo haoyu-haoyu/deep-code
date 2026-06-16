@@ -118,6 +118,7 @@ jobs:
             test/keychain-argv.test.mjs \
             test/worktree-lsfiles-args.test.mjs \
             test/gitdiff-args.test.mjs \
+            test/gitdiff-header.test.mjs \
             test/settings-source-order.test.mjs \
             test/permission-rule-classify.test.mjs \
             test/edit-delete-occurrences.test.mjs \

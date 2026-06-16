@@ -9,6 +9,7 @@ import {
   gitDiffNumstatArgs,
   gitDiffShortstatArgs,
 } from './gitDiffArgs.mjs'
+import { extractDiffFilePath } from './gitDiffHeader.mjs'
 import { isFileWithinReadSizeLimit } from './file.js'
 import {
   findGitRoot,
@@ -222,10 +223,11 @@ export function parseGitDiff(
 
     const lines = fileDiff.split('\n')
 
-    // Extract filename from first line: "a/path/to/file b/path/to/file"
-    const headerMatch = lines[0]?.match(/^a\/(.+?) b\/(.+)$/)
-    if (!headerMatch) continue
-    const filePath = headerMatch[2] ?? headerMatch[1] ?? ''
+    // Extract the file path. Prefer the single-path `+++ b/` / `--- a/` lines
+    // (immune to a path containing a literal ` b/` substring that the `a/X b/Y`
+    // header regex mis-splits); fall back to that regex for mode-only/binary diffs.
+    const filePath = extractDiffFilePath(lines)
+    if (filePath == null) continue
 
     // Find and parse hunks
     const fileHunks: StructuredPatchHunk[] = []
