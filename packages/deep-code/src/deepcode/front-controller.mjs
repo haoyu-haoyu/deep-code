@@ -1,6 +1,6 @@
-import { constants as osConstants } from 'node:os'
 import { join } from 'node:path'
 import { shouldForceNativeInteractive } from './native-interactive.mjs'
+import { shellExitCode } from '../utils/shellExitCode.mjs'
 
 export function shouldDelegateToFullCli({
   cli,
@@ -44,17 +44,11 @@ export function formatFullCliLaunchFailure(error) {
   return `Failed to launch Deep Code full CLI: ${error.message}`
 }
 
-// Map the full-CLI child's (code, signal) to the exit code the wrapper adopts.
-// A numeric code passes through; a signalled child maps to the shell convention
-// 128 + signum (SIGTERM→143, SIGINT→130, SIGHUP→129) so `timeout`/CI see the
-// real cause instead of a flattened 1; anything else is 1.
+// Map the full-CLI child's (code, signal) to the exit code the wrapper adopts,
+// via the shared shell-convention SSOT (128 + signum; SIGTERM→143, SIGINT→130,
+// SIGHUP→129) so `timeout`/CI see the real cause instead of a flattened 1.
 export function resolveFullCliExitCode(code, signal) {
-  if (typeof code === 'number') return code
-  if (signal) {
-    const signum = osConstants.signals?.[signal]
-    return 128 + (typeof signum === 'number' ? signum : 1)
-  }
-  return 1
+  return shellExitCode(code, signal)
 }
 
 // Forward termination signals to the spawned full-CLI child so a SIGINT/SIGTERM/
