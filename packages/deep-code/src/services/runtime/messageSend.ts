@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import {
+  createDeepSeekStreamError,
   DEFAULT_DEEPSEEK_SMALL_MODEL,
   resolveDeepSeekConfig,
 } from '../providers/deepseek.mjs'
@@ -141,6 +142,7 @@ type DeepSeekProviderEvent =
   | { type: 'finish'; finishReason?: unknown }
   | { type: 'usage'; usage?: unknown }
   | { type: 'done' }
+  | { type: 'error'; error?: unknown }
 
 type RuntimeResponseState = {
   content: RuntimeContentBlock[]
@@ -350,6 +352,11 @@ function* applyProviderEventToStream(
   state: RuntimeResponseState,
   event: DeepSeekProviderEvent,
 ): Generator<RuntimeStreamEvent, void, void> {
+  // A mid-stream server error unwinds the turn rather than committing the
+  // partial text as a successful response.
+  if (event.type === 'error') {
+    throw createDeepSeekStreamError(event.error)
+  }
   if (event.type === 'reasoning_delta' && typeof event.text === 'string') {
     if (!providerSupports(state.provider, 'reasoning_content')) return
     if (!state.thinkingOpen) {
@@ -443,6 +450,9 @@ function applyProviderEventToState(
   state: RuntimeResponseState,
   event: DeepSeekProviderEvent,
 ): void {
+  if (event.type === 'error') {
+    throw createDeepSeekStreamError(event.error)
+  }
   if (event.type === 'content_delta' && typeof event.text === 'string') {
     state.text += event.text
   } else if (event.type === 'tool_call_delta') {
