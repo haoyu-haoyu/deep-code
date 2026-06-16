@@ -136,6 +136,7 @@ jobs:
             test/mcp-list-pagination.test.mjs \
             test/mcp-result-persistid.test.mjs \
             test/mcp-error-text.test.mjs \
+            test/mcp-mention-resource-reconnect.test.mjs \
             test/preserve-quote-style.test.mjs \
             test/notebook-staleness.test.mjs \
             test/read-line-offsets.test.mjs \
