@@ -125,6 +125,15 @@ test('combining mark rides with its base char on both boundaries', () => {
   assert.equal(slice(s, 0, 2) + slice(s, 2, 4), s)
 })
 
+test('straddling cut skips a mid-run zero-width char at the start boundary', () => {
+  // ZWSP (U+200B) sits exactly at the cut. It belongs to the left half (rides
+  // out as a trailing zero-width char), and must NOT reappear in the right half.
+  const s = 'ab\u200bcd'
+  assert.equal(slice(s, 2, 4), 'cd')
+  assert.equal(slice(s, 0, 2), 'ab\u200b')
+  assert.equal(slice(s, 0, 2) + slice(s, 2, 4), s) // lossless, no duplicate
+})
+
 // --- ANSI byte-identity for non-straddling slices + correct cut for straddling ---
 
 test('styled run: non-straddling slice keeps the full content + style', () => {
@@ -149,6 +158,72 @@ test('OSC-8 hyperlink token is treated atomically (width 0), not split', () => {
   const s = `${link}click${close}`
   // the visible label "click" still slices by cell
   assert.equal(stringWidth(slice(s, 0, 3)), 3)
+})
+
+// --- NON-ADDITIVE width oracle (models Bun.stringWidth) — the regression class ---
+// Bun.stringWidth is NOT additive over grapheme clusters: an isolated
+// emoji-presentation cluster (e.g. "#️") measures 2, but its contribution
+// inside a longer string is 1. Summing isolated per-grapheme widths drifts
+// `position` and drops the trailing grapheme. naWidth reproduces that exact
+// asymmetry deterministically: a cluster containing U+FE0F is width 2 when it
+// IS the whole string, width 1 in context.
+function naWidth(str) {
+  if (str.includes('\x1b')) str = stripAnsi(str)
+  const clusters = []
+  for (const { segment } of SEG.segment(str)) clusters.push(segment)
+  let width = 0
+  for (const g of clusters) {
+    if (g.includes('\uFE0F')) {
+      width += clusters.length === 1 ? 2 : 1
+      continue
+    }
+    for (const ch of g) {
+      const cp = ch.codePointAt(0)
+      if (!isZeroWidth(cp)) {
+        width += eastAsianWidth(cp, { ambiguousAsWide: false })
+        break
+      }
+    }
+  }
+  return width
+}
+const naDeps = { stringWidth: naWidth, splitGraphemes }
+const naSlice = (s, a, b) => sliceAnsiCore(s, a, b, naDeps)
+
+test('non-additive oracle: a straddling cut never drops the trailing grapheme', () => {
+  const s = 'b#️cé' // naWidth(whole)=4, Σ isolated = 5 (the trap)
+  assert.equal(naWidth(s), 4)
+  // wrap-loop partition at width 2 must tile losslessly (no é lost)
+  assert.equal(naSlice(s, 0, 2) + naSlice(s, 2, 4), s)
+  // and the visible content of the union is the whole string
+  assert.equal(stripAnsi(naSlice(s, 0, 2)) + stripAnsi(naSlice(s, 2, 4)), s)
+})
+
+test('non-additive oracle: wrap-loop tiling is lossless across many strings/widths', () => {
+  const pieces = ['a', 'b', 'c', '中', '#️', 'é', '😀', 'z']
+  let seed = 0x12345
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)
+  for (let iter = 0; iter < 3000; iter++) {
+    const n = Math.floor(rnd() * 8)
+    let s = ''
+    for (let j = 0; j < n; j++) s += pieces[Math.floor(rnd() * pieces.length)]
+    const total = naWidth(s)
+    const w = 1 + Math.floor(rnd() * 4)
+    // tile the whole string with the same loop terminal.ts wrapText uses
+    let pos = 0
+    let rebuilt = ''
+    let guard = 0
+    while (pos < total && guard++ < 1000) {
+      rebuilt += naSlice(s, pos, pos + w)
+      pos += w
+    }
+    if (total === 0) rebuilt = naSlice(s, 0, w) // empty/zero-width: single pass
+    assert.equal(
+      stripAnsi(rebuilt),
+      stripAnsi(s),
+      `lossy tiling s=${JSON.stringify(s)} w=${w}`,
+    )
+  }
 })
 
 // --- differential vs the pre-change implementation (git HEAD sliceAnsi.ts) ---

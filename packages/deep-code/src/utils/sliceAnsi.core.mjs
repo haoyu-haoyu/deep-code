@@ -16,6 +16,39 @@ function filterStartCodes(codes) {
 }
 
 /**
+ * Per-grapheme cell widths for one text run whose total width is `runWidth`.
+ *
+ * The cumulative widths MUST telescope back to `runWidth` so that walking the
+ * run advances `position` to exactly the same cell the atomic path would —
+ * otherwise the cut drifts and drops/duplicates a grapheme. The width oracle
+ * (`Bun.stringWidth`) is NOT additive over grapheme clusters for some content
+ * (VS16 emoji-presentation, keycaps, regional-indicator flags, some Thai /
+ * Devanagari): `Σ stringWidth(gᵢ) ≠ stringWidth(run)`. So:
+ *   - fast path: if the isolated per-grapheme widths already sum to `runWidth`,
+ *     use them directly (the overwhelmingly common ASCII/CJK/plain case);
+ *   - else: derive each grapheme's width from the in-context PREFIX deltas
+ *     `stringWidth(run[0..k]) − stringWidth(run[0..k-1])`, which telescope to
+ *     `stringWidth(run) === runWidth` by construction.
+ */
+function measureGraphemeWidths(runValue, graphemes, runWidth, stringWidth) {
+  const isolated = graphemes.map(g => stringWidth(g))
+  let sum = 0
+  for (const w of isolated) sum += w
+  if (sum === runWidth) return isolated
+
+  const widths = new Array(graphemes.length)
+  let consumed = 0
+  let prev = 0
+  for (let i = 0; i < graphemes.length; i++) {
+    consumed += graphemes[i].length
+    const cum = stringWidth(runValue.slice(0, consumed))
+    widths[i] = cum - prev
+    prev = cum
+  }
+  return widths
+}
+
+/**
  * Display-cell-aware slice of a string containing ANSI escape codes.
  *
  * The vendored tokenizer emits each contiguous non-ANSI run as ONE text token,
@@ -61,10 +94,14 @@ export default function sliceAnsi(str, start, end, deps) {
     }
 
     const width = token.fullWidth ? 2 : stringWidth(token.value)
+    // A full-width token is a single wide char that can't be sub-cut — keep it
+    // atomic (overshoots `end` by at most one cell, which sliceFit/output.ts
+    // already retry away). Only narrow text runs are walked grapheme-by-grapheme.
+    const explodable = !token.fullWidth
     const crossesStart =
-      !include && position < start && position + width > start
+      explodable && !include && position < start && position + width > start
     const crossesEnd =
-      end !== undefined && position < end && position + width > end
+      explodable && end !== undefined && position < end && position + width > end
 
     if (!crossesStart && !crossesEnd) {
       // Atomic fast path — byte-identical to the historical per-token behavior.
@@ -87,11 +124,17 @@ export default function sliceAnsi(str, start, end, deps) {
     // Straddling text token: walk graphemes so the cut lands on a real cell
     // boundary. Grapheme clustering keeps emoji ZWJ sequences and base+combining
     // pairs intact (never split mid-cluster).
+    const graphemes = splitGraphemes(token.value)
+    const graphemeWidths = measureGraphemeWidths(
+      token.value,
+      graphemes,
+      width,
+      stringWidth,
+    )
     let stop = false
-    for (const grapheme of splitGraphemes(token.value)) {
-      // A single-grapheme token reuses the already-computed width (and honors
-      // fullWidth); multi-grapheme runs measure each cluster.
-      const gw = grapheme === token.value ? width : stringWidth(grapheme)
+    for (let i = 0; i < graphemes.length; i++) {
+      const grapheme = graphemes[i]
+      const gw = graphemeWidths[i]
       if (end !== undefined && position >= end) {
         if (gw > 0 || !include) {
           stop = true
