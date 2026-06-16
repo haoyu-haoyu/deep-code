@@ -133,6 +133,8 @@ import {
 } from '../tools/AgentTool/prompt.js'
 import { filterDeniedAgents } from './permissions/permissions.js'
 import { mcpInfoFromString } from '../services/mcp/mcpStringUtils.js'
+import { ensureConnectedClient } from '../services/mcp/client.js'
+import { readMcpResourceWithReconnect } from './readMcpResourceWithReconnect.mjs'
 import {
   matchingRuleForInput,
   pathInAllowedWorkingPath,
@@ -2018,9 +2020,14 @@ async function processMcpResourceAttachments(
         }
 
         try {
-          const result = await client.client.readResource({
+          // Refresh a possibly-stale snapshot transport before reading, so a
+          // resource @-mention isn't dropped after the server reconnected.
+          // Mirrors ReadMcpResourceTool / services/mcp/client.ts.
+          const result = (await readMcpResourceWithReconnect(
+            client,
             uri,
-          })
+            ensureConnectedClient,
+          )) as ReadResourceResult
 
           logEvent('tengu_at_mention_mcp_resource_success', {})
 
