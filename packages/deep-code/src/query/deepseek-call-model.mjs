@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mapDeepSeekFinishReason } from '../deepcode/deepseek-native.mjs'
+import { resolveToolCallIndex } from '../services/toolCallIndex.mjs'
 import { uncachedInputRemainder } from '../deepcode/usageInputRemainder.mjs'
 import {
   isDeepSeekProvider,
@@ -146,7 +147,7 @@ export function createDeepSeekCallModel({
       }
 
       if (event.type === 'tool_call_delta') {
-        const toolIndex = event.index ?? 0
+        const toolIndex = resolveToolCallIndex(state.toolCalls, event)
         let entry = state.toolCalls.get(toolIndex)
         if (!entry) {
           for (const closed of closeOpenInlineBlocks(state)) yield closed

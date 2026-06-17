@@ -7,6 +7,7 @@ import {
 } from '../../cache/deepseek-cache.mjs'
 import { byteCompare } from '../../cache/byte-order.mjs'
 import { omitUndefined } from '../../utils/omitUndefined.mjs'
+import { resolveToolCallIndex } from '../toolCallIndex.mjs'
 import { firstNonEmpty } from '../../utils/configValue.mjs'
 import { abortableDelay, abortReason } from '../../utils/abortableDelay.mjs'
 import {
@@ -629,7 +630,7 @@ export async function collectDeepSeekStreamEvents(events, { onContent } = {}) {
 }
 
 export function mergeDeepSeekToolCallDelta(toolCalls, event) {
-  const index = event.index ?? 0
+  const index = resolveToolCallIndex(toolCalls, event)
   const existing =
     toolCalls.get(index) ??
     {

@@ -60,6 +60,7 @@ jobs:
             test/p2-1-auto-mode.test.mjs \
             test/p2-2-providers.test.mjs \
             test/openai-compatible-stream.test.mjs \
+            test/tool-call-index.test.mjs \
             test/deepseek-sse-error.test.mjs \
             test/runtime-provider.test.mjs \
             test/deepseek-thinking.test.mjs \
