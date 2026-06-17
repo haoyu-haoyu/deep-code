@@ -1,11 +1,12 @@
 import { omitUndefined } from '../utils/omitUndefined.mjs'
 
-const UNSUPPORTED_STRICT_SCHEMA_KEYS = new Set([
-  'minLength',
-  'maxLength',
-  'minItems',
-  'maxItems',
-])
+// DeepSeek V4 /beta strict function-calling accepts every JSON-Schema constraint
+// keyword we emit — a live probe confirmed minLength/maxLength/minItems/maxItems
+// (alongside minimum/maximum/pattern/enum) each return 200, NOT the 400 that the
+// OpenAI structured-outputs subset gives. So nothing is stripped: keeping these
+// lets V4 actually enforce a tool's declared bounds (e.g. AskUserQuestion's 2–4
+// options). Re-add a keyword here only if a future model 400s on it.
+const UNSUPPORTED_STRICT_SCHEMA_KEYS = new Set()
 
 export async function toolToDeepSeekFunctionSchema(tool, options = {}) {
   const description = await resolveToolDescription(tool, options)

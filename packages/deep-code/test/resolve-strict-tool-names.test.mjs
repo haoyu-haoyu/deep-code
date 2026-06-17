@@ -175,15 +175,16 @@ test("'safe' rejects an optional prop under `prefixItems` (tuple validation)", (
   assert.equal(resolveStrictToolNames('safe', [t]).size, 0)
 })
 
-test("'safe' rejects a strict-shaped tool carrying a stripped constraint (minLength)", () => {
-  // The sanitizer DROPS minLength/maxLength/minItems/maxItems, so even an
-  // all-required + closed schema carrying one is NOT a true no-op.
+test("'safe' accepts a strict-shaped tool carrying a V4-supported constraint (minLength)", () => {
+  // The sanitizer now KEEPS minLength/maxLength/minItems/maxItems (V4 /beta
+  // accepts them), so an all-required + closed schema carrying one IS a true
+  // no-op and is safe-eligible.
   const t = tool('Len', {
     type: 'object',
     additionalProperties: false,
     properties: { a: { type: 'string', minLength: 3 } },
     required: ['a'],
   })
-  assert.equal(resolveStrictToolNames('safe', [t]).size, 0)
+  assert.equal(resolveStrictToolNames('safe', [t]).size, 1)
   assert.equal(resolveStrictToolNames('all', [t]).size, 1)
 })

@@ -1086,7 +1086,10 @@ test('recordDeepSeekCacheUsage serializes concurrent writes to the same path (no
   assert.equal(stats.totalPromptCacheMissTokens, N * 2)
 })
 
-test('sanitizeSchemaForDeepSeekStrict removes unsupported constraints and closes objects', () => {
+test('sanitizeSchemaForDeepSeekStrict keeps V4-supported constraints and closes objects', () => {
+  // V4 /beta accepts minLength/maxLength/minItems/maxItems (probe-confirmed), so
+  // they are preserved; the only rewrites are closing objects (required +
+  // additionalProperties:false) and key-sorting.
   const schema = sanitizeSchemaForDeepSeekStrict({
     type: 'object',
     properties: {
@@ -1103,10 +1106,12 @@ test('sanitizeSchemaForDeepSeekStrict removes unsupported constraints and closes
   assert.deepEqual(schema, {
     type: 'object',
     properties: {
-      query: { type: 'string' },
+      query: { type: 'string', minLength: 3, maxLength: 20 },
       tags: {
         type: 'array',
-        items: { type: 'string' },
+        minItems: 1,
+        maxItems: 5,
+        items: { type: 'string', minLength: 1 },
       },
     },
     required: ['query', 'tags'],
@@ -1116,7 +1121,8 @@ test('sanitizeSchemaForDeepSeekStrict removes unsupported constraints and closes
 
 test('sanitizeSchemaForDeepSeekStrict recurses into anyOf and $defs (untested branches)', () => {
   // anyOf: each member is sanitized independently — an object member is closed
-  // (required + additionalProperties), a scalar member just drops unsupported keys.
+  // (required + additionalProperties), a scalar member keeps its (now-supported)
+  // constraints.
   assert.deepEqual(
     sanitizeSchemaForDeepSeekStrict({
       anyOf: [
@@ -1128,17 +1134,17 @@ test('sanitizeSchemaForDeepSeekStrict recurses into anyOf and $defs (untested br
       anyOf: [
         {
           type: 'object',
-          properties: { a: { type: 'string' } },
+          properties: { a: { type: 'string', minLength: 2 } },
           required: ['a'],
           additionalProperties: false,
         },
-        { type: 'string' },
+        { type: 'string', maxLength: 5 },
       ],
     },
   )
 
-  // $defs: every def is recursed, a supported constraint (minimum) is kept, and the def
-  // NAMES are sorted (Apple before Zebra) so the output is order-stable.
+  // $defs: every def is recursed, supported constraints (minimum, minLength) are
+  // kept, and the def NAMES are sorted (Apple before Zebra) so output is stable.
   const defs = sanitizeSchemaForDeepSeekStrict({
     $defs: {
       Zebra: { type: 'object', properties: { z: { type: 'integer', minimum: 0 } } },
@@ -1148,7 +1154,7 @@ test('sanitizeSchemaForDeepSeekStrict recurses into anyOf and $defs (untested br
   assert.deepEqual(Object.keys(defs.$defs), ['Apple', 'Zebra'])
   assert.deepEqual(defs, {
     $defs: {
-      Apple: { type: 'string' },
+      Apple: { type: 'string', minLength: 1 },
       Zebra: {
         type: 'object',
         properties: { z: { type: 'integer', minimum: 0 } },
@@ -2148,7 +2154,8 @@ test('toolToDeepSeekFunctionSchema supports strict and stable JSON schema output
   assert.equal(tool.function.strict, true)
   assert.deepEqual(tool.function.parameters.required, ['command', 'timeout'])
   assert.equal(tool.function.parameters.additionalProperties, false)
-  assert.equal('maxLength' in tool.function.parameters.properties.command, false)
+  // V4 /beta accepts maxLength, so strict keeps it (no longer stripped).
+  assert.equal(tool.function.parameters.properties.command.maxLength, 1000)
 })
 
 test('mapMessagesToDeepSeek keeps reasoning_content only for assistant tool-call turns', () => {
@@ -3004,13 +3011,15 @@ test('createDeepCodeStablePrefix snapshots full CLI tool registry style schemas 
     true,
   )
   assert.notEqual(flexible.prefixHash, strict.prefixHash)
+  // Strict keeps V4-supported constraints (maxLength/maxItems) — only closes
+  // objects (the items.required rewrite below) and key-sorts.
   assert.equal(
-    'maxLength' in strict.stableTools.find(tool => tool.name === 'Bash').parameters.properties.command,
-    false,
+    strict.stableTools.find(tool => tool.name === 'Bash').parameters.properties.command.maxLength,
+    20000,
   )
   assert.equal(
-    'maxItems' in strict.stableTools.find(tool => tool.name === 'TodoWrite').parameters.properties.todos,
-    false,
+    strict.stableTools.find(tool => tool.name === 'TodoWrite').parameters.properties.todos.maxItems,
+    100,
   )
   assert.deepEqual(
     strict.stableTools

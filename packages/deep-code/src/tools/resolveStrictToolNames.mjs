@@ -6,15 +6,14 @@ import { sanitizeSchemaForDeepSeekStrict } from './deepseek-schema.mjs'
 //
 // toolToDeepSeekFunctionSchema(tool, { strict: true }) runs the schema through
 // sanitizeSchemaForDeepSeekStrict, which RECURSIVELY forces every object node's
-// `required` to all its declared properties (and sets additionalProperties:false,
-// drops a few constraint keywords, etc.). For a tool with optional params that
-// would force the model to emit every optional argument on every call — a
-// behavioral regression (Read offset/limit, Edit replace_all, Bash timeout, …).
-// So strict must be applied selectively:
+// `required` to all its declared properties (and sets additionalProperties:false).
+// For a tool with optional params that would force the model to emit every
+// optional argument on every call — a behavioral regression (Read offset/limit,
+// Edit replace_all, Bash timeout, …). So strict must be applied selectively:
 //   - 'off'  -> no tool is strict (default; byte-identical to non-strict today).
 //   - 'safe' -> only tools the strict sanitizer would leave UNCHANGED, so the
 //               rewrite is a true no-op that only adds /beta enforcement and can
-//               never force a previously-optional argument or drop a constraint.
+//               never force a previously-optional argument.
 //   - 'all'  -> every named tool (accepts the all-required risk; explicit opt-in).
 //
 // Returns a Set of tool names. The caller flips to the /beta base URL only when
@@ -65,11 +64,10 @@ function toolSchema(tool) {
 // structural identity against the REAL sanitizer (the single source of truth),
 // so it can never drift from sanitizeSchemaForDeepSeekStrict's actual recursion
 // — which rewrites EVERY object node it reaches (including ones under
-// definitions/patternProperties/prefixItems or any other keyword) and strips
-// minLength/maxLength/minItems/maxItems. isDeepStrictEqual ignores object key
-// order (the sanitizer sorts keys) but is order-sensitive for arrays such as
-// `required`, so any genuine semantic change — or even a non-sorted required
-// list — is conservatively treated as "not a no-op".
+// definitions/patternProperties/prefixItems or any other keyword). isDeepStrictEqual
+// ignores object key order (the sanitizer sorts keys) but is order-sensitive for
+// arrays such as `required`, so any genuine semantic change — or even a non-sorted
+// required list — is conservatively treated as "not a no-op".
 function isStrictNoOpSchema(schema) {
   return isDeepStrictEqual(sanitizeSchemaForDeepSeekStrict(schema), schema)
 }
