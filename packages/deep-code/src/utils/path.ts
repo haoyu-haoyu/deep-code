@@ -2,6 +2,7 @@ import { homedir } from 'os'
 import { dirname, isAbsolute, join, normalize, relative, resolve } from 'path'
 import { getCwd } from './cwd.js'
 import { getFsImplementation } from './fsOperations.js'
+import { splitHomeShortcut } from './homeShortcut.mjs'
 import { getPlatform } from './platform.js'
 import { posixPathToWindowsPath } from './windowsPaths.js'
 
@@ -55,13 +56,15 @@ export function expandPath(path: string, baseDir?: string): string {
     return normalize(actualBaseDir).normalize('NFC')
   }
 
-  // Handle home directory notation
-  if (trimmedPath === '~') {
-    return homedir().normalize('NFC')
-  }
-
-  if (trimmedPath.startsWith('~/')) {
-    return join(homedir(), trimmedPath.slice(2)).normalize('NFC')
+  // Handle home directory notation (`~`, `~/x`, and on Windows `~\x`). The
+  // separator/platform classification lives in splitHomeShortcut; a bare `~`
+  // returns '' and is resolved to the home directory verbatim (preserving the
+  // prior behavior of not routing it through path.join).
+  const homeRest = splitHomeShortcut(trimmedPath, getPlatform())
+  if (homeRest !== null) {
+    return homeRest === ''
+      ? homedir().normalize('NFC')
+      : join(homedir(), homeRest).normalize('NFC')
   }
 
   // On Windows, convert POSIX-style paths (e.g., /c/Users/...) to Windows format
