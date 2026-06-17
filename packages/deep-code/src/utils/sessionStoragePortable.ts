@@ -12,6 +12,10 @@ import { join } from 'path'
 import { getClaudeConfigHomeDir } from './envUtils.js'
 import { getWorktreePathsPortable } from './getWorktreePathsPortable.js'
 import { djb2Hash } from './hash.js'
+import {
+  COMPACT_BOUNDARY_MARKER,
+  parseCompactBoundaryLine,
+} from './compactBoundaryLine.mjs'
 
 /** Size of the head/tail buffer for lite metadata reads. */
 export const LITE_READ_BUF_SIZE = 65536
@@ -480,34 +484,12 @@ const TRANSCRIPT_READ_CHUNK_SIZE = 1024 * 1024
 export const SKIP_PRECOMPACT_THRESHOLD = 5 * 1024 * 1024
 
 /** Marker bytes searched for when locating the boundary. Lazy: allocated on
- * first use, not at module load. Most sessions never resume. */
+ * first use, not at module load. Most sessions never resume. Derived from the
+ * shared COMPACT_BOUNDARY_MARKER so the byte search and parseCompactBoundaryLine
+ * can't drift. */
 let _compactBoundaryMarker: Buffer | undefined
 function compactBoundaryMarker(): Buffer {
-  return (_compactBoundaryMarker ??= Buffer.from('"compact_boundary"'))
-}
-
-/**
- * Confirm a byte-matched line is a real compact_boundary (marker can appear
- * inside user content) and check for preservedSegment.
- */
-function parseBoundaryLine(
-  line: string,
-): { hasPreservedSegment: boolean } | null {
-  try {
-    const parsed = JSON.parse(line) as {
-      type?: string
-      subtype?: string
-      compactMetadata?: { preservedSegment?: unknown }
-    }
-    if (parsed.type !== 'system' || parsed.subtype !== 'compact_boundary') {
-      return null
-    }
-    return {
-      hasPreservedSegment: Boolean(parsed.compactMetadata?.preservedSegment),
-    }
-  } catch {
-    return null
-  }
+  return (_compactBoundaryMarker ??= Buffer.from(COMPACT_BOUNDARY_MARKER))
 }
 
 /**
@@ -549,7 +531,6 @@ function hasPrefix(
 }
 
 const ATTR_SNAP_PREFIX = Buffer.from('{"type":"attribution-snapshot"')
-const SYSTEM_PREFIX = Buffer.from('{"type":"system"')
 const LF = 0x0a
 const LF_BYTE = Buffer.from([LF])
 const BOUNDARY_SEARCH_BOUND = 256 // marker sits ~28 bytes in; 256 is slack
@@ -588,19 +569,25 @@ function processStraddle(
   } else if (s.carryLen < ATTR_SNAP_PREFIX.length) {
     return 0 // too short to rule out attr-snap
   } else {
-    if (hasPrefix(cb, SYSTEM_PREFIX, 0, s.carryLen)) {
-      const hit = parseBoundaryLine(
-        cb.toString('utf-8', 0, s.carryLen) +
-          chunk.toString('utf-8', 0, firstNl),
-      )
-      if (hit?.hasPreservedSegment) {
-        s.hasPreservedSegment = true
-      } else if (hit) {
-        s.out.len = 0
-        s.boundaryStartOffset = s.bufFileOff
-        s.hasPreservedSegment = false
-        s.lastSnapSrc = null
-      }
+    // Detect a boundary straddling the seam by the "compact_boundary" MARKER
+    // (parseCompactBoundaryLine), NOT a leading `{"type":"system"` prefix: real
+    // boundary lines begin `{"parentUuid":...}` (parentUuid serialized first),
+    // so the old prefix gate never fired here and a seam-straddling boundary
+    // was silently passed through — defeating pre-compact truncation and
+    // dropping preservedSegment detection. parseCompactBoundaryLine re-validates
+    // via JSON.parse, so a false marker hit in straddling user content falls
+    // through harmlessly (same as the in-chunk path).
+    const hit = parseCompactBoundaryLine(
+      cb.toString('utf-8', 0, s.carryLen) +
+        chunk.toString('utf-8', 0, firstNl),
+    )
+    if (hit?.hasPreservedSegment) {
+      s.hasPreservedSegment = true
+    } else if (hit) {
+      s.out.len = 0
+      s.boundaryStartOffset = s.bufFileOff
+      s.hasPreservedSegment = false
+      s.lastSnapSrc = null
     }
     sinkWrite(s.out, cb, 0, s.carryLen)
     sinkWrite(s.out, chunk, 0, tailEnd)
@@ -636,7 +623,7 @@ function scanChunkLines(
       boundaryAt >= lineStart &&
       boundaryAt < Math.min(lineStart + BOUNDARY_SEARCH_BOUND, lineEnd)
     ) {
-      const hit = parseBoundaryLine(buf.toString('utf-8', lineStart, nl))
+      const hit = parseCompactBoundaryLine(buf.toString('utf-8', lineStart, nl))
       if (hit?.hasPreservedSegment) {
         s.hasPreservedSegment = true // don't truncate; preserved msgs already in output
       } else if (hit) {
