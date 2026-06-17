@@ -104,6 +104,7 @@ jobs:
             test/sanitization.test.mjs \
             test/redact.test.mjs \
             test/read-text-result-classify.test.mjs \
+            test/diagnostic-dedup.test.mjs \
             test/file-encoding.test.mjs \
             test/sed-validation.test.mjs \
             test/argv-wrapper-stripping.test.mjs \

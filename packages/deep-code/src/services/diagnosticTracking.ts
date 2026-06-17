@@ -1,6 +1,7 @@
 import figures from 'figures'
 import { logError } from 'src/utils/log.js'
 import { callIdeRpc } from '../services/mcp/client.js'
+import { selectNewDiagnostics } from './diagnosticDedup.mjs'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import { ClaudeError } from '../utils/errors.js'
 import { normalizePathForComparison, pathsEqual } from '../utils/file.js'
@@ -37,10 +38,6 @@ export class DiagnosticTrackingService {
   // Track when files were last processed/fetched
   private lastProcessedTimestamps: Map<string, number> = new Map()
 
-  // Track which files have received right file diagnostics and if they've changed
-  // Map<normalizedPath, last right-file diagnostics>
-  private rightFileDiagnosticsState: Map<string, Diagnostic[]> = new Map()
-
   static getInstance(): DiagnosticTrackingService {
     if (!DiagnosticTrackingService.instance) {
       DiagnosticTrackingService.instance = new DiagnosticTrackingService()
@@ -61,7 +58,6 @@ export class DiagnosticTrackingService {
   async shutdown(): Promise<void> {
     this.initialized = false
     this.baseline.clear()
-    this.rightFileDiagnosticsState.clear()
     this.lastProcessedTimestamps.clear()
   }
 
@@ -71,7 +67,6 @@ export class DiagnosticTrackingService {
    */
   reset() {
     this.baseline.clear()
-    this.rightFileDiagnosticsState.clear()
     this.lastProcessedTimestamps.clear()
   }
 
@@ -236,36 +231,15 @@ export class DiagnosticTrackingService {
       const claudeFsRightFile =
         diagnosticsForClaudeFsRightUrisWithBaselinesMap.get(normalizedPath)
 
-      // Determine which file to use based on the state of right file diagnostics
-      let fileToUse = file
-
-      if (claudeFsRightFile) {
-        const previousRightDiagnostics =
-          this.rightFileDiagnosticsState.get(normalizedPath)
-
-        // Use _claude_fs_right if:
-        // 1. We've never gotten right file diagnostics for this file (previousRightDiagnostics === undefined)
-        // 2. OR the right file diagnostics have just changed
-        if (
-          !previousRightDiagnostics ||
-          !this.areDiagnosticArraysEqual(
-            previousRightDiagnostics,
-            claudeFsRightFile.diagnostics,
-          )
-        ) {
-          fileToUse = claudeFsRightFile
-        }
-
-        // Update our tracking of right file diagnostics
-        this.rightFileDiagnosticsState.set(
-          normalizedPath,
-          claudeFsRightFile.diagnostics,
-        )
-      }
-
-      // Find new diagnostics that aren't in the baseline
-      const newDiagnostics = fileToUse.diagnostics.filter(
-        d => !baselineDiagnostics.some(b => this.areDiagnosticsEqual(d, b)),
+      // The unsaved virtual (`_claude_fs_right`) document is authoritative when
+      // present; the filter AND the next baseline are driven from the SAME
+      // source so an unchanged-right call can't clobber the baseline with the
+      // on-disk file:// array and re-surface already-reported diagnostics.
+      const { newDiagnostics, nextBaseline } = selectNewDiagnostics(
+        file.diagnostics,
+        claudeFsRightFile?.diagnostics,
+        baselineDiagnostics,
+        (a, b) => this.areDiagnosticsEqual(a, b),
       )
 
       if (newDiagnostics.length > 0) {
@@ -275,8 +249,8 @@ export class DiagnosticTrackingService {
         })
       }
 
-      // Update baseline with current diagnostics
-      this.baseline.set(normalizedPath, fileToUse.diagnostics)
+      // Update baseline with the source we filtered against.
+      this.baseline.set(normalizedPath, nextBaseline)
     }
 
     return newDiagnosticFiles
@@ -303,18 +277,6 @@ export class DiagnosticTrackingService {
       a.range.start.character === b.range.start.character &&
       a.range.end.line === b.range.end.line &&
       a.range.end.character === b.range.end.character
-    )
-  }
-
-  private areDiagnosticArraysEqual(a: Diagnostic[], b: Diagnostic[]): boolean {
-    if (a.length !== b.length) return false
-
-    // Check if every diagnostic in 'a' exists in 'b'
-    return (
-      a.every(diagA =>
-        b.some(diagB => this.areDiagnosticsEqual(diagA, diagB)),
-      ) &&
-      b.every(diagB => a.some(diagA => this.areDiagnosticsEqual(diagA, diagB)))
     )
   }
 
