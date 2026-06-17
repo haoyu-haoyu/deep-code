@@ -4,6 +4,7 @@ import { formatTurnTokenStatus } from './costStatusData.mjs'
 type TurnUsage = {
   input_tokens?: number
   output_tokens?: number
+  reasoning_tokens?: number
   cache_creation_input_tokens?: number
   cache_read_input_tokens?: number
 } | null

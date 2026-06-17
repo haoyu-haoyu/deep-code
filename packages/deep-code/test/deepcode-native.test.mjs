@@ -3456,9 +3456,39 @@ test('deepSeekResponseToAssistantMessage emits Claude Code compatible tool_use b
     // output 5) — not 25, which the old full-prompt mapping double-counted to.
     input_tokens: 0,
     output_tokens: 5,
+    // this turn had no reasoning_content → 0 (a subset of output_tokens, never added)
+    reasoning_tokens: 0,
     cache_creation_input_tokens: 3,
     cache_read_input_tokens: 7,
   })
+})
+
+test('deepSeekResponseToAssistantMessage carries reasoning_tokens into the message usage (subset of output)', () => {
+  // A reasoning turn: completion_tokens 5000, of which 4800 was reasoning. The
+  // footer chip reads message.message.usage (via getCurrentUsage), so the per-turn
+  // reasoning breakdown must ride along here — and stay <= output_tokens.
+  const message = deepSeekResponseToAssistantMessage(
+    {
+      content: 'done',
+      finishReason: 'stop',
+      toolCalls: [],
+      usage: {
+        prompt_tokens: 20,
+        completion_tokens: 5000,
+        prompt_cache_hit_tokens: 0,
+        prompt_cache_miss_tokens: 20,
+        // raw nested shape (mapUsageForClaudeCode tolerates flat OR nested)
+        completion_tokens_details: { reasoning_tokens: 4800 },
+      },
+    },
+    { model: 'deepseek-v4-pro', now: () => new Date('2026-05-04T00:00:00.000Z'), uuid: () => 'uuid-fixed' },
+  )
+  assert.equal(message.message.usage.reasoning_tokens, 4800)
+  assert.equal(message.message.usage.output_tokens, 5000)
+  assert.ok(
+    message.message.usage.reasoning_tokens <= message.message.usage.output_tokens,
+    'reasoning is a subset of output, never larger',
+  )
 })
 
 test('createDeepSeekCallModel yields assistant messages from provider events', async () => {

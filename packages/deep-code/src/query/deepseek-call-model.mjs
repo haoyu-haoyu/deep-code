@@ -464,6 +464,13 @@ function mapUsageForClaudeCode(usage = {}, { provider } = {}) {
         cacheCreation: cacheMiss,
       }) ?? 0,
     output_tokens: usage.completion_tokens ?? 0,
+    // A SUBSET of output_tokens (DeepSeek bills reasoning inside completion_tokens),
+    // surfaced beside it for the per-turn footer — never added to output_tokens.
+    // mapDeepSeekUsage flattens it; tolerate the raw nested shape too.
+    reasoning_tokens:
+      usage.reasoning_tokens ??
+      usage.completion_tokens_details?.reasoning_tokens ??
+      0,
     cache_creation_input_tokens: cacheMiss,
     cache_read_input_tokens: cacheHit,
   }

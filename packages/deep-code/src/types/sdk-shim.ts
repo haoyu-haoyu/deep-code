@@ -138,6 +138,10 @@ export type BetaUsage = {
   server_tool_use?: BetaServerToolUse
   service_tier?: string
   cache_creation?: BetaCacheCreation
+  // DeepSeek reasoning tokens for the turn. A SUBSET of output_tokens (DeepSeek
+  // bills reasoning within completion_tokens), exposed for display only — never
+  // summed into output_tokens/input_tokens (would double-count; see #447).
+  reasoning_tokens?: number
 }
 
 export type BetaToolUseBlock = ToolUseBlock

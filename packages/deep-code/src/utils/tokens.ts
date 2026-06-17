@@ -146,6 +146,7 @@ export function messageTokenCountFromLastAPIResponse(
 export function getCurrentUsage(messages: Message[]): {
   input_tokens: number
   output_tokens: number
+  reasoning_tokens: number
   cache_creation_input_tokens: number
   cache_read_input_tokens: number
 } | null {
@@ -156,6 +157,9 @@ export function getCurrentUsage(messages: Message[]): {
       return {
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
+        // A subset of output_tokens (see usage.ts) — surfaced for the per-turn
+        // footer chip; absent on non-reasoning turns/providers → 0.
+        reasoning_tokens: usage.reasoning_tokens ?? 0,
         cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
         cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
       }
