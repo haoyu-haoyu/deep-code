@@ -20,6 +20,7 @@ import { formatCompactTokenCount } from './cacheStatusChipData.mjs'
  * @param {{
  *   input_tokens?: number,
  *   output_tokens?: number,
+ *   reasoning_tokens?: number,
  *   cache_read_input_tokens?: number,
  *   cache_creation_input_tokens?: number,
  * } | null | undefined} usage  the latest turn's usage (e.g. from getCurrentUsage)
@@ -30,6 +31,7 @@ export function formatTurnTokenStatus({ usage, model = 'deepseek-v4-pro' } = {})
   if (!usage) return null
   const input = normalize(usage.input_tokens)
   const output = normalize(usage.output_tokens)
+  const reasoning = normalize(usage.reasoning_tokens)
   const cacheRead = normalize(usage.cache_read_input_tokens)
   const cacheCreate = normalize(usage.cache_creation_input_tokens)
   // ↑ falls back to the cache breakdown when a provider omits a top-level input count.
@@ -40,6 +42,13 @@ export function formatTurnTokenStatus({ usage, model = 'deepseek-v4-pro' } = {})
     `${formatCompactTokenCount(inputShown)}↑`,
     `${formatCompactTokenCount(output)}↓`,
   ]
+
+  // Of the output tokens, how many were reasoning — shown only when the turn
+  // actually reasoned (thinking-disabled turns report 0 and omit this). It is a
+  // SUBSET of output↓ (never additional), so it always reads <= the ↓ count.
+  if (reasoning > 0) {
+    parts.push(`${formatCompactTokenCount(reasoning)} reasoning`)
+  }
 
   const cacheTotal = cacheRead + cacheCreate
   if (cacheTotal > 0) {

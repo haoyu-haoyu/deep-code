@@ -123,6 +123,64 @@ test('a NON-DeepSeek / unknown model omits the savings clause (no misleading fla
   }
 })
 
+// ── reasoning_tokens: the per-turn reasoning breakdown of output↓ ────────────
+// DeepSeek bills reasoning inside completion_tokens, so reasoning_tokens is a
+// SUBSET of output_tokens. The chip shows it as its own segment (display only),
+// never adding it to the ↑/↓ counts.
+
+test('a reasoning turn shows the reasoning segment right after output↓', () => {
+  const s = formatTurnTokenStatus({
+    usage: {
+      input_tokens: 12000,
+      output_tokens: 5500,
+      reasoning_tokens: 5200, // of the 5.5k output, 5.2k was reasoning
+      cache_read_input_tokens: 11160,
+      cache_creation_input_tokens: 840,
+    },
+    model: 'deepseek-v4-pro',
+  })
+  assert.match(s, /^12k↑ · 5\.5k↓ · 5\.2k reasoning · cache 93% · saved ~\$/)
+})
+
+test('reasoning is omitted when the turn did not reason (0 / absent)', () => {
+  // absent → no segment (and exact format is unchanged from before this feature)
+  assert.equal(
+    formatTurnTokenStatus({ usage: { input_tokens: 500, output_tokens: 20 } }),
+    '500↑ · 20↓',
+  )
+  // explicit 0 → no segment
+  assert.equal(
+    formatTurnTokenStatus({ usage: { input_tokens: 500, output_tokens: 20, reasoning_tokens: 0 } }),
+    '500↑ · 20↓',
+  )
+  // a non-positive / NaN reasoning count is treated as absent (normalize guard)
+  assert.equal(
+    formatTurnTokenStatus({ usage: { input_tokens: 500, output_tokens: 20, reasoning_tokens: -3 } }),
+    '500↑ · 20↓',
+  )
+  assert.equal(
+    formatTurnTokenStatus({ usage: { input_tokens: 500, output_tokens: 20, reasoning_tokens: NaN } }),
+    '500↑ · 20↓',
+  )
+})
+
+test('reasoning is display-only: it never inflates the ↑/↓ token counts', () => {
+  // identical input/output, with and without a reasoning breakdown → the ↑ and ↓
+  // numbers are byte-identical; only an extra segment is appended.
+  const base = { input_tokens: 2000, output_tokens: 800, cache_read_input_tokens: 0, cache_creation_input_tokens: 2000 }
+  const without = formatTurnTokenStatus({ usage: base, model: 'deepseek-v4-flash' })
+  const withR = formatTurnTokenStatus({ usage: { ...base, reasoning_tokens: 600 }, model: 'deepseek-v4-flash' })
+  assert.equal(without, '2k↑ · 800↓ · cache 0%')
+  assert.equal(withR, '2k↑ · 800↓ · 600 reasoning · cache 0%')
+})
+
+test('reasoning count uses the same compact K/M formatting', () => {
+  const s = formatTurnTokenStatus({
+    usage: { input_tokens: 50000, output_tokens: 23456, reasoning_tokens: 21000 },
+  })
+  assert.match(s, /· 21k reasoning/)
+})
+
 // ── latestTurnModel: the per-turn model for the correct pricing tier ─────────
 // Fixes the Codex finding: the chip previously priced savings with the session
 // mainLoopModel (which is 'auto' under per-turn routing → flash fallback). The

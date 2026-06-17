@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { createDeepSeekCallModel } from '../src/query/deepseek-call-model.mjs'
+import { mapDeepSeekUsage } from '../src/services/providers/deepseek.mjs'
 import {
   providerSupports,
 } from '../src/deepcode/provider-capabilities.mjs'
@@ -40,6 +41,7 @@ const packageRoot = dirname(fileURLToPath(new URL('../package.json', import.meta
 const mainSource = join(packageRoot, 'src/main.tsx')
 const commandsSource = join(packageRoot, 'src/commands.ts')
 const messageSendSource = join(packageRoot, 'src/services/runtime/messageSend.ts')
+const usageSource = join(packageRoot, 'src/services/runtime/usage.ts')
 const providerCommandIndexSource = join(
   packageRoot,
   'src/commands/provider/index.ts',
@@ -790,4 +792,44 @@ test('runtime messageSend gates provider-specific routing fields through provide
   assert.match(source, /providerSupports\(state\.provider,\s*'reasoning_content'\)/)
   assert.match(source, /updateUsage\(state\.usage,\s*event\.usage,\s*\{\s*provider: state\.provider/)
   assert.doesNotMatch(source, /provider\s*={2,3}\s*['"]deepseek['"]/)
+})
+
+// ── reasoning_tokens plumbing: extracted by mapDeepSeekUsage, carried by usage ──
+
+test('mapDeepSeekUsage surfaces completion_tokens_details.reasoning_tokens as a top-level key', () => {
+  const mapped = mapDeepSeekUsage({
+    prompt_tokens: 1000,
+    completion_tokens: 5500,
+    total_tokens: 6500,
+    completion_tokens_details: { reasoning_tokens: 5200 },
+  })
+  assert.equal(mapped.reasoning_tokens, 5200)
+  // completion_tokens is the BILLED total; reasoning is a subset, surfaced beside
+  // it (not added to it) so downstream accounting never double-counts.
+  assert.equal(mapped.completion_tokens, 5500)
+  assert.ok(mapped.reasoning_tokens <= mapped.completion_tokens)
+})
+
+test('mapDeepSeekUsage omits reasoning_tokens when the turn did not reason', () => {
+  // a thinking-disabled turn has no completion_tokens_details.reasoning_tokens
+  assert.ok(!('reasoning_tokens' in mapDeepSeekUsage({ prompt_tokens: 10, completion_tokens: 5 })))
+  assert.ok(!('reasoning_tokens' in mapDeepSeekUsage({ completion_tokens_details: {} })))
+})
+
+test('updateUsage carries reasoning_tokens but NEVER folds it into output_tokens (no double-count)', async () => {
+  const source = await readFile(usageSource, 'utf8')
+  // output_tokens stays the plain completion-total read — reasoning is NOT summed in.
+  assert.match(
+    source,
+    /output_tokens:\s*\n\s*firstNumber\(source\.output_tokens,\s*source\.completion_tokens\)\s*\?\?\s*\n\s*usage\.output_tokens,/,
+  )
+  // reasoning_tokens is read (flat key OR nested completion_tokens_details) ...
+  assert.match(
+    source,
+    /reasoning_tokens:\s*\n\s*firstNumber\(source\.reasoning_tokens,\s*completionDetails\.reasoning_tokens\)/,
+  )
+  // ... and accumulated as its own additive field.
+  assert.match(source, /reasoning_tokens:\s*total\.reasoning_tokens\s*\+\s*message\.reasoning_tokens/)
+  // guard: reasoning_tokens must never appear on the same line as an output_tokens sum.
+  assert.doesNotMatch(source, /output_tokens:[^\n]*reasoning_tokens/)
 })

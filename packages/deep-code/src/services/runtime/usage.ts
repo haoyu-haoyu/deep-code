@@ -4,6 +4,11 @@ import { uncachedInputRemainder } from '../../deepcode/usageInputRemainder.mjs'
 export type NonNullableUsage = {
   input_tokens: number
   output_tokens: number
+  // DeepSeek reasoning tokens for the turn. A SUBSET of output_tokens (reasoning
+  // is billed inside completion_tokens), kept as its own field for display only —
+  // it is NEVER added into output_tokens/input_tokens (that would double-count the
+  // already-counted reasoning portion; see #447).
+  reasoning_tokens: number
   cache_creation_input_tokens: number
   cache_read_input_tokens: number
   server_tool_use: {
@@ -23,6 +28,7 @@ export type NonNullableUsage = {
 export const EMPTY_USAGE: Readonly<NonNullableUsage> = {
   input_tokens: 0,
   output_tokens: 0,
+  reasoning_tokens: 0,
   cache_creation_input_tokens: 0,
   cache_read_input_tokens: 0,
   server_tool_use: { web_search_requests: 0, web_fetch_requests: 0 },
@@ -47,6 +53,11 @@ export function updateUsage(
     : {}
   const serverToolUse = isRecord(source.server_tool_use)
     ? source.server_tool_use
+    : {}
+  // reasoning_tokens may arrive flattened (mapDeepSeekUsage emits the top-level
+  // key) or nested under the raw completion_tokens_details — read either shape.
+  const completionDetails = isRecord(source.completion_tokens_details)
+    ? source.completion_tokens_details
     : {}
   const supportsCache = providerSupports(provider, 'cache_breakpoint')
 
@@ -82,6 +93,10 @@ export function updateUsage(
     output_tokens:
       firstNumber(source.output_tokens, source.completion_tokens) ??
       usage.output_tokens,
+    // Display-only breakdown of output_tokens — read but NEVER added to it.
+    reasoning_tokens:
+      firstNumber(source.reasoning_tokens, completionDetails.reasoning_tokens) ??
+      usage.reasoning_tokens,
     cache_creation_input_tokens:
       cacheCreationTokens ?? usage.cache_creation_input_tokens,
     cache_read_input_tokens: cacheRead ?? usage.cache_read_input_tokens,
@@ -127,6 +142,9 @@ export function accumulateUsage(
   return {
     input_tokens: total.input_tokens + message.input_tokens,
     output_tokens: total.output_tokens + message.output_tokens,
+    // Own additive field — reasoning_tokens is a breakdown of output_tokens, so
+    // it accumulates independently and is never folded into the output total.
+    reasoning_tokens: total.reasoning_tokens + message.reasoning_tokens,
     cache_creation_input_tokens:
       total.cache_creation_input_tokens + message.cache_creation_input_tokens,
     cache_read_input_tokens:
