@@ -1,0 +1,100 @@
+// Decide which tools should use DeepSeek /beta strict function-calling, given
+// the DEEPCODE_STRICT_TOOLS mode (off | safe | all).
+//
+// toolToDeepSeekFunctionSchema(tool, { strict: true }) runs the schema through
+// sanitizeSchemaForDeepSeekStrict, which RECURSIVELY forces every object node's
+// `required` to all its declared properties and sets additionalProperties:false.
+// For a tool with optional params that would force the model to emit every
+// optional argument on every call — a behavioral regression (Read offset/limit,
+// Edit replace_all, Bash timeout, …). So strict must be applied selectively:
+//   - 'off'  -> no tool is strict (default; byte-identical to non-strict today).
+//   - 'safe' -> only tools whose schema is ALREADY strict-shaped (every object
+//               node already has required = all its properties AND
+//               additionalProperties === false), so the rewrite is a true
+//               semantic no-op that only adds /beta enforcement, never forces a
+//               previously-optional argument.
+//   - 'all'  -> every named tool (accepts the all-required risk; explicit opt-in).
+//
+// Returns a Set of tool names. The caller flips to the /beta base URL only when
+// the set is non-empty, so the cached-prefix base URL is unchanged otherwise.
+/**
+ * @param {string} mode 'off' | 'safe' | 'all' (anything else => off)
+ * @param {ReadonlyArray<unknown>} tools
+ * @returns {Set<string>}
+ */
+export function resolveStrictToolNames(mode, tools) {
+  const names = new Set()
+  if (mode !== 'safe' && mode !== 'all') {
+    return names
+  }
+  for (const tool of tools ?? []) {
+    const name = toolName(tool)
+    if (!name) continue
+    if (mode === 'all') {
+      names.add(name)
+      continue
+    }
+    // 'safe': a missing/null schema becomes an empty object schema under strict,
+    // which GAINS additionalProperties:false — a change — so it is not no-op-safe.
+    const schema = toolSchema(tool)
+    if (schema !== null && isStrictNoOpSchema(schema)) {
+      names.add(name)
+    }
+  }
+  return names
+}
+
+function toolName(tool) {
+  const name = tool?.name ?? tool?.function?.name
+  return typeof name === 'string' && name ? name : null
+}
+
+function toolSchema(tool) {
+  return (
+    tool?.inputJSONSchema ??
+    tool?.input_schema ??
+    tool?.parameters ??
+    tool?.function?.parameters ??
+    null
+  )
+}
+
+// True iff sanitizeSchemaForDeepSeekStrict would NOT change validation
+// semantics for this schema: at every object node, `required` already covers
+// all declared properties and additionalProperties is already false.
+function isStrictNoOpSchema(schema) {
+  if (Array.isArray(schema)) {
+    return schema.every(isStrictNoOpSchema)
+  }
+  if (!schema || typeof schema !== 'object') {
+    return true
+  }
+  const props =
+    schema.properties && typeof schema.properties === 'object'
+      ? schema.properties
+      : null
+  if (schema.type === 'object' || props !== null) {
+    const propNames = props ? Object.keys(props) : []
+    const required = Array.isArray(schema.required) ? schema.required : []
+    if (!propNames.every(p => required.includes(p))) return false
+    if (schema.additionalProperties !== false) return false
+  }
+  if (props && !Object.values(props).every(isStrictNoOpSchema)) return false
+  if ('items' in schema && !isStrictNoOpSchema(schema.items)) return false
+  for (const key of ['anyOf', 'allOf', 'oneOf']) {
+    if (Array.isArray(schema[key]) && !schema[key].every(isStrictNoOpSchema)) {
+      return false
+    }
+  }
+  for (const key of ['$defs', '$def']) {
+    const defs = schema[key]
+    if (
+      defs &&
+      typeof defs === 'object' &&
+      !Object.values(defs).every(isStrictNoOpSchema)
+    ) {
+      return false
+    }
+  }
+  return true
+}

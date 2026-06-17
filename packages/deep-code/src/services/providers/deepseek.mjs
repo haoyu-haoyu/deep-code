@@ -19,6 +19,8 @@ import {
   sanitizeSchemaForDeepSeekStrict,
   toolToDeepSeekFunctionSchema,
 } from '../../tools/deepseek-schema.mjs'
+import { resolveStrictToolNames } from '../../tools/resolveStrictToolNames.mjs'
+import { resolveDeepCodeHarnessConfig } from '../../deepcode/harness-config.mjs'
 import { mapDeepSeekHttpError } from './deepseek-recovery.mjs'
 import { loadDeepSeekConfigFile } from './deepseek-config-store.mjs'
 import { coerceDeepSeekEffort } from './deepseekEffort.mjs'
@@ -169,7 +171,7 @@ export async function buildDeepSeekRequest({
   model,
   maxTokens,
   stream = true,
-  strictTools = false,
+  strictTools,
   thinking,
   reasoningEffort,
   temperature,
@@ -192,9 +194,22 @@ export async function buildDeepSeekRequest({
       cacheUserId: userId ?? cacheUserId,
     },
   })
-  const baseUrl = strictTools
-    ? ensureBetaBaseUrl(config.baseUrl)
-    : config.baseUrl
+  // Which tools use /beta strict function-calling. Default mode comes from the
+  // DEEPCODE_STRICT_TOOLS harness config (off|safe|all); an explicit boolean
+  // strictTools is honored for back-compat (true=all, false=off). 'off' (the
+  // default when unset) yields an empty set → no per-tool strict and the base
+  // URL is unchanged, so the common path stays byte-identical.
+  const strictMode =
+    strictTools === true
+      ? 'all'
+      : strictTools === false
+        ? 'off'
+        : resolveDeepCodeHarnessConfig(env).strictTools
+  const strictToolNames = resolveStrictToolNames(strictMode, tools)
+  const baseUrl =
+    strictToolNames.size > 0
+      ? ensureBetaBaseUrl(config.baseUrl)
+      : config.baseUrl
   const thinkingEnabled = config.thinking !== 'disabled'
 
   const body = omitUndefined({
@@ -215,7 +230,7 @@ export async function buildDeepSeekRequest({
               .map(tool =>
                 toolToDeepSeekFunctionSchema(tool, {
                   ...toolSchemaOptions,
-                  strict: strictTools,
+                  strict: strictToolNames.has(tool.name ?? tool.function?.name),
                   tools: toolSchemaOptions.tools ?? tools,
                 }),
               ),
@@ -279,7 +294,8 @@ export async function runDeepSeekAgent({
   provider,
   complete,
   maxTurns = 8,
-  strictTools = false,
+  // undefined => buildDeepSeekRequest resolves the mode from DEEPCODE_STRICT_TOOLS.
+  strictTools,
 } = {}) {
   const modelProvider = provider ?? createDeepSeekProvider()
   if (complete !== undefined && typeof complete !== 'function') {
