@@ -167,7 +167,7 @@ type RuntimeToolCallState = {
 type ResolvedRuntimeRoute = {
   model: string
   thinking: 'enabled' | 'disabled'
-  reasoningEffort?: 'high' | 'max'
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'max' | 'xhigh'
   autoRouteDecision?: AutoRouteDecision
 }
 
