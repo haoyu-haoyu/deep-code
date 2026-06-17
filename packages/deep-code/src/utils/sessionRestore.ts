@@ -28,6 +28,7 @@ import type {
   PersistedWorktreeSession,
 } from '../types/logs.js'
 import type { Message } from '../types/message.js'
+import type { ToolUseBlock } from '../types/sdk-shim.js'
 import { renameRecordingForSession } from './asciicast.js'
 import { clearMemoryFileCaches } from './claudemd.js'
 import {
@@ -54,6 +55,7 @@ import {
 } from './sessionStorage.js'
 import { isTodoV2Enabled } from './tasks.js'
 import { collapseCompletedTodos } from './todo/completion.mjs'
+import { selectRestoredTodos } from './todo/restoreScan.mjs'
 import type { TodoList } from './todo/types.js'
 import { TodoListSchema } from './todo/types.js'
 import type { ContentReplacementRecord } from './toolResultStorage.js'
@@ -76,24 +78,41 @@ type ResumeResult = {
  * survives session restarts without file persistence.
  */
 function extractTodosFromTranscript(messages: Message[]): TodoList {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]
-    if (msg?.type !== 'assistant') continue
-    const toolUse = msg.message.content.find(
-      block => block.type === 'tool_use' && block.name === TODO_WRITE_TOOL_NAME,
-    )
-    if (!toolUse || toolUse.type !== 'tool_use') continue
-    const input = toolUse.input
-    if (input === null || typeof input !== 'object') return []
-    const parsed = TodoListSchema().safeParse(
-      (input as Record<string, unknown>).todos,
-    )
-    // Mirror TodoWriteTool.call: a fully-completed list is collapsed to []
-    // (the live tool cleared its app-state list), so resuming the transcript
-    // does not resurrect a list the session had already finished and cleared.
-    return parsed.success ? collapseCompletedTodos(parsed.data) : []
-  }
-  return []
+  // Flatten every assistant tool_use block in transcript (emission) order; the
+  // leaf scans newest-first for the last TodoWrite whose input parsed, so a
+  // turn that issues several TodoWrite calls restores the last (live-winning)
+  // one and a malformed final call falls back to an earlier valid list.
+  const toolUseBlocks = messages.flatMap(msg =>
+    msg?.type === 'assistant'
+      ? msg.message.content.filter(
+          (block): block is ToolUseBlock => block.type === 'tool_use',
+        )
+      : [],
+  )
+  return selectRestoredTodos(
+    toolUseBlocks,
+    TODO_WRITE_TOOL_NAME,
+    parseTranscriptTodos,
+  )
+}
+
+/**
+ * Parse a TodoWrite tool_use block's input into a (collapsed) todo list, or
+ * signal that it was malformed / schema-invalid so the scan skips it.
+ */
+function parseTranscriptTodos(
+  input: unknown,
+): { ok: true; todos: TodoList } | { ok: false } {
+  if (input === null || typeof input !== 'object') return { ok: false }
+  const parsed = TodoListSchema().safeParse(
+    (input as Record<string, unknown>).todos,
+  )
+  // Mirror TodoWriteTool.call: a fully-completed list is collapsed to []
+  // (the live tool cleared its app-state list), so resuming the transcript
+  // does not resurrect a list the session had already finished and cleared.
+  return parsed.success
+    ? { ok: true, todos: collapseCompletedTodos(parsed.data) }
+    : { ok: false }
 }
 
 /**

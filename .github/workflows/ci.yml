@@ -134,6 +134,7 @@ jobs:
             test/paste-id.test.mjs \
             test/bom-handling.test.mjs \
             test/todo-resume-collapse.test.mjs \
+            test/todo-restore-scan.test.mjs \
             test/filesuggestions-ignore.test.mjs \
             test/mcp-env-default-split.test.mjs \
             test/mcp-list-pagination.test.mjs \
