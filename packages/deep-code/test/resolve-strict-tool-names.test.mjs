@@ -111,3 +111,79 @@ test('does not throw on empty / missing tools', () => {
   assert.equal(resolveStrictToolNames('all', undefined).size, 0)
   assert.equal(resolveStrictToolNames('safe', [{ name: 'X' }]).size, 0) // no schema -> not no-op-safe
 })
+
+// --- the strict sanitizer recurses into EVERY keyword, not just a hand-rolled
+//     allow-list; 'safe' must reject any tool the sanitizer would change, or it
+//     would force previously-optional args under those keywords ---
+
+test("'safe' rejects an optional prop under `definitions` (draft-07 / MCP $ref target)", () => {
+  const t = tool('Defs', {
+    type: 'object',
+    additionalProperties: false,
+    properties: { ref: { type: 'string' } },
+    required: ['ref'],
+    definitions: {
+      D: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { x: { type: 'string' }, y: { type: 'string' } },
+        required: ['x'], // y optional INSIDE definitions -> sanitizer force-requires it
+      },
+    },
+  })
+  assert.equal(resolveStrictToolNames('safe', [t]).size, 0)
+  assert.equal(resolveStrictToolNames('all', [t]).size, 1)
+})
+
+test("'safe' rejects an optional prop under `patternProperties`", () => {
+  const t = tool('Pat', {
+    type: 'object',
+    additionalProperties: false,
+    properties: { a: { type: 'string' } },
+    required: ['a'],
+    patternProperties: {
+      '^x': {
+        type: 'object',
+        additionalProperties: false,
+        properties: { p: { type: 'string' }, q: { type: 'string' } },
+        required: ['p'], // q optional
+      },
+    },
+  })
+  assert.equal(resolveStrictToolNames('safe', [t]).size, 0)
+})
+
+test("'safe' rejects an optional prop under `prefixItems` (tuple validation)", () => {
+  const t = tool('Tuple', {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      pair: {
+        type: 'array',
+        prefixItems: [
+          {
+            type: 'object',
+            additionalProperties: false,
+            properties: { m: { type: 'string' }, n: { type: 'string' } },
+            required: ['m'], // n optional
+          },
+        ],
+      },
+    },
+    required: ['pair'],
+  })
+  assert.equal(resolveStrictToolNames('safe', [t]).size, 0)
+})
+
+test("'safe' rejects a strict-shaped tool carrying a stripped constraint (minLength)", () => {
+  // The sanitizer DROPS minLength/maxLength/minItems/maxItems, so even an
+  // all-required + closed schema carrying one is NOT a true no-op.
+  const t = tool('Len', {
+    type: 'object',
+    additionalProperties: false,
+    properties: { a: { type: 'string', minLength: 3 } },
+    required: ['a'],
+  })
+  assert.equal(resolveStrictToolNames('safe', [t]).size, 0)
+  assert.equal(resolveStrictToolNames('all', [t]).size, 1)
+})
