@@ -88,6 +88,7 @@ jobs:
             test/p2-12-codegraph-tool.test.mjs \
             test/p2-14-plan-todos.test.mjs \
             test/plan-slug-validation.test.mjs \
+            test/pick-unique-slug.test.mjs \
             test/p2-15-model-catalog.test.mjs \
             test/frontmatter-model.test.mjs \
             test/context-policy-max-tokens.test.mjs \

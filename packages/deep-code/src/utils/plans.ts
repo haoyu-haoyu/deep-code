@@ -19,6 +19,7 @@ import { isENOENT } from './errors.js'
 import { getEnvironmentKind } from './filePersistence/outputsScanner.js'
 import { getFsImplementation } from './fsOperations.js'
 import { isValidPlanSlug } from './isValidPlanSlug.mjs'
+import { pickUniqueSlug } from './pickUniqueSlug.mjs'
 import { logError } from './log.js'
 import { getInitialSettings } from './settings/settings.js'
 import { generateWordSlug } from './words.js'
@@ -36,17 +37,19 @@ export function getPlanSlug(sessionId?: SessionId): string {
   let slug = cache.get(id)
   if (!slug) {
     const plansDir = getPlansDirectory()
-    // Try to find a unique slug that doesn't conflict with existing files
-    for (let i = 0; i < MAX_SLUG_RETRIES; i++) {
-      slug = generateWordSlug()
-      const filePath = join(plansDir, `${slug}.md`)
-      if (!getFsImplementation().existsSync(filePath)) {
-        break
-      }
-    }
-    cache.set(id, slug!)
+    // Find a slug that doesn't conflict with an existing plan file. If every
+    // retry collides (astronomically unlikely), suffix the last one so we never
+    // return a slug that would clobber another session's plan.
+    slug = pickUniqueSlug(
+      generateWordSlug,
+      candidate =>
+        getFsImplementation().existsSync(join(plansDir, `${candidate}.md`)),
+      candidate => `${candidate}-${randomUUID().slice(0, 8)}`,
+      MAX_SLUG_RETRIES,
+    )
+    cache.set(id, slug)
   }
-  return slug!
+  return slug
 }
 
 /**
