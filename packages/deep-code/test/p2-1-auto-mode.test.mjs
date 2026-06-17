@@ -88,7 +88,7 @@ test('fallbackHeuristic routes short factual requests to flash/off', async () =>
     model: 'flash',
     thinking: 'off',
     source: 'heuristic',
-    reason: 'short_factual',
+    reason: 'read_only_trivial',
   })
 })
 
@@ -128,17 +128,33 @@ test('fallbackHeuristic routes speed requests to flash/off', async () => {
   })
 })
 
-test('fallbackHeuristic routes architecture requests to pro/max', async () => {
+test('fallbackHeuristic routes architecture design to pro/xhigh (hardest tier)', async () => {
   const { fallbackHeuristic } = await loadRouterModule()
   assert.deepEqual(
     fallbackHeuristic('Design the architecture for a safe plugin runtime.'),
     {
       model: 'pro',
-      thinking: 'max',
+      thinking: 'xhigh',
       source: 'heuristic',
-      reason: 'deep_reasoning_requested',
+      reason: 'hardest_reasoning',
     },
   )
+})
+
+test('routeTurn accepts a pro/xhigh router response (full ladder validator)', async () => {
+  const { routeTurn } = await loadRouterModule()
+  const originalFetch = globalThis.fetch
+  try {
+    globalThis.fetch = async () =>
+      createJsonResponse({ model: 'pro', thinking: 'xhigh' })
+    const decision = await routeTurn(
+      [{ role: 'user', content: 'Design a distributed lock manager.' }],
+      new AbortController().signal,
+    )
+    assert.deepEqual(decision, { model: 'pro', thinking: 'xhigh', source: 'router' })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('routeTurn accepts flash/off router responses', async () => {
@@ -199,7 +215,7 @@ test('routeTurn falls back when fetch throws', async () => {
       model: 'flash',
       thinking: 'off',
       source: 'heuristic',
-      reason: 'short_factual',
+      reason: 'read_only_trivial',
     })
   } finally {
     globalThis.fetch = originalFetch
@@ -241,9 +257,9 @@ test('routeTurn falls back on unknown router values', async () => {
 
     assert.deepEqual(decision, {
       model: 'pro',
-      thinking: 'max',
+      thinking: 'xhigh',
       source: 'heuristic',
-      reason: 'deep_reasoning_requested',
+      reason: 'hardest_reasoning',
     })
   } finally {
     globalThis.fetch = originalFetch
@@ -272,7 +288,7 @@ test('routeTurn falls back without fetch when signal is already aborted', async 
       model: 'flash',
       thinking: 'off',
       source: 'heuristic',
-      reason: 'short_factual',
+      reason: 'read_only_trivial',
     })
   } finally {
     globalThis.fetch = originalFetch
@@ -346,7 +362,7 @@ test('routeTurn falls back when aborted during routing', async () => {
       model: 'flash',
       thinking: 'off',
       source: 'heuristic',
-      reason: 'short_factual',
+      reason: 'read_only_trivial',
     })
   } finally {
     globalThis.fetch = originalFetch

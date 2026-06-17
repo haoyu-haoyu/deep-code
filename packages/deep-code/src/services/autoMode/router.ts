@@ -1,5 +1,15 @@
+import { classifyRouteHeuristic } from './classifyRouteHeuristic.mjs'
+
 export type AutoRouteModel = 'flash' | 'pro'
-export type AutoRouteThinking = 'off' | 'high' | 'max'
+// Full DeepSeek effort ladder (off = thinking disabled). reasoning_effort is not
+// in DeepSeek's cache key (probe-confirmed), so per-task variation is cache-safe.
+export type AutoRouteThinking =
+  | 'off'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'max'
+  | 'xhigh'
 export type AutoRouteDecision = {
   model: AutoRouteModel
   thinking: AutoRouteThinking
@@ -7,10 +17,16 @@ export type AutoRouteDecision = {
   reason?: string
 }
 
-export const ROUTER_SYSTEM = `You are a router. Given the user's latest message
-and a short context summary, output JSON: {"model":"flash"|"pro","thinking":"off"|"high"|"max"}.
-Use flash+off for short questions, pro+max for ambiguous multi-step coding tasks.
-No prose, only JSON.`
+export const ROUTER_SYSTEM = `You are a routing classifier for a coding agent. Given the user's latest message and a short context summary, choose a model and reasoning effort, then output ONLY JSON: {"model":"flash"|"pro","thinking":"off"|"low"|"medium"|"high"|"max"|"xhigh"}.
+
+Match effort to the TASK's difficulty (your choice holds for the whole task):
+- flash+off: trivial lookups, one-line factual answers, explicit speed requests.
+- flash+low or pro+low: read-only questions, listing, summarizing, classification — even if they mention tests/debug/refactor as a topic.
+- pro+medium or pro+high: single-file edits and moderate changes.
+- pro+max: complex multi-file changes, refactors, debugging a real failure.
+- pro+xhigh: the genuinely hardest reasoning — architecture/algorithm design, concurrency/distributed correctness, formal proofs.
+
+Distinguish a question ABOUT something (read-only, cheaper) from a request to DO something (action, more effort). When unsure, prefer the HIGHER effort — under-reasoning a hard task is worse than over-spending on an easy one. No prose, only JSON.`
 
 const ROUTER_TIMEOUT_MS = 5_000
 const ROUTER_MAX_CHARS = 1_200
@@ -71,34 +87,9 @@ export async function routeTurn(
 }
 
 export function fallbackHeuristic(latestUserMessage: string): AutoRouteDecision {
-  const text = latestUserMessage.trim()
-  const lower = text.toLowerCase()
-
-  if (/\b(architecture|architectural|design|proof|prove|deep|careful|carefully|reason|reasoning)\b/.test(lower)) {
-    return heuristic('pro', 'max', 'deep_reasoning_requested')
-  }
-
-  if (/\b(quick|quickly|fast|brief|briefly|short|speed)\b/.test(lower)) {
-    return heuristic('flash', 'off', 'speed_requested')
-  }
-
-  if (/\b(refactor|debug|debugging|tests?|test repair|multi[-\s]?file|several files|multiple files|across files|integration)\b/.test(lower)) {
-    return heuristic('pro', 'max', 'complex_change')
-  }
-
-  if (/\b(edit|modify|change|update|fix)\b/.test(lower) && hasFilePath(text)) {
-    return heuristic('pro', 'high', 'single_file_edit')
-  }
-
-  if (text.length < 300 && /\b(what|who|when|where|why|how|explain|summarize|list|show)\b/.test(lower)) {
-    return heuristic('flash', 'off', 'short_factual')
-  }
-
-  if (/\b(read|inspect|explain|summarize|describe|list|show)\b/.test(lower)) {
-    return heuristic('flash', 'off', 'read_only_simple')
-  }
-
-  return heuristic('pro', 'high', 'general_task')
+  // Pure classification lives in the .mjs leaf (node-unit-tested); this thin
+  // wrapper just stamps the heuristic source.
+  return { ...classifyRouteHeuristic(latestUserMessage), source: 'heuristic' }
 }
 
 function parseRouterDecision(content: string): AutoRouteDecision {
@@ -186,24 +177,19 @@ function contentToText(content: unknown): string {
   return ''
 }
 
-function hasFilePath(text: string): boolean {
-  return /\b[\w./-]+\.(ts|tsx|js|jsx|mjs|cjs|json|md|py|go|rs|java|cpp|c|h|hpp|css|scss|html|ya?ml)\b/i.test(text)
-}
-
 function isAutoRouteModel(value: unknown): value is AutoRouteModel {
   return value === 'flash' || value === 'pro'
 }
 
 function isAutoRouteThinking(value: unknown): value is AutoRouteThinking {
-  return value === 'off' || value === 'high' || value === 'max'
-}
-
-function heuristic(
-  model: AutoRouteModel,
-  thinking: AutoRouteThinking,
-  reason: string,
-): AutoRouteDecision {
-  return { model, thinking, source: 'heuristic', reason }
+  return (
+    value === 'off' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'max' ||
+    value === 'xhigh'
+  )
 }
 
 function truncate(value: string, maxChars: number): string {
