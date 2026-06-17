@@ -41,6 +41,8 @@ jobs:
           shopt -s nullglob
           node --test \
             test/deepcode-native.test.mjs \
+            test/resolve-strict-tool-names.test.mjs \
+            test/strict-tools-wiring.test.mjs \
             test/deepcode-package.test.mjs \
             test/perf-baseline.test.mjs \
             test/s3-render-perf.test.mjs \
