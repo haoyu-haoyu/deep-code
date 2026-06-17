@@ -6,6 +6,7 @@ import {
   resolveDeepSeekConfig,
 } from '../providers/deepseek.mjs'
 import { resolveProviderConfig } from '../providers/provider-config.mjs'
+import { resolveToolCallIndex } from '../toolCallIndex.mjs'
 import { resolveModelProvider } from '../providers/registry.mjs'
 import {
   isDeepSeekProvider,
@@ -396,7 +397,7 @@ function* applyProviderEventToStream(
   }
 
   if (event.type === 'tool_call_delta') {
-    const index = readIndex(event.index)
+    const index = resolveToolCallIndex(state.toolCalls, event)
     const isNewToolBlock = !state.toolCalls.has(index)
     yield* closeInlineBlocksBeforeTool(state)
     const tool = getToolState(state, event)
@@ -485,7 +486,7 @@ function getToolState(
   state: RuntimeResponseState,
   event: Extract<DeepSeekProviderEvent, { type: 'tool_call_delta' }>,
 ): RuntimeToolCallState {
-  const index = readIndex(event.index)
+  const index = resolveToolCallIndex(state.toolCalls, event)
   let tool = state.toolCalls.get(index)
   if (!tool) {
     tool = {
@@ -566,12 +567,6 @@ function* closeTextIfOpen(
   yield { type: 'content_block_stop', index: state.blockIndex }
   state.textOpen = false
   state.blockIndex += 1
-}
-
-function readIndex(index: unknown): number {
-  return typeof index === 'number' && Number.isInteger(index) && index >= 0
-    ? index
-    : 0
 }
 
 function parseToolInput(partialJson: string): unknown {
