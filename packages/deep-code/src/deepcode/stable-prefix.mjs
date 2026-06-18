@@ -79,11 +79,18 @@ export async function createDeepCodeStablePrefix({
   }
 
   return {
+    // NOTE: tool schemas are NOT rendered into the system prompt. They reach the
+    // model ONLY via the native function-calling `tools` array (the sole tool
+    // channel — incoming tool calls are read from `delta.tool_calls`, never parsed
+    // from prose). A "Stable tool manifest:" text block used to be appended here
+    // too, duplicating ~2-5k tokens of the cached prefix on every request for no
+    // behavioral gain (live V4 probe: tool-call emission + selection identical with
+    // and without it, on pro and flash). It was dropped to reclaim that window
+    // budget. `stableTools` is still computed and fed into prefixHash below, so the
+    // DeepCode prefix hash is byte-identical; only the redundant wire text is gone.
+    // Skills + repo-summary stay — they have no native body-field equivalent.
     systemPrompt: [
       ...systemPrompt,
-      stableTools.length > 0
-        ? `Stable tool manifest:\n${stableJsonStringify(stableTools)}`
-        : '',
       stableSkills.length > 0
         ? `Stable skills manifest:\n${stableJsonStringify(stableSkills)}`
         : '',
