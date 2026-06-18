@@ -80,3 +80,155 @@ export function buildFilesTouchedManifest(agentMessages) {
   if (read.length > 0) lines.push(`read: ${read.join(', ')}`)
   return `<subagent-files>\n${lines.join('\n')}\n</subagent-files>`
 }
+
+// --- LLM synthesis (the optional distillation tier; deterministic fallback above) ---
+//
+// The files manifest recovers WHICH files were touched, deterministically. The
+// LLM synthesis (a warm-cache fork over the finished subagent transcript) recovers
+// WHAT was found — distilling the per-turn narration into findings/decisions/
+// followups. These leaves are the pure, node-testable pieces; the .ts caller owns
+// the fork. filesTouched is ALWAYS the deterministic extractFilesTouched output
+// (never LLM-derived), so a hallucination can never invent a file path.
+
+/**
+ * Every non-empty assistant text block, in order — the per-turn narration the
+ * subagent produced (the final entry is its sign-off). Feeds the synthesis fork.
+ * @param {readonly unknown[]} agentMessages
+ * @returns {string[]}
+ */
+export function extractAssistantNarration(agentMessages) {
+  const narration = []
+  for (const message of agentMessages) {
+    if (!message || typeof message !== 'object') continue
+    if (message.type !== 'assistant') continue
+    const content = message.message?.content
+    if (!Array.isArray(content)) continue
+    for (const block of content) {
+      if (
+        block?.type === 'text' &&
+        typeof block.text === 'string' &&
+        block.text.trim()
+      ) {
+        narration.push(block.text.trim())
+      }
+    }
+  }
+  return narration
+}
+
+// The synthesis fork is asked for this line-based section format — far more robust
+// to parse from free text than JSON (DeepSeek has no json_schema on the fork path).
+export const SUBAGENT_SYNTHESIS_PROMPT = [
+  'You have finished the delegated task. Summarize it for the agent that delegated it — concrete and factual, never invent results. Output ONLY the sections below, each as "- " bullets, and OMIT any section that is empty. No preamble, no closing remarks.',
+  '',
+  'FINDINGS:',
+  '- a key thing you discovered or did',
+  'DECISIONS:',
+  '- a decision you made, and why',
+  'FOLLOWUPS:',
+  '- anything left to do or worth the delegator knowing',
+].join('\n')
+
+const SYNTH_SECTION_ALIASES = new Map([
+  ['findings', 'findings'],
+  ['finding', 'findings'],
+  ['decisions', 'decisions'],
+  ['decision', 'decisions'],
+  ['followups', 'followups'],
+  ['follow-ups', 'followups'],
+  ['follow ups', 'followups'],
+  ['next steps', 'followups'],
+])
+const MAX_SYNTH_ITEMS = 12
+const MAX_SYNTH_ITEM_CHARS = 500
+
+/**
+ * Defensively parse the synthesis fork's free-text output into
+ * {findings, decisions, followups} (string[] each), tolerant of missing sections,
+ * stray prose, varied bullet glyphs and casing. Returns null when nothing parses
+ * (the caller then keeps the deterministic files manifest).
+ * @param {string} text
+ * @returns {{ findings: string[], decisions: string[], followups: string[] } | null}
+ */
+export function parseSynthesisOutput(text) {
+  if (typeof text !== 'string' || !text.trim()) return null
+  const out = { findings: [], decisions: [], followups: [] }
+  let current = null
+  const push = value => {
+    const item = String(value).trim().slice(0, MAX_SYNTH_ITEM_CHARS)
+    if (item && current && out[current].length < MAX_SYNTH_ITEMS) {
+      out[current].push(item)
+    }
+  }
+  const sectionFor = label => SYNTH_SECTION_ALIASES.get(label.trim().toLowerCase())
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim()
+    if (!line) continue
+    // Strip markdown HEADER decoration (#, ##, **bold**, *italic*) — but NOT a
+    // "* "/"- " bullet glyph: a leading star counts as emphasis only when it is
+    // immediately followed by a non-space, so "* item" stays a bullet.
+    const deco = line
+      .replace(/^#+\s*/, '')
+      .replace(/^\*+(?=\S)/, '')
+      .replace(/\*+$/, '')
+      .trim()
+    // "FINDINGS:" / "FINDINGS: inline content" / "Findings :" — a known label
+    // followed by a colon (with optional inline content captured as the first item).
+    const colonHeader = deco.match(/^([A-Za-z][A-Za-z \-]*?)\s*[:：]\s*(.*)$/)
+    if (colonHeader && SYNTH_SECTION_ALIASES.has(colonHeader[1].trim().toLowerCase())) {
+      current = sectionFor(colonHeader[1])
+      if (colonHeader[2]) push(colonHeader[2])
+      continue
+    }
+    // A bare label with no colon ("Decisions").
+    if (SYNTH_SECTION_ALIASES.has(deco.toLowerCase())) {
+      current = sectionFor(deco)
+      continue
+    }
+    // A bullet — matched on the ORIGINAL line so a "* item" bullet is not eaten by
+    // the emphasis strip above.
+    const bullet = line.match(/^[-*•·]\s+(.+)$/)
+    if (bullet) push(bullet[1])
+  }
+  if (
+    out.findings.length === 0 &&
+    out.decisions.length === 0 &&
+    out.followups.length === 0
+  ) {
+    return null
+  }
+  return out
+}
+
+/**
+ * The cache-prefix-stable synthesis block, or '' when there's nothing to report.
+ * FIXED section order (findings, files, decisions, followups), omit-empty, no
+ * timestamps/IDs — so it splices into the parent prefix without churning bytes.
+ * `filesTouched` is the DETERMINISTIC extractFilesTouched output (never LLM-derived).
+ * @param {{ findings?: string[], decisions?: string[], followups?: string[], filesTouched?: { read?: string[], modified?: string[] } }} parts
+ * @returns {string}
+ */
+export function buildSubagentSynthesisBlock(parts = {}) {
+  const findings = Array.isArray(parts.findings) ? parts.findings : []
+  const decisions = Array.isArray(parts.decisions) ? parts.decisions : []
+  const followups = Array.isArray(parts.followups) ? parts.followups : []
+  const modified = parts.filesTouched?.modified ?? []
+  const read = parts.filesTouched?.read ?? []
+
+  const sections = []
+  if (findings.length) {
+    sections.push('findings:\n' + findings.map(f => `- ${f}`).join('\n'))
+  }
+  const fileLines = []
+  if (modified.length) fileLines.push(`modified: ${modified.join(', ')}`)
+  if (read.length) fileLines.push(`read: ${read.join(', ')}`)
+  if (fileLines.length) sections.push(fileLines.join('\n'))
+  if (decisions.length) {
+    sections.push('decisions:\n' + decisions.map(d => `- ${d}`).join('\n'))
+  }
+  if (followups.length) {
+    sections.push('followups:\n' + followups.map(u => `- ${u}`).join('\n'))
+  }
+  if (sections.length === 0) return ''
+  return `<subagent-synthesis>\n${sections.join('\n')}\n</subagent-synthesis>`
+}
