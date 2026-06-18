@@ -1,5 +1,7 @@
 import { feature } from 'bun:bundle'
+import { existsSync } from 'fs'
 import { writeFile } from 'fs/promises'
+import { resolve } from 'path'
 import { z } from 'zod/v4'
 import {
   getAllowedChannels,
@@ -47,7 +49,9 @@ import {
 import { writeToMailbox } from '../../utils/teammateMailbox.js'
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 import { TEAM_CREATE_TOOL_NAME } from '../TeamCreateTool/constants.js'
+import { getCwd } from '../../utils/cwd.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from './constants.js'
+import { buildPlanFileReferenceNote } from './planCritique.mjs'
 import { EXIT_PLAN_MODE_V2_TOOL_PROMPT } from './prompt.js'
 import {
   renderToolResultMessage,
@@ -149,6 +153,12 @@ export const outputSchema = lazySchema(() =>
       .number()
       .optional()
       .describe('How many task-panel items were seeded from the approved plan'),
+    planCritique: z
+      .string()
+      .optional()
+      .describe(
+        'Advisory note about plan file references not found in the workspace (model-facing)',
+      ),
   }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
@@ -440,6 +450,15 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       }
     }
 
+    // Advisory, deterministic check: flag plan-referenced file paths that don't
+    // exist on disk, so the model can catch a hallucinated / typo'd path as it
+    // begins implementing. Read-only (existence only, never reads the file) and
+    // never blocks; absent paths are framed as "to create, or a typo".
+    const cwd = getCwd()
+    const planCritique = plan
+      ? buildPlanFileReferenceNote(plan, ref => existsSync(resolve(cwd, ref))) ?? undefined
+      : undefined
+
     return {
       data: {
         plan,
@@ -448,6 +467,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
         hasTaskTool: hasTaskTool || undefined,
         planWasEdited: inputPlan !== undefined || undefined,
         seededTaskCount: seededTaskCount || undefined,
+        planCritique,
       },
     }
   },
@@ -461,6 +481,7 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
       awaitingLeaderApproval,
       requestId,
       seededTaskCount,
+      planCritique,
     },
     toolUseID,
   ) {
@@ -519,12 +540,18 @@ Request ID: ${requestId}`,
         ? `Your task list has been pre-populated with ${seededTaskCount} step${seededTaskCount === 1 ? '' : 's'} from this plan — mark each in_progress/completed as you go.`
         : 'Start with updating your todo list if applicable.'
 
+    // Place the advisory note in the PREAMBLE, before the "## Approved Plan:"
+    // header — never inside the plan block. The Ultraplan CCR flow's
+    // extractApprovedPlan() parses the plan text out of this result keyed on that
+    // header, so the header-and-after must stay exactly `## <label>:\n<plan>`.
+    const critiqueNote = planCritique ? `\n\n${planCritique}` : ''
+
     return {
       type: 'tool_result',
       content: `User has approved your plan. You can now start coding. ${todoGuidance}
 
 Your plan has been saved to: ${filePath}
-You can refer back to it if needed during implementation.${teamHint}
+You can refer back to it if needed during implementation.${teamHint}${critiqueNote}
 
 ## ${planLabel}:
 ${plan}`,
