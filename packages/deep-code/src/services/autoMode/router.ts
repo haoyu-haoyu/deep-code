@@ -1,4 +1,5 @@
 import { classifyRouteHeuristic } from './classifyRouteHeuristic.mjs'
+import { extractLatestUserMessage } from './routeMemo.mjs'
 
 export type AutoRouteModel = 'flash' | 'pro'
 // Full DeepSeek effort ladder (off = thinking disabled). reasoning_effort is not
@@ -144,37 +145,6 @@ function buildRouterUserPrompt(
     `Latest user message:`,
     compactMessage,
   ].join('\n')
-}
-
-function extractLatestUserMessage(messages: readonly unknown[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const candidate = messages[i]
-    if (!candidate || typeof candidate !== 'object') continue
-    const role = (candidate as { role?: unknown }).role
-    if (role !== 'user') continue
-    const content = (candidate as { content?: unknown }).content
-    const text = contentToText(content)
-    if (text.trim()) return text
-  }
-  return ''
-}
-
-function contentToText(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .map(part => {
-        if (typeof part === 'string') return part
-        if (part && typeof part === 'object') {
-          const text = (part as { text?: unknown }).text
-          if (typeof text === 'string') return text
-        }
-        return ''
-      })
-      .filter(Boolean)
-      .join('\n')
-  }
-  return ''
 }
 
 function isAutoRouteModel(value: unknown): value is AutoRouteModel {
