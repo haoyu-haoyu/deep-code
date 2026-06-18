@@ -154,6 +154,7 @@ jobs:
             test/read-line-offsets.test.mjs \
             test/home-shortcut.test.mjs \
             test/slice-ansi-core.test.mjs \
+            test/tsc-summary.test.mjs \
             test/sandbox-fortress/unit/*.test.mjs \
             test/sandbox-fortress/integration/*.test.mjs \
             test/sandbox-fortress/redteam/*.test.mjs
@@ -161,6 +162,14 @@ jobs:
       - name: TUI harness tests
         run: cd packages/deep-code && bun test test/tui-deepseek.test.mjs
         continue-on-error: true # bun harness can be flaky on CI; non-blocking
+
+      - name: Type-check (tsc)
+        run: cd packages/deep-code && npm run typecheck
+        # Non-blocking for now: the repo never had a tsconfig, so there is a large
+        # pre-existing baseline (see packages/deep-code/TYPECHECK.md). This surfaces
+        # the error count in the log; flip to a `--max-errors=<baseline>` ratchet
+        # once deps are declared (#11) and the count is reproducible in CI.
+        continue-on-error: true
 
   perf-baseline:
     name: Perf baseline + regression gate
