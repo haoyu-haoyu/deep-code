@@ -13,6 +13,11 @@ import {
   resolveRuntimeModelProvider,
 } from '../providers/runtime-provider.mjs'
 import { routeTurn, type AutoRouteDecision } from '../autoMode/router.js'
+import {
+  extractLatestUserMessage,
+  getMemoizedRoute,
+  setMemoizedRoute,
+} from '../autoMode/routeMemo.mjs'
 import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
 import { stableJsonStringifySafe } from '../../cache/deepseek-cache.mjs'
 // @ts-expect-error DeepSeek call-model adapter is JS; runtime native primitives use it
@@ -297,10 +302,25 @@ async function resolveAutoRoute({
     }
   }
 
-  const decision = await routeTurn(
-    normalizeMessagesForAutoRouter(messages),
-    signal ?? new AbortController().signal,
-  )
+  // The auto-route is "valid for the whole task". Memoize the classifier DECISION
+  // per task (keyed on the latest human user message — the exact thing routeTurn
+  // classifies on) so tool-loop continuations REUSE it instead of re-running the
+  // ~80-token classifier and possibly flipping the model mid-task, which would
+  // cold-reset the prefix cache. We cache the decision, NOT the resolved runtime
+  // route: the cheap, deterministic decision->model mapping below runs every turn,
+  // so a mid-session model-config change is reflected immediately, while the
+  // expensive classification stays cached and the model field stays stable across
+  // the task (config unchanged -> same decision -> same model).
+  const normalized = normalizeMessagesForAutoRouter(messages)
+  const taskKey = extractLatestUserMessage(normalized)
+  let decision = getMemoizedRoute(taskKey) as AutoRouteDecision | null
+  if (!decision) {
+    decision = await routeTurn(
+      normalized,
+      signal ?? new AbortController().signal,
+    )
+    setMemoizedRoute(taskKey, decision)
+  }
   return routeDecisionToRuntime(decision)
 }
 
