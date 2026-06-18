@@ -1,5 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
+import { buildFilesTouchedManifest } from './agentSynthesis.mjs'
 import { clearInvokedSkillsForAgent } from '../../bootstrap/state.js'
 import {
   ALL_AGENT_DISALLOWED_TOOLS,
@@ -312,6 +313,19 @@ export function finalizeAgentTool(
         content = textBlocks
         break
       }
+    }
+  }
+
+  // Structured handoff (flag-gated): append a compact manifest of the files the
+  // subagent read/modified. A terse final message ("Done.") otherwise leaves the
+  // parent — or a dependent agent — to re-derive what was already explored. The
+  // raw message content stays the primary report; the manifest is additive and
+  // omitted entirely when no files were touched, so the off/empty path is the
+  // existing behavior verbatim.
+  if (feature('STRUCTURED_SUBAGENT_SYNTHESIS')) {
+    const manifest = buildFilesTouchedManifest(agentMessages)
+    if (manifest) {
+      content = [...content, { type: 'text' as const, text: manifest }]
     }
   }
 
