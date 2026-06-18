@@ -108,6 +108,7 @@ jobs:
             test/a1-mcp-nonblocking.test.mjs \
             test/sanitization.test.mjs \
             test/redact.test.mjs \
+            test/subprocess-env-scrub.test.mjs \
             test/read-text-result-classify.test.mjs \
             test/diagnostic-dedup.test.mjs \
             test/file-encoding.test.mjs \
