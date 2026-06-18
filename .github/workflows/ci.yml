@@ -64,6 +64,7 @@ jobs:
             test/p2-1-auto-mode.test.mjs \
             test/auto-route-classify.test.mjs \
             test/route-memo.test.mjs \
+            test/agent-synthesis.test.mjs \
             test/p2-2-providers.test.mjs \
             test/openai-compatible-stream.test.mjs \
             test/tool-call-index.test.mjs \
