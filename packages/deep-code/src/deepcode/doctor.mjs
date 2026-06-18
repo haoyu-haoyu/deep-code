@@ -140,7 +140,7 @@ export async function createDeepSeekDoctorReport({
   add(
     'harness.strictTools',
     'DeepSeek Harness strict tools',
-    ['off', 'safe', 'all'].includes(harnessConfig.strictTools)
+    ['off', 'safe', 'all', 'nullable'].includes(harnessConfig.strictTools)
       ? 'pass'
       : 'fail',
     harnessConfig.strictTools,

@@ -1,6 +1,7 @@
 import {
   toolToDeepSeekFunctionSchema,
   toolRawParameters,
+  normalizeStrictMode,
 } from '../../tools/deepseek-schema.mjs'
 
 // Session-scoped cache of rendered DeepSeek tool function-schemas.
@@ -32,16 +33,22 @@ export function clearDeepSeekToolManifestCache() {
  * rate), and MCP tools likewise. The key folds in the tool's FULL parameter-schema
  * source via the shared toolRawParameters() (NOT just inputJSONSchema) so it reads
  * exactly what the renderer reads and can never serve a schema rendered from a
- * different field. `strict` is included because strict-vs-loose render different
- * parameters. Encoded as a JSON array so a name/JSON containing a separator can't
- * forge a collision.
+ * different field. The strict signal is folded in via normalizeStrictMode (the SAME
+ * SSOT the renderer uses) because off / strict (safe|all) / nullable render DIFFERENT
+ * parameters — keying on the raw boolean would let an 'all' render be served for a
+ * 'nullable' request (the PR#25424 stale-schema class). Encoded as a JSON array so a
+ * name/JSON containing a separator can't forge a collision.
  * @param {unknown} tool
- * @param {boolean} strict
+ * @param {boolean | string} strict
  * @returns {string}
  */
 export function deepSeekToolManifestCacheKey(tool, strict) {
   const name = tool?.name ?? tool?.function?.name ?? ''
-  return JSON.stringify([name, toolRawParameters(tool) ?? null, !!strict])
+  return JSON.stringify([
+    name,
+    toolRawParameters(tool) ?? null,
+    normalizeStrictMode(strict),
+  ])
 }
 
 /**
@@ -52,10 +59,10 @@ export function deepSeekToolManifestCacheKey(tool, strict) {
  * intentionally NOT part of the key -- like the Anthropic cache, the description is
  * locked at first render for prefix-byte stability.
  * @param {object} tool
- * @param {{ strict?: boolean }} [options]
+ * @param {{ strict?: boolean | string }} [options]
  */
 export async function cachedToolToDeepSeekFunctionSchema(tool, options = {}) {
-  const key = deepSeekToolManifestCacheKey(tool, !!options.strict)
+  const key = deepSeekToolManifestCacheKey(tool, options.strict)
   const cached = CACHE.get(key)
   if (cached !== undefined) return cached
   const schema = await toolToDeepSeekFunctionSchema(tool, options)
