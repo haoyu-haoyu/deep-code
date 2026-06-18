@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
   chmodSync,
   renameSync,
@@ -15,8 +16,29 @@ import {
   getDeepSeekModelCatalog,
   sanitizeModelCatalogEntries,
 } from './model-catalog.mjs'
+import {
+  SECURE_DIR_MODE,
+  SECURE_FILE_MODE,
+  isModeTooOpen,
+} from '../../utils/secureFileMode.mjs'
 
 const CONFIG_FILENAME = 'deepseek-config.json'
+
+// The config file holds the API key. The save path already writes it 0o600, but
+// a file created by a loose umask, a manual edit, or a restored backup could be
+// group/world-readable. Repair it to 0o600 on read so the key can't be read by
+// other local users. POSIX-only (chmod is a no-op on Windows) and best-effort —
+// a stat/chmod failure must never break config loading.
+function enforceSecureConfigPermissions(path) {
+  if (process.platform === 'win32') return
+  try {
+    if (isModeTooOpen(statSync(path).mode)) {
+      chmodSync(path, SECURE_FILE_MODE)
+    }
+  } catch {
+    // stat/chmod can race or be denied; loading proceeds regardless.
+  }
+}
 
 export function resolveDeepSeekConfigPath({ env = process.env } = {}) {
   const explicit = env.DEEPCODE_CONFIG_FILE ?? env.DEEPSEEK_CONFIG_FILE
@@ -32,6 +54,7 @@ export function resolveDeepSeekConfigPath({ env = process.env } = {}) {
 export function loadDeepSeekConfigFile({ env = process.env } = {}) {
   const path = resolveDeepSeekConfigPath({ env })
   if (!existsSync(path)) return null
+  enforceSecureConfigPermissions(path)
   try {
     const raw = readFileSync(path, 'utf8')
     const parsed = JSON.parse(raw)
@@ -51,7 +74,7 @@ export function saveDeepSeekConfigFile(config, { env = process.env } = {}) {
   const path = resolveDeepSeekConfigPath({ env })
   const dir = dirname(path)
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
+    mkdirSync(dir, { recursive: true, mode: SECURE_DIR_MODE })
   }
   const persisted = {
     // Spread the incoming config FIRST so forward-compatible keys written by a
@@ -135,6 +158,7 @@ export function deleteDeepSeekConfigFile({ env = process.env } = {}) {
 export function loadProviderConfigFile({ env = process.env } = {}) {
   const path = resolveDeepSeekConfigPath({ env })
   if (!existsSync(path)) return createEmptyProviderConfig()
+  enforceSecureConfigPermissions(path)
   try {
     const raw = readFileSync(path, 'utf8')
     const parsed = JSON.parse(raw)
@@ -154,7 +178,7 @@ export function saveProviderConfigFile(config, { env = process.env } = {}) {
   const path = resolveDeepSeekConfigPath({ env })
   const dir = dirname(path)
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
+    mkdirSync(dir, { recursive: true, mode: SECURE_DIR_MODE })
   }
   const persisted = normalizeProviderConfig(config)
   persisted.completedAt = new Date().toISOString()

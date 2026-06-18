@@ -163,6 +163,12 @@ test('converts merged settings into sandbox runtime config', async () => {
       `${data.original}/.claude/skills`,
     ),
   )
+  // the DeepSeek credential store (apiKey + baseUrl) must be deny-write —
+  // writing it is credential theft + a redirect of all inference traffic
+  assert.ok(
+    data.normal.filesystem.denyWrite.some(p => p.endsWith('deepseek-config.json')),
+    'deepseek-config.json must be in the sandbox denyWrite set',
+  )
   assert.ok(
     data.normal.filesystem.denyRead.includes(
       '/workspace/project/.claude/private/**',
