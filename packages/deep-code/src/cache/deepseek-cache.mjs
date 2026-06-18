@@ -47,6 +47,7 @@ export function recordTurn({
   miss = 0,
   prefixHash = '',
   componentHashes = {},
+  model = '',
   timestamp = Date.now(),
 } = {}) {
   const hitTokens = normalizeTokenCount(hit)
@@ -61,6 +62,10 @@ export function recordTurn({
     hitRate: cacheHitRatio(hitTokens, missTokens),
     prefixHash: String(prefixHash || ''),
     componentHashes: cloneComponentHashes(componentHashes),
+    // The concrete model this turn ran on. The prefix cache is per-model, so
+    // per-model warmth (getWarmModels) lets the router avoid cold-flipping off a
+    // warm lane. '' for callers that don't record it (older sites / non-DeepSeek).
+    model: String(model || ''),
     timestamp,
   }
 
@@ -85,6 +90,31 @@ export function getRecentTurns(n = 10) {
   const count = Math.max(0, Math.trunc(Number(n) || 0))
   if (count === 0) return []
   return liveTurns.slice(-count).map(cloneTurn)
+}
+
+// Default warmth threshold: a model whose most recent turn cleared this prompt-
+// cache hit rate has an established prefix cache. A warm DeepSeek session runs
+// ~0.9+; a cold first turn ~0; 0.5 cleanly separates the two.
+const WARM_HIT_RATE = 0.5
+
+/**
+ * The set of concrete model names whose MOST RECENT recorded turn had an
+ * established prefix cache (hitRate >= minHitRate). "Most recent per model" is
+ * the right signal: a model is warm iff its last use hit the cache. Records with
+ * no model (older sites) are skipped. Used by the router warm-model tie-break.
+ * @param {{ minHitRate?: number }} [opts]
+ * @returns {Set<string>}
+ */
+export function getWarmModels({ minHitRate = WARM_HIT_RATE } = {}) {
+  const warm = new Set()
+  const seen = new Set()
+  for (let i = liveTurns.length - 1; i >= 0; i--) {
+    const { model, hitRate } = liveTurns[i]
+    if (!model || seen.has(model)) continue
+    seen.add(model)
+    if (hitRate >= minHitRate) warm.add(model)
+  }
+  return warm
 }
 
 export function clear() {

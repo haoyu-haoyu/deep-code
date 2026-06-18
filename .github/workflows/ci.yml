@@ -66,6 +66,7 @@ jobs:
             test/route-memo.test.mjs \
             test/agent-synthesis.test.mjs \
             test/deepseek-auto-model-guard.test.mjs \
+            test/warm-model-tiebreak.test.mjs \
             test/p2-2-providers.test.mjs \
             test/openai-compatible-stream.test.mjs \
             test/tool-call-index.test.mjs \

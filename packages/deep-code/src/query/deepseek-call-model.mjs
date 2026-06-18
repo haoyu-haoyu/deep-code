@@ -225,7 +225,7 @@ export function createDeepSeekCallModel({
     }
 
     if (providerSupports(provider, 'cache_breakpoint')) {
-      await recordQueryCacheUsage(response.usage, stablePrefix, provider, messageId)
+      await recordQueryCacheUsage(response.usage, stablePrefix, provider, messageId, runtimeModel)
     }
 
     yield deepSeekResponseToAssistantMessage(response, {
@@ -327,7 +327,7 @@ function streamEvent(event) {
   return { type: 'stream_event', event }
 }
 
-async function recordQueryCacheUsage(usage, stablePrefix, provider, turnId) {
+async function recordQueryCacheUsage(usage, stablePrefix, provider, turnId, model) {
   if (!usage) return
   if (!providerSupports(provider, 'cache_breakpoint')) return
   recordDeepSeekCacheTurn({
@@ -336,6 +336,7 @@ async function recordQueryCacheUsage(usage, stablePrefix, provider, turnId) {
     miss: usage.prompt_cache_miss_tokens ?? 0,
     prefixHash: stablePrefix?.prefixHash,
     componentHashes: stablePrefix?.componentHashes,
+    model,
   })
   const config = resolveDeepSeekConfig({
     env: process.env,

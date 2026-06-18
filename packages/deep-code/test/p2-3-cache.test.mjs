@@ -63,6 +63,7 @@ test('recordTurn updates session totals and hit rate', () => {
       hitRate: 0.25,
       prefixHash: 'prefix-b',
       componentHashes: { tools: 'tools-b' },
+      model: '',
       timestamp: 200,
     },
   ])
