@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
   chmodSync,
   renameSync,
@@ -15,8 +16,29 @@ import {
   getDeepSeekModelCatalog,
   sanitizeModelCatalogEntries,
 } from './model-catalog.mjs'
+import {
+  SECURE_DIR_MODE,
+  SECURE_FILE_MODE,
+  isModeTooOpen,
+} from '../../utils/secureFileMode.mjs'
 
 const CONFIG_FILENAME = 'deepseek-config.json'
+
+// The config file holds the API key (and the dir may have been created by a loose
+// umask before this hardening, or by another tool). Repair a group/world-accessible
+// path back to owner-only: the key file to 0o600 on read, the ~/.deepcode dir to
+// 0o700 on save. POSIX-only (chmod is a no-op on Windows) and best-effort — a
+// stat/chmod failure must never break config loading or saving.
+function enforceSecureMode(path, secureMode) {
+  if (process.platform === 'win32') return
+  try {
+    if (isModeTooOpen(statSync(path).mode)) {
+      chmodSync(path, secureMode)
+    }
+  } catch {
+    // stat/chmod can race or be denied; the caller proceeds regardless.
+  }
+}
 
 export function resolveDeepSeekConfigPath({ env = process.env } = {}) {
   const explicit = env.DEEPCODE_CONFIG_FILE ?? env.DEEPSEEK_CONFIG_FILE
@@ -32,6 +54,7 @@ export function resolveDeepSeekConfigPath({ env = process.env } = {}) {
 export function loadDeepSeekConfigFile({ env = process.env } = {}) {
   const path = resolveDeepSeekConfigPath({ env })
   if (!existsSync(path)) return null
+  enforceSecureMode(path, SECURE_FILE_MODE)
   try {
     const raw = readFileSync(path, 'utf8')
     const parsed = JSON.parse(raw)
@@ -51,7 +74,11 @@ export function saveDeepSeekConfigFile(config, { env = process.env } = {}) {
   const path = resolveDeepSeekConfigPath({ env })
   const dir = dirname(path)
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
+    mkdirSync(dir, { recursive: true, mode: SECURE_DIR_MODE })
+  } else {
+    // An existing ~/.deepcode created before this hardening (or by another tool)
+    // may be group/world-accessible; tighten it to 0o700 too.
+    enforceSecureMode(dir, SECURE_DIR_MODE)
   }
   const persisted = {
     // Spread the incoming config FIRST so forward-compatible keys written by a
@@ -135,6 +162,7 @@ export function deleteDeepSeekConfigFile({ env = process.env } = {}) {
 export function loadProviderConfigFile({ env = process.env } = {}) {
   const path = resolveDeepSeekConfigPath({ env })
   if (!existsSync(path)) return createEmptyProviderConfig()
+  enforceSecureMode(path, SECURE_FILE_MODE)
   try {
     const raw = readFileSync(path, 'utf8')
     const parsed = JSON.parse(raw)
@@ -154,7 +182,11 @@ export function saveProviderConfigFile(config, { env = process.env } = {}) {
   const path = resolveDeepSeekConfigPath({ env })
   const dir = dirname(path)
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
+    mkdirSync(dir, { recursive: true, mode: SECURE_DIR_MODE })
+  } else {
+    // An existing ~/.deepcode created before this hardening (or by another tool)
+    // may be group/world-accessible; tighten it to 0o700 too.
+    enforceSecureMode(dir, SECURE_DIR_MODE)
   }
   const persisted = normalizeProviderConfig(config)
   persisted.completedAt = new Date().toISOString()

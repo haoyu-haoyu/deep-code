@@ -41,6 +41,7 @@ import { hasUnfaithfulGlob } from '../rule-engine/fsProjector.mjs'
 import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import { SETTING_SOURCES, type SettingSource } from '../../utils/settings/constants.js'
 import { getManagedSettingsDropInDir } from '../../utils/settings/managedPath.js'
+import { resolveDeepSeekConfigPath } from '../../services/providers/deepseek-config-store.mjs'
 import {
   getInitialSettings,
   getSettings_DEPRECATED,
@@ -270,6 +271,12 @@ export function convertToSandboxRuntimeConfig(
   ).filter((p): p is string => p !== undefined)
   denyWrite.push(...settingsPaths)
   denyWrite.push(getManagedSettingsDropInDir())
+
+  // Deny writes to the DeepSeek provider config — it stores the API key AND the
+  // baseUrl, so a sandbox-escaping write is both credential theft and a redirect
+  // of all inference traffic to an attacker-controlled endpoint. settings.json
+  // is denied above; this is the credential store the agent authenticates from.
+  denyWrite.push(resolveDeepSeekConfigPath())
 
   // Also block settings files in the current working directory if it differs from original
   // This handles the case where the user has cd'd to a different directory

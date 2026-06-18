@@ -205,6 +205,11 @@ function writeLegacyFixture(root) {
     'src/utils/settings/managedPath.js',
     "export function getManagedSettingsDropInDir() { return '/settings/policy/drop-ins' }\n",
   )
+  writeFixtureFile(
+    root,
+    'src/services/providers/deepseek-config-store.mjs',
+    "export function resolveDeepSeekConfigPath() { return '/home/user/.deepcode/deepseek-config.json' }\n",
+  )
   writeFixtureFile(root, 'src/utils/path.js', pathStubSource())
   writeFixtureFile(root, 'src/utils/platform.js', platformStubSource())
   writeFixtureFile(

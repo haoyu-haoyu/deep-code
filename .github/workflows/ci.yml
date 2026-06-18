@@ -109,6 +109,7 @@ jobs:
             test/sanitization.test.mjs \
             test/redact.test.mjs \
             test/subprocess-env-scrub.test.mjs \
+            test/config-file-permissions.test.mjs \
             test/read-text-result-classify.test.mjs \
             test/diagnostic-dedup.test.mjs \
             test/file-encoding.test.mjs \
