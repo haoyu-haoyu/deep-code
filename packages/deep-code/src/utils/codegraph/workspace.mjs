@@ -19,6 +19,17 @@ import { indexWorkspaceCached } from './workspaceCache.mjs'
 // additionally skips files larger than its own maxFileBytes.
 export const MAX_FILES = 20_000
 
+// Dedup key for a find_definition line — its `file:line` + name (the first two
+// tab-separated fields). Lets an LSP hit and a heuristic hit for the SAME
+// declaration merge to one, while keeping two distinct declarations that happen to
+// share a file:line.
+function definitionLineKey(line) {
+  const i1 = line.indexOf('\t')
+  if (i1 < 0) return line
+  const i2 = line.indexOf('\t', i1 + 1)
+  return i2 < 0 ? line : line.slice(0, i2)
+}
+
 function isWithin(root, target) {
   const r = relative(root, target)
   return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !/^([A-Za-z]:)?[\\/]/.test(r))
@@ -184,10 +195,17 @@ function incompleteNote(listError, truncated, maxFiles) {
  * only inside `cwd`. Mirrors the four query kinds: list_symbols, find_definition,
  * import_graph, importers.
  */
-export async function runCodegraphQuery({ input, cwd, signal, listFiles, maxFiles = MAX_FILES, useCache = false } = {}) {
+export async function runCodegraphQuery({ input, cwd, signal, listFiles, maxFiles = MAX_FILES, useCache = false, lspResolve } = {}) {
   const query = input?.query
   const noResult = note => ({ query, count: 0, lines: [], note })
   const lines = []
+
+  // When a language server is connected, prefer its authoritative answer for the
+  // by-name / by-file queries; a null result (not connected, no server for the
+  // language, error, or empty) transparently falls through to the heuristic index
+  // below — so the offline path is byte-identical and there is no recall loss.
+  const fromLsp = async resolved =>
+    resolved ? { query, count: resolved.lines.length, lines: resolved.lines, note: resolved.note } : null
 
   // The whole-workspace index builder. In production (useCache) it is the
   // cross-call, single-flight, mtime-invalidated cache (workspaceCache.mjs); the
@@ -207,6 +225,13 @@ export async function runCodegraphQuery({ input, cwd, signal, listFiles, maxFile
 
   if (query === 'list_symbols') {
     if (!input.file) return noResult('list_symbols requires "file".')
+    // A single file is a single language: LSP either handles it (authoritative,
+    // complete) or returns null (→ heuristic). No partial-coverage concern, so an
+    // LSP hit can fully replace the heuristic here.
+    if (lspResolve?.listSymbols) {
+      const lsp = await fromLsp(await lspResolve.listSymbols(input.file, signal))
+      if (lsp) return lsp
+    }
     const single = await indexSingleFile(cwd, input.file, signal)
     if (single.error) return noResult(single.error)
     for (const s of listSymbols(single.index, input.file)) {
@@ -218,9 +243,32 @@ export async function runCodegraphQuery({ input, cwd, signal, listFiles, maxFile
 
   if (query === 'find_definition') {
     if (!input.name) return noResult('find_definition requires "name".')
+    // Ask LSP by name (authoritative), but ALSO always run the heuristic and MERGE:
+    // LSP coverage can be partial (a language with no connected server), so an LSP
+    // hit must NOT suppress heuristic hits in other languages — that would silently
+    // drop real declarations. LSP entries rank first; heuristic entries for a
+    // file:line:name the LSP didn't return are appended.
+    const lspResult = lspResolve?.findDefinition
+      ? await lspResolve.findDefinition(input.name, signal)
+      : null
     const { index, listError, truncated } = await indexWorkspaceImpl()
     for (const h of findDefinition(index, input.name)) {
       lines.push(`${h.file}:${h.line}\t${h.name}\t(${h.why}; confidence ${h.confidence})`)
+    }
+    if (lspResult && lspResult.lines.length > 0) {
+      const lspKeys = new Set(lspResult.lines.map(definitionLineKey))
+      const heuristicExtra = lines.filter(l => !lspKeys.has(definitionLineKey(l)))
+      const merged = [...lspResult.lines, ...heuristicExtra]
+      const base =
+        heuristicExtra.length > 0
+          ? `${lspResult.lines.length} resolved via LSP (authoritative); ${heuristicExtra.length} additional heuristic candidate(s) for languages without a connected server — verify those.`
+          : 'Resolved via LSP (authoritative).'
+      // If the heuristic side was itself incomplete (ripgrep failed / >maxFiles
+      // truncation), surface that — the LSP hits are authoritative but the merged
+      // other-language candidates may be missing some.
+      const incomplete = incompleteNote(listError, truncated, maxFiles)
+      const note = incomplete ? `${base} (${incomplete})` : base
+      return { query, count: merged.length, lines: merged, note }
     }
     const note =
       incompleteNote(listError, truncated, maxFiles) ??

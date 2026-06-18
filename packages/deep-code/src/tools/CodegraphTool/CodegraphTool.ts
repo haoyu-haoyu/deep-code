@@ -5,6 +5,7 @@ import { isEnvTruthy } from '../../utils/envUtils.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { ripGrep } from '../../utils/ripgrep.js'
 import { runCodegraphQuery } from '../../utils/codegraph/workspace.mjs'
+import { createLspCodegraphResolver } from '../../utils/codegraph/lspResolve.js'
 
 export const CODEGRAPH_TOOL_NAME = 'CodeGraph'
 
@@ -97,6 +98,10 @@ export const CodegraphTool = buildTool({
       signal: abortController.signal,
       listFiles: ripGrep,
       useCache: true,
+      // When a language server is connected, list_symbols/find_definition get an
+      // authoritative answer; the resolver self-checks and returns null (→ heuristic
+      // fallback) when LSP is unavailable.
+      lspResolve: createLspCodegraphResolver(),
     })
     return { data }
   },

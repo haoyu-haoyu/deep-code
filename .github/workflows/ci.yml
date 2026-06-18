@@ -96,6 +96,8 @@ jobs:
             test/p2-12-codegraph.test.mjs \
             test/p2-12-codegraph-tool.test.mjs \
             test/p2-12-codegraph-cache.test.mjs \
+            test/codegraph-lsp-symbols.test.mjs \
+            test/codegraph-lsp-routing.test.mjs \
             test/p2-14-plan-todos.test.mjs \
             test/plan-slug-validation.test.mjs \
             test/pick-unique-slug.test.mjs \
