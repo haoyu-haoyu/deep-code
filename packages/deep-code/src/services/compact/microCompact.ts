@@ -14,6 +14,11 @@ import { logForDebugging } from '../../utils/debug.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
 import { SHELL_TOOL_NAMES } from '../../utils/shell/shellToolUtils.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
+import { stripLineNumberPrefix } from '../../utils/file.js'
+import {
+  buildFileReadSymbolDigest,
+  isClearedToolResultContent,
+} from './clearedToolDigest.mjs'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -239,6 +244,77 @@ function collectCompactableToolIds(messages: Message[]): string[] {
   return ids
 }
 
+/**
+ * Map each FileRead tool_use id to its `file_path` and whether it was a partial
+ * (offset/limit) read, so the clear path can turn a cleared FileRead body into a
+ * symbol digest (labelled a window for partial reads). Only FileRead is mapped —
+ * other compactable tools keep the plain sentinel.
+ */
+function collectFileReadPaths(
+  messages: Message[],
+): Map<string, { filePath: string; partial: boolean }> {
+  const paths = new Map<string, { filePath: string; partial: boolean }>()
+  for (const message of messages) {
+    if (message.type !== 'assistant' || !Array.isArray(message.message.content)) {
+      continue
+    }
+    for (const block of message.message.content) {
+      if (block.type === 'tool_use' && block.name === FILE_READ_TOOL_NAME) {
+        const input = block.input as
+          | { file_path?: unknown; offset?: unknown; limit?: unknown }
+          | undefined
+        const filePath = input?.file_path
+        if (typeof filePath === 'string' && filePath !== '') {
+          const partial = input?.offset !== undefined || input?.limit !== undefined
+          paths.set(block.id, { filePath, partial })
+        }
+      }
+    }
+  }
+  return paths
+}
+
+/**
+ * The text of a tool_result content, or null if it isn't pure text (e.g. an
+ * image/document block) and so can't be digested.
+ */
+function toolResultText(content: ToolResultBlockParam['content']): string | null {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return null
+  const parts: string[] = []
+  for (const item of content) {
+    if (item.type === 'text') parts.push(item.text)
+    else return null // image/document — not source we can extract symbols from
+  }
+  return parts.join('\n')
+}
+
+/**
+ * The replacement for a cleared tool_result: a bounded symbol digest when the
+ * result is a FileRead of a source file, else the plain sentinel.
+ */
+function clearedContentFor(
+  block: ToolResultBlockParam & { tool_use_id: string },
+  fileReadPaths: Map<string, { filePath: string; partial: boolean }>,
+): string {
+  const entry = fileReadPaths.get(block.tool_use_id)
+  if (entry) {
+    const text = toolResultText(block.content)
+    if (text != null) {
+      // Strip the cat -n line-number prefixes the FileRead result carries, using
+      // the SSOT helper, before handing raw source to the heuristic extractor.
+      const rawSource = text.split('\n').map(stripLineNumberPrefix).join('\n')
+      const digest = buildFileReadSymbolDigest(entry.filePath, rawSource, {
+        partial: entry.partial,
+      })
+      // Only keep the digest when it actually shrinks the result — clearing must
+      // never grow the prompt (a tiny file's digest can exceed its body).
+      if (digest && digest.length < text.length) return digest
+    }
+  }
+  return TIME_BASED_MC_CLEARED_MESSAGE
+}
+
 // Prefix-match because promptCategory.ts sets the querySource to
 // 'repl_main_thread:outputStyle:<style>' when a non-default output style
 // is active. The bare 'repl_main_thread' is only used for the default style.
@@ -458,6 +534,8 @@ function maybeTimeBasedMicrocompact(
     return null
   }
 
+  const fileReadPaths = collectFileReadPaths(messages)
+
   let tokensSaved = 0
   const result: Message[] = messages.map(message => {
     if (message.type !== 'user' || !Array.isArray(message.message.content)) {
@@ -468,11 +546,11 @@ function maybeTimeBasedMicrocompact(
       if (
         block.type === 'tool_result' &&
         clearSet.has(block.tool_use_id) &&
-        block.content !== TIME_BASED_MC_CLEARED_MESSAGE
+        !isClearedToolResultContent(block.content)
       ) {
         tokensSaved += calculateToolResultTokens(block)
         touched = true
-        return { ...block, content: TIME_BASED_MC_CLEARED_MESSAGE }
+        return { ...block, content: clearedContentFor(block, fileReadPaths) }
       }
       return block
     })
