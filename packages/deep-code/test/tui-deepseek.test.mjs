@@ -328,9 +328,12 @@ test('production query deps build DeepSeek requests with stable real-tool prefix
   }
 
   expect(capturedBodies).toHaveLength(1)
-  expect(capturedBodies[0].messages[0].content).toContain('Stable tool manifest:')
-  expect(capturedBodies[0].messages[0].content).toContain('"name":"ReadFile"')
-  expect(capturedBodies[0].messages[0].content).toContain('mode=default; tools=WriteFile,ReadFile')
+  // Tool schemas (and their descriptions) ride ONLY the native body.tools array
+  // (asserted below) — they are no longer duplicated into the system message via a
+  // "Stable tool manifest:" text block.
+  expect(capturedBodies[0].messages[0].content).not.toContain('Stable tool manifest:')
+  expect(capturedBodies[0].messages[0].content).not.toContain('"name":"ReadFile"')
+  expect(capturedBodies[0].messages[0].content).not.toContain('mode=default; tools=WriteFile,ReadFile')
   expect(capturedBodies[0].tools.map(tool => tool.function.name)).toEqual([
     'ReadFile',
     'WriteFile',

@@ -2763,7 +2763,9 @@ test('createDeepSeekWarmupContext builds stable prefix hashes for cache warm-up'
 
   assert.equal(first.prefixHash, second.prefixHash)
   assert.deepEqual(first.stableTools.map(tool => tool.name), ['Read', 'Write'])
-  assert.ok(first.systemPrompt.some(item => item.includes('Stable tool manifest')))
+  // Tool schemas are no longer rendered into the system prompt (native body.tools
+  // is the sole tool channel); stableTools still feeds the byte-identical prefixHash.
+  assert.ok(first.systemPrompt.every(item => !item.includes('Stable tool manifest')))
 })
 
 test('createDeepCodeStablePrefix ignores volatile prompts but changes on stable repo summary', async () => {
@@ -2887,7 +2889,9 @@ test('createDeepCodeStableTools exposes real local tools for stable prefix manif
 
   assert.deepEqual(tools.map(tool => tool.name), ['Read', 'Edit', 'Write', 'Bash'])
   assert.deepEqual(stable.stableTools.map(tool => tool.name), ['Bash', 'Edit', 'Read', 'Write'])
-  assert.ok(stable.systemPrompt.some(item => item.includes('Stable tool manifest')))
+  // The tool manifest text is no longer emitted into the system prompt; stableTools
+  // remains exposed for the prefix hash and consumers.
+  assert.ok(stable.systemPrompt.every(item => !item.includes('Stable tool manifest')))
   assert.equal(
     stable.stableTools.find(tool => tool.name === 'Read').parameters.properties.file_path.type,
     'string',
@@ -3809,7 +3813,7 @@ test('createDeepSeekCallModel prepends a stable real-tool prefix using query per
   }
 
   assert.equal(requests.length, 1)
-  assert.match(
+  assert.doesNotMatch(
     requests[0].systemPrompt.join('\n\n'),
     /Stable tool manifest:/,
   )
@@ -4074,11 +4078,14 @@ test('runDeepSeekLocalToolChain uses real tools in both stable prefix and DeepSe
     requests[0].body.tools.map(tool => tool.function.name),
     ['Bash', 'Edit', 'Read', 'Write'],
   )
-  assert.match(
+  // Tools ride ONLY the native body.tools array (asserted above) — the redundant
+  // "Stable tool manifest:" text (and the tool-schema JSON it carried) is no longer
+  // duplicated into the system message.
+  assert.doesNotMatch(
     requests[0].body.messages[0].content,
     /Stable tool manifest:/,
   )
-  assert.match(
+  assert.doesNotMatch(
     requests[0].body.messages[0].content,
     /"name":"Read"/,
   )
