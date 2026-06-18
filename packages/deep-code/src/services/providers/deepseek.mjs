@@ -21,7 +21,11 @@ import {
 } from '../../tools/deepseek-schema.mjs'
 import { resolveStrictToolNames } from '../../tools/resolveStrictToolNames.mjs'
 import { resolveDeepCodeHarnessConfig } from '../../deepcode/harness-config.mjs'
-import { mapDeepSeekHttpError } from './deepseek-recovery.mjs'
+import {
+  mapDeepSeekHttpError,
+  isFlashDowngradeStrategy,
+  downgradeDeepSeekRetryBody,
+} from './deepseek-recovery.mjs'
 import { loadDeepSeekConfigFile } from './deepseek-config-store.mjs'
 import { coerceDeepSeekEffort } from './deepseekEffort.mjs'
 
@@ -422,7 +426,10 @@ export function createDeepSeekProvider(defaults = {}) {
 }
 
 export async function* streamDeepSeekQuery(context = {}) {
-  const request =
+  // `let` so an _or_flash retry can swap in a resource-reduced body. The reassign
+  // spreads into a NEW object, so when `request === context` the caller's context
+  // is never mutated.
+  let request =
     context.url && context.method && context.headers && context.body
       ? context
       : await buildDeepSeekRequest(context)
@@ -508,6 +515,17 @@ export async function* streamDeepSeekQuery(context = {}) {
     })
     if (!recovery.retryable || attempt === maxRetries) {
       throw createDeepSeekApiError(response.status, text, recovery)
+    }
+
+    // Wire the recovery strategy: when it authorizes flash fallback (503 /
+    // insufficient resource), don't blindly re-send the body the server just
+    // rejected for capacity — route the retry to the small model and lower the
+    // reasoning effort one tier so the next attempt actually demands less.
+    if (isFlashDowngradeStrategy(recovery.retryStrategy)) {
+      const { body, changed } = downgradeDeepSeekRetryBody(request.body, {
+        smallModel: context.smallModel ?? DEFAULT_DEEPSEEK_SMALL_MODEL,
+      })
+      if (changed) request = { ...request, body }
     }
 
     await abortableDelay(
