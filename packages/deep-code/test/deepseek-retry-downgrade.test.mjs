@@ -110,6 +110,56 @@ test('streamDeepSeekQuery downgrades the body on a 503 (_or_flash) retry', async
   assert.equal(bodies[1].reasoning_effort, 'high')
 })
 
+test('streamDeepSeekQuery compounds the effort downgrade across two 503s', async () => {
+  const bodies = []
+  let call = 0
+  for await (const _ of streamDeepSeekQuery({
+    url: 'https://api.deepseek.com/chat/completions',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: { model: 'deepseek-v4-pro', reasoning_effort: 'max', messages: [] },
+    maxRetries: 2,
+    sleep: () => Promise.resolve(),
+    async fetch(_url, init) {
+      bodies.push(JSON.parse(init.body))
+      call += 1
+      if (call <= 2) return new Response('unavailable', { status: 503 })
+      return new Response('data: [DONE]\n\n', { status: 200 })
+    },
+  })) {
+    // drain
+  }
+  assert.equal(call, 3)
+  assert.deepEqual([bodies[0].model, bodies[0].reasoning_effort], ['deepseek-v4-pro', 'max'])
+  assert.deepEqual([bodies[1].model, bodies[1].reasoning_effort], [FLASH, 'high']) // 1st retry
+  assert.deepEqual([bodies[2].model, bodies[2].reasoning_effort], [FLASH, 'medium']) // 2nd retry: model already flash, effort steps again
+})
+
+test('streamDeepSeekQuery downgrades a STRING body and does not mutate context.body', async () => {
+  const context = {
+    url: 'https://api.deepseek.com/chat/completions',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'deepseek-v4-pro', reasoning_effort: 'high', messages: [] }),
+    maxRetries: 2,
+    sleep: () => Promise.resolve(),
+    fetch: async (_url, init) => {
+      context._sent = (context._sent ?? []).concat(JSON.parse(init.body))
+      return context._sent.length === 1
+        ? new Response('unavailable', { status: 503 })
+        : new Response('data: [DONE]\n\n', { status: 200 })
+    },
+  }
+  const originalBody = context.body
+  for await (const _ of streamDeepSeekQuery(context)) {
+    // drain
+  }
+  assert.equal(context._sent[1].model, FLASH)
+  assert.equal(context._sent[1].reasoning_effort, 'medium')
+  // the caller's context.body string is untouched (request reassigned via spread)
+  assert.equal(context.body, originalBody)
+})
+
 test('streamDeepSeekQuery does NOT downgrade on a plain backoff retry (429)', async () => {
   const bodies = []
   let call = 0

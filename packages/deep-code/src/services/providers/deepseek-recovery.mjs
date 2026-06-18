@@ -113,7 +113,11 @@ export function mapDeepSeekHttpError({
 // on retry, instead of blindly re-sending the same request the server just
 // rejected for capacity/resource reasons (503, insufficient_system_resource).
 const FLASH_DOWNGRADE_STRATEGIES = new Set([
+  // 503 (mapDeepSeekHttpError) — reached by streamDeepSeekQuery's HTTP retry loop.
   'exponential_backoff_or_flash',
+  // insufficient_system_resource finish (mapDeepSeekFinishReason) — consumed on the
+  // call-model path, not this loop; listed here so the shared downgrade leaf covers
+  // it too (the flash+lower-effort downgrade is a correct superset of what it asks).
   'lower_reasoning_effort_or_use_flash',
 ])
 
