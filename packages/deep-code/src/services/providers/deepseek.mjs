@@ -9,6 +9,7 @@ import { byteCompare } from '../../cache/byte-order.mjs'
 import { omitUndefined } from '../../utils/omitUndefined.mjs'
 import { resolveToolCallIndex } from '../toolCallIndex.mjs'
 import { firstNonEmpty } from '../../utils/configValue.mjs'
+import { isAutoModelSetting } from '../../utils/model/autoModelSetting.mjs'
 import { abortableDelay, abortReason } from '../../utils/abortableDelay.mjs'
 import {
   mapMessagesToDeepSeek,
@@ -74,6 +75,12 @@ export function normalizeDeepSeekThinking(value) {
   return 'enabled'
 }
 
+// Treat the 'auto' routing sentinel as absent so firstNonEmpty skips it (see the
+// model/smallModel chains below). A non-auto value passes through unchanged.
+function dropAuto(value) {
+  return isAutoModelSetting(value) ? undefined : value
+}
+
 export function resolveDeepSeekConfig({
   env = process.env,
   cwd = process.cwd(),
@@ -116,18 +123,24 @@ export function resolveDeepSeekConfig({
         DEFAULT_DEEPSEEK_BASE_URL,
       ),
     ),
+    // dropAuto: the 'auto' sentinel is per-turn flash/pro routing resolved
+    // upstream (messageSend resolveAutoRoute), NOT a model name. A stray 'auto'
+    // (a caller's model arg, DEEPSEEK_MODEL=auto, or a config file) must NOT reach
+    // body.model as a phantom model — it is skipped here so the chain falls
+    // through to the next concrete candidate (or the concrete default). The
+    // common path (a real model, or all-unset → default) is byte-identical.
     model: firstNonEmpty(
-      overrides.model,
-      env.DEEPSEEK_MODEL,
-      env.DEEPCODE_MODEL,
-      file?.model,
+      dropAuto(overrides.model),
+      dropAuto(env.DEEPSEEK_MODEL),
+      dropAuto(env.DEEPCODE_MODEL),
+      dropAuto(file?.model),
       DEFAULT_DEEPSEEK_MODEL,
     ),
     smallModel: firstNonEmpty(
-      overrides.smallModel,
-      env.DEEPSEEK_SMALL_MODEL,
-      env.DEEPCODE_SMALL_MODEL,
-      file?.smallModel,
+      dropAuto(overrides.smallModel),
+      dropAuto(env.DEEPSEEK_SMALL_MODEL),
+      dropAuto(env.DEEPCODE_SMALL_MODEL),
+      dropAuto(file?.smallModel),
       DEFAULT_DEEPSEEK_SMALL_MODEL,
     ),
     thinking: thinkingEnabled ? 'enabled' : 'disabled',
