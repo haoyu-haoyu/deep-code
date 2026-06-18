@@ -164,11 +164,17 @@ jobs:
         continue-on-error: true # bun harness can be flaky on CI; non-blocking
 
       - name: Type-check (tsc)
-        run: cd packages/deep-code && npm run typecheck
         # Non-blocking for now: the repo never had a tsconfig, so there is a large
         # pre-existing baseline (see packages/deep-code/TYPECHECK.md). This surfaces
         # the error count in the log; flip to a `--max-errors=<baseline>` ratchet
         # once deps are declared (#11) and the count is reproducible in CI.
+        # typescript isn't a declared dep yet (deps:{} + stale lockfile), so it's
+        # installed ad-hoc with --no-save here — this does NOT touch the lockfile,
+        # so the earlier `npm ci` strict check is unaffected.
+        run: |
+          cd packages/deep-code
+          npm i typescript@5.6.3 --no-save --no-audit --no-fund || true
+          npm run typecheck
         continue-on-error: true
 
   perf-baseline:

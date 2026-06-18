@@ -1,9 +1,9 @@
 # Type-checking gate
 
 This package historically shipped **without a `tsconfig.json`** and was never
-type-checked: the runtime is built with esbuild/Bun, which strip TypeScript types
-without checking them, so type errors compiled and shipped silently. This caused
-real, invisible breakage (e.g. the `input_tokens` accounting class of bugs).
+type-checked: the runtime is built with `Bun.build()`, which strips TypeScript
+types without checking them, so type errors compiled and shipped silently. This
+caused real, invisible breakage (e.g. the `input_tokens` accounting class of bugs).
 
 `tsconfig.json` + `npm run typecheck` establish a gate.
 
@@ -15,7 +15,7 @@ npm run typecheck -- --max-errors=1642   # ratchet: exits 1 if the count EXCEEDS
 ```
 
 The config is `--noEmit` only (never used to build), `moduleResolution: bundler`
-to match the esbuild/Bun bundler, `skipLibCheck`, and non-`strict` to start.
+to match the `Bun.build` bundler, `skipLibCheck`, and non-`strict` to start.
 It enables type-checking in every contributor's editor/IDE immediately.
 
 ## Current baseline
@@ -29,7 +29,7 @@ distinct bugs:
 
 1. **Missing `src/types/message.ts`** — the core `Message` type is imported
    *type-only* from `../types/message.js` across **166 files**, but that module
-   does not exist in this fork (esbuild erased the type imports, so it never
+   does not exist in this fork (the bundler erased the type imports, so it never
    failed to build). This single gap produces the bulk of `TS2307` (cannot find
    module) plus a cascade of `TS2339`/`TS2305` as `Message` degrades to `any`.
    **Reconstructing this type is the single highest-leverage burn-down item.**

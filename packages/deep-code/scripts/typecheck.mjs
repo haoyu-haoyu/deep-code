@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // TypeScript type-check gate. Runs `tsc -p tsconfig.json --noEmit` and reports
 // the error count + a per-code breakdown. The repo had NO tsconfig and was never
-// type-checked (esbuild/bun strip types without checking), so there is a large
-// pre-existing baseline (see TYPECHECK.md). This script is:
+// type-checked (the Bun.build bundler strips types without checking), so there is
+// a large pre-existing baseline (see TYPECHECK.md). This script is:
 //   - informational by default (always exits 0) — used as a non-blocking CI step
 //     and a one-command local/IDE gate, and
 //   - a ratchet when given --max-errors=N (exits 1 if the count exceeds N), so it
@@ -20,6 +20,10 @@ import { summarizeTscOutput, evaluateBudget } from './lib/tscSummary.mjs'
 const pkgRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const maxArg = process.argv.find(a => a.startsWith('--max-errors='))
 const maxErrors = maxArg ? Number(maxArg.slice('--max-errors='.length)) : null
+if (maxArg && !Number.isFinite(maxErrors)) {
+  console.error(`[typecheck] invalid --max-errors value: ${JSON.stringify(maxArg.slice('--max-errors='.length))}`)
+  process.exit(2)
+}
 
 const tscCandidates = [
   join(pkgRoot, 'node_modules/.bin/tsc'),
