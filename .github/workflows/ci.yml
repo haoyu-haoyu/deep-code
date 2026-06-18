@@ -68,6 +68,7 @@ jobs:
             test/tool-call-index.test.mjs \
             test/deepseek-sse-error.test.mjs \
             test/deepseek-retry-downgrade.test.mjs \
+            test/deepseek-tool-manifest-cache.test.mjs \
             test/deepseek-400-immunity-matrix.test.mjs \
             test/deepseek-400-immunity-fuzz.test.mjs \
             test/runtime-provider.test.mjs \
