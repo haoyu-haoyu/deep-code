@@ -65,6 +65,7 @@ jobs:
             test/openai-compatible-stream.test.mjs \
             test/tool-call-index.test.mjs \
             test/deepseek-sse-error.test.mjs \
+            test/deepseek-retry-downgrade.test.mjs \
             test/runtime-provider.test.mjs \
             test/deepseek-thinking.test.mjs \
             test/dsh-reasoning-effort-ladder.test.mjs \
