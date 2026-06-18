@@ -13,6 +13,7 @@ import { dirname, relative, resolve, sep } from 'node:path'
 import { buildIndex } from './indexer.mjs'
 import { languageForPath } from './languages.mjs'
 import { findDefinition, importGraph, importersOf, listSymbols } from './query.mjs'
+import { indexWorkspaceCached } from './workspaceCache.mjs'
 
 // Cap the index so the on-demand build stays bounded on huge repos. The indexer
 // additionally skips files larger than its own maxFileBytes.
@@ -95,6 +96,30 @@ export async function readWorkspaceFile(cwd, rel, signal) {
 }
 
 /**
+ * Stat a workspace-relative file for the index cache's change detection. Returns
+ * `{ mtimeMs, size }` for a regular file inside cwd, else null (escapes cwd, not a
+ * regular file, or missing). A genuine cancellation propagates so a cancelled
+ * index does not silently treat every file as "changed". `fs.stat` takes no
+ * AbortSignal, so we check the flag explicitly.
+ */
+export async function statWorkspaceFile(cwd, rel, signal) {
+  if (signal?.aborted) {
+    const e = new Error('The operation was aborted')
+    e.name = 'AbortError'
+    throw e
+  }
+  const abs = resolveInsideCwd(cwd, rel)
+  if (!abs) return null
+  try {
+    const st = await stat(abs)
+    if (!st.isFile()) return null
+    return { mtimeMs: st.mtimeMs, size: st.size }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Build a whole-workspace index. `listFiles(args, cwd, signal)` enumerates the
  * tracked files (ripGrep in production; injectable for tests). A genuine
  * cancellation propagates; a real lister failure degrades to `listError` with
@@ -159,10 +184,26 @@ function incompleteNote(listError, truncated, maxFiles) {
  * only inside `cwd`. Mirrors the four query kinds: list_symbols, find_definition,
  * import_graph, importers.
  */
-export async function runCodegraphQuery({ input, cwd, signal, listFiles, maxFiles = MAX_FILES } = {}) {
+export async function runCodegraphQuery({ input, cwd, signal, listFiles, maxFiles = MAX_FILES, useCache = false } = {}) {
   const query = input?.query
   const noResult = note => ({ query, count: 0, lines: [], note })
   const lines = []
+
+  // The whole-workspace index builder. In production (useCache) it is the
+  // cross-call, single-flight, mtime-invalidated cache (workspaceCache.mjs); the
+  // default is the uncached builder so the pure query-dispatch tests stay free of
+  // module-scope state. Both share the same {index, listError, truncated} shape.
+  const indexWorkspaceImpl = useCache
+    ? () =>
+        indexWorkspaceCached({
+          cwd,
+          signal,
+          listFiles,
+          maxFiles,
+          statFile: rel => statWorkspaceFile(cwd, rel, signal),
+          readFile: rel => readWorkspaceFile(cwd, rel, signal),
+        })
+    : () => indexWorkspace({ cwd, signal, listFiles, maxFiles })
 
   if (query === 'list_symbols') {
     if (!input.file) return noResult('list_symbols requires "file".')
@@ -177,7 +218,7 @@ export async function runCodegraphQuery({ input, cwd, signal, listFiles, maxFile
 
   if (query === 'find_definition') {
     if (!input.name) return noResult('find_definition requires "name".')
-    const { index, listError, truncated } = await indexWorkspace({ cwd, signal, listFiles, maxFiles })
+    const { index, listError, truncated } = await indexWorkspaceImpl()
     for (const h of findDefinition(index, input.name)) {
       lines.push(`${h.file}:${h.line}\t${h.name}\t(${h.why}; confidence ${h.confidence})`)
     }
@@ -198,7 +239,7 @@ export async function runCodegraphQuery({ input, cwd, signal, listFiles, maxFile
       if (single.error) return noResult(single.error)
       index = single.index
     } else {
-      ;({ index, listError, truncated } = await indexWorkspace({ cwd, signal, listFiles, maxFiles }))
+      ;({ index, listError, truncated } = await indexWorkspaceImpl())
     }
     const graph = importGraph(index, input.file ? { file: input.file } : {})
     for (const [file, modules] of Object.entries(graph)) {
@@ -210,7 +251,7 @@ export async function runCodegraphQuery({ input, cwd, signal, listFiles, maxFile
 
   // importers
   if (!input.module) return noResult('importers requires "module".')
-  const { index, listError, truncated } = await indexWorkspace({ cwd, signal, listFiles, maxFiles })
+  const { index, listError, truncated } = await indexWorkspaceImpl()
   for (const { file, modules } of importersOf(index, input.module)) {
     lines.push(`${file}\t(${modules.join(', ')})`)
   }

@@ -93,6 +93,7 @@ jobs:
             test/p2-10-i18n-guard.test.mjs \
             test/p2-12-codegraph.test.mjs \
             test/p2-12-codegraph-tool.test.mjs \
+            test/p2-12-codegraph-cache.test.mjs \
             test/p2-14-plan-todos.test.mjs \
             test/plan-slug-validation.test.mjs \
             test/pick-unique-slug.test.mjs \

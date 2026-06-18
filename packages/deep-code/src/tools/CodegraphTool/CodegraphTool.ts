@@ -63,10 +63,12 @@ export const CodegraphTool = buildTool({
   isEnabled() {
     return !isEnvTruthy(process.env.DEEPCODE_DISABLE_CODEGRAPH_TOOL)
   },
-  // Each call rebuilds the workspace index (no shared cache yet), so a parallel
-  // fan-out would multiply full-repo I/O — run codegraph queries sequentially.
+  // Safe to run concurrently with other read tools: the workspace index is built
+  // through a cross-call, single-flight cache (utils/codegraph/workspaceCache.mjs),
+  // so a parallel fan-out shares ONE build instead of multiplying full-repo I/O,
+  // and the built index is read-only. (Single-file queries read just one file.)
   isConcurrencySafe() {
-    return false
+    return true
   },
   isReadOnly() {
     return true
@@ -94,6 +96,7 @@ export const CodegraphTool = buildTool({
       cwd: getCwd(),
       signal: abortController.signal,
       listFiles: ripGrep,
+      useCache: true,
     })
     return { data }
   },
