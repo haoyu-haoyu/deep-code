@@ -1,5 +1,5 @@
 const HARNESS_MODES = new Set(['auto', 'off', 'on', 'swarm'])
-const STRICT_TOOL_MODES = new Set(['off', 'safe', 'all'])
+const STRICT_TOOL_MODES = new Set(['off', 'safe', 'all', 'nullable'])
 
 export function resolveDeepCodeHarnessConfig(env = process.env) {
   return {

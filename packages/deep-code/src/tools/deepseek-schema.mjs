@@ -23,12 +23,31 @@ export function toolRawParameters(tool) {
   )
 }
 
+// The render KIND for a tool's parameter schema, derived from the strict signal.
+// The signal may be a legacy boolean (true => 'all', false/undefined => off) or a
+// mode string (off|safe|all|nullable). Both the renderer below and the manifest
+// cache key read this SAME function (SSOT) so a tool rendered under one mode can
+// never be served from a cache entry rendered under another.
+//   'off'      -> stableClone (no /beta strict)
+//   'strict'   -> sanitizeSchemaForDeepSeekStrict (safe/all: required = all props)
+//   'nullable' -> sanitizeSchemaForDeepSeekNullable (required = all props, but the
+//                 originally-optional ones are widened to allow null)
+export function normalizeStrictMode(strict) {
+  if (strict === 'nullable') return 'nullable'
+  if (strict === true || strict === 'safe' || strict === 'all') return 'strict'
+  return 'off'
+}
+
 export async function toolToDeepSeekFunctionSchema(tool, options = {}) {
   const description = await resolveToolDescription(tool, options)
   const rawParameters = toolRawParameters(tool) ?? emptyObjectSchema()
-  const parameters = options.strict
-    ? sanitizeSchemaForDeepSeekStrict(rawParameters)
-    : stableClone(rawParameters)
+  const mode = normalizeStrictMode(options.strict)
+  const parameters =
+    mode === 'nullable'
+      ? sanitizeSchemaForDeepSeekNullable(rawParameters)
+      : mode === 'strict'
+        ? sanitizeSchemaForDeepSeekStrict(rawParameters)
+        : stableClone(rawParameters)
 
   return {
     type: 'function',
@@ -36,7 +55,9 @@ export async function toolToDeepSeekFunctionSchema(tool, options = {}) {
       name: tool.name ?? tool.function?.name,
       description,
       parameters,
-      strict: options.strict ? true : undefined,
+      // Both 'strict' and 'nullable' are /beta strict requests (the server enforces
+      // the schema); nullable only differs in how OPTIONAL params are encoded.
+      strict: mode === 'off' ? undefined : true,
     }),
   }
 }
@@ -86,6 +107,150 @@ export function sanitizeSchemaForDeepSeekStrict(schema) {
   }
 
   return out
+}
+
+// Strict-mode sanitizer variant that keeps required = ALL properties (so DeepSeek
+// /beta strict accepts it) but widens each ORIGINALLY-OPTIONAL property to allow
+// null — the OpenAI structured-outputs convention. A live V4 probe confirmed the
+// server accepts required-but-nullable (200, all encodings) AND lets the model
+// omit/null such a field, so an optional param is no longer forced to a value the
+// way plain strict (required = all, non-nullable) does. Same recursion/key-sort as
+// the strict sanitizer, so required props render BYTE-IDENTICAL to strict. Like the
+// strict sanitizer it is applied EXACTLY ONCE on a raw schema; re-application is
+// value- (deepEqual) idempotent — not byte-idempotent at an object root, since
+// required/type/additionalProperties are appended after the sorted-key loop (a 2nd
+// pass would sort them into place). That never reaches the wire (single application).
+export function sanitizeSchemaForDeepSeekNullable(schema) {
+  if (Array.isArray(schema)) {
+    return schema.map(item => sanitizeSchemaForDeepSeekNullable(item))
+  }
+  if (!schema || typeof schema !== 'object') {
+    return schema
+  }
+  // Capture the ORIGINAL required set BEFORE the overwrite below — it is the sole
+  // optional-vs-required signal (zod v4 encodes optional as absence from required).
+  // Captured per recursive frame, so a nested object widens against its OWN required.
+  const origRequired = new Set(
+    Array.isArray(schema.required) ? schema.required : [],
+  )
+
+  const out = {}
+  for (const key of Object.keys(schema).sort()) {
+    if (UNSUPPORTED_STRICT_SCHEMA_KEYS.has(key)) continue
+    const value = schema[key]
+    if (key === 'properties' && value && typeof value === 'object') {
+      out.properties = {}
+      for (const prop of Object.keys(value).sort()) {
+        const sanitized = sanitizeSchemaForDeepSeekNullable(value[prop])
+        out.properties[prop] = origRequired.has(prop)
+          ? sanitized
+          : makeNullable(sanitized)
+      }
+      continue
+    }
+    if (key === 'items') {
+      out.items = sanitizeSchemaForDeepSeekNullable(value)
+      continue
+    }
+    if (key === 'anyOf' && Array.isArray(value)) {
+      out.anyOf = value.map(item => sanitizeSchemaForDeepSeekNullable(item))
+      continue
+    }
+    if ((key === '$defs' || key === '$def') && value && typeof value === 'object') {
+      out[key] = {}
+      for (const defName of Object.keys(value).sort()) {
+        out[key][defName] = sanitizeSchemaForDeepSeekNullable(value[defName])
+      }
+      continue
+    }
+    out[key] = sanitizeSchemaForDeepSeekNullable(value)
+  }
+
+  if (out.type === 'object' || out.properties) {
+    const propertyNames = Object.keys(out.properties ?? {}).sort()
+    out.type = out.type ?? 'object'
+    out.required = propertyNames
+    out.additionalProperties = false
+  }
+
+  return out
+}
+
+// Widen a (already-sanitized) subschema to also permit null. Idempotent and shape-
+// aware; leaves alone the cases where widening would corrupt or narrow.
+function makeNullable(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema
+  // Leave unchanged: already nullable; an empty schema (z.any/unknown — it already
+  // accepts null, and adding a type would NARROW it); a bare $ref leaf (wrapping
+  // could perturb ref resolution — an optional $ref stays required, same as 'all').
+  if (isAlreadyNullable(schema) || isEmptySchema(schema) || '$ref' in schema) {
+    return schema
+  }
+  // enum / const: wrap in anyOf with null — do NOT inject null into the enum list
+  // (null is not one of the allowed values).
+  if ('enum' in schema || 'const' in schema) {
+    return { anyOf: [schema, { type: 'null' }] }
+  }
+  if (Array.isArray(schema.anyOf)) {
+    return { ...schema, anyOf: [...schema.anyOf, { type: 'null' }] }
+  }
+  if (Array.isArray(schema.oneOf)) {
+    return { ...schema, oneOf: [...schema.oneOf, { type: 'null' }] }
+  }
+  // A `type` ARRAY in DeepSeek /beta strict accepts ONLY scalar variants + null
+  // (string|number|integer|boolean|null) — a live probe 400s on 'array'/'object' in
+  // a type array. So only a SCALAR single-type can use the compact [type,'null']
+  // encoding; an array/object (or any non-scalar) MUST wrap in anyOf with a null
+  // branch instead.
+  if (typeof schema.type === 'string' && NULLABLE_SCALAR_TYPES.has(schema.type)) {
+    return { ...schema, type: [schema.type, 'null'] }
+  }
+  if (
+    Array.isArray(schema.type) &&
+    schema.type.every(type => NULLABLE_SCALAR_TYPES.has(type))
+  ) {
+    return { ...schema, type: [...schema.type, 'null'] }
+  }
+  // array / object / any other type shape → anyOf-wrap.
+  return { anyOf: [schema, { type: 'null' }] }
+}
+
+// The scalar JSON-Schema types DeepSeek /beta strict permits inside a `type` array
+// alongside "null". 'array' and 'object' are NOT permitted there (probe-confirmed).
+const NULLABLE_SCALAR_TYPES = new Set(['string', 'number', 'integer', 'boolean'])
+
+function isAlreadyNullable(schema) {
+  if (schema.type === 'null') return true
+  if (Array.isArray(schema.type) && schema.type.includes('null')) return true
+  for (const branchKey of ['anyOf', 'oneOf']) {
+    const branches = schema[branchKey]
+    if (
+      Array.isArray(branches) &&
+      branches.some(
+        b =>
+          b &&
+          (b.type === 'null' ||
+            (Array.isArray(b.type) && b.type.includes('null'))),
+      )
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function isEmptySchema(schema) {
+  const meaningful = [
+    'type',
+    'enum',
+    'const',
+    'anyOf',
+    'oneOf',
+    '$ref',
+    'properties',
+    'items',
+  ]
+  return !meaningful.some(key => key in schema)
 }
 
 async function resolveToolDescription(tool, options) {

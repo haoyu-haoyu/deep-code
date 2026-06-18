@@ -209,7 +209,7 @@ export async function buildDeepSeekRequest({
     },
   })
   // Which tools use /beta strict function-calling. Default mode comes from the
-  // DEEPCODE_STRICT_TOOLS harness config (off|safe|all); an explicit boolean
+  // DEEPCODE_STRICT_TOOLS harness config (off|safe|all|nullable); an explicit boolean
   // strictTools is honored for back-compat (true=all, false=off). 'off' (the
   // default when unset) yields an empty set → no per-tool strict and the base
   // URL is unchanged, so the common path stays byte-identical.
@@ -244,7 +244,12 @@ export async function buildDeepSeekRequest({
               .map(tool =>
                 cachedToolToDeepSeekFunctionSchema(tool, {
                   ...toolSchemaOptions,
-                  strict: strictToolNames.has(tool.name ?? tool.function?.name),
+                  // Pass the MODE (off|safe|all|nullable) for a selected tool so the
+                  // renderer picks strict vs nullable; undefined when unselected. A
+                  // bare boolean here could not distinguish 'all' from 'nullable'.
+                  strict: strictToolNames.has(tool.name ?? tool.function?.name)
+                    ? strictMode
+                    : undefined,
                   tools: toolSchemaOptions.tools ?? tools,
                 }),
               ),

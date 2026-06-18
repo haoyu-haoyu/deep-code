@@ -10,28 +10,36 @@ import { sanitizeSchemaForDeepSeekStrict } from './deepseek-schema.mjs'
 // For a tool with optional params that would force the model to emit every
 // optional argument on every call — a behavioral regression (Read offset/limit,
 // Edit replace_all, Bash timeout, …). So strict must be applied selectively:
-//   - 'off'  -> no tool is strict (default; byte-identical to non-strict today).
-//   - 'safe' -> only tools the strict sanitizer would leave UNCHANGED, so the
-//               rewrite is a true no-op that only adds /beta enforcement and can
-//               never force a previously-optional argument.
-//   - 'all'  -> every named tool (accepts the all-required risk; explicit opt-in).
+//   - 'off'      -> no tool is strict (default; byte-identical to non-strict today).
+//   - 'safe'     -> only tools the strict sanitizer would leave UNCHANGED, so the
+//                   rewrite is a true no-op that only adds /beta enforcement and can
+//                   never force a previously-optional argument.
+//   - 'all'      -> every named tool (accepts the all-required risk; explicit opt-in).
+//   - 'nullable' -> every named tool, but rendered with the nullable sanitizer
+//                   (required = all props, originally-optional ones widened to allow
+//                   null) — strict enforcement for the WHOLE surface without forcing
+//                   optionals to a value. Selection is identical to 'all'; only the
+//                   renderer's sanitizer differs.
 //
 // Returns a Set of tool names. The caller flips to the /beta base URL only when
 // the set is non-empty, so the cached-prefix base URL is unchanged otherwise.
 /**
- * @param {string} mode 'off' | 'safe' | 'all' (anything else => off)
+ * @param {string} mode 'off' | 'safe' | 'all' | 'nullable' (anything else => off)
  * @param {ReadonlyArray<unknown>} tools
  * @returns {Set<string>}
  */
 export function resolveStrictToolNames(mode, tools) {
   const names = new Set()
-  if (mode !== 'safe' && mode !== 'all') {
+  if (mode !== 'safe' && mode !== 'all' && mode !== 'nullable') {
     return names
   }
   for (const tool of tools ?? []) {
     const name = toolName(tool)
     if (!name) continue
-    if (mode === 'all') {
+    // 'nullable' selects every named tool like 'all' (the nullable rewrite never
+    // forces an optional to be mandatory, so it is safe for every tool); only the
+    // SANITIZER differs, which the renderer picks from the mode.
+    if (mode === 'all' || mode === 'nullable') {
       names.add(name)
       continue
     }
