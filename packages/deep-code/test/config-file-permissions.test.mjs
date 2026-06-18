@@ -88,3 +88,18 @@ test('saveProviderConfigFile creates the config dir without any group/world bit'
     rmSync(base, { recursive: true, force: true })
   }
 })
+
+test('saveProviderConfigFile tightens a PRE-EXISTING group/world-readable config dir', { skip: !POSIX }, () => {
+  const configDir = mkdtempSync(join(tmpdir(), 'deepcode-perm-'))
+  try {
+    chmodSync(configDir, 0o755) // a loose dir created before this hardening / by another tool
+    assert.equal(isModeTooOpen(statSync(configDir).mode), true, 'precondition: dir starts too open')
+    saveProviderConfigFile(
+      { activeProvider: 'deepseek', providers: { deepseek: { apiKey: 'sk-x' } } },
+      { env: { DEEPCODE_CONFIG_DIR: configDir } },
+    )
+    assert.equal(isModeTooOpen(statSync(configDir).mode), false, 'existing dir tightened on save')
+  } finally {
+    rmSync(configDir, { recursive: true, force: true })
+  }
+})

@@ -7,8 +7,9 @@ export const SECURE_DIR_MODE = 0o700
 /**
  * True if `mode` grants ANY group or other (world) permission bit — i.e. a
  * secret file/dir that a loose umask left readable or writable by other local
- * users. Only the low permission bits matter, so the file-type bits in an
- * fs.statSync `mode` (e.g. 0o100644 for a regular file) are masked out by 0o077.
+ * users. The 0o077 mask examines only the group/other permission bits, so the
+ * owner bits and the file-type bits in an fs.statSync `mode` (e.g. 0o100644 for
+ * a regular file) do not affect the result.
  *
  * @param {number} mode  st_mode from fs.statSync
  * @returns {boolean}
