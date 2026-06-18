@@ -7,11 +7,7 @@ import {
   resolveRuntimeModelProvider,
 } from '../services/providers/runtime-provider.mjs'
 import { omitUndefined } from '../utils/omitUndefined.mjs'
-
-// Mirrors AUTO_MODEL_SETTING in src/utils/model/model.ts (a .ts, not
-// node-loadable). 'auto' is DeepSeek-specific routing; it is never a literal
-// model name for another provider.
-const AUTO_MODEL_SETTING = 'auto'
+import { AUTO_MODEL_SETTING } from '../utils/model/autoModelSetting.mjs'
 import {
   recordDeepSeekCacheUsage,
   resolveDeepSeekCacheStatsPath,
