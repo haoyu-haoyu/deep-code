@@ -15,10 +15,7 @@ import {
   normalizeToolCalls,
   stringifyToolResultContent,
 } from '../../messages/deepseek-normalizer.mjs'
-import {
-  sanitizeSchemaForDeepSeekStrict,
-  toolToDeepSeekFunctionSchema,
-} from '../../tools/deepseek-schema.mjs'
+import { cachedToolToDeepSeekFunctionSchema } from './deepseek-tool-manifest-cache.mjs'
 import { resolveStrictToolNames } from '../../tools/resolveStrictToolNames.mjs'
 import { resolveDeepCodeHarnessConfig } from '../../deepcode/harness-config.mjs'
 import {
@@ -232,7 +229,7 @@ export async function buildDeepSeekRequest({
               // prefix, so its order must be locale-independent (see cache/byte-order.mjs).
               .sort((a, b) => byteCompare(a.name, b.name))
               .map(tool =>
-                toolToDeepSeekFunctionSchema(tool, {
+                cachedToolToDeepSeekFunctionSchema(tool, {
                   ...toolSchemaOptions,
                   strict: strictToolNames.has(tool.name ?? tool.function?.name),
                   tools: toolSchemaOptions.tools ?? tools,
