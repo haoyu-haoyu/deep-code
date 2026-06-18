@@ -68,6 +68,7 @@ jobs:
             test/deepseek-auto-model-guard.test.mjs \
             test/warm-model-tiebreak.test.mjs \
             test/deepseek-nullable-strict.test.mjs \
+            test/compact-warning-bands.test.mjs \
             test/p2-2-providers.test.mjs \
             test/openai-compatible-stream.test.mjs \
             test/tool-call-index.test.mjs \

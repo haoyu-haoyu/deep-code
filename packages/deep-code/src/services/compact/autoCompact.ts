@@ -23,6 +23,7 @@ import {
 } from './compact.js'
 import { runPostCompactCleanup } from './postCompactCleanup.js'
 import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
+import { warningBandTokens, errorBandTokens } from './warningBands.mjs'
 
 // Reserve this many tokens for output during compaction
 // Based on p99.99 of compact summary output being 17,387 tokens.
@@ -59,8 +60,6 @@ export type AutoCompactTrackingState = {
 }
 
 export const AUTOCOMPACT_BUFFER_TOKENS = 13_000
-export const WARNING_THRESHOLD_BUFFER_TOKENS = 20_000
-export const ERROR_THRESHOLD_BUFFER_TOKENS = 20_000
 export const MANUAL_COMPACT_BUFFER_TOKENS = 3_000
 
 // Stop trying autocompact after this many consecutive failures.
@@ -100,17 +99,22 @@ export function calculateTokenWarningState(
   isAtBlockingLimit: boolean
 } {
   const autoCompactThreshold = getAutoCompactThreshold(model)
+  const effectiveContextWindow = getEffectiveContextWindowSize(model)
   const threshold = isAutoCompactEnabled()
     ? autoCompactThreshold
-    : getEffectiveContextWindowSize(model)
+    : effectiveContextWindow
 
   const percentLeft = Math.max(
     0,
     Math.round(((threshold - tokenUsage) / threshold) * 100),
   )
 
-  const warningThreshold = threshold - WARNING_THRESHOLD_BUFFER_TOKENS
-  const errorThreshold = threshold - ERROR_THRESHOLD_BUFFER_TOKENS
+  // Window-scaled display bands (see warningBands.mjs): a fixed 20k is only ~2% of
+  // a 1M window, so the warning fired uselessly late. Scaled to the effective
+  // window with a 20k floor (legacy ~200k windows are byte-identical). Display-only;
+  // the autocompact trigger (autoCompactThreshold) and blocking limit are unscaled.
+  const warningThreshold = threshold - warningBandTokens(effectiveContextWindow)
+  const errorThreshold = threshold - errorBandTokens(effectiveContextWindow)
 
   const isAboveWarningThreshold = tokenUsage >= warningThreshold
   const isAboveErrorThreshold = tokenUsage >= errorThreshold
@@ -118,9 +122,8 @@ export function calculateTokenWarningState(
   const isAboveAutoCompactThreshold =
     isAutoCompactEnabled() && tokenUsage >= autoCompactThreshold
 
-  const actualContextWindow = getEffectiveContextWindowSize(model)
   const defaultBlockingLimit =
-    actualContextWindow - MANUAL_COMPACT_BUFFER_TOKENS
+    effectiveContextWindow - MANUAL_COMPACT_BUFFER_TOKENS
 
   // Allow override for testing
   const blockingLimitOverride = process.env.CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE
