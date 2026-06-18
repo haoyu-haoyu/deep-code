@@ -6,17 +6,25 @@
 // child processes (bash, shell snapshot, MCP stdio, LSP, hooks) are scrubbed.
 //
 // This is the single source of truth for the scrub set — kept here as a pure,
-// node-testable leaf so the list can't silently drift from what the provider
-// actually treats as a credential.
+// node-testable leaf. A drift-guard test cross-checks it against the provider
+// config's credential resolver, so the list can't silently fall behind what the
+// provider actually treats as a credential when a new provider is added.
 export const SUBPROCESS_SCRUB_KEYS = [
-  // DeepSeek / DeepCode auth — the fork's REAL credentials. These are exactly the
-  // vars the provider resolves an API key from (provider-config.mjs apiKey arrays
-  // ['DEEPSEEK_API_KEY'] and ['DEEPCODE_API_KEY','API_KEY']; deepseek.mjs reads
-  // DEEPSEEK_API_KEY/DEEPCODE_API_KEY). `API_KEY` is generic but IS a documented
-  // credential source for the deepcode provider, so it must be scrubbed too.
+  // Model-provider credentials — the COMPLETE set of env vars the provider config
+  // resolves an API key from: provider-config.mjs PROVIDER_ENV apiKey arrays for
+  // deepseek/ollama/vllm/openai-compatible + GENERIC_ENV ['DEEPCODE_API_KEY','API_KEY'].
+  // The subprocess-env-scrub drift-guard test asserts every such var is listed here,
+  // so a new provider can't silently re-open the exfiltration hole. `API_KEY` is
+  // generic but IS a documented credential source, so it is scrubbed too.
   'DEEPSEEK_API_KEY',
   'DEEPCODE_API_KEY',
   'API_KEY',
+  'OLLAMA_API_KEY',
+  'VLLM_API_KEY',
+  'OPENAI_COMPATIBLE_API_KEY',
+
+  // MCP OAuth client secret — supplied via the env (mcp/auth.ts readClientSecret)
+  'MCP_CLIENT_SECRET',
 
   // Anthropic auth — re-read per request, subprocesses don't need them
   'ANTHROPIC_API_KEY',

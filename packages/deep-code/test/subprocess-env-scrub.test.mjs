@@ -5,6 +5,7 @@ import {
   SUBPROCESS_SCRUB_KEYS,
   scrubSubprocessEnv,
 } from '../src/utils/subprocessEnvScrub.mjs'
+import { getProviderCredentialEnvVars } from '../src/services/providers/provider-config.mjs'
 
 // ── the fork's REAL credential MUST be in the scrub set ──────────────────────
 // Regression for the inherited-from-upstream gap: the list scrubbed
@@ -17,11 +18,31 @@ test('the DeepSeek/DeepCode credential vars are all in the scrub set', () => {
   }
 })
 
+// SSOT drift guard: EVERY env var the provider config resolves a key from — for
+// any provider (deepseek/ollama/vllm/openai-compatible) plus the generic
+// fallback — must be in the scrub set. Adding a new provider credential without
+// scrubbing it would re-open the exfiltration hole; this fails loudly if so.
+test('every provider-config credential env var is scrubbed (no drift)', () => {
+  const credVars = getProviderCredentialEnvVars()
+  assert.ok(credVars.length >= 6, 'sanity: expected the known provider credentials')
+  for (const k of credVars) {
+    assert.ok(SUBPROCESS_SCRUB_KEYS.includes(k), `${k} (a provider credential) must be scrubbed`)
+  }
+})
+
+test('the other-provider + MCP secret vars are in the scrub set', () => {
+  for (const k of ['OLLAMA_API_KEY', 'VLLM_API_KEY', 'OPENAI_COMPATIBLE_API_KEY', 'MCP_CLIENT_SECRET']) {
+    assert.ok(SUBPROCESS_SCRUB_KEYS.includes(k), `${k} must be scrubbed`)
+  }
+})
+
 test('scrubSubprocessEnv strips the DeepSeek credential (and INPUT_ duplicate)', () => {
   const env = {
     DEEPSEEK_API_KEY: 'sk-secret-deepseek',
     DEEPCODE_API_KEY: 'sk-secret-deepcode',
     API_KEY: 'sk-secret-generic',
+    OPENAI_COMPATIBLE_API_KEY: 'sk-secret-oai',
+    MCP_CLIENT_SECRET: 'mcp-oauth-secret',
     INPUT_DEEPSEEK_API_KEY: 'sk-secret-gha-input',
     PATH: '/usr/bin',
   }
@@ -29,6 +50,8 @@ test('scrubSubprocessEnv strips the DeepSeek credential (and INPUT_ duplicate)',
   assert.equal(out.DEEPSEEK_API_KEY, undefined)
   assert.equal(out.DEEPCODE_API_KEY, undefined)
   assert.equal(out.API_KEY, undefined)
+  assert.equal(out.OPENAI_COMPATIBLE_API_KEY, undefined)
+  assert.equal(out.MCP_CLIENT_SECRET, undefined)
   assert.equal(out.INPUT_DEEPSEEK_API_KEY, undefined)
   // non-secret vars survive
   assert.equal(out.PATH, '/usr/bin')

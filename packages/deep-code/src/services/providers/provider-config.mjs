@@ -44,6 +44,22 @@ const GENERIC_ENV = Object.freeze({
   model: ['DEEPCODE_MODEL'],
 })
 
+/**
+ * The complete set of env var NAMES the provider config can resolve an API key
+ * from — every provider in PROVIDER_ENV plus the generic GENERIC_ENV fallback.
+ * Exported so the subprocess-env scrub set (subprocessEnvScrub.mjs) can be
+ * drift-guarded against it: a new provider credential must also be scrubbed from
+ * child environments or prompt injection could exfiltrate it.
+ * @returns {string[]}
+ */
+export function getProviderCredentialEnvVars() {
+  const names = new Set(GENERIC_ENV.apiKey)
+  for (const cfg of Object.values(PROVIDER_ENV)) {
+    for (const name of cfg.apiKey) names.add(name)
+  }
+  return [...names]
+}
+
 export function resolveProviderConfig({
   provider,
   env = process.env,
