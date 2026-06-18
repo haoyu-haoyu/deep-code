@@ -45,6 +45,7 @@ import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
 import { setAgentColor } from './agentColorManager.js';
 import { agentToolResultSchema, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, getLastToolUseName, runAsyncAgentLifecycle } from './agentToolUtils.js';
+import { synthesizeSubagentResult } from './synthesizeSubagentResult.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
 import { buildForkedMessages, buildWorktreeNotice, FORK_AGENT, isForkSubagentEnabled, isInForkChild } from './forkSubagent.js';
 import type { AgentDefinition } from './loadAgentsDir.js';
@@ -792,6 +793,12 @@ export const AgentTool = buildTool({
         let stopForegroundSummarization: (() => void) | undefined;
         // const capture for sound type narrowing inside the callback below
         const summaryTaskId = foregroundTaskId;
+        // Optional LLM synthesis of the finished subagent result (a warm-cache fork).
+        // Capture the cache-safe params during streaming (they're gone at finalize);
+        // the fork reuses them. Default off — flag-gated, deterministic fallback.
+        const synthesisEnabled = feature('SUBAGENT_LLM_SYNTHESIS');
+        const SUBAGENT_SYNTHESIS_MIN_TOOL_USES = 8;
+        let capturedCacheSafeParams: CacheSafeParams | undefined;
 
         // Get async iterator for the agent
         const agentIterator = runAgent({
@@ -800,11 +807,16 @@ export const AgentTool = buildTool({
             ...runAgentParams.override,
             agentId: syncAgentId
           },
-          onCacheSafeParams: summaryTaskId && getSdkAgentProgressSummariesEnabled() ? (params: CacheSafeParams) => {
-            const {
-              stop
-            } = startAgentSummarization(summaryTaskId, syncAgentId, params, rootSetAppState);
-            stopForegroundSummarization = stop;
+          onCacheSafeParams: (summaryTaskId && getSdkAgentProgressSummariesEnabled()) || synthesisEnabled ? (params: CacheSafeParams) => {
+            // Capture for the terminal synthesis fork; compose with (not overwrite)
+            // the progress-summary callback.
+            capturedCacheSafeParams = params;
+            if (summaryTaskId && getSdkAgentProgressSummariesEnabled()) {
+              const {
+                stop
+              } = startAgentSummarization(summaryTaskId, syncAgentId, params, rootSetAppState);
+              stopForegroundSummarization = stop;
+            }
           } : undefined
         })[Symbol.asyncIterator]();
 
@@ -1177,6 +1189,21 @@ export const AgentTool = buildTool({
           logForDebugging(`Sync agent recovering from error with ${agentMessages.length} messages`);
         }
         const agentResult = finalizeAgentTool(agentMessages, syncAgentId, metadata);
+        // Optional LLM synthesis: distill the finished transcript into a structured
+        // block and use it as the result. On ANY failure/timeout/empty the deterministic
+        // finalizeAgentTool content (incl. the #513 files manifest) stands — no regression.
+        // Only for SUBSTANTIAL subagents (>= 8 tool uses); a short task's final message
+        // is already the right answer, so a synthesis fork would be wasted cost.
+        if (synthesisEnabled && capturedCacheSafeParams && agentResult.totalToolUseCount >= SUBAGENT_SYNTHESIS_MIN_TOOL_USES) {
+          const synthesisBlock = await synthesizeSubagentResult({
+            agentMessages,
+            cacheSafeParams: capturedCacheSafeParams,
+            abortSignal: toolUseContext.abortController.signal
+          });
+          if (synthesisBlock) {
+            agentResult.content = [{ type: 'text' as const, text: synthesisBlock }];
+          }
+        }
         if (feature('TRANSCRIPT_CLASSIFIER')) {
           const currentAppState = toolUseContext.getAppState();
           const handoffWarning = await classifyHandoffIfNeeded({
