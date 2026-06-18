@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { feature } from 'bun:bundle'
 
 import {
   createDeepSeekStreamError,
@@ -19,7 +20,11 @@ import {
   setMemoizedRoute,
 } from '../autoMode/routeMemo.mjs'
 import { providerSupports } from '../../deepcode/provider-capabilities.mjs'
-import { stableJsonStringifySafe } from '../../cache/deepseek-cache.mjs'
+import {
+  getWarmModels,
+  stableJsonStringifySafe,
+} from '../../cache/deepseek-cache.mjs'
+import { applyWarmModelTieBreak } from '../autoMode/warmModelTieBreak.mjs'
 // @ts-expect-error DeepSeek call-model adapter is JS; runtime native primitives use it
 // internally for non-streaming collection. Exposed externally via the
 // local re-export at the bottom of this file.
@@ -319,6 +324,18 @@ async function resolveAutoRoute({
       normalized,
       signal ?? new AbortController().signal,
     )
+    // Warm-model tie-break (opt-in): a borderline flash lookup opening on a
+    // warm-pro session would pay a one-off cold flash prefix miss; keep it on the
+    // warm pro lane at low effort instead. Applied here (once per task, memoized
+    // with the decision) so it covers BOTH the LLM router and heuristic outputs,
+    // and never overrides an explicit speed request.
+    if (feature('WARM_MODEL_TIEBREAK')) {
+      decision = applyWarmModelTieBreak(decision, {
+        message: taskKey,
+        proModel: resolveDeepSeekConfig().model,
+        warmModels: getWarmModels(),
+      })
+    }
     setMemoizedRoute(taskKey, decision)
   }
   return routeDecisionToRuntime(decision)

@@ -15,7 +15,9 @@
 //      in a QUESTION (e.g. "are there any tests?") does not over-route to max.
 // The top tier (xhigh ≈ 2x max) is reserved for the genuinely hardest reasoning.
 
-const SPEED = /\b(quick|quickly|fast|brief|briefly|short|speed|tldr)\b/
+// Exported so the warm-model tie-break can honor the SAME explicit-speed signal
+// (a speed request is never overridden onto the warm pro lane).
+export const SPEED = /\b(quick|quickly|fast|brief|briefly|short|speed|tldr)\b/
 const READ_ONLY =
   /\b(read|inspect|explain|summari[sz]e|describe|list|show|what|which|who|where|when|why|how)\b/
 const HARDEST =
