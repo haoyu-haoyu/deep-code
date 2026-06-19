@@ -90,11 +90,14 @@ function isStrictNoOpSchema(schema) {
 
 // True iff the schema declares an OPEN map anywhere — an `additionalProperties`
 // that is a value schema or `true` (z.record / z.passthrough / an MCP author's
-// free-form map), or any `patternProperties`. The strict/nullable sanitizer
-// unconditionally sets every object node's additionalProperties to false and
-// drops patternProperties, which would close such a map (accept-any -> accept-
-// none) silently. A closed `additionalProperties: false`, or its absence (the
-// normal closed object), is NOT an open map and stays selectable.
+// free-form map), any `patternProperties`, or a property-less object node (a bare
+// `{type:'object'}` whose additionalProperties defaults to OPEN per JSON Schema).
+// The strict/nullable sanitizer unconditionally sets every object node's
+// additionalProperties to false and drops patternProperties, which would close
+// such a map (accept-any -> accept-none) silently. Absence of additionalProperties
+// is NOT closed in general — it is only closeable on an object that ALSO declares
+// `properties` (there strict's "reject undeclared extras" is the intended job);
+// an object with NO declared properties is a free-form map and must stay open.
 export function schemaClosesAnOpenMap(schema) {
   if (Array.isArray(schema)) return schema.some(schemaClosesAnOpenMap)
   if (!schema || typeof schema !== 'object') return false
@@ -107,6 +110,26 @@ export function schemaClosesAnOpenMap(schema) {
   if (
     schema.patternProperties &&
     typeof schema.patternProperties === 'object'
+  ) {
+    return true
+  }
+  // A `type:'object'` (or a type array including 'object') with no explicit
+  // additionalProperties AND no declared properties is JSON-Schema default-open
+  // (additionalProperties defaults to true). The sanitizer would rewrite it to
+  // `{type:'object',required:[],additionalProperties:false}` = accepts only `{}`,
+  // and force it into the parent's required[] — the #523 accept-any->accept-none
+  // inversion, via an uncovered shape. An object WITH declared properties stays
+  // selectable (absence-is-closed holds there — strict closes undeclared extras).
+  const t = schema.type
+  const isObjish = t === 'object' || (Array.isArray(t) && t.includes('object'))
+  if (
+    isObjish &&
+    !('additionalProperties' in schema) &&
+    !(
+      schema.properties &&
+      typeof schema.properties === 'object' &&
+      Object.keys(schema.properties).length > 0
+    )
   ) {
     return true
   }
