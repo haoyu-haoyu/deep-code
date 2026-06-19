@@ -8,6 +8,7 @@ import {
   isChainParticipant,
   recordTranscript,
 } from '../utils/sessionStorage.js'
+import { resolveRecordPlan } from './recordPlan.mjs'
 
 /**
  * Hook that logs messages to the transcript
@@ -27,6 +28,12 @@ export function useLogMessages(messages: Message[], ignore: boolean = false) {
   // First-uuid change = compaction or /clear rebuilt the array; length alone
   // can't detect this since post-compact [CB,summary,...keep,new] may be longer.
   const firstMessageUuidRef = useRef<UUID | undefined>(undefined)
+  // The uuid we last recorded at the tail index (prevLength-1). A pure append
+  // leaves it unchanged; a fullscreen `from` partial-compact splices a boundary
+  // at an interior index < prevLength (keeping messages[0]), which shifts it —
+  // the signal that an otherwise-incremental render actually rewrote the recorded
+  // prefix and must be re-recorded in full so the boundary is persisted.
+  const lastRecordedTailUuidRef = useRef<UUID | undefined>(undefined)
   // Guard against stale async .then() overwriting a fresher sync update when
   // an incremental render fires before the compaction .then() resolves.
   const callSeqRef = useRef(0)
@@ -40,23 +47,20 @@ export function useLogMessages(messages: Message[], ignore: boolean = false) {
     // First-render: firstMessageUuidRef is undefined. Compaction: first uuid changes.
     // Both are !isIncremental, but first-render sync-walk is safe (no messagesToKeep).
     const wasFirstRender = firstMessageUuidRef.current === undefined
-    const isIncremental =
-      currentFirstUuid !== undefined &&
-      !wasFirstRender &&
-      currentFirstUuid === firstMessageUuidRef.current &&
-      prevLength <= messages.length
-    // Same-head shrink: tombstone filter, rewind, snip, partial-compact.
-    // Distinguished from compaction (first uuid changes) because the tail
-    // is either an existing on-disk message or a fresh message that this
-    // same effect's recordTranscript(fullArray) will write — see sync-walk
-    // guard below.
-    const isSameHeadShrink =
-      currentFirstUuid !== undefined &&
-      !wasFirstRender &&
-      currentFirstUuid === firstMessageUuidRef.current &&
-      prevLength > messages.length
-
-    const startIndex = isIncremental ? prevLength : 0
+    // Same-head shrink (tombstone filter, rewind, snip, partial-compact) is
+    // distinguished from compaction (first uuid changes); the prefix-rewrite guard
+    // (uuidAtPrevTailIndex vs prevRecordedTailUuid) demotes a fullscreen `from`
+    // partial-compact — which keeps messages[0] and grows but splices an interior
+    // boundary — from incremental to a full rebuild so the boundary is persisted.
+    const { startIndex, isIncremental, isSameHeadShrink } = resolveRecordPlan({
+      wasFirstRender,
+      currentFirstUuid,
+      prevFirstUuid: firstMessageUuidRef.current,
+      prevLength,
+      currentLength: messages.length,
+      uuidAtPrevTailIndex: messages[prevLength - 1]?.uuid as UUID | undefined,
+      prevRecordedTailUuid: lastRecordedTailUuidRef.current,
+    })
     if (startIndex === messages.length) return
 
     // Full array on first call + after compaction: recordTranscript's own
@@ -115,5 +119,10 @@ export function useLogMessages(messages: Message[], ignore: boolean = false) {
 
     lastRecordedLengthRef.current = messages.length
     firstMessageUuidRef.current = currentFirstUuid
+    // Remember the tail uuid so the next render can detect a prefix rewrite
+    // (interior boundary insert) that an append-only length check would miss.
+    lastRecordedTailUuidRef.current = messages[messages.length - 1]?.uuid as
+      | UUID
+      | undefined
   }, [messages, ignore, teamContext?.teamName, teamContext?.selfAgentName])
 }
