@@ -34,8 +34,7 @@ function findLatest(messages, predicate) {
  * @returns the chosen leaf message, or undefined if none.
  */
 export function selectResumeLeaf(messages, leafUuids) {
-  // Materialize: the caller passes a one-shot iterator (Map.values()) and we
-  // scan up to twice (rule + fallback).
+  // Materialize: the caller passes a one-shot iterator (Map.values()).
   const all = Array.isArray(messages) ? messages : [...messages]
   const leaf = findLatest(
     all,
@@ -44,8 +43,21 @@ export function selectResumeLeaf(messages, leafUuids) {
       leafUuids.has(m.uuid) &&
       (m.type === 'user' || m.type === 'assistant'),
   )
-  if (leaf) return leaf
-  // Fallback to the prior raw pick so a malformed / leaf-less file still
-  // resolves something (preserves today's behavior in that edge case).
-  return findLatest(all, m => !m.isSidechain)
+  // No qualifying non-sidechain user/assistant leaf → FAIL SAFE with undefined
+  // (mirrors conversationRecovery.ts, which returns an empty result on no-tip),
+  // NOT the prior raw `!isSidechain` max-timestamp pick. That fallback re-admitted
+  // the exact interior-node anchor this leaf exists to remove: a 'system' /
+  // 'attachment' node whose later-appended descendants are then excluded by
+  // buildConversationChain's backward parentUuid walk (silent turn loss).
+  //
+  // INVARIANT making the fallback unreachable for real files: leafUuids ⊆
+  // {user,assistant} (sessionStorage.ts leaf computation) and the main session
+  // file never holds isSidechain:true entries (those route to a separate agent
+  // file), so for any native transcript with a non-sidechain user/assistant
+  // message the rule above already matched. This branch is reached only for a
+  // degenerate/foreign transcript with no qualifying leaf, where undefined is
+  // correct (callers degrade gracefully). A "relaxed leaf" fallback would be
+  // dead code — every leaf is already user/assistant — so undefined is the only
+  // sound, non-redundant choice.
+  return leaf
 }

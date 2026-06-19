@@ -52,16 +52,17 @@ test('sidechain messages are never chosen', () => {
   assert.equal(selectResumeLeaf(messages, new Set(['a1', 'side'])).uuid, 'a1')
 })
 
-// --- fallback: no qualifying leaf → latest non-sidechain (preserves old behavior) ---
+// --- no qualifying leaf → FAIL SAFE with undefined (NOT the raw interior pick) ---
 
-test('falls back to the latest non-sidechain message when no user/assistant leaf exists', () => {
+test('returns undefined when no user/assistant leaf exists (no interior-node fallback)', () => {
   const messages = [
     msg('s1', '2024-01-01T00:00:01Z', 'system'),
     msg('s2', '2024-01-01T00:00:09Z', 'system'),
   ]
-  // leafUuids has no user/assistant member → rule finds nothing → fallback
-  const leaf = selectResumeLeaf(messages, new Set(['s1', 's2']))
-  assert.equal(leaf.uuid, 's2') // latest non-sidechain
+  // leafUuids has no user/assistant member → the rule finds nothing → undefined,
+  // NOT the old raw `!isSidechain` pick (s2), which would anchor an interior
+  // 'system' node and truncate the chain.
+  assert.equal(selectResumeLeaf(messages, new Set(['s1', 's2'])), undefined)
 })
 
 test('returns undefined when there is nothing non-sidechain', () => {
@@ -69,17 +70,16 @@ test('returns undefined when there is nothing non-sidechain', () => {
   assert.equal(selectResumeLeaf(messages, new Set(['side'])), undefined)
 })
 
-// --- iterator input (Map.values()) is consumed correctly despite the double scan ---
+// --- iterator input (Map.values()) is consumed correctly ---
 
-test('accepts a one-shot iterator (rule + fallback both see the data)', () => {
+test('accepts a one-shot iterator and picks the user/assistant leaf over a later system entry', () => {
   const map = new Map([
     ['s1', msg('s1', '2024-01-01T00:00:09Z', 'system')],
     ['a1', msg('a1', '2024-01-01T00:00:02Z', 'assistant')],
   ])
-  // only s1 is a leaf (no user/assistant leaf) → must fall back, and the
-  // fallback must still see the iterator's contents (materialized once).
-  assert.equal(selectResumeLeaf(map.values(), new Set(['s1'])).uuid, 's1')
-  // with a1 as the leaf, the rule picks it over the later system entry
+  // only s1 is a leaf (no user/assistant leaf) → fail-safe undefined.
+  assert.equal(selectResumeLeaf(map.values(), new Set(['s1'])), undefined)
+  // with a1 as the leaf, the rule picks it over the later system entry.
   assert.equal(selectResumeLeaf(map.values(), new Set(['a1'])).uuid, 'a1')
 })
 
