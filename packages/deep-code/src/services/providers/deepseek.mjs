@@ -734,7 +734,19 @@ export function parseDeepSeekSSELines(lines) {
     } catch {
       continue
     }
-    for (const choice of chunk.choices ?? []) {
+    // A JSON-VALID but non-object chunk (`data: null`, `data: 5`, `data: "x"` from a
+    // misbehaving proxy) passes JSON.parse but would throw on chunk.choices/usage/error
+    // below (`Cannot read properties of null`) — same skip-the-bad-line invariant as
+    // the parse guard. (An array chunk is harmless: chunk.choices is just undefined.)
+    if (!chunk || typeof chunk !== 'object') continue
+    // Same invariant as the JSON.parse guard above: one structurally-valid chunk
+    // carrying a null/garbage `choices` or `tool_calls` ELEMENT (padding some
+    // non-conformant OpenAI-compatible gateways emit) must NOT abort the stream and
+    // lose already-yielded content. Coerce to arrays (a non-array isn't iterable) and
+    // skip non-object entries, rather than throwing on `choice.delta`/`toolCall.index`.
+    const choices = Array.isArray(chunk.choices) ? chunk.choices : []
+    for (const choice of choices) {
+      if (!choice || typeof choice !== 'object') continue
       const delta = choice.delta ?? {}
       if (delta.reasoning_content) {
         events.push({ type: 'reasoning_delta', text: delta.reasoning_content })
@@ -742,7 +754,9 @@ export function parseDeepSeekSSELines(lines) {
       if (delta.content) {
         events.push({ type: 'content_delta', text: delta.content })
       }
-      for (const toolCall of delta.tool_calls ?? []) {
+      const toolCalls = Array.isArray(delta.tool_calls) ? delta.tool_calls : []
+      for (const toolCall of toolCalls) {
+        if (!toolCall || typeof toolCall !== 'object') continue
         const event = omitUndefined({
           type: 'tool_call_delta',
           index: toolCall.index,
@@ -763,7 +777,7 @@ export function parseDeepSeekSSELines(lines) {
       // stop_reason:null. The finish is pushed AFTER the content_delta above, so
       // consumers see content first, then finish (the agent loop only records
       // finishReason on finish; blocks close after the stream drains).
-      const hasToolCallDeltas = (delta.tool_calls?.length ?? 0) > 0
+      const hasToolCallDeltas = toolCalls.length > 0
       if (choice.finish_reason && !hasToolCallDeltas) {
         events.push({ type: 'finish', finishReason: choice.finish_reason })
       }
