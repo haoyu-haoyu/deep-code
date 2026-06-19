@@ -75,6 +75,7 @@ import {
   stripAllLeadingEnvVars,
   stripCommentLines,
   stripEnvCommandPrefix,
+  stripPrecommandModifiers,
   stripSafeWrappers,
 } from './commandStripping.mjs'
 export { BINARY_HIJACK_VARS, stripAllLeadingEnvVars, stripSafeWrappers }
@@ -550,6 +551,16 @@ function filterRulesByContentsMatchingInput(
         if (!seen.has(envCmdStripped)) {
           commandsToTry.push(envCmdStripped)
           seen.add(envCmdStripped)
+        }
+        // Try stripping a leading precommand modifier (`command`/`builtin`/`exec`/
+        // `noglob`/`nocorrect`) or pipeline negation (`! cmd`). SECURITY: deny/ask
+        // ONLY — these RUN the wrapped command, so a denied command run as
+        // `command rm` / `exec rm` / `! rm` must still match its deny rule. (Like
+        // `env`, they are intentionally NOT stripSafeWrappers safe-list entries.)
+        const modifierStripped = stripPrecommandModifiers(cmd)
+        if (!seen.has(modifierStripped)) {
+          commandsToTry.push(modifierStripped)
+          seen.add(modifierStripped)
         }
       }
       startIdx = endIdx

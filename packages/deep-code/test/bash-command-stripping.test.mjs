@@ -9,6 +9,7 @@ import {
   stripSafeWrappers,
   stripAllLeadingEnvVars,
   stripEnvCommandPrefix,
+  stripPrecommandModifiers,
 } from '../src/tools/BashTool/commandStripping.mjs'
 
 // ── bash command-stripping (deny-bypass prevention) ─────────────────────────
@@ -294,6 +295,7 @@ function denyCandidates(command) {
       stripAllLeadingEnvVars(out[i]),
       stripSafeWrappers(out[i]),
       stripEnvCommandPrefix(out[i]),
+      stripPrecommandModifiers(out[i]),
     ]) {
       if (!seen.has(next)) {
         seen.add(next)
@@ -352,4 +354,76 @@ test('SAFE_ENV_VARS excludes every execution/loading var; ANT-only has DOCKER_HO
   }
   assert.ok(SAFE_ENV_VARS.has('TZ') && SAFE_ENV_VARS.has('NODE_ENV'))
   assert.ok(ANT_ONLY_SAFE_ENV_VARS.has('DOCKER_HOST') && ANT_ONLY_SAFE_ENV_VARS.has('KUBECONFIG'))
+})
+
+// --- precommand modifiers (deny-bypass prevention) ---------------------------
+
+test('stripPrecommandModifiers peels command/builtin/exec/noglob/nocorrect and `!`', () => {
+  assert.equal(stripPrecommandModifiers('command rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('builtin rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('exec rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('noglob rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('nocorrect rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('! rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('command -p rm -rf b'), 'rm -rf b')
+})
+
+test('stripPrecommandModifiers skips the option flags that still RUN the command', () => {
+  // command [-p] [--] cmd
+  assert.equal(stripPrecommandModifiers('command -- rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('command -p -- rm -rf b'), 'rm -rf b')
+  // exec [-cl] [-a NAME] [--] cmd
+  assert.equal(stripPrecommandModifiers('exec -a sshd rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('exec -c rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('exec -l rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('exec -cl rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('exec -- rm -rf b'), 'rm -rf b')
+})
+
+test('stripPrecommandModifiers leaves non-executing / unrelated forms unchanged', () => {
+  // `command -v`/`-V` only LOOK UP the command — do not strip (avoid over-deny).
+  assert.equal(stripPrecommandModifiers('command -v rm'), 'command -v rm')
+  assert.equal(stripPrecommandModifiers('command -V rm'), 'command -V rm')
+  assert.equal(stripPrecommandModifiers('command -p -v rm'), 'command -p -v rm')
+  // extglob `!(...)` and history `!!` are not pipeline negation (no space).
+  assert.equal(stripPrecommandModifiers('!(rm)'), '!(rm)')
+  assert.equal(stripPrecommandModifiers('!!'), '!!')
+  // a plain command and a same-named real binary are untouched.
+  assert.equal(stripPrecommandModifiers('rm -rf b'), 'rm -rf b')
+  assert.equal(stripPrecommandModifiers('commander --help'), 'commander --help')
+  // a modifier with no following command is not a runnable command → unchanged.
+  assert.equal(stripPrecommandModifiers('exec '), 'exec ')
+  assert.equal(stripPrecommandModifiers('! '), '! ')
+})
+
+test('deny closure: precommand-modifier-wrapped denied commands still reduce to a deny match', () => {
+  for (const command of [
+    'command rm -rf b',
+    'builtin rm -rf b',
+    'exec rm -rf b',
+    'noglob rm -rf b',
+    'nocorrect rm -rf b',
+    '! rm -rf b',
+    'command -p rm -rf b',
+    'command -- rm -rf b',
+    'exec -a sshd rm -rf b',
+    'exec -c rm -rf b',
+    'exec -cl rm -rf b',
+    'FOO=bar command rm -rf b', // env prefix + modifier (fixed-point handles both)
+    'noglob exec rm -rf b', // stacked modifiers
+  ]) {
+    assert.ok(denyMatches(command, 'rm'), `deny must fire for: ${command}`)
+  }
+})
+
+test('deny closure: `command -v <denied>` (a lookup) does NOT over-match', () => {
+  // It does not execute rm, so it correctly does not reduce to an rm deny match.
+  assert.ok(!denyMatches('command -v rm', 'rm'))
+})
+
+test('allow closure: a precommand modifier must NOT auto-satisfy an allow rule', () => {
+  // Same asymmetry as env: an allow rule must not be satisfiable by wrapping.
+  assert.ok(allowMatches('curl http://ok.com', 'curl'))
+  assert.ok(!allowMatches('command curl http://evil.com', 'curl'), 'command must not auto-allow')
+  assert.ok(!allowMatches('! curl http://evil.com', 'curl'), '! must not auto-allow')
 })
