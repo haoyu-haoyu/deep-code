@@ -1,13 +1,9 @@
-import { chmodSync } from 'fs'
 import { join } from 'path'
 import { getClaudeConfigHomeDir } from '../envUtils.js'
 import { getErrnoCode } from '../errors.js'
 import { getFsImplementation } from '../fsOperations.js'
-import {
-  jsonParse,
-  jsonStringify,
-  writeFileSync_DEPRECATED,
-} from '../slowOperations.js'
+import { jsonParse, jsonStringify } from '../slowOperations.js'
+import { writeSecretFileAtomic } from './writeSecretFileAtomic.mjs'
 import type { SecureStorage, SecureStorageData } from './types.js'
 
 function getStoragePath(): { storageDir: string; storagePath: string } {
@@ -44,21 +40,12 @@ export const plainTextStorage = {
   update(data: SecureStorageData): { success: boolean; warning?: string } {
     // sync IO: called from sync context (SecureStorage interface)
     try {
-      const { storageDir, storagePath } = getStoragePath()
-      try {
-        getFsImplementation().mkdirSync(storageDir)
-      } catch (e: unknown) {
-        const code = getErrnoCode(e)
-        if (code !== 'EEXIST') {
-          throw e
-        }
-      }
-
-      writeFileSync_DEPRECATED(storagePath, jsonStringify(data), {
-        encoding: 'utf8',
-        flush: false,
-      })
-      chmodSync(storagePath, 0o600)
+      const { storagePath } = getStoragePath()
+      // Atomic, owner-only write: the credentials file is born 0o600 (no
+      // chmod-after-write world-readable window) and replaced via rename (no
+      // in-place truncate that a crash could leave corrupt). The leaf creates the
+      // 0o700 dir, so the explicit mkdir is no longer needed here.
+      writeSecretFileAtomic(storagePath, jsonStringify(data))
       return {
         success: true,
         warning: 'Warning: Storing credentials in plaintext.',

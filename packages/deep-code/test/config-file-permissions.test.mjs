@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, chmodSync, statSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, chmodSync, statSync, rmSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -13,6 +13,7 @@ import {
   loadProviderConfigFile,
   saveProviderConfigFile,
 } from '../src/services/providers/deepseek-config-store.mjs'
+import { writeSecretFileAtomic } from '../src/utils/secureStorage/writeSecretFileAtomic.mjs'
 
 const POSIX = process.platform !== 'win32'
 
@@ -101,5 +102,98 @@ test('saveProviderConfigFile tightens a PRE-EXISTING group/world-readable config
     assert.equal(isModeTooOpen(statSync(configDir).mode), false, 'existing dir tightened on save')
   } finally {
     rmSync(configDir, { recursive: true, force: true })
+  }
+})
+
+// ── writeSecretFileAtomic: the non-macOS credentials store write ─────────────
+// plainTextStorage.update() (the Windows/Linux secure-storage backend) used to
+// writeFileSync the credentials blob with NO mode (born 0o644 under a 022 umask)
+// then chmod 0o600 on the next line — a world-readable window — and truncated in
+// place (a crash mid-write corrupts the live secret). This leaf writes a tmp at
+// 0o600 from byte one and renames it over the target, owner-only dir included.
+
+test('writeSecretFileAtomic: a freshly created secret file is 0o600 (never 0o644)', { skip: !POSIX }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-secret-'))
+  try {
+    const path = join(dir, 'nested', '.credentials.json')
+    writeSecretFileAtomic(path, '{"mcpOAuth":{}}')
+    assert.equal(statSync(path).mode & 0o777, SECURE_FILE_MODE, 'born 0o600')
+    assert.equal(isModeTooOpen(statSync(path).mode), false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('writeSecretFileAtomic: the containing dir is created owner-only (0o700)', { skip: !POSIX }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-secret-'))
+  try {
+    const sub = join(dir, 'creds')
+    writeSecretFileAtomic(join(sub, '.credentials.json'), '{}')
+    assert.equal(isModeTooOpen(statSync(sub).mode), false, 'secret dir has no group/world bit')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('writeSecretFileAtomic: overwriting an existing file keeps 0o600 and the new content', { skip: !POSIX }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-secret-'))
+  try {
+    const path = join(dir, '.credentials.json')
+    writeSecretFileAtomic(path, '{"a":1}')
+    writeSecretFileAtomic(path, '{"a":2}')
+    assert.equal(statSync(path).mode & 0o777, SECURE_FILE_MODE)
+    assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), { a: 2 })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('writeSecretFileAtomic: no torn blob and no .tmp survivor', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-secret-'))
+  try {
+    const path = join(dir, '.credentials.json')
+    const blob = JSON.stringify({ mcpOAuth: { s: 'x'.repeat(200_000) } })
+    writeSecretFileAtomic(path, blob)
+    assert.equal(readFileSync(path, 'utf8'), blob, 'full blob, never partial')
+    assert.deepEqual(
+      readdirSync(dir).filter(f => f.endsWith('.tmp')),
+      [],
+      'rename consumed the tmp; no leftover',
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('writeSecretFileAtomic: a write failure leaves the original target untouched', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-secret-'))
+  try {
+    const path = join(dir, '.credentials.json')
+    writeSecretFileAtomic(path, '{"keep":true}')
+    // Force a failure: pass a non-string data that writeFileSync rejects AFTER the
+    // tmp dir exists. A symbol throws in the write, exercising the catch+cleanup.
+    assert.throws(() => writeSecretFileAtomic(path, Symbol('bad')))
+    assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), { keep: true }, 'original intact')
+    assert.deepEqual(readdirSync(dir).filter(f => f.endsWith('.tmp')), [], 'tmp cleaned up on error')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('writeSecretFileAtomic fuzz: round-trips bytes and stays 0o600 across inputs', { skip: !POSIX }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deepcode-secret-'))
+  try {
+    const path = join(dir, '.credentials.json')
+    let s = 0x51a7c3e9 >>> 0
+    const rnd = () => ((s = (s * 1103515245 + 12345) >>> 0), s / 0x100000000)
+    for (let i = 0; i < 2000; i++) {
+      const obj = { i, k: 'é👤"\\'.repeat((rnd() * 8) | 0), n: (rnd() * 1e9) | 0 }
+      const data = JSON.stringify(obj)
+      writeSecretFileAtomic(path, data)
+      assert.equal(readFileSync(path, 'utf8'), data, `iter ${i} round-trip`)
+      assert.equal(statSync(path).mode & 0o777, SECURE_FILE_MODE, `iter ${i} mode`)
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })
