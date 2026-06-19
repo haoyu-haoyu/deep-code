@@ -1,4 +1,5 @@
 import axios, { type AxiosResponse } from 'axios'
+import { isIP } from 'net'
 import { LRUCache } from 'lru-cache'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -7,6 +8,10 @@ import {
 import { queryRuntimeHaiku } from '../../services/runtime/messageSend.js'
 import { AbortError } from '../../utils/errors.js'
 import { getWebFetchUserAgent } from '../../utils/http.js'
+import {
+  isBlockedAddress,
+  makeSsrfGuardedLookup,
+} from '../../utils/hooks/ssrfGuard.js'
 import { logError } from '../../utils/log.js'
 import {
   isBinaryContentType,
@@ -118,6 +123,10 @@ const FETCH_TIMEOUT_MS = 60_000
 // Timeout for the domain blocklist preflight check (10 seconds).
 const DOMAIN_CHECK_TIMEOUT_MS = 10_000
 
+// The axios `lookup` SSRF guard for WebFetch — blocks private/link-local/metadata
+// ranges AND loopback (the URL is model-controlled), validating the connected ip.
+const webFetchSsrfLookup = makeSsrfGuardedLookup({ blockLoopback: true })
+
 // Cap same-host redirect hops. Without this a malicious server can return
 // a redirect loop (/a → /b → /a …) and the per-request FETCH_TIMEOUT_MS
 // resets on every hop, hanging the tool until user interrupt. 10 matches
@@ -160,6 +169,19 @@ export function validateURL(url: string): boolean {
   // Initial filter that this isn't a privileged, company-internal URL
   // by checking that the hostname is publicly resolvable
   const hostname = parsed.hostname
+
+  // Reject an IP-literal host in a private / link-local / loopback / metadata
+  // range (e.g. http://169.254.169.254, http://127.0.0.1, http://10.0.0.1,
+  // http://[::1]). This is the synchronous early gate; getWithPermittedRedirects
+  // additionally guards the CONNECTED ip (defeating DNS rebinding) on every
+  // request and redirect, independent of the preflight. URL.hostname brackets an
+  // IPv6 literal — strip them for isIP. WebFetch URLs are model-controlled, so
+  // loopback is blocked too (unlike the HTTP-hook guard).
+  const ipLiteral = hostname.replace(/^\[|\]$/g, '')
+  if (isIP(ipLiteral) && isBlockedAddress(ipLiteral, { blockLoopback: true })) {
+    return false
+  }
+
   const parts = hostname.split('.')
   if (parts.length < 2) {
     return false
@@ -275,6 +297,13 @@ export async function getWithPermittedRedirects(
       maxRedirects: 0,
       responseType: 'arraybuffer',
       maxContentLength: MAX_HTTP_CONTENT_LENGTH,
+      // SSRF guard: validate the CONNECTED ip (not just the literal hostname), so
+      // a host that DNS-resolves to a private/link-local/loopback/metadata range
+      // is rejected with no rebinding window — applied here on the initial request
+      // AND on every followed redirect (this function recurses), independent of
+      // skipWebFetchPreflight. WebFetch URLs are model-controlled, so loopback is
+      // blocked too.
+      lookup: webFetchSsrfLookup,
       headers: {
         Accept: 'text/markdown, text/html, */*',
         'User-Agent': getWebFetchUserAgent(),
