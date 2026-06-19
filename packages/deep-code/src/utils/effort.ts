@@ -6,6 +6,7 @@ import { getAPIProvider } from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
 import { clampUnsupportedEffort } from './effortClamp.mjs'
+import { applyWireEffortPrecedence } from './wireEffortPrecedence.mjs'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 
 export type { EffortLevel }
@@ -193,6 +194,28 @@ export function resolveAppliedEffort(
     supportsMax: modelSupportsMaxEffort(model),
     supportsXhigh: modelSupportsXhighEffort(model),
   })
+}
+
+/**
+ * Resolve the effort value to put on the DeepSeek wire (options.effortValue),
+ * applying the SAME env-over-session precedence the display promises
+ * (getEffortEnvOverride at the top of resolveAppliedEffort) — but WITHOUT
+ * substituting the model default, so the wire's own resolveDeepSeekConfig
+ * `?? DEEPSEEK_REASONING_EFFORT ?? … ?? 'max'` fallback chain still runs when
+ * nothing is set (keeping the common default request byte-identical).
+ *
+ * Fixes the divergence where a set session /effort value silently dropped the
+ * CLAUDE_CODE_EFFORT_LEVEL override the /effort message promises wins. The pure
+ * env-vs-session precedence lives in the testable wireEffortPrecedence.mjs leaf;
+ * this thin wrapper just supplies the env override.
+ */
+export function resolveWireEffortValue(
+  appStateEffortValue: EffortValue | undefined,
+): EffortValue | undefined {
+  return applyWireEffortPrecedence(
+    getEffortEnvOverride(),
+    appStateEffortValue,
+  ) as EffortValue | undefined
 }
 
 /**

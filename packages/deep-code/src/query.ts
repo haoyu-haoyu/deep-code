@@ -26,6 +26,7 @@ import { ImageSizeError } from './utils/imageValidation.js'
 import { ImageResizeError } from './utils/imageResizer.js'
 import { findToolByName, type ToolUseContext } from './Tool.js'
 import { asSystemPrompt, type SystemPrompt } from './utils/systemPromptType.js'
+import { resolveWireEffortValue } from './utils/effort.js'
 import type {
   AssistantMessage,
   AttachmentMessage,
@@ -686,7 +687,7 @@ async function* queryLoop(
               c => c.type === 'pending',
             ),
             queryTracking,
-            effortValue: appState.effortValue,
+            effortValue: resolveWireEffortValue(appState.effortValue),
             advisorModel: appState.advisorModel,
             skipCacheWrite,
             agentId: toolUseContext.agentId,
