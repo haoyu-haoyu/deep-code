@@ -17,6 +17,7 @@ import { providerSupports } from '../deepcode/provider-capabilities.mjs'
 import { createDeepCodeStablePrefix } from '../deepcode/stable-prefix.mjs'
 import { resolveDeepCodeRequestMaxTokens } from '../deepcode/context-policy.mjs'
 import { coerceDeepSeekEffort } from '../services/providers/deepseekEffort.mjs'
+import { resolveDeepSeekThinkingMode } from '../services/providers/resolveDeepSeekThinkingMode.mjs'
 import {
   createDeepSeekStreamError,
   resolveDeepSeekConfig,
@@ -35,6 +36,9 @@ export function createDeepSeekCallModel({
     messages = [],
     systemPrompt = [],
     tools = [],
+    // A SIBLING of `options` (every caller passes it that way). Only an explicit
+    // { type: 'disabled' } turns reasoning off; otherwise the effort path is unchanged.
+    thinkingConfig,
     signal,
     options = {},
   } = {}) {
@@ -82,6 +86,7 @@ export function createDeepSeekCallModel({
       cwd: process.cwd(),
       model: runtimeModel,
       reasoningEffort: resolveDeepSeekReasoningEffort(options.effortValue),
+      thinking: resolveDeepSeekThinkingMode(thinkingConfig),
       maxTokens:
         options.maxOutputTokensOverride ??
         resolveDeepCodeRequestMaxTokens({
@@ -249,6 +254,7 @@ export function createProviderStreamContext({
   cwd,
   model,
   reasoningEffort,
+  thinking,
   maxTokens,
   toolChoice,
   signal,
@@ -268,6 +274,9 @@ export function createProviderStreamContext({
     reasoningEffort: providerSupports(provider, 'reasoning_effort')
       ? reasoningEffort
       : undefined,
+    // Forwarded to buildDeepSeekRequest, which on 'disabled' omits reasoning_effort
+    // and flips thinking off. undefined on the common path → request byte-identical.
+    thinking,
     maxTokens,
     toolChoice,
     signal,
