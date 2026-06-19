@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { buildIgnoredLsFilesArgs } from '../src/utils/worktreeLsFilesArgs.mjs'
+import { isStaleWorktreeRegistrationError } from '../src/utils/worktreeAddError.mjs'
 
 test('buildIgnoredLsFilesArgs prepends core.quotepath=false before ls-files', () => {
   const args = buildIgnoredLsFilesArgs()
@@ -76,5 +77,80 @@ test('the override makes git emit raw UTF-8 for a non-ASCII gitignored path', ()
     )
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// --- isStaleWorktreeRegistrationError: classify a recoverable `git worktree add`
+// failure (a stale registration that `git worktree prune` can clear) ---
+
+test('isStaleWorktreeRegistrationError matches the two stale-registration fatals, not "already exists"', () => {
+  // dir-gone-but-registered (the primary case getOrCreateWorktree hits)
+  assert.equal(
+    isStaleWorktreeRegistrationError(
+      "fatal: '../wt-a' is a missing but already registered worktree;\nuse 'add -f' to override, or 'prune' or 'remove' to clear",
+    ),
+    true,
+  )
+  // branch held by a (possibly stale) worktree
+  assert.equal(
+    isStaleWorktreeRegistrationError(
+      "fatal: 'feat' is already used by worktree at '/tmp/wt-probe/wt-a'",
+    ),
+    true,
+  )
+  // NOT recoverable by prune — a real directory is present (must not auto-delete)
+  assert.equal(
+    isStaleWorktreeRegistrationError("fatal: '/tmp/x' already exists"),
+    false,
+  )
+  // unrelated failures pass through to a plain throw
+  assert.equal(isStaleWorktreeRegistrationError('fatal: invalid reference: main'), false)
+  assert.equal(isStaleWorktreeRegistrationError('fatal: not a git repository'), false)
+  assert.equal(isStaleWorktreeRegistrationError(''), false)
+  assert.equal(isStaleWorktreeRegistrationError(undefined), false)
+  assert.equal(isStaleWorktreeRegistrationError(null), false)
+})
+
+test('isStaleWorktreeRegistrationError tracks REAL git output for a dir-gone worktree, and prune+retry recovers', () => {
+  const root = mkdtempSync(join(tmpdir(), 'deepcode-wt-stale-'))
+  const repo = join(root, 'repo')
+  const git = (args, cwd) =>
+    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  try {
+    execFileSync('git', ['init', '-q', '-b', 'main', repo], { stdio: 'ignore' })
+    git(['config', 'user.email', 't@t'], repo)
+    git(['config', 'user.name', 't'], repo)
+    git(['commit', '-q', '--allow-empty', '-m', 'init'], repo)
+    const wtPath = join(root, 'wt-a')
+    git(['worktree', 'add', '-q', wtPath, '-b', 'feat'], repo)
+
+    // Remove the worktree DIRECTORY out-of-band, leaving the git registration.
+    rmSync(wtPath, { recursive: true, force: true })
+
+    // Re-creating at the SAME path now fatals with exit 128 — capture the stderr.
+    let createStderr = ''
+    try {
+      execFileSync('git', ['worktree', 'add', '-B', 'feat2', wtPath, 'main'], {
+        cwd: repo,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        encoding: 'utf8',
+      })
+      assert.fail('expected the stale-registration add to fail')
+    } catch (e) {
+      createStderr = String(e.stderr ?? '')
+    }
+    // The classifier must recognize the LIVE git phrasing (guards a git wording drift).
+    assert.equal(
+      isStaleWorktreeRegistrationError(createStderr),
+      true,
+      `classifier missed real git stderr: ${JSON.stringify(createStderr)}`,
+    )
+
+    // prune + retry the SAME add recovers (the fix).
+    git(['worktree', 'prune'], repo)
+    git(['worktree', 'add', '-B', 'feat2', wtPath, 'main'], repo) // throws if it fails
+    assert.ok(true, 'prune+retry succeeded')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })
