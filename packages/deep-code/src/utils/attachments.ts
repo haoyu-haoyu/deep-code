@@ -136,7 +136,7 @@ import { mcpInfoFromString } from '../services/mcp/mcpStringUtils.js'
 import { ensureConnectedClient } from '../services/mcp/client.js'
 import { readMcpResourceWithReconnect } from './readMcpResourceWithReconnect.mjs'
 import {
-  matchingRuleForInput,
+  checkReadPermissionForTool,
   pathInAllowedWorkingPath,
 } from './permissions/filesystem.js'
 import {
@@ -1943,7 +1943,12 @@ async function processAtMentionedFiles(
           'at-mention',
           {
             offset: lineStart,
-            limit: lineEnd && lineStart ? lineEnd - lineStart + 1 : undefined,
+            // Use `!== undefined` (not truthiness) so a line number of 0 — already
+            // clamped to 1 upstream — never collapses the limit to a whole-file read.
+            limit:
+              lineStart !== undefined && lineEnd !== undefined
+                ? lineEnd - lineStart + 1
+                : undefined,
           },
         )
       } catch {
@@ -3921,15 +3926,34 @@ export function getContextEfficiencyAttachment(
 }
 
 
+// Whether an @-mention / attachment read of `filePath` must be BLOCKED. Routes
+// through the SAME gate the model Read path uses (checkReadPermissionForTool) —
+// over the SYMLINK-RESOLVED path set, the Sandbox Fortress fs-read decision, and
+// read deny/ask rules — not just a single unresolved read-deny rule. Previously
+// the @-mention / SKILL.md expansion path applied only matchingRuleForInput(
+// path,'read','deny') on one non-symlink-resolved path, so it bypassed the
+// fortress fs-read layer, symlink-target deny resolution, read-ask rules, and the
+// UNC/suspicious-Windows guards.
+//
+// A 'deny' or a CONFIGURED 'ask' (a fortress / explicit rule / UNC / suspicious-
+// Windows decision) blocks the read: the attachment path expands text into the
+// prompt and cannot surface an interactive prompt, so a file the user gated must
+// not be read silently. The DEFAULT "outside the working directory" ask
+// (decisionReason.type === 'workingDir') is NOT a configured restriction — the
+// user explicitly @-mentioned the path, so reading it is their intent; preserve
+// the prior behavior of reading out-of-workspace mentions.
 function isFileReadDenied(
   filePath: string,
   toolPermissionContext: ToolPermissionContext,
 ): boolean {
-  const denyRule = matchingRuleForInput(
-    filePath,
+  const decision = checkReadPermissionForTool(
+    FileReadTool,
+    { file_path: filePath },
     toolPermissionContext,
-    'read',
-    'deny',
   )
-  return denyRule !== null
+  if (decision.behavior === 'deny') return true
+  return (
+    decision.behavior === 'ask' &&
+    decision.decisionReason?.type !== 'workingDir'
+  )
 }
