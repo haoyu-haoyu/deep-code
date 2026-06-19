@@ -41,6 +41,7 @@ import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
+import { flattenSettledBlocks } from './flattenSettledBlocks.mjs'
 import { paginateMcpList } from './paginateMcpList.mjs'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
@@ -2570,7 +2571,15 @@ export async function transformResultContent(
           )
         }
       }
-      return []
+      // A resource with neither inline `text` nor `blob` (uri-only) — surface a
+      // text reference so the model at least learns the resource exists and can
+      // read it, rather than silently dropping the block. Mirrors resource_link.
+      return [
+        {
+          type: 'text',
+          text: `${prefix}(no inline contents)`,
+        },
+      ]
     }
     case 'resource_link': {
       const resourceLink = resultContent as ResourceLink
@@ -2684,13 +2693,25 @@ export async function transformMCPResult(
     }
 
     if ('content' in result && Array.isArray(result.content)) {
-      const transformedContent = (
-        await Promise.all(
-          result.content.map(item => transformResultContent(item, name)),
-        )
-      ).flat()
+      // Transform each block independently. A single bad block (e.g. an empty or
+      // oversized image that the resizer throws on) must NOT reject the whole
+      // result via Promise.all and discard every VALID sibling block — degrade
+      // just that block to a text placeholder so the model still gets the text
+      // answer sitting in a perfectly good neighbour.
+      const blocks = result.content
+      const settled = await Promise.allSettled(
+        blocks.map(item => transformResultContent(item, name)),
+      )
+      const { content: transformedContent, rejected } = flattenSettledBlocks(
+        settled,
+        blocks,
+        name,
+      )
+      for (const { blockType, reason } of rejected) {
+        logMCPError(name, `failed to transform ${blockType} block: ${reason}`)
+      }
       return {
-        content: transformedContent,
+        content: transformedContent as ContentBlockParam[],
         type: 'contentArray',
         schema: inferCompactSchema(transformedContent),
       }
