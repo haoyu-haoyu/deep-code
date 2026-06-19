@@ -13,6 +13,10 @@ import { execFileNoThrow } from './execFileNoThrow.js'
 import { findExecutable } from './findExecutable.js'
 import { logError } from './log.js'
 import { getPlatform } from './platform.js'
+import {
+  createUtf8ChunkDecoder,
+  isRipgrepUsageError,
+} from './ripgrepDecode.mjs'
 import { countCharInString } from './stringUtils.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -152,10 +156,14 @@ function ripGrepRaw(
     let stderr = ''
     let stdoutTruncated = false
     let stderrTruncated = false
+    // Decode streamed bytes UTF-8-safely: a multibyte char split across a chunk
+    // boundary must not corrupt to U+FFFD (embedded rg emits raw Buffers).
+    const stdoutDecoder = createUtf8ChunkDecoder()
+    const stderrDecoder = createUtf8ChunkDecoder()
 
     child.stdout?.on('data', (data: Buffer) => {
       if (!stdoutTruncated) {
-        stdout += data.toString()
+        stdout += stdoutDecoder.write(data)
         if (stdout.length > MAX_BUFFER_SIZE) {
           stdout = stdout.slice(0, MAX_BUFFER_SIZE)
           stdoutTruncated = true
@@ -165,13 +173,21 @@ function ripGrepRaw(
 
     child.stderr?.on('data', (data: Buffer) => {
       if (!stderrTruncated) {
-        stderr += data.toString()
+        stderr += stderrDecoder.write(data)
         if (stderr.length > MAX_BUFFER_SIZE) {
           stderr = stderr.slice(0, MAX_BUFFER_SIZE)
           stderrTruncated = true
         }
       }
     })
+
+    // Flush any bytes the decoders are holding from an incomplete trailing
+    // sequence (a no-op for a clean stream; U+FFFD only if rg was killed
+    // mid-character). Skip when already truncated — that output is capped.
+    const flushDecoders = () => {
+      if (!stdoutTruncated) stdout += stdoutDecoder.end()
+      if (!stderrTruncated) stderr += stderrDecoder.end()
+    }
 
     // Set up timeout with SIGKILL escalation.
     // SIGTERM alone may not kill ripgrep if it's blocked in uninterruptible I/O
@@ -196,6 +212,7 @@ function ripGrepRaw(
       settled = true
       clearTimeout(timeoutId)
       clearTimeout(killTimeoutId)
+      flushDecoders()
       if (code === 0 || code === 1) {
         // 0 = matches found, 1 = no matches (both are success)
         callback(null, stdout, stderr)
@@ -214,6 +231,7 @@ function ripGrepRaw(
       settled = true
       clearTimeout(timeoutId)
       clearTimeout(killTimeoutId)
+      flushDecoders()
       const error: ExecFileException = err
       callback(error, stdout, stderr)
     })
@@ -317,9 +335,12 @@ export async function ripGrepStream(
     })
 
     const stripCR = (l: string) => (l.endsWith('\r') ? l.slice(0, -1) : l)
+    // Decode UTF-8-safely across chunk boundaries (the decoder holds partial
+    // bytes; `remainder` holds the partial trailing line).
+    const decoder = createUtf8ChunkDecoder()
     let remainder = ''
     child.stdout?.on('data', (chunk: Buffer) => {
-      const data = remainder + chunk.toString()
+      const data = remainder + decoder.write(chunk)
       const lines = data.split('\n')
       remainder = lines.pop() ?? ''
       if (lines.length) onLines(lines.map(stripCR))
@@ -335,7 +356,9 @@ export async function ripGrepStream(
       if (abortSignal.aborted) return
       settled = true
       if (code === 0 || code === 1) {
-        if (remainder) onLines([stripCR(remainder)])
+        // Flush any bytes still held for an incomplete trailing sequence.
+        const tail = remainder + decoder.end()
+        if (tail) onLines([stripCR(tail)])
         resolve()
       } else {
         reject(new Error(`ripgrep exited with code ${code}`))
@@ -417,6 +440,22 @@ export async function ripGrep(
 
       // For all other errors, try to return partial results if available
       const hasOutput = stdout && stdout.trim().length > 0
+
+      // Exit code 2 with no output is a ripgrep usage error (an invalid regex or
+      // glob, bad args). Surface it instead of swallowing it into an empty "no
+      // matches" result, which would mislead the caller into concluding a
+      // symbol/file does not exist when the pattern was actually rejected.
+      // (Code 2 WITH output means rg matched files but hit a minor error such as
+      // an unreadable directory — those partials are kept below.)
+      if (isRipgrepUsageError({ code: error.code, hasOutput: !!hasOutput })) {
+        reject(
+          new Error(
+            `ripgrep: ${stderr.trim() || 'usage error (invalid pattern or arguments)'}`,
+          ),
+        )
+        return
+      }
+
       const isTimeout =
         error.signal === 'SIGTERM' ||
         error.signal === 'SIGKILL' ||
@@ -441,7 +480,9 @@ export async function ripGrep(
         `rg error (signal=${error.signal}, code=${error.code}, stderr: ${stderr}), ${lines.length} results`,
       )
 
-      // code 2 = ripgrep usage error (already handled); ABORT_ERR = caller
+      // code 2 here = a partial search (rg matched some files but hit a minor
+      // error, e.g. an unreadable dir); the no-output usage-error case already
+      // rejected above, so don't log this as a failure. ABORT_ERR = caller
       // explicitly aborted (not an error, just a cancellation — interactive
       // callers may abort on every keystroke-after-debounce).
       if (error.code !== 2 && error.code !== 'ABORT_ERR') {
