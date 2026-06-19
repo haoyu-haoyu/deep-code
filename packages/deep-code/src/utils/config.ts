@@ -15,6 +15,7 @@ import { logEvent } from '../services/analytics/index.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
 import { getCwd } from '../utils/cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
+import { configIsUnchanged } from './configFreshness.mjs'
 import { logForDebugging } from './debug.js'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { getGlobalClaudeFile } from './env.js'
@@ -752,7 +753,7 @@ export function saveGlobalConfig(
 
   let written: GlobalConfig | null = null
   try {
-    const didWrite = saveConfigWithLock(
+    const { wrote, stat } = saveConfigWithLock(
       getGlobalClaudeFile(),
       createDefaultGlobalConfig,
       current => {
@@ -771,8 +772,8 @@ export function saveGlobalConfig(
     // Only write-through if we actually wrote. If the auth-loss guard
     // tripped (or the updater made no changes), the file is untouched and
     // the cache is still valid -- touching it would corrupt the guard.
-    if (didWrite && written) {
-      writeThroughGlobalConfigCache(written)
+    if (wrote && written) {
+      writeThroughGlobalConfigCache(written, stat)
     }
   } catch (error) {
     logForDebugging(`Failed to save config with lock: ${error}`, {
@@ -804,7 +805,9 @@ export function saveGlobalConfig(
       projects: removeProjectHistory(currentConfig.projects),
     }
     saveConfig(getGlobalClaudeFile(), written, DEFAULT_GLOBAL_CONFIG)
-    writeThroughGlobalConfigCache(written)
+    // Unlocked fallback path: no under-lock stat to trust, so pass null and let
+    // the write-through fall back to a Date.now() overshoot (pre-#4 behavior).
+    writeThroughGlobalConfigCache(written, null)
   }
 }
 
@@ -945,17 +948,40 @@ function startGlobalConfigFreshnessWatcher(): void {
     file,
     { interval: CONFIG_FRESHNESS_POLL_MS, persistent: false },
     curr => {
-      // Our own writes fire this too — the write-through's Date.now()
-      // overshoot makes cache.mtime > file mtime, so we skip the re-read.
+      // Our own writes fire this too — the write-through stat's the file after
+      // writing and stores its REAL mtimeMs+size, so our own write reads back as
+      // an equal mtime AND equal size and configIsUnchanged skips it. A
+      // coarse-mtime FS or a same-second EXTERNAL write also lands on an equal
+      // mtime; there the size tiebreak forces a re-read so we don't shadow it.
       // Bun/Node also fire with curr.mtimeMs=0 when the file doesn't exist
-      // (initial callback or deletion) — the <= handles that too.
-      if (curr.mtimeMs <= globalConfigCache.mtime) return
+      // (initial callback or deletion) — currMtime < cacheMtime skips that too.
+      if (
+        configIsUnchanged(
+          curr.mtimeMs,
+          curr.size,
+          globalConfigCache.mtime,
+          lastReadFileStats?.size,
+        )
+      )
+        return
+      // Snapshot the cache identity we're about to supersede so the post-read
+      // recheck can tell "the cache moved during the read" (a write-through)
+      // from "this is the external write we set out to apply". Re-running the
+      // curr-vs-cache size compare here can't make that distinction and would
+      // either re-shadow the external write or regress over the write-through.
+      const supersededMtime = globalConfigCache.mtime
+      const supersededSize = lastReadFileStats?.size
       void getFsImplementation()
         .readFile(file, { encoding: 'utf-8' })
         .then(content => {
           // A write-through may have advanced the cache while we were reading;
-          // don't regress to the stale snapshot watchFile stat'd.
-          if (curr.mtimeMs <= globalConfigCache.mtime) return
+          // if the cached identity changed, don't regress to the stale snapshot
+          // watchFile stat'd — the in-memory write-through is authoritative.
+          if (
+            globalConfigCache.mtime !== supersededMtime ||
+            lastReadFileStats?.size !== supersededSize
+          )
+            return
           const parsed = safeParseJSON(stripBOM(content))
           if (parsed === null || typeof parsed !== 'object') return
           globalConfigCache = {
@@ -976,12 +1002,29 @@ function startGlobalConfigFreshnessWatcher(): void {
   })
 }
 
-// Write-through: what we just wrote IS the new config. cache.mtime overshoots
-// the file's real mtime (Date.now() is recorded after the write) so the
-// freshness watcher skips re-reading our own write on its next tick.
-function writeThroughGlobalConfigCache(config: GlobalConfig): void {
-  globalConfigCache = { config, mtime: Date.now() }
-  lastReadFileStats = null
+// Write-through: what we just wrote IS the new config. Cache the file's REAL
+// post-write mtimeMs+size (one clock, shared with the watcher's stat) so
+// configIsUnchanged skips re-reading our own write while still detecting a
+// same-tick EXTERNAL write via the size tiebreak; storing the real stats also
+// restores lastReadFileStats telemetry. The stat MUST be taken UNDER the write
+// lock (saveConfigWithLock captures it right after the write) — a stat taken
+// after the lock released could read a concurrent instance's mtime+size and
+// cache OUR config under THEIR identity, which the watcher would then treat as
+// "already current" and shadow their update forever. When no under-lock stat is
+// available (the unlocked error-fallback path) we pass null and fall back to a
+// Date.now() overshoot with no stored size (the watcher degrades to the old
+// mtime-only skip — see configFreshness.mjs).
+function writeThroughGlobalConfigCache(
+  config: GlobalConfig,
+  stat: { mtimeMs: number; size: number } | null,
+): void {
+  if (stat) {
+    globalConfigCache = { config, mtime: stat.mtimeMs }
+    lastReadFileStats = { mtime: stat.mtimeMs, size: stat.size }
+  } else {
+    globalConfigCache = { config, mtime: Date.now() }
+    lastReadFileStats = null
+  }
 }
 
 export function getGlobalConfig(): GlobalConfig {
@@ -1082,11 +1125,14 @@ function saveConfig<A extends object>(
  * whether to invalidate the cache -- invalidating after a skipped write
  * destroys the good cached state the auth-loss guard depends on.
  */
+// Returns whether a write happened and, when it did, the file's post-write stat
+// captured UNDER the lock so the global write-through can cache OUR write's real
+// identity (never a concurrent instance's — see writeThroughGlobalConfigCache).
 function saveConfigWithLock<A extends object>(
   file: string,
   createDefault: () => A,
   mergeFn: (current: A) => A,
-): boolean {
+): { wrote: boolean; stat: { mtimeMs: number; size: number } | null } {
   const defaultConfig = createDefault()
   const dir = dirname(file)
   const fs = getFsImplementation()
@@ -1152,7 +1198,7 @@ function saveConfigWithLock<A extends object>(
         { level: 'error' },
       )
       logEvent('tengu_config_auth_loss_prevented', {})
-      return false
+      return { wrote: false, stat: null }
     }
 
     // Apply the merge function to get the updated config
@@ -1160,7 +1206,7 @@ function saveConfigWithLock<A extends object>(
 
     // Skip write if no changes (same reference returned)
     if (mergedConfig === currentConfig) {
-      return false
+      return { wrote: false, stat: null }
     }
 
     // Filter out any values that match the defaults
@@ -1252,7 +1298,16 @@ function saveConfigWithLock<A extends object>(
     if (file === getGlobalClaudeFile()) {
       globalConfigWriteCount++
     }
-    return true
+    // Stat UNDER the lock so the cached identity reflects OUR write, immune to a
+    // concurrent instance writing between the release and the cache update.
+    let stat: { mtimeMs: number; size: number } | null = null
+    try {
+      const s = fs.statSync(file)
+      stat = { mtimeMs: s.mtimeMs, size: s.size }
+    } catch {
+      // best-effort — the write-through falls back to a clock overshoot
+    }
+    return { wrote: true, stat }
   } finally {
     if (release) {
       release()
@@ -1570,7 +1625,7 @@ export function saveCurrentProjectConfig(
 
   let written: GlobalConfig | null = null
   try {
-    const didWrite = saveConfigWithLock(
+    const { wrote, stat } = saveConfigWithLock(
       getGlobalClaudeFile(),
       createDefaultGlobalConfig,
       current => {
@@ -1591,8 +1646,8 @@ export function saveCurrentProjectConfig(
         return written
       },
     )
-    if (didWrite && written) {
-      writeThroughGlobalConfigCache(written)
+    if (wrote && written) {
+      writeThroughGlobalConfigCache(written, stat)
     }
   } catch (error) {
     logForDebugging(`Failed to save config with lock: ${error}`, {
@@ -1625,7 +1680,9 @@ export function saveCurrentProjectConfig(
       },
     }
     saveConfig(getGlobalClaudeFile(), written, DEFAULT_GLOBAL_CONFIG)
-    writeThroughGlobalConfigCache(written)
+    // Unlocked fallback path: no under-lock stat to trust, so pass null and let
+    // the write-through fall back to a Date.now() overshoot (pre-#4 behavior).
+    writeThroughGlobalConfigCache(written, null)
   }
 }
 
@@ -1746,4 +1803,8 @@ export function _setGlobalConfigCacheForTesting(
 ): void {
   globalConfigCache.config = config
   globalConfigCache.mtime = config ? Date.now() : 0
+  // Keep the cache.mtime ⇄ lastReadFileStats pairing honest: this synthetic
+  // mtime has no paired on-disk size, so clear the stats (the freshness watcher
+  // never runs under NODE_ENV=test, but this avoids a stale-size land-mine).
+  lastReadFileStats = null
 }
