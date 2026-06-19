@@ -36,12 +36,15 @@ function uniq(values) {
  * @returns {string[]}
  */
 export function extractAtMentionedFiles(content) {
-  const quotedAtMentionRegex = /(^|\s)@"([^"]+)"/g
+  // Capture an optional #L line-range suffix AFTER the closing quote so a quoted
+  // mention carries its range into parseAtMentionedFileLines like an unquoted one
+  // (@"my file.txt"#L10-20 → "my file.txt#L10-20").
+  const quotedAtMentionRegex = /(^|\s)@"([^"]+)"(#L\d+(?:-\d+)?)?/g
   const quotedMatches = []
   let match
   while ((match = quotedAtMentionRegex.exec(content)) !== null) {
     if (match[2] && !match[2].endsWith(' (agent)')) {
-      quotedMatches.push(match[2])
+      quotedMatches.push(match[2] + (match[3] ?? ''))
     }
   }
 
@@ -87,6 +90,11 @@ export function parseAtMentionedFileLines(mention) {
   const [, filename, lineStartStr, lineEndStr] = match
   let lineStart = lineStartStr ? parseInt(lineStartStr, 10) : undefined
   let lineEnd = lineEndStr ? parseInt(lineEndStr, 10) : lineStart
+
+  // Line numbers are 1-based; clamp a 0 to line 1 so a malformed @file#L0 reads
+  // line 1 rather than collapsing the downstream offset/limit to a whole-file read.
+  if (lineStart !== undefined && lineStart < 1) lineStart = 1
+  if (lineEnd !== undefined && lineEnd < 1) lineEnd = 1
 
   // Normalize an inverted range (a fat-fingered #L20-10) to lines 10-20 instead
   // of flowing a negative limit (lineEnd - lineStart + 1) downstream into a

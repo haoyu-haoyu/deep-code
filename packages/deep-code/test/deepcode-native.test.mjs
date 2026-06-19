@@ -1326,6 +1326,30 @@ test('parseAtMentionedFileLines normalizes an inverted #L range instead of a bla
     lineStart: undefined,
     lineEnd: undefined,
   })
+  // the fix (Survey-25 F9): a 0 line number is clamped to 1, so @file#L0 reads
+  // line 1 rather than collapsing the offset/limit to a whole-file read.
+  assert.deepEqual(parseAtMentionedFileLines('file.txt#L0'), {
+    filename: 'file.txt',
+    lineStart: 1,
+    lineEnd: 1,
+  })
+  assert.deepEqual(parseAtMentionedFileLines('file.txt#L0-5'), {
+    filename: 'file.txt',
+    lineStart: 1,
+    lineEnd: 5,
+  })
+})
+
+test('extractAtMentionedFiles keeps a #L range on a QUOTED mention (Survey-25 F8)', () => {
+  // the fix: a quoted mention now carries its trailing #L range, so it scopes to
+  // the requested lines instead of silently reading the whole file.
+  assert.deepEqual(extractAtMentionedFiles('see @"my file.txt"#L10-20 here'), [
+    'my file.txt#L10-20',
+  ])
+  assert.deepEqual(extractAtMentionedFiles('@"a b.ts"#L5'), ['a b.ts#L5'])
+  // no range → unchanged; an agent mention is still skipped.
+  assert.deepEqual(extractAtMentionedFiles('@"plain.txt"'), ['plain.txt'])
+  assert.deepEqual(extractAtMentionedFiles('@"Reviewer (agent)"'), [])
 })
 
 test('extractAtMentionedFiles matches Unicode/CJK paths and trims trailing prose punctuation', () => {
