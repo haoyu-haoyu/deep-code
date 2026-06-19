@@ -2519,6 +2519,35 @@ async function* executeHooks({
       )
 
       if (validationError) {
+        // The process EXIT CODE is the authoritative blocking signal: a hook that
+        // exits 2 to block must win over a stdout that merely LOOKS like JSON but
+        // fails schema validation — otherwise it fails OPEN. Route the exit-2 block
+        // through the same blocking yield as the non-JSON exit-2 path (incl. the
+        // permission deny so it survives a racing allow); only surface the parse
+        // failure as a non-blocking error when the exit code is NOT blocking.
+        if (hookOutputBlocks({ status: result.status })) {
+          emitHookResponse({
+            hookId,
+            hookName,
+            hookEvent,
+            output: result.output,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.status,
+            outcome: 'error',
+          })
+          yield {
+            blockingError: {
+              blockingError: `[${hook.command}]: ${result.stderr || 'No stderr output'}`,
+              command: hook.command,
+            },
+            permissionBehavior: hookBlockPermissionBehavior(hookEvent),
+            hookPermissionDecisionReason: `[${hook.command}]: ${result.stderr || 'No stderr output'}`,
+            outcome: 'blocking' as const,
+            hook,
+          }
+          return
+        }
         emitHookResponse({
           hookId,
           hookName,
@@ -3357,7 +3386,12 @@ async function executeHooksOutsideREPL({
 
         // Parse JSON for any messages to print out.
         const { json, validationError } = parseHookOutput(result.stdout)
-        if (validationError) {
+        // The exit code is the authoritative blocking signal: an exit-2 hook must
+        // still block even if its stdout looks like JSON but fails to validate —
+        // otherwise it fails OPEN. Only surface the parse failure (throw) when the
+        // status is NOT blocking; for an exit-2 block, fall through to the shared
+        // hookOutputBlocks computation below (which returns true for status 2).
+        if (validationError && !hookOutputBlocks({ status: result.status })) {
           // Validation error is logged via logForDebugging and returned in output
           throw new Error(validationError)
         }

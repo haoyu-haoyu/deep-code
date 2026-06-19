@@ -78,3 +78,17 @@ test('matches the executeHooksOutsideREPL formula for every non-async input', ()
     }
   }
 })
+
+// --- exit 2 must beat a stdout validationError (the malformed-{ fail-open fix) ---
+
+test('exit code 2 blocks regardless of stdout parse outcome (json absent on validationError)', () => {
+  // When stdout starts with { but fails schema validation, parseHookOutput returns
+  // NO json. Both hook drivers now consult hookOutputBlocks({status}) FIRST, so an
+  // exit-2 hook still blocks (it used to fall through to a non-blocking error and
+  // fail open). This pins the invariant those two reordered call sites rely on.
+  assert.equal(hookOutputBlocks({ status: 2 }), true) // exit-2 + (json absent) => block
+  // a NON-blocking exit code with a validationError still surfaces as non-blocking
+  assert.equal(hookOutputBlocks({ status: 0 }), false)
+  assert.equal(hookOutputBlocks({ status: 1 }), false)
+  assert.equal(hookOutputBlocks({ status: 127 }), false)
+})
