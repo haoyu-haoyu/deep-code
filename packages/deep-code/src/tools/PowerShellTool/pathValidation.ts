@@ -13,9 +13,11 @@ import type { PermissionRule } from '../../types/permissions.js'
 import { getCwd } from '../../utils/cwd.js'
 import {
   getFsImplementation,
+  getPathsForPermissionCheck,
   safeResolvePath,
 } from '../../utils/fsOperations.js'
 import { containsPathTraversal, getDirectoryForPath } from '../../utils/path.js'
+import { firstChainDenyMatch } from '../../utils/permissions/firstChainDenyMatch.mjs'
 import {
   allWorkingDirectories,
   checkEditableInternalPath,
@@ -1245,10 +1247,31 @@ function validatePath(
   const absolutePath = isAbsolute(normalizedPath)
     ? normalizedPath
     : resolve(cwd, normalizedPath)
-  const { resolvedPath, isCanonical } = safeResolvePath(
+  const { resolvedPath, isCanonical, isSymlink } = safeResolvePath(
     getFsImplementation(),
     absolutePath,
   )
+
+  // Mirror BashTool/pathValidation.ts (and the file tools): for a symlinked or
+  // non-canonical (dangling/new) input, check deny rules against the FULL chain
+  // (original name + intermediate hops + final realpath), not just the final
+  // realpath — otherwise a middle-of-chain deny is silently bypassed. Gated so an
+  // existing non-symlink input takes zero extra syscalls and runs isPathAllowed
+  // verbatim. Additive: can only enforce a currently-bypassed deny.
+  if (isSymlink || !isCanonical) {
+    const permissionType = operationType === 'read' ? 'read' : 'edit'
+    const denyHit = firstChainDenyMatch(
+      getPathsForPermissionCheck(absolutePath),
+      p => matchingRuleForInput(p, toolPermissionContext, permissionType, 'deny'),
+    )
+    if (denyHit) {
+      return {
+        allowed: false,
+        resolvedPath,
+        decisionReason: { type: 'rule', rule: denyHit.rule },
+      }
+    }
+  }
 
   const result = isPathAllowed(
     resolvedPath,

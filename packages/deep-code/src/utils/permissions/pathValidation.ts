@@ -9,6 +9,7 @@ import {
   safeResolvePath,
 } from '../fsOperations.js'
 import { containsPathTraversal } from '../path.js'
+import { firstChainDenyMatch } from './firstChainDenyMatch.mjs'
 import { SandboxManager } from '../sandbox/sandbox-adapter.js'
 import { containsVulnerableUncPath } from '../shell/readOnlyCommandValidation.js'
 import {
@@ -466,10 +467,34 @@ export function validatePath(
   const absolutePath = isAbsolute(cleanPath)
     ? cleanPath
     : resolve(cwd, cleanPath)
-  const { resolvedPath, isCanonical } = safeResolvePath(
+  const { resolvedPath, isCanonical, isSymlink } = safeResolvePath(
     getFsImplementation(),
     absolutePath,
   )
+
+  // The final realpath alone is NOT a sufficient deny check: a deny rule may target
+  // the ORIGINAL symlink name or an INTERMEDIATE hop (live symlink), or a dangling
+  // symlink's target (realpath throws -> isCanonical false). The file tools
+  // (checkReadPermissionForTool) already iterate the full getPathsForPermissionCheck
+  // chain; mirror that here so a shell command can't bypass a middle-of-chain deny.
+  // Gated on isSymlink || !isCanonical, so an existing non-symlink input (the common
+  // case) takes ZERO extra syscalls and the existing isPathAllowed path runs verbatim.
+  // Additive: it can only enforce a deny that is currently bypassed, never relaxes an
+  // allow (a deny-free chain falls through to isPathAllowed unchanged).
+  if (isSymlink || !isCanonical) {
+    const permissionType = operationType === 'read' ? 'read' : 'edit'
+    const denyHit = firstChainDenyMatch(
+      getPathsForPermissionCheck(absolutePath),
+      p => matchingRuleForInput(p, toolPermissionContext, permissionType, 'deny'),
+    )
+    if (denyHit) {
+      return {
+        allowed: false,
+        resolvedPath,
+        decisionReason: { type: 'rule', rule: denyHit.rule },
+      }
+    }
+  }
 
   const result = isPathAllowed(
     resolvedPath,

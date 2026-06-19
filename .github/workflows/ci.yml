@@ -152,6 +152,7 @@ jobs:
             test/permission-precedence.test.mjs \
             test/escape-gitignore-pattern.test.mjs \
             test/glob-search-dir.test.mjs \
+            test/first-chain-deny-match.test.mjs \
             test/ripgrep-decode.test.mjs \
             test/edit-delete-occurrences.test.mjs \
             test/edit-quote-variant-underreplace.test.mjs \
