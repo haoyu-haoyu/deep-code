@@ -147,6 +147,7 @@ jobs:
             test/async-mutex.test.mjs \
             test/keychain-argv.test.mjs \
             test/worktree-lsfiles-args.test.mjs \
+            test/worktree-prunable-orphans.test.mjs \
             test/gitdiff-args.test.mjs \
             test/gitdiff-header.test.mjs \
             test/settings-source-order.test.mjs \
