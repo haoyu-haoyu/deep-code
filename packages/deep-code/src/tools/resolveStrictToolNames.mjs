@@ -38,8 +38,16 @@ export function resolveStrictToolNames(mode, tools) {
     if (!name) continue
     // 'nullable' selects every named tool like 'all' (the nullable rewrite never
     // forces an optional to be mandatory, so it is safe for every tool); only the
-    // SANITIZER differs, which the renderer picks from the mode.
+    // SANITIZER differs, which the renderer picks from the mode. EXCEPT a tool
+    // whose schema has an open map (additionalProperties:<schema|true> or
+    // patternProperties): the strict/nullable sanitizer silently clobbers it to
+    // additionalProperties:false, inverting accept-any-keys to accept-NONE so the
+    // model can no longer populate that param under server-side validation. Exclude
+    // such tools — they go through the non-strict path (the open map keeps working,
+    // just without /beta enforcement), exactly as 'safe' already excludes them.
     if (mode === 'all' || mode === 'nullable') {
+      const schema = toolSchema(tool)
+      if (schema !== null && schemaClosesAnOpenMap(schema)) continue
       names.add(name)
       continue
     }
@@ -78,4 +86,31 @@ function toolSchema(tool) {
 // required list — is conservatively treated as "not a no-op".
 function isStrictNoOpSchema(schema) {
   return isDeepStrictEqual(sanitizeSchemaForDeepSeekStrict(schema), schema)
+}
+
+// True iff the schema declares an OPEN map anywhere — an `additionalProperties`
+// that is a value schema or `true` (z.record / z.passthrough / an MCP author's
+// free-form map), or any `patternProperties`. The strict/nullable sanitizer
+// unconditionally sets every object node's additionalProperties to false and
+// drops patternProperties, which would close such a map (accept-any -> accept-
+// none) silently. A closed `additionalProperties: false`, or its absence (the
+// normal closed object), is NOT an open map and stays selectable.
+export function schemaClosesAnOpenMap(schema) {
+  if (Array.isArray(schema)) return schema.some(schemaClosesAnOpenMap)
+  if (!schema || typeof schema !== 'object') return false
+  if (
+    'additionalProperties' in schema &&
+    schema.additionalProperties !== false
+  ) {
+    return true
+  }
+  if (
+    schema.patternProperties &&
+    typeof schema.patternProperties === 'object'
+  ) {
+    return true
+  }
+  // Recurse every nested value (properties, items, anyOf, $defs, …); non-schema
+  // values (strings, the required[] array) simply never match.
+  return Object.keys(schema).some(key => schemaClosesAnOpenMap(schema[key]))
 }
