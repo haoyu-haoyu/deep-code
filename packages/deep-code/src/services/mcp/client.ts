@@ -59,6 +59,7 @@ import { createMcpAuthTool } from '../../tools/McpAuthTool/McpAuthTool.js'
 import { ReadMcpResourceTool } from '../../tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
 import { createAbortController } from '../../utils/abortController.js'
 import { count } from '../../utils/array.js'
+import { singleFlight } from '../../utils/singleFlight.mjs'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
 import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -2135,15 +2136,40 @@ export async function callIdeRpc(
  * @param config Server configuration
  * @returns Object containing the client connection and its resources
  */
-export async function reconnectMcpServerImpl(
-  name: string,
-  config: ScopedMcpServerConfig,
-): Promise<{
+type ReconnectMcpResult = {
   client: MCPServerConnection
   tools: Tool[]
   commands: Command[]
   resources?: ServerResource[]
-}> {
+}
+
+// Coalesce concurrent reconnects of the SAME server. reconnectMcpServerImpl does
+// clearServerCache (which awaits connectToServer — re-creating a live connection
+// on a cache miss — then deletes the cache key) followed by connectToServer, with
+// no serialization. The auto-backoff loop (useManageMCPConnections) and a manual
+// reconnect/toggle (or print.ts's mcp_reconnect handlers, or McpAuthTool's
+// post-OAuth reconnect) can overlap on one server: an unlucky interleave lets the
+// second run tear down the connection the first just created and cached, leaking
+// a live transport (only one client is ever written into AppState). A per-server
+// single-flight guard makes overlapping callers share one reconnect. Keyed on
+// getServerCacheKey(name, config) so a config change reconnects fresh and distinct
+// servers never serialize. The body always settles (it catches and returns a
+// failed client), so the in-flight entry always clears.
+const reconnectInFlight = new Map<string, Promise<ReconnectMcpResult>>()
+
+export function reconnectMcpServerImpl(
+  name: string,
+  config: ScopedMcpServerConfig,
+): Promise<ReconnectMcpResult> {
+  return singleFlight(reconnectInFlight, getServerCacheKey(name, config), () =>
+    reconnectMcpServerImplRaw(name, config),
+  )
+}
+
+async function reconnectMcpServerImplRaw(
+  name: string,
+  config: ScopedMcpServerConfig,
+): Promise<ReconnectMcpResult> {
   try {
     // Invalidate the keychain cache so we read fresh credentials from disk.
     // This is necessary when another process (e.g. the VS Code extension host)
