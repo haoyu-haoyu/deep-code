@@ -261,7 +261,61 @@ test('schemaClosesAnOpenMap: detects open maps, ignores closed/absent', () => {
   assert.equal(schemaClosesAnOpenMap(patternMap), true)
   assert.equal(schemaClosesAnOpenMap(nestedRecord), true)
   assert.equal(schemaClosesAnOpenMap(closedAllRequired), false)
-  assert.equal(schemaClosesAnOpenMap(openExtra), false) // absent ≠ explicit open
+  assert.equal(schemaClosesAnOpenMap(openExtra), false) // absent ≠ explicit open (HAS properties)
   assert.equal(schemaClosesAnOpenMap(null), false)
   assert.equal(schemaClosesAnOpenMap({ type: 'string' }), false)
+})
+
+test('schemaClosesAnOpenMap: a property-less object is JSON-Schema default-open', () => {
+  // A bare {type:'object'} (no properties, no additionalProperties) defaults to
+  // additionalProperties:true — the sanitizer would close it to accept-only-{}.
+  for (const open of [
+    { type: 'object' },
+    { type: 'object', description: 'a free-form filter' },
+    { type: 'object', properties: {} }, // declares ZERO properties
+    { type: ['object', 'null'] }, // nullable free-form object
+    { type: 'object', minProperties: 1 }, // constraint-only, still property-less
+  ]) {
+    assert.equal(schemaClosesAnOpenMap(open), true, JSON.stringify(open))
+  }
+  // An object WITH declared properties stays closeable (strict's intended job).
+  assert.equal(schemaClosesAnOpenMap({ type: 'object', properties: { a: { type: 'string' } } }), false)
+  assert.equal(schemaClosesAnOpenMap({ type: 'object', additionalProperties: false }), false)
+})
+
+test('a nested property-less free-form object excludes the tool under all/nullable', () => {
+  // top object HAS properties but carries a nested free-form filter:{type:'object'}
+  const mcpShaped = {
+    type: 'object',
+    properties: {
+      query: { type: 'string' },
+      filter: { type: 'object' }, // free-form, default-open
+      metadata: { type: 'object', description: 'arbitrary' },
+    },
+    required: ['query'],
+  }
+  for (const mode of ['all', 'nullable']) {
+    assert.equal(
+      resolveStrictToolNames(mode, [tool('Search', mcpShaped)]).size,
+      0,
+      `${mode}: a tool with a nested free-form object must be excluded`,
+    )
+  }
+  // a fully-closed / declared-properties batch is still byte-identically selected
+  assert.deepEqual(
+    [...resolveStrictToolNames('all', [tool('Closed', closedAllRequired), tool('Open', openExtra)])].sort(),
+    ['Closed', 'Open'],
+  )
+})
+
+test('a no-arg z.strictObject({}) tool ({properties:{},additionalProperties:false}) stays selectable', () => {
+  // The no-arg tools (CronList/TaskList/TeamDelete/...) emit an EMPTY properties
+  // object WITH additionalProperties:false. That is a genuinely closed empty
+  // object — strict can enforce it — so it must NOT be swept up by the new
+  // property-less clause (the `'additionalProperties' in schema` guard excludes it).
+  const noArg = { type: 'object', properties: {}, additionalProperties: false, required: [] }
+  assert.equal(schemaClosesAnOpenMap(noArg), false)
+  for (const mode of ['all', 'nullable']) {
+    assert.equal(resolveStrictToolNames(mode, [tool('CronList', noArg)]).size, 1, mode)
+  }
 })

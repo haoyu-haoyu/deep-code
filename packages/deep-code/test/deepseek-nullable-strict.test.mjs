@@ -182,7 +182,9 @@ test('a bare $ref and an empty (z.any) optional are left unchanged', () => {
 test("resolveStrictToolNames('nullable') selects every named tool, like 'all'", () => {
   const tools = [
     { name: 'Read', inputJSONSchema: { type: 'object', properties: { p: { type: 'string' } }, required: [] } },
-    { name: 'Edit', inputJSONSchema: { type: 'object', properties: {}, required: [] } },
+    // A normal closeable tool: declared properties, no additionalProperties (a
+    // property-LESS {type:'object'} is now correctly excluded as a free-form map).
+    { name: 'Edit', inputJSONSchema: { type: 'object', properties: { path: { type: 'string' }, text: { type: 'string' } }, required: ['path'] } },
     { function: { name: 'NoBare' } },
   ]
   const all = resolveStrictToolNames('all', tools)
