@@ -9,8 +9,10 @@ import {
 } from '../../utils/file.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 import { glob } from '../../utils/glob.js'
+import { resolveGlobSearchDir } from '../../utils/globSearchDir.mjs'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { expandPath, toRelativePath } from '../../utils/path.js'
+import { getPlatform } from '../../utils/platform.js'
 import { checkReadPermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
@@ -85,8 +87,15 @@ export const GlobTool = buildTool({
   isSearchOrReadCommand() {
     return { isSearch: true, isRead: false }
   },
-  getPath({ path }): string {
-    return path ? expandPath(path) : getCwd()
+  getPath({ pattern, path }): string {
+    // Return the directory the search will ACTUALLY run in, not just the `path`
+    // field. An absolute `pattern` re-roots ripgrep at the pattern's base dir
+    // (see glob()/resolveGlobSearchDir), so the read-permission gate — which keys
+    // off getPath — must validate THAT dir; otherwise an absolute pattern reads
+    // outside the workspace with no prompt. glob() re-derives the same root
+    // (idempotent), so the actual search is unchanged.
+    const cwd = path ? expandPath(path) : getCwd()
+    return resolveGlobSearchDir(pattern, cwd, getPlatform())
   },
   async preparePermissionMatcher({ pattern }) {
     return rulePattern => matchWildcardPattern(rulePattern, pattern)

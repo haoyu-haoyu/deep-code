@@ -1,6 +1,7 @@
-import { basename, dirname, isAbsolute, join, sep } from 'path'
+import { isAbsolute, join } from 'path'
 import type { ToolPermissionContext } from '../Tool.js'
 import { isEnvTruthy } from './envUtils.js'
+import { extractGlobBaseDirectory } from './globSearchDir.mjs'
 import {
   getFileReadIgnorePatterns,
   normalizePatternsToPath,
@@ -9,59 +10,10 @@ import { getPlatform } from './platform.js'
 import { getGlobExclusionsForPluginCache } from './plugins/orphanedPluginFilter.js'
 import { ripGrep } from './ripgrep.js'
 
-/**
- * Extracts the static base directory from a glob pattern.
- * The base directory is everything before the first glob special character (* ? [ {).
- * Returns the directory portion and the remaining relative pattern.
- */
-export function extractGlobBaseDirectory(pattern: string): {
-  baseDir: string
-  relativePattern: string
-} {
-  // Find the first glob special character: *, ?, [, {
-  const globChars = /[*?[{]/
-  const match = pattern.match(globChars)
-
-  if (!match || match.index === undefined) {
-    // No glob characters - this is a literal path
-    // Return the directory portion and filename as pattern
-    const dir = dirname(pattern)
-    const file = basename(pattern)
-    return { baseDir: dir, relativePattern: file }
-  }
-
-  // Get everything before the first glob character
-  const staticPrefix = pattern.slice(0, match.index)
-
-  // Find the last path separator in the static prefix
-  const lastSepIndex = Math.max(
-    staticPrefix.lastIndexOf('/'),
-    staticPrefix.lastIndexOf(sep),
-  )
-
-  if (lastSepIndex === -1) {
-    // No path separator before the glob - pattern is relative to cwd
-    return { baseDir: '', relativePattern: pattern }
-  }
-
-  let baseDir = staticPrefix.slice(0, lastSepIndex)
-  const relativePattern = pattern.slice(lastSepIndex + 1)
-
-  // Handle root directory patterns (e.g., /*.txt on Unix or C:/*.txt on Windows)
-  // When lastSepIndex is 0, baseDir is empty but we need to use '/' as the root
-  if (baseDir === '' && lastSepIndex === 0) {
-    baseDir = '/'
-  }
-
-  // Handle Windows drive root paths (e.g., C:/*.txt)
-  // 'C:' means "current directory on drive C" (relative), not root
-  // We need 'C:/' or 'C:\' for the actual drive root
-  if (getPlatform() === 'windows' && /^[A-Za-z]:$/.test(baseDir)) {
-    baseDir = baseDir + sep
-  }
-
-  return { baseDir, relativePattern }
-}
+// extractGlobBaseDirectory + resolveGlobSearchDir now live in the pure, node-testable
+// ./globSearchDir.mjs leaf (shared with GlobTool.getPath so the permission gate and
+// the actual search resolve the SAME root). Re-export for back-compat.
+export { extractGlobBaseDirectory } from './globSearchDir.mjs'
 
 export async function glob(
   filePattern: string,
@@ -76,7 +28,10 @@ export async function glob(
   // Handle absolute paths by extracting the base directory and converting to relative pattern
   // ripgrep's --glob flag only works with relative patterns
   if (isAbsolute(filePattern)) {
-    const { baseDir, relativePattern } = extractGlobBaseDirectory(filePattern)
+    const { baseDir, relativePattern } = extractGlobBaseDirectory(
+      filePattern,
+      getPlatform(),
+    )
     if (baseDir) {
       searchDir = baseDir
       searchPattern = relativePattern
