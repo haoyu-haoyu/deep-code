@@ -533,8 +533,17 @@ export async function* streamDeepSeekQuery(context = {}) {
     // rejected for capacity — route the retry to the small model and lower the
     // reasoning effort one tier so the next attempt actually demands less.
     if (isFlashDowngradeStrategy(recovery.retryStrategy)) {
+      // Honor the user's configured small model, not just the hardcoded default.
+      // context.smallModel is absent on most paths, so resolve through the same
+      // chain the request builder uses (overrides → DEEPSEEK_SMALL_MODEL →
+      // DEEPCODE_SMALL_MODEL → config file → default). Lazy — only on the rare
+      // 503 flash-downgrade branch (already in multi-second backoff), so the
+      // happy path and its config-file read are untouched.
+      const smallModel =
+        context.smallModel ??
+        resolveDeepSeekConfig({ env: context.env, cwd: context.cwd }).smallModel
       const { body, changed } = downgradeDeepSeekRetryBody(request.body, {
-        smallModel: context.smallModel ?? DEFAULT_DEEPSEEK_SMALL_MODEL,
+        smallModel,
       })
       if (changed) request = { ...request, body }
     }

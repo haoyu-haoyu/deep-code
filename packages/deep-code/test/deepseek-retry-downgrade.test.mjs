@@ -6,7 +6,7 @@ import {
   lowerDeepSeekEffort,
   downgradeDeepSeekRetryBody,
 } from '../src/services/providers/deepseek-recovery.mjs'
-import { streamDeepSeekQuery } from '../src/services/providers/deepseek.mjs'
+import { streamDeepSeekQuery, resolveDeepSeekConfig } from '../src/services/providers/deepseek.mjs'
 
 const FLASH = 'deepseek-v4-flash'
 
@@ -184,4 +184,52 @@ test('streamDeepSeekQuery does NOT downgrade on a plain backoff retry (429)', as
   // 429 = exponential_backoff (NOT _or_flash) → identical body re-sent, no downgrade
   assert.equal(bodies[1].model, 'deepseek-v4-pro')
   assert.equal(bodies[1].reasoning_effort, 'max')
+})
+
+// --- 503 flash-downgrade must honor the user's configured small model, not just
+// the hardcoded default (resolveDeepSeekConfig chains all four sources) ---
+
+// fileConfig:null bypasses the on-disk config read, so these are hermetic (no
+// dependence on the dev machine's ~/.deepcode config).
+const smallModelOf = (env, fileConfig = null) =>
+  resolveDeepSeekConfig({ env, fileConfig }).smallModel
+
+test('resolveDeepSeekConfig.smallModel resolves all sources in precedence (the 503 downgrade fix)', () => {
+  // DEEPSEEK_SMALL_MODEL honored
+  assert.equal(smallModelOf({ DEEPSEEK_SMALL_MODEL: 'my-small' }), 'my-small')
+  // DEEPCODE_SMALL_MODEL honored
+  assert.equal(smallModelOf({ DEEPCODE_SMALL_MODEL: 'dc-small' }), 'dc-small')
+  // DEEPSEEK_ wins over DEEPCODE_
+  assert.equal(
+    smallModelOf({ DEEPSEEK_SMALL_MODEL: 'ds', DEEPCODE_SMALL_MODEL: 'dc' }),
+    'ds',
+  )
+  // config-file source honored when no env var
+  assert.equal(smallModelOf({}, { smallModel: 'file-small' }), 'file-small')
+  // env wins over file
+  assert.equal(
+    smallModelOf({ DEEPSEEK_SMALL_MODEL: 'env' }, { smallModel: 'file' }),
+    'env',
+  )
+  // the 'auto' sentinel is dropped (falls through to the default)
+  assert.equal(smallModelOf({ DEEPSEEK_SMALL_MODEL: 'auto' }), FLASH)
+  // nothing configured → the hardcoded default — today's behavior preserved
+  assert.equal(smallModelOf({}), FLASH)
+})
+
+test('the downgrade body routes to the RESOLVED small model, not the hardcoded flash default', () => {
+  // a user who set DEEPSEEK_SMALL_MODEL gets THEIR model on the 503 retry.
+  const resolved = smallModelOf({ DEEPSEEK_SMALL_MODEL: 'my-small' })
+  const { body, changed } = downgradeDeepSeekRetryBody(
+    { model: 'deepseek-v4-pro', reasoning_effort: 'max', messages: [] },
+    { smallModel: resolved },
+  )
+  assert.equal(changed, true)
+  assert.equal(body.model, 'my-small') // was hardcoded 'deepseek-v4-flash' before the fix
+  // with no config, the default still flows through unchanged
+  const { body: dft } = downgradeDeepSeekRetryBody(
+    { model: 'deepseek-v4-pro', reasoning_effort: 'max', messages: [] },
+    { smallModel: smallModelOf({}) },
+  )
+  assert.equal(dft.model, FLASH)
 })
