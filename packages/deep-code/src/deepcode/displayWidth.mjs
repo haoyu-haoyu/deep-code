@@ -40,6 +40,105 @@ function isFullWidthCodePoint(codePoint) {
   )
 }
 
+// Zero-width / invisible code points that can appear glued inside a grapheme
+// cluster (ported from src/ink/stringWidth.ts isZeroWidth). Used ONLY on the
+// segmentation path below, so the non-emoji fast path stays byte-identical.
+function isZeroWidthInCluster(cp) {
+  if (cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f)) return true // controls
+  if (cp >= 0x200b && cp <= 0x200d) return true // ZW space / non-joiner / joiner
+  if (cp === 0xfeff) return true // BOM
+  if (cp >= 0x2060 && cp <= 0x2064) return true // word joiner & invisibles
+  if (cp >= 0xfe00 && cp <= 0xfe0f) return true // variation selectors (incl. VS16)
+  if (cp >= 0xe0100 && cp <= 0xe01ef) return true // supplementary variation selectors
+  if (cp >= 0x1f3fb && cp <= 0x1f3ff) return true // emoji skin-tone modifiers
+  if (
+    (cp >= 0x300 && cp <= 0x36f) ||
+    (cp >= 0x1ab0 && cp <= 0x1aff) ||
+    (cp >= 0x1dc0 && cp <= 0x1dff) ||
+    (cp >= 0x20d0 && cp <= 0x20ff) ||
+    (cp >= 0xfe20 && cp <= 0xfe2f)
+  ) {
+    return true // combining-mark blocks
+  }
+  if (cp >= 0xe0000 && cp <= 0xe007f) return true // tag chars
+  return false
+}
+
+// True iff the string carries any code point the per-code-point loop measures wrong
+// (emoji, regional indicator, variation selector, ZWJ). With none present, the
+// original loop is exact, so non-emoji input takes the fast path at zero cost.
+function needsSegmentation(string) {
+  for (const ch of string) {
+    const cp = ch.codePointAt(0)
+    if (cp >= 0x1f300 && cp <= 0x1faff) return true // pictographic emoji
+    if (cp >= 0x1f1e6 && cp <= 0x1f1ff) return true // regional indicators (flags)
+    if (cp >= 0xfe00 && cp <= 0xfe0f) return true // variation selectors (incl. VS16)
+    if (cp === 0x200d) return true // ZWJ
+    // NOTE: the misc-symbols block U+2600-U+27BF is deliberately NOT a trigger: those
+    // code points default to TEXT presentation (width 1) and the original loop already
+    // counts them as 1. A VS16-qualified one (e.g. ❤️ = U+2764 U+FE0F) still segments
+    // via the U+FE0F trigger above and renders as the width-2 emoji.
+  }
+  return false
+}
+
+let graphemeSegmenter
+function getGraphemeSegmenter() {
+  // Intl.Segmenter is a JS built-in (no npm dep) — keeps this leaf self-contained.
+  return (graphemeSegmenter ??= new Intl.Segmenter('en', { granularity: 'grapheme' }))
+}
+
+function clusterIsEmoji(grapheme) {
+  for (const ch of grapheme) {
+    const cp = ch.codePointAt(0)
+    // Pictographic, regional indicator, or explicitly emoji-presentation (VS16).
+    // A bare U+2600-U+27BF symbol is NOT treated as emoji (text presentation, w1);
+    // a VS16 anywhere in the cluster promotes it to the width-2 emoji form.
+    if (
+      (cp >= 0x1f300 && cp <= 0x1faff) ||
+      (cp >= 0x1f1e6 && cp <= 0x1f1ff) ||
+      cp === 0xfe0f
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+// Terminal cells for one emoji grapheme (mirrors src/ink/stringWidth.ts
+// getEmojiWidth): most are 2; a LONE regional indicator is 1; a digit/#/* followed
+// by VS16 without the keycap combiner renders as the plain char (1).
+function emojiClusterWidth(grapheme) {
+  const first = grapheme.codePointAt(0)
+  if (first >= 0x1f1e6 && first <= 0x1f1ff) {
+    let count = 0
+    for (const _ of grapheme) count += 1
+    return count === 1 ? 1 : 2
+  }
+  // base + VS16 with no further combiner: an ASCII base (a digit/#/* "incomplete
+  // keycap", or any other printable ASCII glued to an orphan VS16) has no emoji
+  // form, so it renders as the plain width-1 char — not a width-2 emoji. A
+  // non-ASCII base (❤ U+2764, ⚠ U+26A0, ™ U+2122 …) does have an emoji form → 2.
+  if (grapheme.length === 2) {
+    const second = grapheme.codePointAt(1)
+    if (second === 0xfe0f && first >= 0x20 && first < 0x7f) {
+      return 1
+    }
+  }
+  return 2
+}
+
+function clusterWidth(grapheme) {
+  if (clusterIsEmoji(grapheme)) return emojiClusterWidth(grapheme)
+  // Non-emoji cluster (base + combining marks) renders as one glyph: the width of
+  // its first non-zero-width code point.
+  for (const ch of grapheme) {
+    const cp = ch.codePointAt(0)
+    if (!isZeroWidthInCluster(cp)) return isFullWidthCodePoint(cp) ? 2 : 1
+  }
+  return 0
+}
+
 /**
  * Display width of `value` in terminal cells (ANSI stripped first).
  * @param {string} value
@@ -47,6 +146,20 @@ function isFullWidthCodePoint(codePoint) {
  */
 export function displayWidth(value) {
   const string = stripAnsi(value)
+  // Emoji / variation-selector / ZWJ present → segment by grapheme and count one
+  // cell-group per cluster (invisible joiners/selectors/modifiers add 0, an emoji
+  // cluster is 2). This is what no longer over-counts ZWJ family sequences, keycaps,
+  // skin-tone modifiers, etc., and no longer under-counts emoji outside the two
+  // narrow fullwidth ranges.
+  if (needsSegmentation(string)) {
+    let width = 0
+    for (const { segment } of getGraphemeSegmenter().segment(string)) {
+      width += clusterWidth(segment)
+    }
+    return width
+  }
+  // Fast path: no emoji/VS/ZWJ → the original per-code-point loop is exact and
+  // BYTE-IDENTICAL to before (zero cost for the common non-emoji case).
   let width = 0
   for (let index = 0; index < string.length; index += 1) {
     const codePoint = string.codePointAt(index)

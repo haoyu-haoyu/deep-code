@@ -1536,6 +1536,26 @@ test('displayWidth counts CJK/emoji as 2 cells and truncateToWidth never splits 
   assert.equal(truncateToWidth('a中b', 2), 'a') // 中 would overflow
 })
 
+test('displayWidth measures emoji clusters by grapheme (no phantom cells from joiners/selectors/modifiers)', () => {
+  // invisible joiners/selectors/skin-tone modifiers add ZERO cells; an emoji
+  // cluster is 2 — previously each piece was counted 1-2, badly over/under-counting.
+  assert.equal(displayWidth('😀'), 2) // single emoji (regression guard)
+  assert.equal(displayWidth('🚀'), 2) // was under-counted as 1 (outside the narrow fullwidth ranges)
+  assert.equal(displayWidth('ok👍🏽'), 4) // skin-tone modifier U+1F3FD adds 0, not 2
+  assert.equal(displayWidth('❤️'), 2) // VS16 adds 0
+  assert.equal(displayWidth('#️⃣'), 2) // keycap renders as one width-2 glyph
+  assert.equal(displayWidth('team👨‍👩‍👧'), 6) // 4 + a single ZWJ family glyph (2), not 4 + 6
+  assert.equal(displayWidth('🇺🇸'), 2) // flag (regional-indicator pair) = 2
+  assert.equal(displayWidth('🇺'), 1) // a lone regional indicator = 1
+  assert.equal(displayWidth('a😀中'), 5) // 1 + 2 + 2 mixed
+
+  // NO regression: bare U+2600-U+27BF symbols default to TEXT presentation (width 1),
+  // exactly as before — only a VS16 promotes them to the width-2 emoji form.
+  for (const s of ['✓', '★', '☀', '✗', '❤', '✔']) {
+    assert.equal(displayWidth(s), 1, `bare ${s} must stay width 1`)
+  }
+})
+
 test('the native welcome box stays aligned with CJK cwd/username (display-width aware)', () => {
   const banner = formatDeepCodeWelcome({
     cwd: '/Users/张三/项目/深度代码',
