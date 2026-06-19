@@ -91,7 +91,8 @@ export async function* runPostToolUseHooks<Input extends AnyObject, Output>(
         // {blockingError} and {message: hook_blocking_error attachment}. The
         // blockingError path below creates that same attachment, so skip it
         // here to avoid displaying the block reason twice (#31301). The
-        // exit-code-2 path only yields {blockingError}, so it's unaffected.
+        // exit-code-2 path yields {blockingError} (+ a separate permissionBehavior
+        // deny on PreToolUse, which carries no `message`), so it's unaffected here.
         if (
           result.message &&
           !(
