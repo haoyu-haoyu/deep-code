@@ -9,7 +9,7 @@ import {
   isTodoV2Enabled,
   listTasks,
   onTasksUpdated,
-  resetTaskList,
+  resetTaskListIfAllCompleted,
 } from '../utils/tasks.js'
 import { isTeamLead } from '../utils/teammate.js'
 
@@ -157,13 +157,15 @@ class TasksV2Store {
     // during the 5s window) — don't reset the wrong list.
     const currentId = getTaskListId()
     if (currentId !== scheduledForTaskListId) return
-    // Verify all tasks are still completed before clearing
-    void listTasks(currentId).then(async tasksToCheck => {
-      const allStillCompleted =
-        tasksToCheck.length > 0 &&
-        tasksToCheck.every(t => t.status === 'completed')
-      if (allStillCompleted) {
-        await resetTaskList(currentId)
+    // Verify-and-wipe atomically UNDER the list lock: an unlocked "all completed?"
+    // snapshot here could green-light resetTaskList's unconditional unlink and
+    // silently delete a task created in the TOCTOU gap (both serialize on the same
+    // .lock, but the decision was already made on the stale snapshot).
+    // resetTaskListIfAllCompleted re-lists inside the lock and aborts on any
+    // non-completed task. On abort, leave #hidden=false — the racing createTask
+    // already fired notifyTasksUpdated, so the debounced #fetch re-renders it.
+    void resetTaskListIfAllCompleted(currentId).then(didReset => {
+      if (didReset) {
         this.#tasks = []
         this.#hidden = true
       }

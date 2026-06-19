@@ -136,6 +136,7 @@ jobs:
             test/tool-batch-concurrency.test.mjs \
             test/cost-status.test.mjs \
             test/task-output-truncate.test.mjs \
+            test/tasks-reset-atomic.test.mjs \
             test/hook-if-condition-events.test.mjs \
             test/hook-output-blocks.test.mjs \
             test/hook-permission-aggregate.test.mjs \

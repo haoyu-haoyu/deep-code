@@ -3,6 +3,8 @@ import { join } from 'path'
 import { z } from 'zod/v4'
 import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
 import { uniq } from './array.js'
+import { atomicWriteFile } from './atomicWrite.mjs'
+import { shouldResetCompletedTaskList } from './task/resetCompletedGuard.mjs'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir, getTeamsDir, isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
@@ -127,7 +129,8 @@ async function writeHighWaterMark(
   value: number,
 ): Promise<void> {
   const path = getHighWaterMarkPath(taskListId)
-  await writeFile(path, String(value))
+  // Atomic (tmp+rename): a concurrent reader never sees a torn/partial file.
+  await atomicWriteFile(path, String(value))
 }
 
 export function isTodoV2Enabled(): boolean {
@@ -152,34 +155,85 @@ export async function resetTaskList(taskListId: string): Promise<void> {
   try {
     // Acquire exclusive lock on the task list
     release = await lockfile.lock(lockPath, LOCK_OPTIONS)
+    await resetTaskListLocked(dir, taskListId)
+  } finally {
+    if (release) {
+      await release()
+    }
+  }
+}
 
-    // Find the current highest ID and save it to the high water mark file
-    const currentHighest = await findHighestTaskIdFromFiles(taskListId)
-    if (currentHighest > 0) {
-      const existingMark = await readHighWaterMark(taskListId)
-      if (currentHighest > existingMark) {
-        await writeHighWaterMark(taskListId, currentHighest)
+/**
+ * The HWM-bump + unlink-all body of resetTaskList, WITHOUT acquiring the lock.
+ * Callers must already hold the task-list `.lock`. Extracted so the all-completed
+ * verification and the destructive delete can run in ONE critical section
+ * (resetTaskListIfAllCompleted) instead of deciding on a stale unlocked snapshot.
+ * The readdir/unlink/findHighestTaskIdFromFiles steps are lock-free reads/writes,
+ * safe under a held lock — mirroring claimTaskWithBusyCheck calling listTasks
+ * under the lock.
+ */
+async function resetTaskListLocked(
+  dir: string,
+  taskListId: string,
+): Promise<void> {
+  // Find the current highest ID and save it to the high water mark file
+  const currentHighest = await findHighestTaskIdFromFiles(taskListId)
+  if (currentHighest > 0) {
+    const existingMark = await readHighWaterMark(taskListId)
+    if (currentHighest > existingMark) {
+      await writeHighWaterMark(taskListId, currentHighest)
+    }
+  }
+
+  // Delete all task files
+  let files: string[]
+  try {
+    files = await readdir(dir)
+  } catch {
+    files = []
+  }
+  for (const file of files) {
+    if (file.endsWith('.json') && !file.startsWith('.')) {
+      const filePath = join(dir, file)
+      try {
+        await unlink(filePath)
+      } catch {
+        // Ignore errors, file may already be deleted
       }
     }
+  }
+  notifyTasksUpdated()
+}
 
-    // Delete all task files
-    let files: string[]
-    try {
-      files = await readdir(dir)
-    } catch {
-      files = []
+/**
+ * Atomically (under the list lock) re-verify that EVERY task is still completed
+ * and, only then, wipe the list. Returns true if the reset happened, false if it
+ * was aborted because a non-completed task was present.
+ *
+ * This is the safe variant for the hide-timer auto-reset: the all-completed
+ * decision and the destructive delete are ONE locked critical section, so a
+ * TaskCreate racing in the TOCTOU window (it serializes on the same `.lock`) is
+ * observed by the re-list and the wipe is aborted — instead of silently deleting
+ * a brand-new pending task. resetTaskList keeps its unconditional-wipe contract
+ * for TeamCreateTool (start a swarm fresh from an inherited dir).
+ */
+export async function resetTaskListIfAllCompleted(
+  taskListId: string,
+): Promise<boolean> {
+  const dir = getTasksDir(taskListId)
+  const lockPath = await ensureTaskListLockFile(taskListId)
+
+  let release: (() => Promise<void>) | undefined
+  try {
+    release = await lockfile.lock(lockPath, LOCK_OPTIONS)
+    // Re-list UNDER the lock — this is the decision the unconditional delete
+    // depends on, so it must observe any task created since the timer fired.
+    const tasks = await listTasks(taskListId)
+    if (!shouldResetCompletedTaskList(tasks)) {
+      return false
     }
-    for (const file of files) {
-      if (file.endsWith('.json') && !file.startsWith('.')) {
-        const filePath = join(dir, file)
-        try {
-          await unlink(filePath)
-        } catch {
-          // Ignore errors, file may already be deleted
-        }
-      }
-    }
-    notifyTasksUpdated()
+    await resetTaskListLocked(dir, taskListId)
+    return true
   } finally {
     if (release) {
       await release()
@@ -297,7 +351,10 @@ export async function createTask(
     const id = String(highestId + 1)
     const task: Task = { id, ...taskData }
     const path = getTaskPath(taskListId, id)
-    await writeFile(path, jsonStringify(task, null, 2))
+    // Atomic (tmp+rename): listTasks/getTask read with no lock, and jsonParse
+    // THROWS on a partial file (→ getTask returns null → task transiently
+    // vanishes). rename is atomic, so a reader always sees a complete file.
+    await atomicWriteFile(path, jsonStringify(task, null, 2))
     notifyTasksUpdated()
     return id
   } finally {
@@ -362,7 +419,9 @@ async function updateTaskUnsafe(
   }
   const updated: Task = { ...existing, ...updates, id: taskId }
   const path = getTaskPath(taskListId, taskId)
-  await writeFile(path, jsonStringify(updated, null, 2))
+  // Atomic (tmp+rename) — see createTask: closes the torn-read window for the
+  // lock-free listTasks/getTask readers.
+  await atomicWriteFile(path, jsonStringify(updated, null, 2))
   notifyTasksUpdated()
   return updated
 }
