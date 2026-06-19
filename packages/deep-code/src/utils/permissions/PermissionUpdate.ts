@@ -12,6 +12,7 @@ import {
   updateSettingsForSource,
 } from '../settings/settings.js'
 import { jsonStringify } from '../slowOperations.js'
+import { escapeGitignorePattern } from './escapeGitignorePattern.mjs'
 import { toPosixPath } from './filesystem.js'
 import type { PermissionRuleValue } from './PermissionRule.js'
 import type {
@@ -370,10 +371,18 @@ export function createReadRuleSuggestion(
     return undefined
   }
 
+  // Escape gitignore metacharacters in the literal path before it becomes a glob
+  // pattern: an unescaped `app/[id]` / `#scratch` / `!notes` would be reinterpreted
+  // by ignore().add() (char class / comment / negation), so the rule would neither
+  // match its own file nor stay scoped. The trailing /** below is the INTENDED glob
+  // and is appended after escaping, so it stays a wildcard. (isAbsolute is checked
+  // on the raw path — escaping never touches the leading '/'.)
+  const escapedPath = escapeGitignorePattern(pathForPattern)
+
   // For absolute paths, prepend an extra / to create //path/** pattern
   const ruleContent = posix.isAbsolute(pathForPattern)
-    ? `/${pathForPattern}/**`
-    : `${pathForPattern}/**`
+    ? `/${escapedPath}/**`
+    : `${escapedPath}/**`
 
   return {
     type: 'addRules',
