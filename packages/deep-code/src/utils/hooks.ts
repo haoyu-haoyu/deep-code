@@ -7,6 +7,7 @@ import { basename } from 'path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { pathExists } from './file.js'
 import { eventSupportsIfCondition } from './hookIfConditionEvents.mjs'
+import { hookBlockPermissionBehavior } from './hooks/hookBlockPermissionBehavior.mjs'
 import { hookOutputBlocks } from './hooks/hookOutputBlocks.mjs'
 import {
   emptyPermissionState,
@@ -2598,6 +2599,11 @@ async function* executeHooks({
               blockingError: `[${hook.command}]: ${result.stderr || 'No stderr output'}`,
               command: hook.command,
             },
+            // Also flow a 'deny' through the permissionBehavior aggregator (PreToolUse
+            // only) so this exit-2 deny survives a racing JSON 'allow'; carry the same
+            // detailed message so the deny branch doesn't fall back to a generic one.
+            permissionBehavior: hookBlockPermissionBehavior(hookEvent),
+            hookPermissionDecisionReason: `[${hook.command}]: ${result.stderr || 'No stderr output'}`,
             outcome: 'blocking' as const,
             hook,
           }
@@ -2711,6 +2717,11 @@ async function* executeHooks({
             blockingError: `[${hook.command}]: ${result.stderr || 'No stderr output'}`,
             command: hook.command,
           },
+          // Also flow a 'deny' through the permissionBehavior aggregator (PreToolUse
+          // only) so this exit-2 deny survives a racing JSON 'allow'; carry the same
+          // detailed message so the deny branch doesn't fall back to a generic one.
+          permissionBehavior: hookBlockPermissionBehavior(hookEvent),
+          hookPermissionDecisionReason: `[${hook.command}]: ${result.stderr || 'No stderr output'}`,
           outcome: 'blocking' as const,
           hook,
         }
