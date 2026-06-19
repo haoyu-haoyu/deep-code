@@ -155,6 +155,30 @@ test('converts merged settings into sandbox runtime config', async () => {
       `${data.repo}/.claude/settings.json`,
     ),
   )
+  // SECURITY regression (Survey-25 F3): the LEGACY settings path for every source
+  // must now be in the denyWrite floor — getSettingsReadFilePathForSource reads
+  // the legacy `.claude/settings.{json,local.json}` as authoritative when the
+  // `.deepcode/` equivalent is absent, so leaving it writable was a sandbox
+  // config-tamper escape. (The stub models the legacy path as `<root>/legacy-
+  // settings.json`.)
+  assert.ok(
+    data.normal.filesystem.denyWrite.includes(
+      '/workspace/project/.claude/legacy-settings.json',
+    ),
+    'legacy settings path must be deny-write (the F3 fix)',
+  )
+  // The cd'd-cwd block now covers BOTH the `.deepcode/` and `.claude/` settings
+  // (and the .local variant), not just `.claude/settings.json`.
+  for (const path of [
+    `${data.repo}/.deepcode/settings.json`,
+    `${data.repo}/.deepcode/settings.local.json`,
+    `${data.repo}/.claude/settings.local.json`,
+  ]) {
+    assert.ok(
+      data.normal.filesystem.denyWrite.includes(path),
+      `settings file must be deny-write: ${path}`,
+    )
+  }
   assert.ok(
     data.normal.filesystem.denyWrite.includes(`${data.repo}/.claude/skills`),
   )

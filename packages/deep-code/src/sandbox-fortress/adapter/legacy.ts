@@ -44,6 +44,7 @@ import { getManagedSettingsDropInDir } from '../../utils/settings/managedPath.js
 import { resolveDeepSeekConfigPath } from '../../services/providers/deepseek-config-store.mjs'
 import {
   getInitialSettings,
+  getLegacySettingsFilePathForSource,
   getSettings_DEPRECATED,
   getSettingsFilePathForSource,
   getSettingsForSource,
@@ -265,10 +266,18 @@ export function convertToSandboxRuntimeConfig(
   const allowRead: string[] = []
 
   // Always deny writes to settings.json files to prevent sandbox escape
-  // This blocks settings in the original working directory (where DeepCode started)
-  const settingsPaths = SETTING_SOURCES.map(source =>
+  // This blocks settings in the original working directory (where DeepCode started).
+  // SECURITY: include BOTH the primary `.deepcode/` path AND the legacy `.claude/`
+  // path for every source — getSettingsReadFilePathForSource still reads the legacy
+  // `.claude/settings.{json,local.json}` as authoritative whenever the `.deepcode/`
+  // equivalent is absent (the common fresh-project case), so a denyWrite floor that
+  // covered only the primary path left the legacy file writable-then-honored: a
+  // sandbox config-tamper escape (disable the sandbox / grant permissions / inject
+  // hooks on the next launch).
+  const settingsPaths = SETTING_SOURCES.flatMap(source => [
     getSettingsFilePathForSource(source),
-  ).filter((p): p is string => p !== undefined)
+    getLegacySettingsFilePathForSource(source),
+  ]).filter((p): p is string => p !== undefined)
   denyWrite.push(...settingsPaths)
   denyWrite.push(getManagedSettingsDropInDir())
 
@@ -278,13 +287,17 @@ export function convertToSandboxRuntimeConfig(
   // is denied above; this is the credential store the agent authenticates from.
   denyWrite.push(resolveDeepSeekConfigPath())
 
-  // Also block settings files in the current working directory if it differs from original
-  // This handles the case where the user has cd'd to a different directory
+  // Also block settings files in the current working directory if it differs from
+  // original (a `cd`'d directory a future session could read). Cover BOTH the
+  // primary `.deepcode/` and legacy `.claude/` directories, matching the
+  // originalCwd-rooted denies above and the `.claude/skills` enumeration below.
   const cwd = getCwdState()
   const originalCwd = getOriginalCwd()
   if (cwd !== originalCwd) {
-    denyWrite.push(resolve(cwd, '.claude', 'settings.json'))
-    denyWrite.push(resolve(cwd, '.claude', 'settings.local.json'))
+    for (const dir of ['.deepcode', '.claude']) {
+      denyWrite.push(resolve(cwd, dir, 'settings.json'))
+      denyWrite.push(resolve(cwd, dir, 'settings.local.json'))
+    }
   }
 
   // Block writes to .claude/skills in both original and current working directories.
