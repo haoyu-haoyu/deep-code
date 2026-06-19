@@ -6,6 +6,7 @@
 import { basename } from 'path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { pathExists } from './file.js'
+import { clampHookChunk } from './clampHookChunk.mjs'
 import { eventSupportsIfCondition } from './hookIfConditionEvents.mjs'
 import { hookBlockPermissionBehavior } from './hooks/hookBlockPermissionBehavior.mjs'
 import { hookOutputBlocks } from './hooks/hookOutputBlocks.mjs'
@@ -171,6 +172,13 @@ import { isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
 
 const TOOL_HOOK_EXECUTION_TIMEOUT_MS = 10 * 60 * 1000
+
+// Per-stream cap on accumulated hook output. The 10-minute execution timeout is
+// far too long to bound a fast-emitting runaway hook (a looping statusLine
+// command reaches gigabytes within seconds), so cap stdout/stderr each and
+// SIGTERM the child when exceeded. 50M chars (~50-100 MB) is orders of magnitude
+// above any legitimate hook's output, so the happy path is unaffected.
+const MAX_HOOK_OUTPUT_CHARS = 50 * 1024 * 1024
 
 /**
  * SessionEnd hooks run during shutdown/clear and need a much tighter bound
@@ -771,6 +779,7 @@ async function execCommandHook(
   status: number
   aborted?: boolean
   backgrounded?: boolean
+  capExceeded?: boolean
 }> {
   // Gated to once-per-session events to keep diag_log volume bounded.
   // started/completed live inside the try/finally so setup-path throws
@@ -1039,6 +1048,10 @@ async function execCommandHook(
   let stdout = ''
   let stderr = ''
   let output = ''
+  // Set true when a stream blew MAX_HOOK_OUTPUT_CHARS and the child was killed.
+  // Surfaced in the result so the permission-decision path can fail CLOSED: a
+  // hook terminated mid-output must not silently allow the action it gates.
+  let capExceeded = false
 
   // Set up output data collection with explicit UTF-8 encoding
   child.stdout.setEncoding('utf8')
@@ -1073,10 +1086,25 @@ async function execCommandHook(
   let lineBuffer = ''
 
   child.stdout.on('data', data => {
-    stdout += data
-    output += data
+    const { keep, exceeded } = clampHookChunk(
+      stdout.length,
+      data,
+      MAX_HOOK_OUTPUT_CHARS,
+    )
+    stdout += keep
+    output += keep
+    if (exceeded) {
+      capExceeded = true
+      logForDebugging(
+        `Hook stdout exceeded ${MAX_HOOK_OUTPUT_CHARS} chars; terminating hook`,
+        { level: 'warn' },
+      )
+      child.kill('SIGTERM')
+      return
+    }
 
     // When requestPrompt is provided, parse stdout line-by-line for prompt requests
+    // (data === keep here: not exceeded, so the chunk passed through unclamped)
     if (requestPrompt) {
       lineBuffer += data
       const lines = lineBuffer.split('\n')
@@ -1172,8 +1200,22 @@ async function execCommandHook(
   })
 
   child.stderr.on('data', data => {
-    stderr += data
-    output += data
+    const { keep, exceeded } = clampHookChunk(
+      stderr.length,
+      data,
+      MAX_HOOK_OUTPUT_CHARS,
+    )
+    stderr += keep
+    output += keep
+    if (exceeded) {
+      capExceeded = true
+      logForDebugging(
+        `Hook stderr exceeded ${MAX_HOOK_OUTPUT_CHARS} chars; terminating hook`,
+        { level: 'warn' },
+      )
+      child.kill('SIGTERM')
+      return
+    }
   })
 
   const stopProgressInterval = startHookProgressInterval({
@@ -1286,7 +1328,15 @@ async function execCommandHook(
     await promptChain
     diagExitCode = result.status
     diagAborted = result.aborted ?? false
-    return result
+    // `capExceeded` is the authoritative output-cap flag, merged here at the
+    // single race-return point so it is carried regardless of WHICH promise won
+    // the race. In particular a hook that declared async on its first chunk then
+    // flooded resolves via childIsAsyncPromise (no capExceeded of its own); the
+    // flood runs during the awaits above and flips the outer flag, so the
+    // decision still fails CLOSED. (A flood strictly AFTER this return is a
+    // backgrounded async hook — non-blocking by design, and the cap still bounds
+    // its memory.)
+    return capExceeded ? { ...result, capExceeded } : result
   } catch (error) {
     // Handle errors from stdin write or child process
     const code = getErrnoCode(error)
@@ -2525,7 +2575,12 @@ async function* executeHooks({
         // through the same blocking yield as the non-JSON exit-2 path (incl. the
         // permission deny so it survives a racing allow); only surface the parse
         // failure as a non-blocking error when the exit code is NOT blocking.
-        if (hookOutputBlocks({ status: result.status })) {
+        if (
+          hookOutputBlocks({
+            status: result.status,
+            capExceeded: result.capExceeded,
+          })
+        ) {
           emitHookResponse({
             hookId,
             hookName,
@@ -2610,7 +2665,11 @@ async function* executeHooks({
         // above, so the `!processed.blockingError` guard scopes this to the
         // exit-2 case and leaves the JSON-block path untouched.
         if (
-          hookOutputBlocks({ status: result.status, json }) &&
+          hookOutputBlocks({
+            status: result.status,
+            json,
+            capExceeded: result.capExceeded,
+          }) &&
           !processed.blockingError
         ) {
           emitHookResponse({
@@ -3391,7 +3450,13 @@ async function executeHooksOutsideREPL({
         // otherwise it fails OPEN. Only surface the parse failure (throw) when the
         // status is NOT blocking; for an exit-2 block, fall through to the shared
         // hookOutputBlocks computation below (which returns true for status 2).
-        if (validationError && !hookOutputBlocks({ status: result.status })) {
+        if (
+          validationError &&
+          !hookOutputBlocks({
+            status: result.status,
+            capExceeded: result.capExceeded,
+          })
+        ) {
           // Validation error is logged via logForDebugging and returned in output
           throw new Error(validationError)
         }
@@ -3409,6 +3474,7 @@ async function executeHooksOutsideREPL({
           status: result.status,
           json,
           isAsync: !!json && isAsyncHookJSONOutput(json),
+          capExceeded: result.capExceeded,
         })
 
         // For successful hooks (exit code 0), use stdout; for failed hooks, use stderr
