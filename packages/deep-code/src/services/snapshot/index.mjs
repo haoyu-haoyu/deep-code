@@ -1,5 +1,6 @@
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { resolveBlockingDirConflicts } from './blockingDirConflicts.mjs'
 import { checkAndPrune } from './diskCap.mjs'
 import { acquireLock } from './lock.mjs'
 import { appendManifest, readManifest } from './manifest.mjs'
@@ -9,6 +10,10 @@ import {
   resolveSnapshotStore,
   SNAPSHOT_HASH_VERSION,
 } from './paths.mjs'
+import {
+  makeWorkspaceExists,
+  reconcileRemovedFiles,
+} from './reconcileRemovedFiles.mjs'
 import { initializeSideGit, runSideGit } from './storeInit.mjs'
 import { sweepStoreTemps } from './sweepStoreTemps.mjs'
 
@@ -148,6 +153,19 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
       })
     }
 
+    // `ls-files --killed` misses a snapshot blob path that a turn replaced with a
+    // directory whose only content is an embedded git repo nested one+ levels down:
+    // its traversal stops at the nested `.git` boundary, so the blocking directory
+    // appears in NO killed/others listing yet `checkout-index -f` would still
+    // recursively bulldoze it (and the nested repo's uncommitted work) to write the
+    // blob. Clear every such conflict ourselves and record the removed directory
+    // (as `dir/`) so the deletion is surfaced, not silent. Each conflict is already
+    // in `trackedChanges` (a blob→directory swap always diffs).
+    const removedByDirConflict = await resolveBlockingDirConflicts(
+      normalizedWorkspaceRoot,
+      trackedChanges,
+    )
+
     // Materialize every snapshot path — re-creating files deleted during the turn
     // into any needed subdirectories, AND restoring the snapshot's own tracked
     // .gitignore files — BEFORE the prune, so `clean` reckons "ignored" against the
@@ -198,8 +216,22 @@ export async function restoreSnapshot({ workspaceRoot, snapshotId, timeoutMs }) 
       if (removed.trim() === '') break
     }
 
+    // `clean -fd` (no -ff) refuses to delete an untracked nested git repo, so a
+    // frontier path may persist on disk despite being recorded above. Reconcile
+    // against ground truth: keep only the paths `clean` actually removed, so
+    // affectedFiles never reports a surviving file as removed.
+    const removedFiles = reconcileRemovedFiles(
+      addedFiles,
+      makeWorkspaceExists(normalizedWorkspaceRoot),
+    )
+
     const affectedFiles = [
-      ...new Set([...trackedChanges, ...killedPaths, ...addedFiles]),
+      ...new Set([
+        ...trackedChanges,
+        ...killedPaths,
+        ...removedByDirConflict,
+        ...removedFiles,
+      ]),
     ].sort()
 
     return {

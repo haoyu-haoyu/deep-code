@@ -62,14 +62,27 @@ export async function checkAndPrune({
 
   for (const candidate of pruneOrder) {
     if (finalBytes <= capBytes) break
-    const objectsBefore = await getSnapshotStoreSize(objectsDir)
-    await deleteSnapshotRef(store.gitDir, normalizedWorkspaceRoot, candidate.entry)
     entries = entries.filter(entry => entry !== candidate.entry)
     await writeManifestAtomically(store.manifestPath, entries)
+    prunedCount += 1
+
+    // commit-tree is deterministic, so two manifest entries that captured the
+    // same (tree, message, author/committer, whole-second timestamp) share ONE
+    // commitSha — hence one ref and one commit object. Only delete the ref and
+    // prune the object when NO retained entry still references this sha;
+    // otherwise the ref/object stays live for the surviving sibling, which would
+    // otherwise become unrestoreable ("failed to unpack tree object"). Mirrors
+    // reclaimOrphanedRefs's live-set guard, computed against the post-removal
+    // entries. A skipped (still-shared) eviction reclaims no object BY DESIGN, so
+    // it must bypass the no-progress guard below: the shared object is reclaimed
+    // later when its last referencing entry is evicted.
+    if (commitShaStillReferenced(entries, candidate.entry.commitSha)) continue
+
+    const objectsBefore = await getSnapshotStoreSize(objectsDir)
+    await deleteSnapshotRef(store.gitDir, normalizedWorkspaceRoot, candidate.entry)
     await pruneUnreachableObjects(store.gitDir, normalizedWorkspaceRoot)
     const objectsAfter = await getSnapshotStoreSize(objectsDir)
     finalBytes = await getSnapshotStoreSize(store.storePath)
-    prunedCount += 1
 
     // No-progress guard. `git prune` only collects LOOSE objects; if the store
     // was packed (an external `git gc`/repack ran against it), this eviction
@@ -144,6 +157,15 @@ async function reclaimOrphanedRefs(gitDir, workTree, entries) {
   }
   await pruneUnreachableObjects(gitDir, workTree)
   return true
+}
+
+// True when a RETAINED manifest entry still carries `commitSha` — so its shared
+// snapshot ref and commit object must not be deleted/pruned. `entries` is the
+// post-removal list (the candidate already filtered out), so the candidate's own
+// entry never counts as a referencer.
+export function commitShaStillReferenced(entries, commitSha) {
+  if (!commitSha) return false
+  return entries.some(entry => entry?.commitSha === commitSha)
 }
 
 async function deleteSnapshotRef(gitDir, workTree, entry) {

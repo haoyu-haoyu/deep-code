@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import {
   existsSync,
   readFileSync,
@@ -15,6 +16,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 
 import {
   checkAndPrune,
+  commitShaStillReferenced,
   getSnapshotStoreSize,
 } from '../src/services/snapshot/diskCap.mjs'
 import { acquireLock } from '../src/services/snapshot/lock.mjs'
@@ -401,6 +403,101 @@ test('checkAndPrune never wipes refs when the manifest read is empty (corrupt-de
 
     assert.equal((await listSnapshotRefShas(store, workspaceRoot)).length, 2)
     assert.equal(result.prunedCount, 0)
+  })
+})
+
+test('commitShaStillReferenced ignores the evicted candidate but sees a retained sibling', () => {
+  // The post-removal entries list never contains the candidate itself, so a
+  // unique-sha eviction reports "not referenced" -> the ref/object is pruned.
+  assert.equal(
+    commitShaStillReferenced([{ commitSha: 'b' }, { commitSha: 'c' }], 'a'),
+    false,
+  )
+  // A retained sibling that shares the sha keeps it live -> the ref/object stays.
+  assert.equal(
+    commitShaStillReferenced([{ commitSha: 'b' }, { commitSha: 'a' }], 'a'),
+    true,
+  )
+  // A missing/empty sha is never "referenced" (legacy entries without per-snapshot refs).
+  assert.equal(commitShaStillReferenced([{ commitSha: 'a' }], undefined), false)
+  assert.equal(commitShaStillReferenced([{}, null], 'a'), false)
+})
+
+test('checkAndPrune keeps a shared commitSha live for a retained sibling when evicting an older entry', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(
+      join(tmpdir(), 'deepcode-snapshot-shared-sha-'),
+    )
+
+    // A big UNIQUE older snapshot (the bulk to reclaim). Incompressible content
+    // (random hex) so the object store is genuinely large after git zlib —
+    // `'x'.repeat(n)` would compress to almost nothing and never exceed the cap.
+    await writeFile(join(workspaceRoot, 'large.txt'), randomBytes(400_000).toString('hex'))
+    const big = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-big',
+      phase: 'post',
+    })
+    // ... and a small snapshot whose commitSha we will share across two entries.
+    await writeFile(join(workspaceRoot, 'large.txt'), 'small\n')
+    const shared = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-shared',
+      phase: 'post',
+    })
+
+    const store = resolveSnapshotStore({ workspaceRoot })
+    const entries = await readManifest(store.manifestPath)
+    const bigEntry = entries.find(entry => entry.commitSha === big.commitSha)
+    const sharedEntry = entries.find(entry => entry.commitSha === shared.commitSha)
+
+    // Two manifest entries carrying the SAME commitSha (commit-tree is
+    // deterministic, so an identical tree+message+second collides). The older
+    // sibling is evicted first; the newer must remain restoreable. Timestamps
+    // force the eviction order oldest -> newest.
+    const olderShared = { ...sharedEntry, turnId: 'turn-shared-old', timestamp: 1 }
+    const middleBig = { ...bigEntry, timestamp: 2 }
+    const newerShared = { ...sharedEntry, turnId: 'turn-shared-new', timestamp: 3 }
+    await writeFile(
+      store.manifestPath,
+      `${JSON.stringify([olderShared, middleBig, newerShared], null, 2)}\n`,
+    )
+
+    // A cap above the store baseline (git dir + small manifest, a few tens of KB)
+    // but well below the current size (the big object dominates): the loop evicts
+    // the older shared entry and the big object, then stops — leaving the newer
+    // shared sibling listed. A quarter of the current size sits comfortably in
+    // that band.
+    const beforeBytes = await getSnapshotStoreSize(store.storePath)
+    const result = await checkAndPrune({
+      workspaceRoot,
+      capBytes: Math.floor(beforeBytes / 4),
+    })
+
+    const remaining = await listSnapshots({ workspaceRoot, limit: 10 })
+    const survivor = remaining.find(entry => entry.turnId === 'turn-shared-new')
+    assert.ok(survivor, 'the newer shared-sha sibling must remain listed')
+    assert.equal(
+      remaining.some(entry => entry.turnId === 'turn-shared-old'),
+      false,
+      'the older shared-sha sibling was evicted from the manifest',
+    )
+    assert.ok(result.prunedCount >= 1)
+
+    // The shared commit object survived the older sibling's eviction ...
+    assert.equal(
+      await gitObjectExists(store, workspaceRoot, survivor.commitSha),
+      true,
+      'the shared commit object must not be GC-ed out from under the survivor',
+    )
+    // ... and its ref still exists, so the survivor restores cleanly (the bug
+    // threw "failed to unpack tree object" here).
+    const restored = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: survivor.commitSha,
+    })
+    assert.equal(restored.snapshotId, survivor.commitSha)
+    assert.equal(readFileSync(join(workspaceRoot, 'large.txt'), 'utf8'), 'small\n')
   })
 })
 
@@ -1381,6 +1478,83 @@ test('restoreSnapshot prunes a self-hiding .gitignore chain deeper than any fixe
   })
 })
 
+test('restoreSnapshot does not report a surviving turn-created nested git repo as removed', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-nestedrepo-'))
+    await writeFile(join(workspaceRoot, 'app.js'), 'orig\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-nested-repo',
+      phase: 'pre',
+    })
+    // the turn creates a plain junk file AND an untracked nested git repo.
+    await writeFile(join(workspaceRoot, 'junk.txt'), 'remove me\n')
+    await mkdir(join(workspaceRoot, 'nested'))
+    runGit(['init'], join(workspaceRoot, 'nested'))
+    await writeFile(join(workspaceRoot, 'nested', 'inner.txt'), 'inner\n')
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    // `clean -fd` removes the plain junk file but REFUSES to delete the nested
+    // repo, so it survives on disk...
+    assert.equal(existsSync(join(workspaceRoot, 'junk.txt')), false)
+    assert.equal(existsSync(join(workspaceRoot, 'nested', 'inner.txt')), true)
+    // ...and therefore must NOT be reported as an affected (removed) file, while
+    // the file that WAS removed still is.
+    assert.ok(result.affectedFiles.includes('junk.txt'))
+    assert.equal(
+      result.affectedFiles.some(path => path.replace(/\/+$/, '') === 'nested'),
+      false,
+      'a nested repo clean refused to delete must not be reported as removed',
+    )
+  })
+})
+
+test('restoreSnapshot reports (not silently bulldozes) a nested repo under a blocking dir', async () => {
+  await withDeepCodeHome(async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-blockdir-'))
+    // the snapshot has a FILE named `lib`
+    await writeFile(join(workspaceRoot, 'lib'), 'snapshot lib content\n')
+    await writeFile(join(workspaceRoot, 'keep.txt'), 'keep\n')
+    const snapshot = await createSnapshot({
+      workspaceRoot,
+      turnId: 'turn-blockdir',
+      phase: 'pre',
+    })
+    // the turn replaces the FILE `lib` with a DIRECTORY whose ONLY content is an
+    // embedded git repo one level down (lib/myrepo/.git) carrying uncommitted work.
+    // `ls-files --killed` traversal stops at that nested .git, so the blocking dir
+    // is reported by NO killed/others listing — yet `checkout-index -f` would still
+    // recursively bulldoze it to write the snapshot blob.
+    await rm(join(workspaceRoot, 'lib'))
+    await mkdir(join(workspaceRoot, 'lib', 'myrepo'), { recursive: true })
+    runGit(['init'], join(workspaceRoot, 'lib', 'myrepo'))
+    await writeFile(
+      join(workspaceRoot, 'lib', 'myrepo', 'work.txt'),
+      'PRECIOUS UNCOMMITTED WORK\n',
+    )
+
+    const result = await restoreSnapshot({
+      workspaceRoot,
+      snapshotId: snapshot.commitSha,
+    })
+
+    // the snapshot file is restored over the (now removed) directory
+    assert.equal(statSync(join(workspaceRoot, 'lib')).isFile(), true)
+    assert.equal(readFileSync(join(workspaceRoot, 'lib'), 'utf8'), 'snapshot lib content\n')
+    assert.equal(existsSync(join(workspaceRoot, 'lib', 'myrepo')), false)
+    // the destruction is SURFACED (as the removed directory) — not silent. Before
+    // the fix, affectedFiles reported only `lib`, hiding the nested-repo loss.
+    assert.ok(
+      result.affectedFiles.includes('lib/'),
+      `removed blocking dir must be reported; got ${JSON.stringify(result.affectedFiles)}`,
+    )
+  })
+})
+
 test('restoreSnapshot reports non-ASCII affected filenames intact (not C-quoted)', async () => {
   await withDeepCodeHome(async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'deepcode-restore-cjk-'))
@@ -1555,6 +1729,76 @@ test('revert_turn tool is registered and marked destructive', () => {
   assert.match(toolSource, /name:\s*'revert_turn'/)
   assert.match(toolSource, /isDestructive\([^)]*\)\s*\{\s*return true/)
   assert.match(registrySource, /RevertTurnTool/)
+})
+
+test('reconcileRemovedFiles keeps only paths clean actually deleted (no surviving false-positive)', async () => {
+  const { reconcileRemovedFiles } = await import(
+    '../src/services/snapshot/reconcileRemovedFiles.mjs'
+  )
+  // `nested/` survived (a nested repo clean refused to delete); the rest are gone.
+  const survivors = new Set(['nested/'])
+  const exists = path => survivors.has(path)
+  assert.deepEqual(
+    reconcileRemovedFiles(
+      ['build/.gitignore', 'junk.txt', 'nested/', 'build/hidden.txt', 'nested/'],
+      exists,
+    ),
+    ['build/.gitignore', 'junk.txt', 'build/hidden.txt'],
+  )
+  // happy path: every frontier path removed -> the whole set passes through.
+  assert.deepEqual(
+    reconcileRemovedFiles(['a.txt', 'b/c.txt'], () => false),
+    ['a.txt', 'b/c.txt'],
+  )
+})
+
+test('resolveBlockingDirConflicts rm -rfs only candidate paths that are directories', async () => {
+  const { resolveBlockingDirConflicts } = await import(
+    '../src/services/snapshot/blockingDirConflicts.mjs'
+  )
+  // `lib` is a directory (blocks a snapshot blob), `mod.txt` is a plain file,
+  // `gone` was deleted by the turn (ENOENT), `link` is a symlink (NOT followed).
+  const dirs = new Set(['/ws/lib'])
+  const removed = []
+  const result = await resolveBlockingDirConflicts(
+    '/ws',
+    ['mod.txt', 'lib', 'gone', 'link'],
+    {
+      lstat: async absPath => {
+        if (absPath === '/ws/gone') throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+        return {
+          isDirectory: () => dirs.has(absPath),
+        }
+      },
+      rm: async (absPath, opts) => {
+        assert.equal(opts.recursive, true)
+        assert.equal(opts.force, true)
+        removed.push(absPath)
+      },
+    },
+  )
+  // only the directory is rm'd, and it is reported as `dir/`
+  assert.deepEqual(removed, ['/ws/lib'])
+  assert.deepEqual(result, ['lib/'])
+})
+
+test('resolveBlockingDirConflicts is a no-op when no candidate is a directory', async () => {
+  const { resolveBlockingDirConflicts } = await import(
+    '../src/services/snapshot/blockingDirConflicts.mjs'
+  )
+  let rmCalls = 0
+  const result = await resolveBlockingDirConflicts(
+    '/ws',
+    ['a.txt', 'b/c.txt'],
+    {
+      lstat: async () => ({ isDirectory: () => false }),
+      rm: async () => {
+        rmCalls++
+      },
+    },
+  )
+  assert.deepEqual(result, [])
+  assert.equal(rmCalls, 0)
 })
 
 async function withDeepCodeHome(callback) {
