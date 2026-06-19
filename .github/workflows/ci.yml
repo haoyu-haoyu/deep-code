@@ -148,6 +148,7 @@ jobs:
             test/gitdiff-header.test.mjs \
             test/settings-source-order.test.mjs \
             test/permission-rule-classify.test.mjs \
+            test/permission-precedence.test.mjs \
             test/edit-delete-occurrences.test.mjs \
             test/edit-quote-variant-underreplace.test.mjs \
             test/reconcile-patch-edits.test.mjs \
