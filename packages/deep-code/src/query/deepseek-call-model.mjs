@@ -7,7 +7,7 @@ import {
   resolveRuntimeModelProvider,
 } from '../services/providers/runtime-provider.mjs'
 import { omitUndefined } from '../utils/omitUndefined.mjs'
-import { AUTO_MODEL_SETTING } from '../utils/model/autoModelSetting.mjs'
+import { isAutoModelSetting } from '../utils/model/autoModelSetting.mjs'
 import {
   recordDeepSeekCacheUsage,
   resolveDeepSeekCacheStatsPath,
@@ -364,7 +364,9 @@ export function resolveDeepSeekRuntimeModel(model, { provider } = {}) {
   // literal model name — fall back to the provider's configured default
   // (undefined → buildRequest uses its resolvedDefaultModel).
   if (provider && !isDeepSeekProvider(provider)) {
-    return hasModel && model !== AUTO_MODEL_SETTING ? model : undefined
+    // isAutoModelSetting is case/whitespace-insensitive (matches the dropAuto
+    // contract), so 'AUTO'/'Auto'/' auto ' can't leak as a literal model name.
+    return hasModel && !isAutoModelSetting(model) ? model : undefined
   }
 
   // DeepSeek (and the no-provider default): only a deepseek-* model passes
@@ -373,7 +375,13 @@ export function resolveDeepSeekRuntimeModel(model, { provider } = {}) {
   if (hasModel && model.startsWith('deepseek')) {
     return model
   }
-  return process.env.DEEPSEEK_MODEL ?? process.env.DEEPCODE_MODEL
+  // Drop a stray 'auto' from the env fallback too (DEEPSEEK_MODEL=auto is the
+  // exact misconfig the guard neutralizes). Returning undefined keeps the common
+  // path byte-identical — buildDeepSeekRequest substitutes the concrete default —
+  // and stops the phantom 'auto' from reaching the runtimeModel metadata sinks
+  // (message model display, cache-warmth record key, max-tokens model gate).
+  const envModel = process.env.DEEPSEEK_MODEL ?? process.env.DEEPCODE_MODEL
+  return isAutoModelSetting(envModel) ? undefined : envModel
 }
 
 export function resolveDeepSeekReasoningEffort(effortValue) {
