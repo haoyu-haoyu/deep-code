@@ -29,6 +29,7 @@ import { applyWarmModelTieBreak } from '../autoMode/warmModelTieBreak.mjs'
 // internally for non-streaming collection. Exposed externally via the
 // local re-export at the bottom of this file.
 import { createDeepSeekCallModel } from '../../query/deepseek-call-model.mjs'
+import { resolveAutoRouteThinking } from '../providers/resolveDeepSeekThinkingMode.mjs'
 import {
   RuntimeAbortError,
   RuntimeRequestError,
@@ -921,9 +922,13 @@ function createAutoRouteProvider(
     streamQuery(context: Record<string, unknown> = {}) {
       return baseProvider.streamQuery({
         ...context,
-        thinking: providerSupports(baseProvider, 'extended_thinking')
-          ? route.thinking
-          : undefined,
+        // An explicit caller disable (context.thinking==='disabled') wins over the
+        // auto-router's task-based choice; otherwise defer to the router as before.
+        thinking: resolveAutoRouteThinking(
+          context.thinking,
+          route.thinking,
+          providerSupports(baseProvider, 'extended_thinking'),
+        ),
         reasoningEffort: providerSupports(baseProvider, 'reasoning_effort')
           ? route.reasoningEffort
           : undefined,
