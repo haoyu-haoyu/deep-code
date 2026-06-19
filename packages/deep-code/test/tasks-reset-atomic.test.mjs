@@ -7,6 +7,7 @@ import { test } from 'node:test'
 
 import { shouldResetCompletedTaskList } from '../src/utils/task/resetCompletedGuard.mjs'
 import { nextHighWaterMark } from '../src/utils/task/highWaterMark.mjs'
+import { removeTaskReference } from '../src/utils/task/removeTaskReference.mjs'
 import { atomicWriteFile } from '../src/utils/atomicWrite.mjs'
 
 // ---------------------------------------------------------------------------
@@ -244,4 +245,98 @@ test('DIFFERENTIAL: only a LOCKED read-modify-write keeps the HWM monotonic (the
   assert.equal(await run({ locked: false }), 3)
   // THE FIX: serialized read-modify-write → the bump is monotonic, 9 survives.
   assert.equal(await run({ locked: true }), 9)
+})
+
+// ---------------------------------------------------------------------------
+// (MED) task dependency-array lost update: deleteTask's reference cascade AND
+// blockTask each used to read a lock-free snapshot then overwrite the WHOLE
+// blocks/blockedBy array, clobbering a concurrent writer's just-added edge. The
+// fix re-derives on the LIVE value INSIDE the per-task lock (mutateTaskUnderLock)
+// via the removeTaskReference SSOT. These model the two interleaves.
+// ---------------------------------------------------------------------------
+
+test('removeTaskReference: removes the id from both arrays + reports changed', () => {
+  assert.deepEqual(removeTaskReference({ blocks: ['a', 'D'], blockedBy: ['D'] }, 'D'), {
+    blocks: ['a'],
+    blockedBy: [],
+    changed: true,
+  })
+  // absent in both → unchanged
+  assert.deepEqual(removeTaskReference({ blocks: ['a'], blockedBy: ['b'] }, 'D'), {
+    blocks: ['a'],
+    blockedBy: ['b'],
+    changed: false,
+  })
+  // present in only one side still counts as changed
+  assert.equal(removeTaskReference({ blocks: ['D'], blockedBy: [] }, 'D').changed, true)
+  assert.equal(removeTaskReference({ blocks: [], blockedBy: ['D'] }, 'D').changed, true)
+  // input not mutated
+  const input = { blocks: ['D'], blockedBy: ['D'] }
+  removeTaskReference(input, 'D')
+  assert.deepEqual(input, { blocks: ['D'], blockedBy: ['D'] })
+})
+
+// a tiny FIFO async mutex, like the per-task lock
+function makeLock() {
+  let tail = Promise.resolve()
+  return () => {
+    let release
+    const acquired = tail.then(() => {})
+    tail = new Promise(r => (release = r))
+    return acquired.then(() => release)
+  }
+}
+
+test('DIFFERENTIAL: deleteTask cascade preserves a concurrent blocker only when it re-derives UNDER the lock', async () => {
+  // X.blockedBy = ['D']; D is being deleted; a concurrent blockTask appends 'Bnew'.
+  async function run({ underLock }) {
+    const store = { blockedBy: ['D'] }
+    const lock = makeLock()
+    let resolveBDone
+    const bDone = new Promise(r => (resolveBDone = r))
+
+    // A = deleteTask's cascade on X
+    const a = async () => {
+      const snapshot = { blocks: [], blockedBy: [...store.blockedBy] } // lock-free snapshot
+      await bDone // B's locked append lands between A's snapshot and A's write
+      const rel = await lock()
+      // BUG: filter the STALE snapshot and write it wholesale.
+      // FIX: filter the LIVE value re-read under the lock.
+      const src = underLock ? { blocks: [], blockedBy: [...store.blockedBy] } : snapshot
+      const { blockedBy, changed } = removeTaskReference(src, 'D')
+      if (changed) store.blockedBy = blockedBy
+      rel()
+    }
+    // B = concurrent blockTask appending a new blocker to X
+    const b = async () => {
+      const rel = await lock()
+      if (!store.blockedBy.includes('Bnew')) store.blockedBy = [...store.blockedBy, 'Bnew']
+      rel()
+      resolveBDone()
+    }
+    await Promise.all([a(), b()])
+    return store.blockedBy
+  }
+
+  assert.deepEqual(await run({ underLock: false }), [], 'BUG: stale snapshot overwrite loses Bnew')
+  assert.deepEqual(await run({ underLock: true }), ['Bnew'], 'FIX: D removed, Bnew preserved')
+})
+
+test('DIFFERENTIAL: two concurrent blockTask appends both survive only when each appends to the LIVE value', async () => {
+  async function run({ underLock }) {
+    const store = { blockedBy: [] }
+    const lock = makeLock()
+    const append = id => async () => {
+      const snapshot = [...store.blockedBy] // lock-free read
+      const rel = await lock()
+      const base = underLock ? store.blockedBy : snapshot
+      if (!base.includes(id)) store.blockedBy = [...base, id]
+      rel()
+    }
+    await Promise.all([append('A')(), append('C')()])
+    return [...store.blockedBy].sort()
+  }
+
+  assert.equal((await run({ underLock: false })).length, 1, 'BUG: one of the two edges is lost')
+  assert.deepEqual(await run({ underLock: true }), ['A', 'C'], 'FIX: both edges survive')
 })
