@@ -323,6 +323,7 @@ function settingsStubSource() {
     export function getInitialSettings() { return mergedSettings }
     export function getSettingsRootPathForSource(source) { return roots[source] }
     export function getSettingsFilePathForSource(source) { return roots[source] ? roots[source] + '/settings.json' : undefined }
+    export function getLegacySettingsFilePathForSource(source) { return roots[source] ? roots[source] + '/legacy-settings.json' : undefined }
     export function updateSettingsForSource(source, patch) {
       settingsBySource[source] = mergeSettings(settingsBySource[source], patch)
       __settingsUpdates.push({ source, patch })
