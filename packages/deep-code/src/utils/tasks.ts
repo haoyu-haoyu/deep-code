@@ -6,6 +6,7 @@ import { uniq } from './array.js'
 import { atomicWriteFile } from './atomicWrite.mjs'
 import { shouldResetCompletedTaskList } from './task/resetCompletedGuard.mjs'
 import { nextHighWaterMark } from './task/highWaterMark.mjs'
+import { removeTaskReference } from './task/removeTaskReference.mjs'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir, getTeamsDir, isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
@@ -483,6 +484,52 @@ export async function updateTask(
   }
 }
 
+/**
+ * Read-modify-write a task UNDER its per-task lock: re-reads the LIVE task inside
+ * the lock and applies `transform(existing)`, so an update derived from the
+ * current on-disk value can never clobber a concurrent writer. Unlike updateTask
+ * — which writes a caller-precomputed `Partial<Task>` that may have been derived
+ * from a stale snapshot — the transform sees the freshly-read value. Returns null
+ * if the task is gone; a transform returning null is a no-op (no write).
+ *
+ * SSOT for the two writers of the blocks/blockedBy dependency arrays (deleteTask's
+ * reference cascade and blockTask), which each used to read a lock-free snapshot
+ * and overwrite the WHOLE array — silently losing an edge a concurrent writer
+ * added in the gap. Mirrors bumpHighWaterMark's re-read-under-lock (the same
+ * read-modify-write-across-callers hazard this file already fixed for the HWM).
+ */
+async function mutateTaskUnderLock(
+  taskListId: string,
+  taskId: string,
+  transform: (existing: Task) => Partial<Omit<Task, 'id'>> | null,
+): Promise<Task | null> {
+  const path = getTaskPath(taskListId, taskId)
+
+  // Existence check before locking — proper-lockfile throws on a missing file.
+  const before = await getTask(taskListId, taskId)
+  if (!before) {
+    return null
+  }
+
+  let release: (() => Promise<void>) | undefined
+  try {
+    release = await lockfile.lock(path, LOCK_OPTIONS)
+    // Re-read the LIVE value under the lock — this is what makes the update
+    // immune to a concurrent writer (the snapshot is only used to enumerate).
+    const existing = await getTask(taskListId, taskId)
+    if (!existing) {
+      return null // raced delete between the pre-check and the lock
+    }
+    const updates = transform(existing)
+    if (!updates) {
+      return existing // transform decided nothing to write
+    }
+    return await updateTaskUnsafe(taskListId, taskId, updates)
+  } finally {
+    await release?.()
+  }
+}
+
 export async function deleteTask(
   taskListId: string,
   taskId: string,
@@ -510,20 +557,24 @@ export async function deleteTask(
       throw e
     }
 
-    // Remove references to this task from other tasks
+    // Remove references to this task from other tasks. Enumerate candidates from
+    // a snapshot (and skip the lock entirely for tasks that don't reference it),
+    // but re-derive the filtered arrays on the LIVE value INSIDE each task's lock
+    // via removeTaskReference — so a concurrent blockTask's just-added edge isn't
+    // clobbered by this stale snapshot (the lost-update the snapshot used to write
+    // wholesale).
     const allTasks = await listTasks(taskListId)
     for (const task of allTasks) {
-      const newBlocks = task.blocks.filter(id => id !== taskId)
-      const newBlockedBy = task.blockedBy.filter(id => id !== taskId)
-      if (
-        newBlocks.length !== task.blocks.length ||
-        newBlockedBy.length !== task.blockedBy.length
-      ) {
-        await updateTask(taskListId, task.id, {
-          blocks: newBlocks,
-          blockedBy: newBlockedBy,
-        })
+      if (!task.blocks.includes(taskId) && !task.blockedBy.includes(taskId)) {
+        continue
       }
+      await mutateTaskUnderLock(taskListId, task.id, existing => {
+        const { blocks, blockedBy, changed } = removeTaskReference(
+          existing,
+          taskId,
+        )
+        return changed ? { blocks, blockedBy } : null
+      })
     }
 
     notifyTasksUpdated()
@@ -561,19 +612,23 @@ export async function blockTask(
     return false
   }
 
+  // Append each edge UNDER the target task's lock, re-deriving from the LIVE
+  // array (not the snapshot above) so two concurrent blockTask calls on the same
+  // task can't each read the stale array and overwrite the other's added edge.
+  // The snapshot is used only for the existence check.
   // Update source task: A blocks B
-  if (!fromTask.blocks.includes(toTaskId)) {
-    await updateTask(taskListId, fromTaskId, {
-      blocks: [...fromTask.blocks, toTaskId],
-    })
-  }
+  await mutateTaskUnderLock(taskListId, fromTaskId, existing =>
+    existing.blocks.includes(toTaskId)
+      ? null
+      : { blocks: [...existing.blocks, toTaskId] },
+  )
 
   // Update target task: B is blockedBy A
-  if (!toTask.blockedBy.includes(fromTaskId)) {
-    await updateTask(taskListId, toTaskId, {
-      blockedBy: [...toTask.blockedBy, fromTaskId],
-    })
-  }
+  await mutateTaskUnderLock(taskListId, toTaskId, existing =>
+    existing.blockedBy.includes(fromTaskId)
+      ? null
+      : { blockedBy: [...existing.blockedBy, fromTaskId] },
+  )
 
   return true
 }
