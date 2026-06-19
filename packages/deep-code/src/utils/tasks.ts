@@ -7,6 +7,7 @@ import { atomicWriteFile } from './atomicWrite.mjs'
 import { shouldResetCompletedTaskList } from './task/resetCompletedGuard.mjs'
 import { nextHighWaterMark } from './task/highWaterMark.mjs'
 import { removeTaskReference } from './task/removeTaskReference.mjs'
+import { wouldCreateBlockCycle } from './task/wouldCreateBlockCycle.mjs'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir, getTeamsDir, isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
@@ -604,11 +605,26 @@ export async function blockTask(
   fromTaskId: string,
   toTaskId: string,
 ): Promise<boolean> {
-  const [fromTask, toTask] = await Promise.all([
-    getTask(taskListId, fromTaskId),
-    getTask(taskListId, toTaskId),
-  ])
+  // A task can't wait on itself — reject the self-edge outright (race-free, and
+  // it skips reading the list for the obvious deadlock).
+  if (fromTaskId === toTaskId) {
+    return false
+  }
+
+  // One read serves both existence and the cycle check. claimTask treats any
+  // non-completed blocker as unresolved, so a cycle in the waits-for graph is a
+  // permanent deadlock; refuse an edge that would close one. (Best-effort vs a
+  // concurrent edge add — like the deleteTask cascade, we deliberately avoid a
+  // task-list-wide lock to not deadlock against the per-task locks; the
+  // self-edge and any already-present back-edge are caught here regardless.)
+  const all = await listTasks(taskListId)
+  const tasksById = new Map(all.map(t => [t.id, t]))
+  const fromTask = tasksById.get(fromTaskId)
+  const toTask = tasksById.get(toTaskId)
   if (!fromTask || !toTask) {
+    return false
+  }
+  if (wouldCreateBlockCycle(fromTaskId, toTaskId, tasksById)) {
     return false
   }
 
