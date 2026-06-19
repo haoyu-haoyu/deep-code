@@ -5,6 +5,7 @@ import { getIsNonInteractiveSession, getSessionId } from '../bootstrap/state.js'
 import { uniq } from './array.js'
 import { atomicWriteFile } from './atomicWrite.mjs'
 import { shouldResetCompletedTaskList } from './task/resetCompletedGuard.mjs'
+import { nextHighWaterMark } from './task/highWaterMark.mjs'
 import { logForDebugging } from './debug.js'
 import { getClaudeConfigHomeDir, getTeamsDir, isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
@@ -133,6 +134,38 @@ async function writeHighWaterMark(
   await atomicWriteFile(path, String(value))
 }
 
+/**
+ * Raise the high water mark to `candidate` if it is higher — re-reading the HWM
+ * UNDER the list lock so the read-then-decide-then-write is one atomic critical
+ * section. The HWM is the sole id-reuse guard after a task file is unlinked, and
+ * writeHighWaterMark being atomic only protects a SINGLE write from torn reads;
+ * it cannot make a read-modify-write atomic across callers. Without the lock, a
+ * deleteTask reading a stale HWM could clobber a higher mark (just written by a
+ * concurrent reset) back down below an already-issued id → silent id reuse.
+ * Self-acquires the lock, so it is safe to call from an unlocked context
+ * (deleteTask); callers ALREADY holding the list lock (resetTaskListLocked) must
+ * instead use nextHighWaterMark inline — proper-lockfile is not reentrant.
+ */
+async function bumpHighWaterMark(
+  taskListId: string,
+  candidate: number,
+): Promise<void> {
+  const lockPath = await ensureTaskListLockFile(taskListId)
+  let release: (() => Promise<void>) | undefined
+  try {
+    release = await lockfile.lock(lockPath, LOCK_OPTIONS)
+    const current = await readHighWaterMark(taskListId)
+    const next = nextHighWaterMark(current, candidate)
+    if (next !== null) {
+      await writeHighWaterMark(taskListId, next)
+    }
+  } finally {
+    if (release) {
+      await release()
+    }
+  }
+}
+
 export function isTodoV2Enabled(): boolean {
   // Force-enable tasks in non-interactive mode (e.g. SDK users who want Task tools over TodoWrite)
   if (isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_TASKS)) {
@@ -176,13 +209,14 @@ async function resetTaskListLocked(
   dir: string,
   taskListId: string,
 ): Promise<void> {
-  // Find the current highest ID and save it to the high water mark file
+  // Find the current highest ID and raise the high water mark to it (monotonic,
+  // via the same nextHighWaterMark decision deleteTask uses). Runs under the
+  // caller-held list lock, so the read-then-write is already serialized.
   const currentHighest = await findHighestTaskIdFromFiles(taskListId)
-  if (currentHighest > 0) {
-    const existingMark = await readHighWaterMark(taskListId)
-    if (currentHighest > existingMark) {
-      await writeHighWaterMark(taskListId, currentHighest)
-    }
+  const existingMark = await readHighWaterMark(taskListId)
+  const nextMark = nextHighWaterMark(existingMark, currentHighest)
+  if (nextMark !== null) {
+    await writeHighWaterMark(taskListId, nextMark)
   }
 
   // Delete all task files
@@ -456,13 +490,13 @@ export async function deleteTask(
   const path = getTaskPath(taskListId, taskId)
 
   try {
-    // Update high water mark before deleting to prevent ID reuse
+    // Raise the high water mark to this id BEFORE deleting, so a post-delete
+    // createTask can't reuse it. The bump re-reads the HWM under the list lock —
+    // an unlocked read-modify-write here could lose a concurrent reset's higher
+    // mark and silently re-enable id reuse (collides with a still-referenced id).
     const numericId = parseInt(taskId, 10)
     if (!isNaN(numericId)) {
-      const currentMark = await readHighWaterMark(taskListId)
-      if (numericId > currentMark) {
-        await writeHighWaterMark(taskListId, numericId)
-      }
+      await bumpHighWaterMark(taskListId, numericId)
     }
 
     // Delete the task file
