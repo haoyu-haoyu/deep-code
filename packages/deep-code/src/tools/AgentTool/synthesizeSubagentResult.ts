@@ -6,13 +6,19 @@ import {
 // Message[] via CacheSafeParams (avoids a direct, raw-tsc-unresolvable
 // ../../types/message.js import site).
 type Message = CacheSafeParams['forkContextMessages'][number]
+import type { AgentId } from '../../types/ids.js'
 import { createUserMessage } from '../../utils/messages.js'
+import {
+  flushSessionStorage,
+  getAgentTranscript,
+} from '../../utils/sessionStorage.js'
 import {
   SUBAGENT_SYNTHESIS_PROMPT,
   parseSynthesisOutput,
   extractFilesTouched,
   buildSubagentSynthesisBlock,
 } from './agentSynthesis.mjs'
+import { filterIncompleteToolCalls } from './runAgent.js'
 
 // Optional LLM distillation of a FINISHED subagent transcript into a compact
 // {findings, filesTouched, decisions, followups} block, used as the parent-visible
@@ -30,10 +36,12 @@ const SYNTHESIS_TIMEOUT_MS = 30_000
 
 export async function synthesizeSubagentResult({
   agentMessages,
+  agentId,
   cacheSafeParams,
   abortSignal,
 }: {
   agentMessages: Message[]
+  agentId: AgentId
   cacheSafeParams: CacheSafeParams
   abortSignal?: AbortSignal
 }): Promise<string | null> {
@@ -47,13 +55,36 @@ export async function synthesizeSubagentResult({
   }
 
   try {
+    // Build the fork's prefix from the PERSISTED sidechain transcript — the same
+    // source startAgentSummarization uses — NOT the yielded-only `agentMessages`.
+    // `agentMessages` is the in-memory array of messages YIELDED by runAgent, so it
+    // starts at the subagent's first ASSISTANT turn and omits `initialMessages` (the
+    // task-prompt user message + any inherited parent context). Forking on it neither
+    // aligns with the warm cache prefix (the ~93% hit this feature claims — the cached
+    // prefix bytes ARE those dropped initialMessages) nor lets the model see the task
+    // it is summarizing. The transcript on disk (recordSidechainTranscript) has the
+    // full prefix. (capturedCacheSafeParams.forkContextMessages can't be reused — it
+    // is `initialMessages` by reference, which runAgent empties in its finally.)
+    //
+    // FLUSH FIRST: transcript writes are enqueued fire-and-forget (appendEntry does
+    // `void enqueueWrite`, drained on a 100ms timer). Synthesis runs synchronously
+    // right after the sync iterator drains, so without a barrier getAgentTranscript
+    // would race the queue and read a PARTIAL transcript (missing the final turns) —
+    // or null for a fast agent. (startAgentSummarization mirrors this read but on a
+    // 30s timer, so it never needs the flush; synthesis does.) flushSessionStorage
+    // force-drains the queues, so a flush failure still lands on the null fallback.
+    await flushSessionStorage()
+    const transcript = await getAgentTranscript(agentId)
+    if (!transcript) return null
+    const forkContextMessages = filterIncompleteToolCalls(transcript.messages)
+
     // Reuse the subagent's cache-safe params (system/tools/model/thinking) but swap
     // forkContextMessages to the FINISHED transcript, and force low effort additively
     // (preserve the rest of the app state) via the getAppState override.
     const baseGetAppState = cacheSafeParams.toolUseContext.getAppState
     const forkParams: CacheSafeParams = {
       ...cacheSafeParams,
-      forkContextMessages: agentMessages,
+      forkContextMessages,
     }
 
     const result = await runForkedAgent({

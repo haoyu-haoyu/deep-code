@@ -1197,6 +1197,7 @@ export const AgentTool = buildTool({
         if (synthesisEnabled && capturedCacheSafeParams && agentResult.totalToolUseCount >= SUBAGENT_SYNTHESIS_MIN_TOOL_USES) {
           const synthesisBlock = await synthesizeSubagentResult({
             agentMessages,
+            agentId: syncAgentId,
             cacheSafeParams: capturedCacheSafeParams,
             abortSignal: toolUseContext.abortController.signal
           });
