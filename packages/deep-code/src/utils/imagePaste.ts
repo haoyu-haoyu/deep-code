@@ -10,6 +10,7 @@ import {
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
 import { getImageProcessor } from '../tools/FileReadTool/imageProcessor.js'
 import { logForDebugging } from './debug.js'
+import { isApiSupportedImageFormat } from './imageFormatSupport.mjs'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import {
@@ -385,14 +386,21 @@ export async function tryReadImageFromPath(
     return null
   }
 
-  // BMP is not supported by the API — convert to PNG via Sharp.
-  if (
-    imageBuffer.length >= 2 &&
-    imageBuffer[0] === 0x42 &&
-    imageBuffer[1] === 0x4d
-  ) {
-    const sharp = await getImageProcessor()
-    imageBuffer = await sharp(imageBuffer).png().toBuffer()
+  // The API only decodes png/jpeg/gif/webp. A file whose true bytes are another
+  // format — BMP, TIFF, HEIC, AVIF, SVG — is reachable here because the paste gate
+  // is filename-extension-only (a `photo.png` that is really HEIC passes). Without
+  // a transcode the under-cap path returns the original bytes and they get a
+  // wrong/defaulted media_type (image/png over HEIC) that the API 400s on. So
+  // transcode any non-API-supported format to PNG via Sharp (sharp/libvips decodes
+  // BMP/TIFF/HEIC/AVIF/SVG); if it can't, the image is unusable — skip the paste.
+  if (!isApiSupportedImageFormat(imageBuffer)) {
+    try {
+      const sharp = await getImageProcessor()
+      imageBuffer = await sharp(imageBuffer).png().toBuffer()
+    } catch (e) {
+      logError(e as Error)
+      return null
+    }
   }
 
   // Resize if needed to stay under 5MB API limit
