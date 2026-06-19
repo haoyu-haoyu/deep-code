@@ -8,6 +8,7 @@
 import type { AppState } from '../../state/AppState.js'
 import { logForDebugging } from '../debug.js'
 import { addFunctionHook } from '../hooks/sessionHooks.js'
+import { escapeGitignorePattern } from '../permissions/escapeGitignorePattern.mjs'
 import { applyPermissionUpdate } from '../permissions/PermissionUpdate.js'
 import { jsonStringify } from '../slowOperations.js'
 import { getTeammateColor } from '../teammate.js'
@@ -49,10 +50,13 @@ export function initializeTeammateHooks(
 
     for (const allowedPath of teamFile.teamAllowedPaths) {
       // For absolute paths (starting with /), prepend one / to create //path/** pattern
-      // For relative paths, just use path/**
+      // For relative paths, just use path/**. Escape gitignore metacharacters in the
+      // real path first (same as createReadRuleSuggestion) so an `app/[id]`/`#x`/`!y`
+      // dir is not reinterpreted by ignore().add() — the trailing /** stays the glob.
+      const escapedPath = escapeGitignorePattern(allowedPath.path)
       const ruleContent = allowedPath.path.startsWith('/')
-        ? `/${allowedPath.path}/**`
-        : `${allowedPath.path}/**`
+        ? `/${escapedPath}/**`
+        : `${escapedPath}/**`
 
       logForDebugging(
         `[TeammateInit] Applying team permission: ${allowedPath.toolName} allowed in ${allowedPath.path} (rule: ${ruleContent})`,
