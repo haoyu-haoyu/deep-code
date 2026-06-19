@@ -141,6 +141,7 @@ jobs:
             test/task-cycle-detect.test.mjs \
             test/hook-if-condition-events.test.mjs \
             test/hook-output-blocks.test.mjs \
+            test/clamp-hook-chunk.test.mjs \
             test/hook-permission-aggregate.test.mjs \
             test/violation-feedback-tail.test.mjs \
             test/disk-shell-snapshot-cleanup.test.mjs \

@@ -16,13 +16,23 @@
  * the headless path blocked correctly. Routing both through this leaf keeps
  * them from diverging again.
  *
- * @param {{ status: number, json?: unknown, isAsync?: boolean }} input
- *   status  - the hook process exit code
- *   json    - the parsed (validated) hook stdout JSON, if any
- *   isAsync - whether `json` is an async hook response (default false)
+ * @param {{ status: number, json?: unknown, isAsync?: boolean, capExceeded?: boolean }} input
+ *   status      - the hook process exit code
+ *   json        - the parsed (validated) hook stdout JSON, if any
+ *   isAsync     - whether `json` is an async hook response (default false)
+ *   capExceeded - whether the hook was KILLED for blowing the output cap. Such a
+ *                 hook never cleanly emitted its decision (its exit-2 / block-JSON
+ *                 may have been cut off mid-stream), so the gated action must fail
+ *                 CLOSED — block it rather than let a truncated hook silently allow.
  * @returns {boolean} true when the gated action must be blocked
  */
-export function hookOutputBlocks({ status, json = null, isAsync = false }) {
+export function hookOutputBlocks({
+  status,
+  json = null,
+  isAsync = false,
+  capExceeded = false,
+}) {
+  if (capExceeded) return true
   if (isAsync) return false
   if (status === 2) return true
   return (

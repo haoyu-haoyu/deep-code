@@ -79,6 +79,24 @@ test('matches the executeHooksOutsideREPL formula for every non-async input', ()
   }
 })
 
+// --- a hook killed for blowing the output cap fails CLOSED (block) ---
+
+test('capExceeded blocks regardless of status/json/async (output-cap kill fails closed)', () => {
+  // A hook SIGTERMed for exceeding MAX_HOOK_OUTPUT_CHARS never cleanly emitted
+  // its decision — its exit-2 / decision:block may have been cut off mid-stream.
+  // It must NOT silently allow the gated action.
+  assert.equal(hookOutputBlocks({ status: 143, capExceeded: true }), true)
+  assert.equal(hookOutputBlocks({ status: 1, json: null, capExceeded: true }), true)
+  // capExceeded wins even over the async non-block short-circuit
+  assert.equal(
+    hookOutputBlocks({ status: 0, json: { async: true }, isAsync: true, capExceeded: true }),
+    true,
+  )
+  // a non-truncated hook is unaffected (default false)
+  assert.equal(hookOutputBlocks({ status: 0, capExceeded: false }), false)
+  assert.equal(hookOutputBlocks({ status: 0 }), false)
+})
+
 // --- exit 2 must beat a stdout validationError (the malformed-{ fail-open fix) ---
 
 test('exit code 2 blocks regardless of stdout parse outcome (json absent on validationError)', () => {
