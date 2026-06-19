@@ -2892,13 +2892,17 @@ test('createDeepCodeStablePrefix includes strict tool profile in cache-stable ma
     },
   }
 
+  // strictMode is the wire-faithful control (mirrors DEEPCODE_STRICT_TOOLS /
+  // buildDeepSeekRequest); toolSchemaOptions.strict is NOT a manifest channel —
+  // the wire overrides per-tool strict from resolveStrictToolNames, so the prefix
+  // does too.
   const flexible = await createDeepCodeStablePrefix({
     tools: [tool],
-    toolSchemaOptions: { strict: false },
+    strictMode: 'off',
   })
   const strict = await createDeepCodeStablePrefix({
     tools: [tool],
-    toolSchemaOptions: { strict: true },
+    strictMode: 'all',
   })
 
   assert.notEqual(flexible.prefixHash, strict.prefixHash)
@@ -3038,7 +3042,7 @@ test('createDeepCodeStablePrefix snapshots full CLI tool registry style schemas 
   })
   const strict = await createDeepCodeStablePrefix({
     tools: fullRegistryStyleTools,
-    toolSchemaOptions: { strict: true },
+    strictMode: 'all',
   })
 
   assert.equal(flexible.prefixHash, reordered.prefixHash)

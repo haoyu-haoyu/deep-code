@@ -19,7 +19,7 @@ import {
 } from '../../messages/deepseek-normalizer.mjs'
 import { cachedToolToDeepSeekFunctionSchema } from './deepseek-tool-manifest-cache.mjs'
 import { resolveStrictToolNames } from '../../tools/resolveStrictToolNames.mjs'
-import { resolveDeepCodeHarnessConfig } from '../../deepcode/harness-config.mjs'
+import { resolveStrictMode } from './resolveStrictMode.mjs'
 import {
   mapDeepSeekHttpError,
   isFlashDowngradeStrategy,
@@ -214,12 +214,7 @@ export async function buildDeepSeekRequest({
   // strictTools is honored for back-compat (true=all, false=off). 'off' (the
   // default when unset) yields an empty set → no per-tool strict and the base
   // URL is unchanged, so the common path stays byte-identical.
-  const strictMode =
-    strictTools === true
-      ? 'all'
-      : strictTools === false
-        ? 'off'
-        : resolveDeepCodeHarnessConfig(env).strictTools
+  const strictMode = resolveStrictMode({ strictTools, env })
   const strictToolNames = resolveStrictToolNames(strictMode, tools)
   const baseUrl =
     strictToolNames.size > 0
