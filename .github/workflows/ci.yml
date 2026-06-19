@@ -178,6 +178,7 @@ jobs:
             test/ssrf-blocked-address.test.mjs \
             test/image-format-support.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
+            test/elicitation-queue-remove.test.mjs \
             test/single-flight.test.mjs \
             test/preserve-quote-style.test.mjs \
             test/notebook-staleness.test.mjs \

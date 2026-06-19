@@ -12,6 +12,7 @@ import {
   executeNotificationHooks,
 } from '../../utils/hooks.js'
 import { logMCPDebug, logMCPError } from '../../utils/log.js'
+import { removeElicitationFromQueue } from '../../utils/mcp/removeElicitationFromQueue.mjs'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -112,12 +113,26 @@ export function registerElicitationHandler(
             : undefined
 
         const response = new Promise<ElicitResult>(resolve => {
+          // On abort, drop this request's stale dialog from the queue (nothing
+          // else removes it on the abort path — the REPL only slices on a user
+          // response), then resolve the request as cancelled.
           const onAbort = () => {
+            setAppState(prev => ({
+              ...prev,
+              elicitation: {
+                queue: removeElicitationFromQueue(
+                  prev.elicitation.queue,
+                  serverName,
+                  extra.requestId,
+                ),
+              },
+            }))
             resolve({ action: 'cancel' })
           }
 
           if (extra.signal.aborted) {
-            onAbort()
+            // Not enqueued yet — nothing to remove, just resolve as cancelled.
+            resolve({ action: 'cancel' })
             return
           }
 
