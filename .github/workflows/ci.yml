@@ -92,6 +92,7 @@ jobs:
             test/session-list.test.mjs \
             test/session-detail.test.mjs \
             test/session-resume-leaf.test.mjs \
+            test/session-chain-prune.test.mjs \
             test/p2-8-doctor.test.mjs \
             test/p2-9-workspace-slash.test.mjs \
             test/p2-10-i18n.test.mjs \
