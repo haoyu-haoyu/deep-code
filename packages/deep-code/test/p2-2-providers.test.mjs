@@ -8,7 +8,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { createDeepSeekCallModel } from '../src/query/deepseek-call-model.mjs'
-import { mapDeepSeekUsage } from '../src/services/providers/deepseek.mjs'
+import {
+  mapDeepSeekUsage,
+  mergeDeepSeekToolCallDelta,
+} from '../src/services/providers/deepseek.mjs'
 import {
   providerSupports,
 } from '../src/deepcode/provider-capabilities.mjs'
@@ -832,4 +835,41 @@ test('updateUsage carries reasoning_tokens but NEVER folds it into output_tokens
   assert.match(source, /reasoning_tokens:\s*total\.reasoning_tokens\s*\+\s*message\.reasoning_tokens/)
   // guard: reasoning_tokens must never appear on the same line as an output_tokens sum.
   assert.doesNotMatch(source, /output_tokens:[^\n]*reasoning_tokens/)
+})
+
+// --- mergeDeepSeekToolCallDelta: a missing tool-call id is synthesized (F10) ---
+
+test('mergeDeepSeekToolCallDelta synthesizes a stable fallback id when the gateway omits one', () => {
+  // A no-id gateway would otherwise leave id:undefined, which wedges the
+  // multi-turn loop (the tool_result can't correlate → DeepSeek 400).
+  let n = 0
+  const makeId = () => `fixed-${++n}`
+  const toolCalls = new Map()
+  const entry = mergeDeepSeekToolCallDelta(
+    toolCalls,
+    { index: 0, name: 'search', argumentsDelta: '{"q":' },
+    makeId,
+  )
+  assert.equal(entry.id, 'toolu_deepseek_fixed-1')
+  // a later delta for the SAME call keeps the synthesized id and accumulates args.
+  mergeDeepSeekToolCallDelta(toolCalls, { index: 0, argumentsDelta: '1}' }, makeId)
+  assert.equal(toolCalls.get(0).id, 'toolu_deepseek_fixed-1')
+  assert.equal(toolCalls.get(0).function.arguments, '{"q":1}')
+  assert.equal(n, 1, 'the id is synthesized once, not per delta')
+})
+
+test('mergeDeepSeekToolCallDelta uses a present id verbatim (conformant path byte-identical)', () => {
+  const makeId = () => 'should-not-be-used'
+  const toolCalls = new Map()
+  const entry = mergeDeepSeekToolCallDelta(
+    toolCalls,
+    { index: 0, id: 'call_abc', name: 'search', argumentsDelta: '{}' },
+    makeId,
+  )
+  assert.equal(entry.id, 'call_abc')
+  // a real id arriving on a later delta overrides a placeholder.
+  const tc2 = new Map()
+  mergeDeepSeekToolCallDelta(tc2, { index: 0, name: 'x' }, () => 'ph')
+  mergeDeepSeekToolCallDelta(tc2, { index: 0, id: 'call_real' }, () => 'ph')
+  assert.equal(tc2.get(0).id, 'call_real')
 })

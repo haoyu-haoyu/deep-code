@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import {
   MODEL_PROVIDER_CAPABILITIES,
   assertModelProvider,
@@ -678,12 +679,18 @@ export async function collectDeepSeekStreamEvents(events, { onContent } = {}) {
   }
 }
 
-export function mergeDeepSeekToolCallDelta(toolCalls, event) {
+export function mergeDeepSeekToolCallDelta(toolCalls, event, makeId = randomUUID) {
   const index = resolveToolCallIndex(toolCalls, event)
   const existing =
     toolCalls.get(index) ??
     {
-      id: event.id,
+      // Synthesize a stable fallback id when the gateway omits one, mirroring the
+      // main streaming path (deepseek-call-model.mjs). A tool call with id:undefined
+      // wedges the multi-turn loop — the tool_result can't correlate back to the
+      // call and DeepSeek rejects the next request with a 400. The id only needs to
+      // be unique within the turn; once set it is fixed in the assembled message
+      // (so the conformant path, where event.id is present, stays byte-identical).
+      id: event.id ?? `toolu_deepseek_${makeId()}`,
       type: 'function',
       function: { name: event.name, arguments: '' },
     }
