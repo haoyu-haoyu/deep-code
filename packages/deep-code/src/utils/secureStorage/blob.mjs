@@ -81,6 +81,35 @@ export function deleteBlobEntry(blob, subtree, key) {
 }
 
 /**
+ * Compare-and-delete: remove `blob[subtree][key]` ONLY when its `field` still
+ * equals `expected`, preserving all siblings; otherwise return the blob
+ * unchanged (the caller can skip the write). Like deleteBlobEntry, it is meant
+ * to run INSIDE the credentials lock against a freshly-read blob — so the
+ * comparison is against the CURRENT stored value. This guards a read→(slow
+ * network)→clear sequence: when the entry was concurrently replaced with a
+ * different value (e.g. a fresh re-login wrote a new id_token while this caller
+ * was failing an exchange for the OLD one), the stale clear matches nothing and
+ * the new value survives, instead of being wiped value-blind by key.
+ *
+ * @param {Record<string, any>} blob
+ * @param {string} subtree
+ * @param {string} key
+ * @param {string} field
+ * @param {unknown} expected  the field value that must still be present to delete
+ * @returns {Record<string, any>}
+ */
+export function deleteBlobEntryIfFieldEquals(blob, subtree, key, field, expected) {
+  const base = blob && typeof blob === 'object' ? blob : {}
+  const tree = base[subtree]
+  if (!tree || typeof tree !== 'object' || !(key in tree)) return base
+  const entry = tree[key]
+  if (!entry || typeof entry !== 'object' || entry[field] !== expected) return base
+  const nextTree = { ...tree }
+  delete nextTree[key]
+  return { ...base, [subtree]: nextTree }
+}
+
+/**
  * True when the sub-tree entry exists — lets a caller decide whether a delete
  * would change anything before taking the lock.
  *

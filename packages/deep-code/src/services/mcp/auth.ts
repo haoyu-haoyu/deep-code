@@ -56,7 +56,7 @@ import { getLoggingSafeMcpBaseUrl } from './utils.js'
 import { performCrossAppAccess, XaaTokenExchangeError } from './xaa.js'
 import {
   acquireIdpIdToken,
-  clearIdpIdToken,
+  clearIdpIdTokenIfMatches,
   discoverOidc,
   getCachedIdpIdToken,
   getIdpClientSecret,
@@ -762,7 +762,9 @@ async function performMCPXaaAuth(
       // → clear; 5xx IdP outage → preserve) rather than substring matching.
       if (e instanceof XaaTokenExchangeError) {
         if (e.shouldClearIdToken) {
-          clearIdpIdToken(idp.issuer)
+          // Compare-and-delete: only drop the cached token if it's still the one
+          // we failed with — a concurrent re-login's fresh token must survive.
+          clearIdpIdTokenIfMatches(idp.issuer, idToken)
           logMCPDebug(
             serverName,
             'XAA: cleared cached id_token after token-exchange failure',
@@ -1801,7 +1803,9 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
       }
     } catch (e) {
       if (e instanceof XaaTokenExchangeError && e.shouldClearIdToken) {
-        clearIdpIdToken(idp.issuer)
+        // Compare-and-delete: only drop the token we failed with, so a
+        // concurrent re-login's fresh id_token isn't wiped value-blind.
+        clearIdpIdTokenIfMatches(idp.issuer, idToken)
         logMCPDebug(
           this.serverName,
           'XAA: cleared id_token after exchange failure',
