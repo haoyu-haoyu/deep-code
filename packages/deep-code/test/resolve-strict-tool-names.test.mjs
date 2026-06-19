@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { resolveStrictToolNames } from '../src/tools/resolveStrictToolNames.mjs'
+import {
+  resolveStrictToolNames,
+  schemaClosesAnOpenMap,
+} from '../src/tools/resolveStrictToolNames.mjs'
 
 // Schema helpers.
 const closedAllRequired = {
@@ -187,4 +190,78 @@ test("'safe' accepts a strict-shaped tool carrying a V4-supported constraint (mi
   })
   assert.equal(resolveStrictToolNames('safe', [t]).size, 1)
   assert.equal(resolveStrictToolNames('all', [t]).size, 1)
+})
+
+// --- open maps are excluded from 'all'/'nullable' (sanitizer would close them) -
+
+const record = {
+  // z.record(z.string(), z.string()) → an open value-typed map.
+  type: 'object',
+  additionalProperties: { type: 'string' },
+  properties: {},
+  required: [],
+}
+const passthrough = {
+  // z.object({...}).passthrough() → additionalProperties: {} (accept any).
+  type: 'object',
+  additionalProperties: {},
+  properties: { a: { type: 'string' } },
+  required: ['a'],
+}
+const openTrue = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {},
+  required: [],
+}
+const patternMap = {
+  type: 'object',
+  patternProperties: { '^x-': { type: 'string' } },
+  properties: {},
+  required: [],
+}
+const nestedRecord = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    meta: { type: 'object', additionalProperties: { type: 'number' } }, // nested open map
+  },
+  required: ['meta'],
+}
+
+test("'all'/'nullable' EXCLUDE a tool with a schema-valued additionalProperties (record)", () => {
+  for (const mode of ['all', 'nullable']) {
+    assert.equal(resolveStrictToolNames(mode, [tool('Rec', record)]).size, 0, mode)
+    assert.equal(resolveStrictToolNames(mode, [tool('Pass', passthrough)]).size, 0, mode)
+    assert.equal(resolveStrictToolNames(mode, [tool('OpenT', openTrue)]).size, 0, mode)
+    assert.equal(resolveStrictToolNames(mode, [tool('Pat', patternMap)]).size, 0, mode)
+    // A nested open map excludes the whole tool too.
+    assert.equal(resolveStrictToolNames(mode, [tool('Nest', nestedRecord)]).size, 0, mode)
+  }
+})
+
+test("'all'/'nullable' still select a normal closed tool, and an absent-additionalProperties tool", () => {
+  for (const mode of ['all', 'nullable']) {
+    assert.equal(resolveStrictToolNames(mode, [tool('Closed', closedAllRequired)]).size, 1, mode)
+    // absent additionalProperties is the normal closed-object case strict is MEANT
+    // to close — NOT an explicit open map, so it stays selectable.
+    assert.equal(resolveStrictToolNames(mode, [tool('Open', openExtra)]).size, 1, mode)
+  }
+})
+
+test('open maps do not remove OTHER tools from the same batch', () => {
+  const tools = [tool('Rec', record), tool('Closed', closedAllRequired)]
+  assert.deepEqual([...resolveStrictToolNames('all', tools)], ['Closed'])
+})
+
+test('schemaClosesAnOpenMap: detects open maps, ignores closed/absent', () => {
+  assert.equal(schemaClosesAnOpenMap(record), true)
+  assert.equal(schemaClosesAnOpenMap(passthrough), true)
+  assert.equal(schemaClosesAnOpenMap(openTrue), true)
+  assert.equal(schemaClosesAnOpenMap(patternMap), true)
+  assert.equal(schemaClosesAnOpenMap(nestedRecord), true)
+  assert.equal(schemaClosesAnOpenMap(closedAllRequired), false)
+  assert.equal(schemaClosesAnOpenMap(openExtra), false) // absent ≠ explicit open
+  assert.equal(schemaClosesAnOpenMap(null), false)
+  assert.equal(schemaClosesAnOpenMap({ type: 'string' }), false)
 })
