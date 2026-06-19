@@ -8,6 +8,7 @@ import { logForDebugging } from '../utils/debug.js'
 import { getGraphemeSegmenter } from '../utils/intl.js'
 import sliceAnsi from '../utils/sliceAnsi.js'
 import { reorderBidi } from './bidi.js'
+import clusterStyledChars from './clusterStyledChars.core.mjs'
 import { type Rectangle, unionRect } from './layout/geometry.js'
 import {
   blitRegion,
@@ -554,69 +555,48 @@ function styledCharsWithGraphemeClustering(
   chars: StyledChar[],
   stylePool: StylePool,
 ): ClusteredChar[] {
-  const charCount = chars.length
-  if (charCount === 0) return []
+  if (chars.length === 0) return []
 
-  const result: ClusteredChar[] = []
-  const bufferChars: string[] = []
-  let bufferStyles: AnsiCode[] = chars[0]!.styles
+  // Cluster over the WHOLE line (not per style-run) so a grapheme straddling a style
+  // boundary stays one cell-unit and Σ(grapheme width) ≡ stringWidth(line). Each
+  // grapheme takes the style of its first code point; equal-styled graphemes are
+  // coalesced into runs so we intern + resolve the hyperlink ONCE per run.
+  const segmenter = getGraphemeSegmenter()
+  const { graphemes, runStyles } = clusterStyledChars(chars, {
+    segment: (s: string) => segmenter.segment(s),
+    width: stringWidth,
+    stylesEqual,
+  })
 
-  for (let i = 0; i < charCount; i++) {
-    const char = chars[i]!
-    const styles = char.styles
+  // Per-run: compute styleId + hyperlink once (the old flushBuffer head). Always
+  // check for OSC 8 codes to filter — the tokenizer treats OSC 8 close codes (empty
+  // URL) as active styles, so they must be filtered even with no URL extracted.
+  const runInfo = runStyles.map(styles => {
+    const hyperlink = extractHyperlinkFromStyles(styles) ?? undefined
+    const hasOsc8Styles =
+      hyperlink !== undefined ||
+      styles.some(
+        s =>
+          s.code.length >= OSC8_PREFIX.length && s.code.startsWith(OSC8_PREFIX),
+      )
+    const filteredStyles = hasOsc8Styles
+      ? filterOutHyperlinkStyles(styles)
+      : styles
+    return { styleId: stylePool.intern(filteredStyles), hyperlink }
+  })
 
-    // Different styles means we need to flush and start new buffer
-    if (bufferChars.length > 0 && !stylesEqual(styles, bufferStyles)) {
-      flushBuffer(bufferChars.join(''), bufferStyles, stylePool, result)
-      bufferChars.length = 0
+  const result: ClusteredChar[] = new Array(graphemes.length)
+  for (let i = 0; i < graphemes.length; i++) {
+    const g = graphemes[i]!
+    const info = runInfo[g.runIndex]!
+    result[i] = {
+      value: g.value,
+      width: g.width,
+      styleId: info.styleId,
+      hyperlink: info.hyperlink,
     }
-
-    bufferChars.push(char.value)
-    bufferStyles = styles
   }
-
-  // Final flush
-  if (bufferChars.length > 0) {
-    flushBuffer(bufferChars.join(''), bufferStyles, stylePool, result)
-  }
-
   return result
-}
-
-function flushBuffer(
-  buffer: string,
-  styles: AnsiCode[],
-  stylePool: StylePool,
-  out: ClusteredChar[],
-): void {
-  // Compute styleId + hyperlink ONCE for the whole style run.
-  // Every grapheme in this buffer shares the same styles.
-  //
-  // Extract and track hyperlinks separately, filter from styles.
-  // Always check for OSC 8 codes to filter, not just when a URL is
-  // extracted. The tokenizer treats OSC 8 close codes (empty URL) as
-  // active styles, so they must be filtered even when no hyperlink
-  // URL is present.
-  const hyperlink = extractHyperlinkFromStyles(styles) ?? undefined
-  const hasOsc8Styles =
-    hyperlink !== undefined ||
-    styles.some(
-      s =>
-        s.code.length >= OSC8_PREFIX.length && s.code.startsWith(OSC8_PREFIX),
-    )
-  const filteredStyles = hasOsc8Styles
-    ? filterOutHyperlinkStyles(styles)
-    : styles
-  const styleId = stylePool.intern(filteredStyles)
-
-  for (const { segment: grapheme } of getGraphemeSegmenter().segment(buffer)) {
-    out.push({
-      value: grapheme,
-      width: stringWidth(grapheme),
-      styleId,
-      hyperlink,
-    })
-  }
 }
 
 /**
