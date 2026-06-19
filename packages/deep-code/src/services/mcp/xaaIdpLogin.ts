@@ -26,6 +26,7 @@ import { logMCPDebug } from '../../utils/log.js'
 import { getPlatform } from '../../utils/platform.js'
 import {
   deleteBlobEntry,
+  deleteBlobEntryIfFieldEquals,
   hasBlobEntry,
   setBlobEntry,
 } from '../../utils/secureStorage/blob.mjs'
@@ -147,6 +148,28 @@ export function clearIdpIdToken(idpIssuer: string): void {
   const key = issuerKey(idpIssuer)
   if (!hasBlobEntry(getSecureStorage().read(), 'mcpXaaIdp', key)) return
   mutateSecureStorage(current => deleteBlobEntry(current, 'mcpXaaIdp', key))
+}
+
+/**
+ * Clear the cached id_token for an issuer ONLY if the stored token still equals
+ * `idToken` — a compare-and-delete that runs inside the credentials lock. Use
+ * this on the token-exchange FAILURE path: a 4xx for the OLD token must not wipe
+ * a NEW token a concurrent (cross-process) re-login wrote into the same issuer
+ * slot during the unlocked network round-trip. The CAS evaluates against the
+ * freshly-read in-lock blob, so a no-longer-matching value is preserved. (The
+ * unconditional clearIdpIdToken stays for user-driven re-setup / --force, where
+ * removal is intended regardless of value.) No hasBlobEntry pre-check: that read
+ * is outside the lock and can't decide race-safely; the leaf is a no-op when the
+ * entry is absent or mismatched.
+ */
+export function clearIdpIdTokenIfMatches(
+  idpIssuer: string,
+  idToken: string,
+): void {
+  const key = issuerKey(idpIssuer)
+  mutateSecureStorage(current =>
+    deleteBlobEntryIfFieldEquals(current, 'mcpXaaIdp', key, 'idToken', idToken),
+  )
 }
 
 /**

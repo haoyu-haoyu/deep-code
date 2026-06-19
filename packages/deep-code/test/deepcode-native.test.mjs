@@ -14,6 +14,7 @@ import {
 import { sessionBelongsToWorkspace } from '../src/utils/sessionWorkspaceIdentity.mjs'
 import {
   deleteBlobEntry,
+  deleteBlobEntryIfFieldEquals,
   hasBlobEntry,
   replaceBlobEntry,
   setBlobEntry,
@@ -1876,6 +1877,83 @@ test('hasBlobEntry reports entry presence safely', () => {
   assert.equal(hasBlobEntry(blob, 'mcpOAuth', 'Z|h'), false)
   assert.equal(hasBlobEntry(blob, 'mcpXaaIdp', 'A|h'), false)
   assert.equal(hasBlobEntry(null, 'mcpOAuth', 'A|h'), false)
+})
+
+// deleteBlobEntryIfFieldEquals: compare-and-delete used on the XAA token-exchange
+// FAILURE path so a stale 4xx clear for the OLD id_token doesn't wipe a NEW token
+// a concurrent re-login wrote into the same issuer slot during the unlocked
+// network round-trip.
+test('deleteBlobEntryIfFieldEquals: a mismatched value is PRESERVED (the race the CAS guards)', () => {
+  // Concurrent re-login already wrote T_new; the stale failure clears for T_old.
+  const blob = { mcpXaaIdp: { iss: { idToken: 'T_new', expiresAt: 9 } } }
+  const next = deleteBlobEntryIfFieldEquals(blob, 'mcpXaaIdp', 'iss', 'idToken', 'T_old')
+  assert.equal(next, blob, 'no-op returns the same ref (skip the write)')
+  assert.deepEqual(next.mcpXaaIdp.iss, { idToken: 'T_new', expiresAt: 9 }, 'fresh token survives')
+  // contrast: the value-blind delete WOULD have wiped it
+  assert.equal('iss' in deleteBlobEntry(blob, 'mcpXaaIdp', 'iss').mcpXaaIdp, false)
+})
+
+test('deleteBlobEntryIfFieldEquals: a matching value is deleted (the genuine failed token)', () => {
+  const blob = { mcpXaaIdp: { iss: { idToken: 'T_old' }, other: { idToken: 'x' } } }
+  const next = deleteBlobEntryIfFieldEquals(blob, 'mcpXaaIdp', 'iss', 'idToken', 'T_old')
+  assert.equal('iss' in next.mcpXaaIdp, false, 'matched entry removed')
+  assert.deepEqual(next.mcpXaaIdp.other, { idToken: 'x' }, 'sibling key preserved')
+  assert.equal(blob.mcpXaaIdp.iss.idToken, 'T_old', 'input not mutated')
+})
+
+test('deleteBlobEntryIfFieldEquals: absent / non-object / sibling-subtree are safe no-ops', () => {
+  const blob = { mcpXaaIdp: { iss: { idToken: 'T' } }, mcpOAuth: { s: { accessToken: 'a' } } }
+  // absent key / absent subtree → same ref
+  assert.equal(deleteBlobEntryIfFieldEquals(blob, 'mcpXaaIdp', 'zzz', 'idToken', 'T'), blob)
+  assert.equal(deleteBlobEntryIfFieldEquals(blob, 'nope', 'iss', 'idToken', 'T'), blob)
+  assert.equal(deleteBlobEntryIfFieldEquals({}, 'mcpXaaIdp', 'iss', 'idToken', 'T').mcpXaaIdp, undefined)
+  // a null/non-object entry never matches
+  assert.equal(deleteBlobEntryIfFieldEquals({ mcpXaaIdp: { iss: null } }, 'mcpXaaIdp', 'iss', 'idToken', 'T').mcpXaaIdp.iss, null)
+  // a matched delete preserves the sibling SUBTREE intact
+  const del = deleteBlobEntryIfFieldEquals(blob, 'mcpXaaIdp', 'iss', 'idToken', 'T')
+  assert.deepEqual(del.mcpOAuth, { s: { accessToken: 'a' } })
+  // __proto__-safe: a '__proto__' DATA key (as JSON.parse produces) is matched and
+  // removed as data without polluting Object.prototype.
+  const protoTree = {}
+  Object.defineProperty(protoTree, '__proto__', {
+    value: { idToken: 'p' },
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  })
+  const poison = deleteBlobEntryIfFieldEquals({ mcpXaaIdp: protoTree }, 'mcpXaaIdp', '__proto__', 'idToken', 'p')
+  assert.equal(Object.prototype.hasOwnProperty.call(poison.mcpXaaIdp, '__proto__'), false, 'data key removed')
+  assert.equal({}.idToken, undefined, 'no prototype pollution')
+})
+
+test('deleteBlobEntryIfFieldEquals fuzz: reduces to deleteBlobEntry exactly when expected===stored', () => {
+  let s = 0x77a1b2c3 >>> 0
+  const rnd = () => ((s = (s * 1103515245 + 12345) >>> 0), s / 0x100000000)
+  const tokens = ['T_a', 'T_b', 'T_c', undefined]
+  for (let iter = 0; iter < 20000; iter++) {
+    const present = rnd() < 0.8
+    const stored = tokens[(rnd() * tokens.length) | 0]
+    const expected = tokens[(rnd() * tokens.length) | 0]
+    const blob = present
+      ? { mcpXaaIdp: { iss: { idToken: stored, expiresAt: 1 } }, mcpOAuth: { s: { accessToken: 'a' } } }
+      : { mcpOAuth: { s: { accessToken: 'a' } } }
+    const cas = deleteBlobEntryIfFieldEquals(blob, 'mcpXaaIdp', 'iss', 'idToken', expected)
+    const blind = deleteBlobEntry(blob, 'mcpXaaIdp', 'iss')
+    if (present && stored === expected) {
+      // CAS matches → identical to the value-blind delete
+      assert.deepEqual(cas, blind, `iter ${iter}: should equal blind delete`)
+    } else if (present) {
+      // mismatch → CAS preserves the entry (the bug fix); blind would have wiped it
+      assert.equal(cas, blob, `iter ${iter}: mismatch preserves`)
+      assert.equal('iss' in blind.mcpXaaIdp, false, `iter ${iter}: blind wipes`)
+    } else {
+      // absent → both are no-ops returning the same ref
+      assert.equal(cas, blob)
+      assert.equal(blind, blob)
+    }
+    // the sibling subtree is never touched
+    assert.deepEqual(cas.mcpOAuth, { s: { accessToken: 'a' } })
+  }
 })
 
 function makeFakeLockHarness() {
