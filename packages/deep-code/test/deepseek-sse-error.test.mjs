@@ -129,3 +129,65 @@ test('collectDeepSeekStreamEvents still aggregates a clean stream', async () => 
   assert.equal(result.content, 'hello')
   assert.equal(result.finishReason, 'stop')
 })
+
+// --- null/garbage choice & tool_call ELEMENTS must not abort the stream ---
+
+test('a null tool_calls entry is skipped; already-streamed content survives', () => {
+  // A non-conformant gateway pads tool_calls with a null. The unguarded
+  // toolCall.index used to throw, aborting the generator and losing the content.
+  const events = parseDeepSeekSSELines([
+    'data: {"choices":[{"delta":{"content":"keep"}}]}',
+    'data: {"choices":[{"delta":{"tool_calls":[null,{"index":0,"id":"t1","function":{"name":"f","arguments":"{}"}}]}}]}',
+  ])
+  assert.deepEqual(events, [
+    { type: 'content_delta', text: 'keep' },
+    { type: 'tool_call_delta', index: 0, id: 't1', name: 'f', argumentsDelta: '{}' },
+  ])
+})
+
+test('a null choice entry is skipped (no throw)', () => {
+  const events = parseDeepSeekSSELines([
+    'data: {"choices":[null,{"delta":{"content":"ok"}}]}',
+  ])
+  assert.deepEqual(events, [{ type: 'content_delta', text: 'ok' }])
+})
+
+test('a JSON-valid non-object chunk (data: null / 5 / array) is skipped, not crashed', () => {
+  // JSON.parse succeeds but chunk.choices would throw on null — must skip the line.
+  assert.deepEqual(parseDeepSeekSSELines(['data: null']), [])
+  assert.deepEqual(parseDeepSeekSSELines(['data: 5']), [])
+  assert.deepEqual(parseDeepSeekSSELines(['data: "x"']), [])
+  assert.deepEqual(parseDeepSeekSSELines(['data: [1,2,3]']), [])
+  // and a bad chunk between good ones doesn't drop the good content
+  assert.deepEqual(
+    parseDeepSeekSSELines([
+      'data: {"choices":[{"delta":{"content":"a"}}]}',
+      'data: null',
+      'data: {"choices":[{"delta":{"content":"b"}}]}',
+    ]),
+    [
+      { type: 'content_delta', text: 'a' },
+      { type: 'content_delta', text: 'b' },
+    ],
+  )
+})
+
+test('a non-array tool_calls / choices is tolerated (coerced to empty)', () => {
+  assert.deepEqual(
+    parseDeepSeekSSELines(['data: {"choices":[{"delta":{"tool_calls":"oops","content":"c"}}]}']),
+    [{ type: 'content_delta', text: 'c' }],
+  )
+  assert.deepEqual(parseDeepSeekSSELines(['data: {"choices":{"not":"an array"}}']), [])
+})
+
+test('finish still fires when the only tool_calls entry was null (no delta carried it)', () => {
+  // toolCalls.length counts the raw array, matching the prior `delta.tool_calls?.length`
+  // semantics: a present (even if all-null) tool_calls array suppresses the synthetic
+  // finish, exactly as before — the happy path is byte-identical.
+  const events = parseDeepSeekSSELines([
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"t","function":{"name":"f"}}]},"finish_reason":"tool_calls"}]}',
+  ])
+  assert.deepEqual(events, [
+    { type: 'tool_call_delta', index: 0, id: 't', name: 'f', finishReason: 'tool_calls' },
+  ])
+})
