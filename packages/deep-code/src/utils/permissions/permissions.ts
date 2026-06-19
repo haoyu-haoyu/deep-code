@@ -23,6 +23,7 @@ import {
 } from '../settings/constants.js'
 import { plural } from '../stringUtils.js'
 import { permissionModeTitle } from './PermissionMode.js'
+import { resolvePermissionPrecedence } from './resolvePermissionPrecedence.mjs'
 import type {
   PermissionAskDecision,
   PermissionDecision,
@@ -1088,29 +1089,9 @@ export async function checkRuleBasedPermissions(
     }
   }
 
-  // 1b. Entire tool has an ask rule
-  const askRule = getAskRuleForTool(appState.toolPermissionContext, tool)
-  if (askRule) {
-    const canSandboxAutoAllow =
-      tool.name === BASH_TOOL_NAME &&
-      SandboxManager.isSandboxingEnabled() &&
-      SandboxManager.isAutoAllowBashIfSandboxedEnabled() &&
-      shouldUseSandbox(input)
-
-    if (!canSandboxAutoAllow) {
-      return {
-        behavior: 'ask',
-        decisionReason: {
-          type: 'rule',
-          rule: askRule,
-        },
-        message: createPermissionRequestMessage(tool.name),
-      }
-    }
-    // Fall through to let tool.checkPermissions handle command-specific rules
-  }
-
-  // 1c. Tool-specific permission check (e.g. bash subcommand rules)
+  // 1c. Tool-specific permission check (e.g. bash subcommand rules). Run BEFORE
+  // the tool-wide ask below so a content-specific deny (e.g. Bash(rm:*)) can
+  // outrank a tool-wide ask rule — deny always wins.
   let toolPermissionResult: PermissionResult = {
     behavior: 'passthrough',
     message: createPermissionRequestMessage(tool.name),
@@ -1125,33 +1106,49 @@ export async function checkRuleBasedPermissions(
     logError(e)
   }
 
-  // 1d. Tool implementation denied (catches bash subcommand denies wrapped
-  // in subcommandResults — no need to inspect decisionReason.type)
-  if (toolPermissionResult?.behavior === 'deny') {
+  // 1b. Entire tool has an ask rule (unless a sandboxed bash command auto-allows,
+  // in which case the content check above governs).
+  const askRule = getAskRuleForTool(appState.toolPermissionContext, tool)
+  const canSandboxAutoAllow =
+    !!askRule &&
+    tool.name === BASH_TOOL_NAME &&
+    SandboxManager.isSandboxingEnabled() &&
+    SandboxManager.isAutoAllowBashIfSandboxedEnabled() &&
+    shouldUseSandbox(input)
+
+  const contentReason = toolPermissionResult?.decisionReason
+  const slot = resolvePermissionPrecedence({
+    toolWideAsk: !!askRule && !canSandboxAutoAllow,
+    contentBehavior: toolPermissionResult?.behavior,
+    contentReasonType: contentReason?.type,
+    contentRuleBehavior:
+      contentReason?.type === 'rule' ? contentReason.rule.ruleBehavior : undefined,
+  })
+
+  // 1d. Content-specific deny — outranks the tool-wide ask (deny always wins).
+  // Catches bash subcommand denies wrapped in subcommandResults.
+  if (slot === 'content-deny' && toolPermissionResult?.behavior === 'deny') {
     return toolPermissionResult
   }
-
-  // 1f. Content-specific ask rules from tool.checkPermissions
-  // (e.g. Bash(npm publish:*) → {ask, type:'rule', ruleBehavior:'ask'})
+  // 1b. Tool-wide ask rule.
+  if (slot === 'tool-wide-ask' && askRule) {
+    return {
+      behavior: 'ask',
+      decisionReason: { type: 'rule', rule: askRule },
+      message: createPermissionRequestMessage(tool.name),
+    }
+  }
+  // 1f. Content-specific ask rule (e.g. Bash(npm publish:*)).
+  // 1g. Bypass-immune safety check (.git/, .claude/, .vscode/, shell configs) —
+  //     must prompt even when a PreToolUse hook returned allow.
   if (
-    toolPermissionResult?.behavior === 'ask' &&
-    toolPermissionResult.decisionReason?.type === 'rule' &&
-    toolPermissionResult.decisionReason.rule.ruleBehavior === 'ask'
+    (slot === 'content-ask-rule' || slot === 'safety-check-ask') &&
+    toolPermissionResult?.behavior === 'ask'
   ) {
     return toolPermissionResult
   }
 
-  // 1g. Safety checks (e.g. .git/, .claude/, .vscode/, shell configs) are
-  // bypass-immune — they must prompt even when a PreToolUse hook returned
-  // allow. checkPathSafetyForAutoEdit returns {type:'safetyCheck'} for these.
-  if (
-    toolPermissionResult?.behavior === 'ask' &&
-    toolPermissionResult.decisionReason?.type === 'safetyCheck'
-  ) {
-    return toolPermissionResult
-  }
-
-  // No rule-based objection
+  // No rule-based objection.
   return null
 }
 
@@ -1180,32 +1177,9 @@ async function hasPermissionsToUseToolInner(
     }
   }
 
-  // 1b. Check if the entire tool should always ask for permission
-  const askRule = getAskRuleForTool(appState.toolPermissionContext, tool)
-  if (askRule) {
-    // When autoAllowBashIfSandboxed is on, sandboxed commands skip the ask rule and
-    // auto-allow via Bash's checkPermissions. Commands that won't be sandboxed (excluded
-    // commands, dangerouslyDisableSandbox) still need to respect the ask rule.
-    const canSandboxAutoAllow =
-      tool.name === BASH_TOOL_NAME &&
-      SandboxManager.isSandboxingEnabled() &&
-      SandboxManager.isAutoAllowBashIfSandboxedEnabled() &&
-      shouldUseSandbox(input)
-
-    if (!canSandboxAutoAllow) {
-      return {
-        behavior: 'ask',
-        decisionReason: {
-          type: 'rule',
-          rule: askRule,
-        },
-        message: createPermissionRequestMessage(tool.name),
-      }
-    }
-    // Fall through to let Bash's checkPermissions handle command-specific rules
-  }
-
-  // 1c. Ask the tool implementation for a permission result
+  // 1c. Ask the tool implementation for a permission result. Run BEFORE the
+  // tool-wide ask below so a content-specific deny (e.g. Bash(rm:*)) can outrank
+  // a tool-wide ask rule — deny always wins.
   // Overridden unless tool input schema is not valid
   let toolPermissionResult: PermissionResult = {
     behavior: 'passthrough',
@@ -1222,42 +1196,56 @@ async function hasPermissionsToUseToolInner(
     logError(e)
   }
 
-  // 1d. Tool implementation denied permission
-  if (toolPermissionResult?.behavior === 'deny') {
+  // 1b. Check if the entire tool should always ask for permission. When
+  // autoAllowBashIfSandboxed is on, sandboxed commands skip the ask rule and
+  // auto-allow via Bash's checkPermissions; commands that won't be sandboxed
+  // (excluded commands, dangerouslyDisableSandbox) still respect the ask rule.
+  const askRule = getAskRuleForTool(appState.toolPermissionContext, tool)
+  const canSandboxAutoAllow =
+    !!askRule &&
+    tool.name === BASH_TOOL_NAME &&
+    SandboxManager.isSandboxingEnabled() &&
+    SandboxManager.isAutoAllowBashIfSandboxedEnabled() &&
+    shouldUseSandbox(input)
+
+  // Resolve the rule-based / content precedence. Any deny (tool-wide OR
+  // content-specific) outranks a tool-wide ask; the rest of the ordering — ask,
+  // requires-interaction, content-ask-rule, safety-check — is unchanged.
+  const contentReason = toolPermissionResult?.decisionReason
+  const slot = resolvePermissionPrecedence({
+    toolWideAsk: !!askRule && !canSandboxAutoAllow,
+    contentBehavior: toolPermissionResult?.behavior,
+    contentReasonType: contentReason?.type,
+    contentRuleBehavior:
+      contentReason?.type === 'rule' ? contentReason.rule.ruleBehavior : undefined,
+    requiresUserInteraction: tool.requiresUserInteraction?.() ?? false,
+  })
+
+  // 1d. Tool implementation denied — outranks the tool-wide ask (deny always wins).
+  if (slot === 'content-deny' && toolPermissionResult?.behavior === 'deny') {
     return toolPermissionResult
   }
-
-  // 1e. Tool requires user interaction even in bypass mode
+  // 1b. Tool-wide ask rule.
+  if (slot === 'tool-wide-ask' && askRule) {
+    return {
+      behavior: 'ask',
+      decisionReason: { type: 'rule', rule: askRule },
+      message: createPermissionRequestMessage(tool.name),
+    }
+  }
+  // 1e. Tool requires user interaction (bypass-immune).
+  // 1f. Content-specific ask rule (e.g. Bash(npm publish:*)) — bypass-immune.
+  // 1g. Bypass-immune safety check (.git/, .claude/, .vscode/, shell configs).
   if (
-    tool.requiresUserInteraction?.() &&
+    (slot === 'requires-interaction' ||
+      slot === 'content-ask-rule' ||
+      slot === 'safety-check-ask') &&
     toolPermissionResult?.behavior === 'ask'
   ) {
     return toolPermissionResult
   }
 
-  // 1f. Content-specific ask rules from tool.checkPermissions take precedence
-  // over bypassPermissions mode. When a user explicitly configures a
-  // content-specific ask rule (e.g. Bash(npm publish:*)), the tool's
-  // checkPermissions returns {behavior:'ask', decisionReason:{type:'rule',
-  // rule:{ruleBehavior:'ask'}}}. This must be respected even in bypass mode,
-  // just as deny rules are respected at step 1d.
-  if (
-    toolPermissionResult?.behavior === 'ask' &&
-    toolPermissionResult.decisionReason?.type === 'rule' &&
-    toolPermissionResult.decisionReason.rule.ruleBehavior === 'ask'
-  ) {
-    return toolPermissionResult
-  }
-
-  // 1g. Safety checks (e.g. .git/, .claude/, .vscode/, shell configs) are
-  // bypass-immune — they must prompt even in bypassPermissions mode.
-  // checkPathSafetyForAutoEdit returns {type:'safetyCheck'} for these paths.
-  if (
-    toolPermissionResult?.behavior === 'ask' &&
-    toolPermissionResult.decisionReason?.type === 'safetyCheck'
-  ) {
-    return toolPermissionResult
-  }
+  // 'continue' — no rule-based objection; fall through to mode/allow handling.
 
   // 2a. Check if mode allows the tool to run
   // IMPORTANT: Call getAppState() to get the latest value
