@@ -41,6 +41,7 @@ import {
 import { getMemoryPath } from '../../utils/config.js'
 import { getMessage } from '../../i18n/index.js'
 import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
+import { resolveWireEffortValue } from '../../utils/effort.js'
 import {
   analyzeContext,
   tokenStatsToStatsigMetrics,
@@ -1315,7 +1316,7 @@ async function streamCompactSummary({
           querySource: 'compact',
           agents: context.options.agentDefinitions.activeAgents,
           mcpTools: [],
-          effortValue: appState.effortValue,
+          effortValue: resolveWireEffortValue(appState.effortValue),
         },
       })
       const streamIter = streamingGen[Symbol.asyncIterator]()

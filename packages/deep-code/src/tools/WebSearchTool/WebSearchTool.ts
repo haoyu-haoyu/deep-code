@@ -6,6 +6,7 @@ import { getAPIProvider } from 'src/utils/model/providers.js'
 import type { PermissionResult } from 'src/utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../utils/featureFlags.js'
+import { resolveWireEffortValue } from '../../utils/effort.js'
 import { queryRuntimeModelWithStreaming } from '../../services/runtime/messageSend.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -286,7 +287,7 @@ export const WebSearchTool = buildTool({
         agents: context.options.agentDefinitions.activeAgents,
         mcpTools: [],
         agentId: context.agentId,
-        effortValue: appState.effortValue,
+        effortValue: resolveWireEffortValue(appState.effortValue),
       },
     })
 
