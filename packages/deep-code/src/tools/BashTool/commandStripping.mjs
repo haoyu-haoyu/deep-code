@@ -398,3 +398,96 @@ export function stripEnvCommandPrefix(command) {
   // command (e.g. `env -i`) => leave the original untouched.
   return rest.length > 0 ? rest : command
 }
+
+// The flagless shell precommand modifiers that RUN the following command
+// unchanged (`builtin rm`, and zsh's `noglob rm` / `nocorrect rm` all execute
+// `rm`). Peeled one-at-a-time; the deny/ask fixed-point loop re-applies to handle
+// stacking (e.g. `noglob exec rm`). `command` and `exec` take flags and are
+// handled separately below.
+const PRECOMMAND_MODIFIER = /^(?:builtin|noglob|nocorrect)[ \t]+/
+
+// Return `rest` unless it is empty/all-whitespace (a modifier with no following
+// command, e.g. `exec ` — not a runnable command), in which case keep `original`.
+function strippedOrOriginal(rest, original) {
+  return rest.length > 0 ? rest : original
+}
+
+/**
+ * Strip a leading shell precommand modifier (`command`/`builtin`/`exec`/`noglob`/
+ * `nocorrect`) or a pipeline negation (`! cmd`) so a denied command run as
+ * `command rm` / `exec rm` / `! rm` still matches its deny rule. Returns the
+ * wrapped command, or the input unchanged when there is no such prefix.
+ *
+ * DENY/ASK PATH ONLY — like stripEnvCommandPrefix, these are deliberately absent
+ * from stripSafeWrappers' ALLOW safe-list (a denied command must stay denied
+ * under any wrapper; an allow rule must not be satisfiable by wrapping). Mirrors
+ * the tree-sitter path, which already treats command/builtin/exec/noglob/nocorrect
+ * as eval-like (routed through the deny semantics check) and strips `!` from a
+ * negated_command — protections that otherwise exist only when TREE_SITTER_BASH
+ * is on (off by default).
+ *
+ * Their option flags that still RUN the command are skipped too: `command [-p]
+ * [--]` and `exec [-cl] [-a NAME] [--]`. `command -v` / `command -V` only LOOK UP
+ * the command (they do not execute it), so those forms are left unstripped to
+ * avoid over-denying a harmless existence check.
+ *
+ * @param {string} command
+ * @returns {string}
+ */
+export function stripPrecommandModifiers(command) {
+  // `! cmd` runs cmd (only its exit status is inverted). Require whitespace after
+  // `!` so extglob `!(...)` and history `!!` are not touched.
+  const neg = command.match(/^![ \t]+/)
+  if (neg) return strippedOrOriginal(command.slice(neg[0].length), command)
+
+  const mod = command.match(PRECOMMAND_MODIFIER)
+  if (mod) return strippedOrOriginal(command.slice(mod[0].length), command)
+
+  // `exec [-cl] [-a NAME] [--] <cmd>` runs <cmd>.
+  const execToken = command.match(/^exec[ \t]+/)
+  if (execToken) {
+    let rest = command.slice(execToken[0].length)
+    for (;;) {
+      const aFlag = rest.match(/^-a[ \t]+[^ \t\n\r]+[ \t]+/)
+      if (aFlag) {
+        rest = rest.slice(aFlag[0].length)
+        continue
+      }
+      const clFlag = rest.match(/^-[cl]+[ \t]+/)
+      if (clFlag) {
+        rest = rest.slice(clFlag[0].length)
+        continue
+      }
+      const endOfOpts = rest.match(/^--[ \t]+/)
+      if (endOfOpts) {
+        rest = rest.slice(endOfOpts[0].length)
+        continue
+      }
+      break
+    }
+    return strippedOrOriginal(rest, command)
+  }
+
+  // `command [-p] [--] <cmd>` runs <cmd>; `command -v|-V <cmd>` only looks it up.
+  const cmdToken = command.match(/^command[ \t]+/)
+  if (cmdToken) {
+    let rest = command.slice(cmdToken[0].length)
+    for (;;) {
+      if (/^-[vV](?:[ \t]|$)/.test(rest)) return command // lookup form: do not strip
+      const pFlag = rest.match(/^-p[ \t]+/)
+      if (pFlag) {
+        rest = rest.slice(pFlag[0].length)
+        continue
+      }
+      const endOfOpts = rest.match(/^--[ \t]+/)
+      if (endOfOpts) {
+        rest = rest.slice(endOfOpts[0].length)
+        continue
+      }
+      break
+    }
+    return strippedOrOriginal(rest, command)
+  }
+
+  return command
+}
