@@ -19,6 +19,7 @@ import type { PermissionDecision } from '../../utils/permissions/PermissionResul
 import { stripLeadingBom } from '../../utils/bom.mjs'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from './constants.js'
+import { applyReplacedCellShape } from './notebookCellShape.mjs'
 import { notebookUnchangedDespiteMtime } from './notebookStaleness.mjs'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 import {
@@ -439,15 +440,11 @@ export const NotebookEditTool = buildTool({
       } else {
         // Find the specified cell
         const targetCell = notebook.cells[cellIndex]! // validateInput ensures cell_number is in bounds
-        targetCell.source = new_source
-        if (targetCell.cell_type === 'code') {
-          // Reset execution count and clear outputs since cell was modified
-          targetCell.execution_count = null
-          targetCell.outputs = []
-        }
-        if (cell_type && cell_type !== targetCell.cell_type) {
-          targetCell.cell_type = cell_type
-        }
+        // Set the new source and reconcile the cell's shape to its FINAL type:
+        // a code cell gets a reset execution_count/outputs (the source changed),
+        // a markdown cell drops those code-only fields. Reconciling against the
+        // final type (not the old one) keeps a type-changing replace nbformat-valid.
+        applyReplacedCellShape(targetCell, new_source, cell_type)
       }
       // Write back to file
       const IPYNB_INDENT = 1

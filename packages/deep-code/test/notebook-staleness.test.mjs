@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { notebookUnchangedDespiteMtime } from '../src/tools/NotebookEditTool/notebookStaleness.mjs'
+import { applyReplacedCellShape } from '../src/tools/NotebookEditTool/notebookCellShape.mjs'
 
 // The .ts wiring re-derives `currentCellsJson` via jsonStringify(readNotebook(path))
 // — exactly how FileReadTool produced readState.content — and passes both here.
@@ -78,4 +79,57 @@ test('missing read state → not unchanged (fail safe)', () => {
 
 test('degenerate equal empty contents compare equal (pure string identity)', () => {
   assert.equal(notebookUnchangedDespiteMtime('', { content: '' }), true)
+})
+
+// --- applyReplacedCellShape: a type-changing replace stays nbformat-valid (F2) ---
+
+const codeCell = () => ({
+  cell_type: 'code',
+  id: 'c1',
+  source: ['old'],
+  metadata: { tags: ['x'] },
+  execution_count: 7,
+  outputs: [{ output_type: 'stream', text: 'hi' }],
+})
+const mdCell = () => ({
+  cell_type: 'markdown',
+  id: 'm1',
+  source: ['# old'],
+  metadata: {},
+})
+
+test('replace code->markdown drops the code-only fields (execution_count/outputs)', () => {
+  const cell = applyReplacedCellShape(codeCell(), ['# new'], 'markdown')
+  assert.equal(cell.cell_type, 'markdown')
+  assert.deepEqual(cell.source, ['# new'])
+  assert.ok(!('execution_count' in cell), 'markdown cell must not carry execution_count')
+  assert.ok(!('outputs' in cell), 'markdown cell must not carry outputs')
+  assert.deepEqual(cell.metadata, { tags: ['x'] }) // metadata/id preserved
+  assert.equal(cell.id, 'c1')
+})
+
+test('replace markdown->code adds the required code fields (reset)', () => {
+  const cell = applyReplacedCellShape(mdCell(), ['print(1)'], 'code')
+  assert.equal(cell.cell_type, 'code')
+  assert.equal(cell.execution_count, null)
+  assert.deepEqual(cell.outputs, [])
+  assert.deepEqual(cell.source, ['print(1)'])
+})
+
+test('replace with no type change is the prior behavior (code resets, markdown untouched)', () => {
+  const c = applyReplacedCellShape(codeCell(), ['new'], undefined)
+  assert.equal(c.cell_type, 'code')
+  assert.equal(c.execution_count, null)
+  assert.deepEqual(c.outputs, [])
+
+  const m = applyReplacedCellShape(mdCell(), ['# new'], undefined)
+  assert.equal(m.cell_type, 'markdown')
+  assert.ok(!('execution_count' in m) && !('outputs' in m))
+})
+
+test('a same-type replace passing the same cell_type behaves like no type change', () => {
+  const c = applyReplacedCellShape(codeCell(), ['x'], 'code')
+  assert.equal(c.cell_type, 'code')
+  assert.equal(c.execution_count, null)
+  assert.deepEqual(c.outputs, [])
 })
