@@ -367,14 +367,17 @@ export function resetAllLSPDiagnosticState(): void {
  * Should be called when a file is edited so that new diagnostics for that file
  * will be shown even if they match previously delivered ones.
  *
- * @param fileUri - URI of the file that was edited
+ * @param fileKey - the delivered-map key for the file: the PLAIN absolute path,
+ *   matching DiagnosticFile.uri (formatDiagnosticsForAttachment decodes the
+ *   server's file:// URI via fileURLToPath). Passing a file:// URI here will
+ *   silently never match the map key and make this a no-op.
  */
-export function clearDeliveredDiagnosticsForFile(fileUri: string): void {
-  if (deliveredDiagnostics.has(fileUri)) {
+export function clearDeliveredDiagnosticsForFile(fileKey: string): void {
+  if (deliveredDiagnostics.has(fileKey)) {
     logForDebugging(
-      `LSP Diagnostics: Clearing delivered diagnostics for ${fileUri}`,
+      `LSP Diagnostics: Clearing delivered diagnostics for ${fileKey}`,
     )
-    deliveredDiagnostics.delete(fileUri)
+    deliveredDiagnostics.delete(fileKey)
   }
 }
 

@@ -5,9 +5,10 @@ import {
 } from 'node:fs'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   createLSPClientCore,
   createLSPServerInstanceCore,
@@ -696,6 +697,59 @@ test('post-edit diagnostics notifies change and save then collects diagnostics',
   } finally {
     await manager.shutdown().catch(() => {})
   }
+})
+
+test('post-edit clears the delivered-dedup entry by PLAIN path, not a file:// URI', async () => {
+  // The delivered-diagnostics dedup map (LSPDiagnosticRegistry.deliveredDiagnostics)
+  // is keyed by the server's echoed URI run through fileURLToPath — i.e. a PLAIN
+  // path. The post-edit clear must pass that same key form. It used to pass
+  // pathToFileURL(absolutePath).href (a file:// URI), which never matched the
+  // map key, so the per-edit clear was a permanent no-op and a re-edited file's
+  // still-unfixed diagnostics never re-surfaced.
+  //
+  // Use a path WITH A SPACE so the plain decoded path ("/.../a b/demo.ts")
+  // differs from the %20-encoded URI ("file:///.../a%20b/demo.ts") — the exact
+  // differential that fails today and passes after the fix.
+  const captured = []
+  const filePath = join(tmpdir(), 'a b', 'demo.ts')
+  const absolutePath = resolve(filePath)
+
+  // ensureServerStarted returns null so the call returns early after the clear —
+  // we only need to observe the clear argument, which is computed before it.
+  await notifyAndCollectDiagnosticsCore({
+    filePath,
+    content: 'x',
+    operation: 'edit',
+    pollDelay: 0,
+    maxDiagnostics: 10,
+    lspManager: {
+      async ensureServerStarted() {
+        return null
+      },
+    },
+    clearDeliveredDiagnosticsForFile(arg) {
+      captured.push(arg)
+    },
+    formatDiagnosticsForAttachment: () => [],
+    delay,
+    logForDebugging() {},
+    logError() {},
+  })
+
+  assert.equal(captured.length, 1, 'clear is invoked exactly once')
+  assert.equal(
+    captured[0],
+    absolutePath,
+    'clears by the plain absolute path (the delivered-map key form)',
+  )
+  assert.notEqual(
+    captured[0],
+    pathToFileURL(absolutePath).href,
+    'must NOT pass a file:// URI — it never matches the plain-path map key',
+  )
+  // The plain path is exactly what the server-echoed file:// URI decodes back to,
+  // which is the form formatDiagnosticsForAttachment writes into the dedup map.
+  assert.equal(captured[0], fileURLToPath(pathToFileURL(absolutePath).href))
 })
 
 test('LSP client onNotification returns an unsubscribe that removes the handler', async () => {
