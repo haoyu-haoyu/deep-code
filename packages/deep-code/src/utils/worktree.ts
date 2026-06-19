@@ -18,6 +18,7 @@ import { logForDebugging } from './debug.js'
 import { errorMessage, getErrnoCode } from './errors.js'
 import { execFileNoThrow, execFileNoThrowWithCwd } from './execFileNoThrow.js'
 import { isStaleWorktreeRegistrationError } from './worktreeAddError.mjs'
+import { parsePrunableEphemeralOrphans } from './worktreePrunableOrphans.mjs'
 import { getMessage } from '../i18n/index.js'
 import { parseGitConfigValue } from './git/gitConfigParser.js'
 import {
@@ -1137,10 +1138,72 @@ export async function cleanupStaleAgentWorktrees(
     }
   }
 
-  if (removed > 0) {
-    await execFileNoThrowWithCwd(gitExe(), ['worktree', 'prune'], {
-      cwd: gitRoot,
-    })
+  // Registry pass: a worktree whose directory was deleted out from under git
+  // (crash, manual `rm -rf`, lost mount) is never seen by the readdir sweep
+  // above, and the `git worktree prune` below was gated on removed>0 — so its
+  // `.git/worktrees` admin entry AND its `worktree-<slug>` branch leaked. Ask
+  // git's own registry which ephemeral registrations are prunable (dir gone).
+  // (`prunable` in porcelain output needs git ≥ 2.36; older git lists the
+  // worktree without it, so this degrades to the gated prune below — no
+  // regression, just no extra cleanup.)
+  let orphans: Array<{ path: string; slug: string; branch: string | null }> = []
+  const list = await execFileNoThrowWithCwd(
+    gitExe(),
+    ['worktree', 'list', '--porcelain'],
+    { cwd: gitRoot },
+  )
+  if (list.code === 0) {
+    orphans = parsePrunableEphemeralOrphans(list.stdout, slug =>
+      EPHEMERAL_WORKTREE_PATTERNS.some(p => p.test(slug)),
+    )
+  }
+
+  if (removed > 0 || orphans.length > 0) {
+    // Age-gated prune: git only drops a missing-dir registration whose admin
+    // files are OLDER than the cutoff, so a brand-new registration — an in-flight
+    // `git worktree add` mid-checkout, or an agent that crashed within the grace
+    // window — is NEVER pruned (this mirrors the 30-day gate the readdir sweep
+    // above applies to dir-present worktrees). Prune runs FIRST because
+    // `git branch -D` refuses a branch git still believes is checked out in ANY
+    // surviving registration: that refusal is the backstop that preserves a
+    // fresh/live worktree's branch even if a creation raced this cleanup.
+    await execFileNoThrowWithCwd(
+      gitExe(),
+      ['worktree', 'prune', '--expire', cutoffDate.toISOString()],
+      { cwd: gitRoot },
+    )
+
+    for (const orphan of orphans) {
+      // Only the canonical `worktree-<slug>` branch — never some other ref a
+      // prunable worktree happened to have checked out.
+      if (!orphan.branch || orphan.branch !== worktreeBranchName(orphan.slug)) {
+        continue
+      }
+      // `git branch -D` here succeeds ONLY when the prune above actually removed
+      // this orphan's registration (it was older than the cutoff and its dir is
+      // gone); a surviving fresh/live registration makes git refuse the delete
+      // (del.code !== 0 → not counted). Gated additionally by the same
+      // fail-closed unpushed guard the readdir path uses, so a crashed agent's
+      // unpushed commits are never force-deleted. The orphan's own dir is gone,
+      // so run the guard against the branch from gitRoot.
+      const unpushed = await execFileNoThrowWithCwd(
+        gitExe(),
+        ['rev-list', '--max-count=1', orphan.branch, '--not', '--remotes'],
+        { cwd: gitRoot },
+      )
+      if (unpushed.code !== 0 || unpushed.stdout.trim().length > 0) {
+        continue
+      }
+      const del = await execFileNoThrowWithCwd(
+        gitExe(),
+        ['branch', '-D', orphan.branch],
+        { cwd: gitRoot },
+      )
+      if (del.code === 0) {
+        removed++
+      }
+    }
+
     logForDebugging(
       `cleanupStaleAgentWorktrees: removed ${removed} stale worktree(s)`,
     )
