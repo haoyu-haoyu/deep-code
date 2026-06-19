@@ -1,5 +1,5 @@
 import * as path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 export async function notifyAndCollectDiagnosticsCore({
   filePath,
@@ -28,8 +28,14 @@ export async function notifyAndCollectDiagnosticsCore({
     }
 
     const absolutePath = path.resolve(filePath)
-    const fileUri = pathToFileURL(absolutePath).href
-    clearDeliveredDiagnosticsForFile(fileUri)
+    // Clear with the PLAIN absolute path, not a file:// URI. The delivered-dedup
+    // map (LSPDiagnosticRegistry.deliveredDiagnostics) is keyed by the server's
+    // echoed URI run through fileURLToPath — i.e. a plain path. Passing a
+    // pathToFileURL().href here never matched that key, so this per-edit clear
+    // (which exists to re-surface a freshly-edited file's still-unfixed
+    // diagnostics) was a permanent no-op. absolutePath === fileURLToPath(
+    // pathToFileURL(absolutePath).href) for every path, so this matches the key.
+    clearDeliveredDiagnosticsForFile(absolutePath)
 
     const server = await lspManager.ensureServerStarted(filePath)
     if (!server) {
