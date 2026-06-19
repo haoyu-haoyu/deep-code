@@ -3,6 +3,7 @@ import { logForDebugging } from '../debug.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
 import {
+  buildKeychainAddInteractiveLine,
   buildKeychainDeleteArgs,
   buildKeychainFindArgs,
 } from './keychainArgs.mjs'
@@ -122,10 +123,17 @@ export const macOsKeychainStorage = {
       // naive plaintext-grep rules, and the alternative — silent credential
       // corruption — is strictly worse. ARG_MAX on darwin is 1MB so argv has
       // effectively no size limit for our purposes.
-      const command = `add-generic-password -U -a "${username}" -s "${storageServiceName}" -X "${hexValue}"\n`
+      // Escape username/serviceName for the `security -i` interactive tokenizer so a
+      // crafted $USER can't inject flags; null => unrepresentable on one line, fall
+      // through to the argv branch below (also used when the line is too long).
+      const command = buildKeychainAddInteractiveLine(
+        username,
+        storageServiceName,
+        hexValue,
+      )
 
       let result
-      if (command.length <= SECURITY_STDIN_LINE_LIMIT) {
+      if (command !== null && command.length <= SECURITY_STDIN_LINE_LIMIT) {
         result = execaSync('security', ['-i'], {
           input: command,
           stdio: ['pipe', 'pipe', 'pipe'],
