@@ -17,6 +17,7 @@ import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage, getErrnoCode } from './errors.js'
 import { execFileNoThrow, execFileNoThrowWithCwd } from './execFileNoThrow.js'
+import { isStaleWorktreeRegistrationError } from './worktreeAddError.mjs'
 import { getMessage } from '../i18n/index.js'
 import { parseGitConfigValue } from './git/gitConfigParser.js'
 import {
@@ -332,7 +333,24 @@ async function getOrCreateWorktree(
   const { code: createCode, stderr: createStderr } =
     await execFileNoThrowWithCwd(gitExe(), addArgs, { cwd: repoRoot })
   if (createCode !== 0) {
-    throw new Error(`Failed to create worktree: ${createStderr}`)
+    if (!isStaleWorktreeRegistrationError(createStderr)) {
+      throw new Error(`Failed to create worktree: ${createStderr}`)
+    }
+    // A worktree whose directory was removed out-of-band leaves a stale git
+    // registration that wedges re-creation at this exact path/branch (exit 128):
+    // fast-resume above already returned null because the dir is gone, and the
+    // -B add then fatals "is already used by worktree at" (or "missing but
+    // already registered"). `git worktree prune` drops registrations whose dir is
+    // gone (a no-op on live worktrees); retry the SAME add once. If it still fails
+    // the conflict is real (a live worktree still holds the path/branch) → surface it.
+    await execFileNoThrowWithCwd(gitExe(), ['worktree', 'prune'], {
+      cwd: repoRoot,
+    })
+    const { code: retryCode, stderr: retryStderr } =
+      await execFileNoThrowWithCwd(gitExe(), addArgs, { cwd: repoRoot })
+    if (retryCode !== 0) {
+      throw new Error(`Failed to create worktree: ${retryStderr}`)
+    }
   }
 
   if (sparsePaths?.length) {
