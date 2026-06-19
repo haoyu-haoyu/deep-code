@@ -5,6 +5,8 @@ import {
 } from '../cache/deepseek-cache.mjs'
 import { byteCompare } from '../cache/byte-order.mjs'
 import { toolToDeepSeekFunctionSchema } from '../tools/deepseek-schema.mjs'
+import { resolveStrictToolNames } from '../tools/resolveStrictToolNames.mjs'
+import { resolveStrictMode } from '../services/providers/resolveStrictMode.mjs'
 import { providerSupports } from './provider-capabilities.mjs'
 
 export const DEEPCODE_STABLE_SYSTEM_PROMPT = [
@@ -40,6 +42,13 @@ export async function createDeepCodeStablePrefix({
   repoSummary = '',
   stableHistory = [],
   provider,
+  // Resolve the strict-tool mode the SAME way the wire does (default from
+  // DEEPCODE_STRICT_TOOLS via resolveStrictMode), so the hashed manifest matches
+  // the transmitted one. A caller may pass an explicit strictMode to mirror a
+  // per-request strictTools boolean override. Defaults to 'off' in the common
+  // case → byte-identical to the prior off-mode hash.
+  strictMode,
+  env = process.env,
 } = {}) {
   if (!providerSupports(provider, 'stable_prefix_cache')) {
     return {
@@ -55,7 +64,12 @@ export async function createDeepCodeStablePrefix({
     }
   }
 
-  const stableTools = await createStableToolManifest(tools, toolSchemaOptions)
+  const resolvedStrictMode = strictMode ?? resolveStrictMode({ env })
+  const stableTools = await createStableToolManifest(
+    tools,
+    toolSchemaOptions,
+    resolvedStrictMode,
+  )
   const stableSkills = skills
     .map(skill => stableSkillManifest(skill))
     .sort((a, b) => {
@@ -110,11 +124,23 @@ export function formatDeepCodePrefixStatus(prefix) {
   return `Stable prefix hash: ${prefix?.prefixHash ?? 'unknown'}`
 }
 
-async function createStableToolManifest(tools, toolSchemaOptions = {}) {
+async function createStableToolManifest(
+  tools,
+  toolSchemaOptions = {},
+  strictMode = 'off',
+) {
+  // Render each tool under the SAME per-tool strict selection the wire applies
+  // (deepseek.mjs buildDeepSeekRequest), so prefixHash/componentHashes.tools
+  // fingerprint the exact bytes sent. 'off' (the default) selects no tool, so the
+  // strict:undefined per tool is byte-identical to the prior no-strict render.
+  const strictToolNames = resolveStrictToolNames(strictMode, tools)
   const manifest = []
   for (const tool of tools) {
     const schema = await toolToDeepSeekFunctionSchema(tool, {
       ...toolSchemaOptions,
+      strict: strictToolNames.has(tool.name ?? tool.function?.name)
+        ? strictMode
+        : undefined,
       tools: toolSchemaOptions.tools ?? tools,
     })
     const stableTool = {
