@@ -133,3 +133,31 @@ test('a same-type replace passing the same cell_type behaves like no type change
   assert.equal(c.execution_count, null)
   assert.deepEqual(c.outputs, [])
 })
+
+// a markdown cell that embeds an image carries an `attachments` map — a
+// markdown/raw-only nbformat field the code-cell schema (additionalProperties:
+// false) forbids. A markdown->code replace must DROP it or the notebook is
+// nbformat-invalid (the #530 reconcile class, one field unhandled).
+const mdCellWithAttachment = () => ({
+  cell_type: 'markdown',
+  id: 'm1',
+  source: ['![](attachment:img.png)'],
+  metadata: {},
+  attachments: { 'img.png': { 'image/png': 'iVBOR...' } },
+})
+
+test('replace markdown->code drops the markdown-only attachments map', () => {
+  const cell = applyReplacedCellShape(mdCellWithAttachment(), ['print(1)'], 'code')
+  assert.equal(cell.cell_type, 'code')
+  assert.ok(!('attachments' in cell), 'a code cell must not carry attachments')
+  assert.equal(cell.execution_count, null)
+  assert.deepEqual(cell.outputs, [])
+})
+
+test('a markdown-final replace PRESERVES a legitimate attachments map (legal on markdown)', () => {
+  const cell = applyReplacedCellShape(mdCellWithAttachment(), ['![](attachment:img.png) edited'], 'markdown')
+  assert.equal(cell.cell_type, 'markdown')
+  assert.deepEqual(cell.attachments, { 'img.png': { 'image/png': 'iVBOR...' } })
+  // and still no code-only fields leaked in
+  assert.ok(!('execution_count' in cell) && !('outputs' in cell))
+})
