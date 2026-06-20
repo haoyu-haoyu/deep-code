@@ -8,6 +8,7 @@ import {
   formatTurnTokenStatus,
   latestTurnModel,
 } from '../src/components/costStatusData.mjs'
+import { budgetEnforceabilityWarning } from '../src/utils/budgetEnforceabilityWarning.mjs'
 
 // ── per-turn token + cache-savings status (footer chip data) ─────────────────
 // Built from the latest turn's usage (the cache breakdown is in the message
@@ -267,6 +268,36 @@ test('latestTurnModel skips a synthetic-MESSAGE assistant even when it carries a
     latestTurnModel([Atext('deepseek-v4-pro', 'first'), Atext('deepseek-v4-flash', 'a real answer')]),
     'deepseek-v4-flash',
   )
+})
+
+// ── budgetEnforceabilityWarning: --max-budget-usd unenforceable for unpriced models ──
+// A --max-budget-usd cap can only fire if the active model has USD pricing. This
+// DeepSeek fork prices DeepSeek input-only, so the cap would silently never
+// trigger for a DeepSeek model. The leaf decides whether to warn (and builds the
+// message); it does NOT invent a price or revive cost tracking.
+
+test('no budget set → no warning (null)', () => {
+  assert.equal(budgetEnforceabilityWarning(undefined, false, 'deepseek-v4-pro'), null)
+  assert.equal(budgetEnforceabilityWarning(null, false, 'deepseek-v4-pro'), null)
+})
+
+test('priceable model → no warning even with a budget (its cap could fire)', () => {
+  assert.equal(budgetEnforceabilityWarning(5, true, 'claude-opus-4-6'), null)
+  assert.equal(budgetEnforceabilityWarning(0.01, true, 'claude-sonnet-4-6'), null)
+})
+
+test('budget set + unpriceable model → a loud warning naming the model and amount', () => {
+  const w = budgetEnforceabilityWarning(2.5, false, 'deepseek-v4-pro')
+  assert.ok(typeof w === 'string')
+  assert.match(w, /will NOT be enforced/)
+  assert.match(w, /\$2\.5\b/) // the budget amount is shown
+  assert.match(w, /deepseek-v4-pro/) // the offending model is named
+})
+
+test('the warning fires for any unpriceable model id (auto, unknown)', () => {
+  for (const model of ['deepseek-v4-flash', 'auto', 'some-unknown-model']) {
+    assert.match(budgetEnforceabilityWarning(10, false, model), /will NOT be enforced/, model)
+  }
 })
 
 // DRIFT GUARD: the SYNTHETIC_MODEL + SYNTHETIC_MESSAGES mirrored in

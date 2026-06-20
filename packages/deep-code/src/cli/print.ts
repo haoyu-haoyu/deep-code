@@ -250,6 +250,8 @@ import {
   modelDisplayString,
   parseUserSpecifiedModel,
 } from 'src/utils/model/model.js'
+import { isModelPriceableUSD } from 'src/utils/modelCost.js'
+import { budgetEnforceabilityWarning } from 'src/utils/budgetEnforceabilityWarning.mjs'
 import {
   modelSupportsEffort,
   resolveAppliedEffort,
@@ -591,6 +593,22 @@ export async function runHeadless(
       gracefulShutdownSync(1, 'other')
       return
     }
+  }
+
+  // A --max-budget-usd cap can only fire if the active model has USD pricing.
+  // This fork prices DeepSeek input-only (no output price), so for a DeepSeek
+  // model the cap would silently never trigger. Warn loudly rather than leave a
+  // false sense of a spending limit. getMainLoopModel() already reflects the
+  // --model override (setMainLoopModelOverride runs before runHeadless), so it's
+  // the resolved model that will actually run.
+  const budgetModel = getMainLoopModel()
+  const budgetWarning = budgetEnforceabilityWarning(
+    options.maxBudgetUsd,
+    isModelPriceableUSD(budgetModel),
+    budgetModel,
+  )
+  if (budgetWarning) {
+    process.stderr.write(`\n${budgetWarning}\n\n`)
   }
 
   if (options.outputFormat === 'stream-json' && options.verbose) {
