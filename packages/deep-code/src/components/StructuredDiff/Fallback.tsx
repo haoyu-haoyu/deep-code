@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import type { ThemeName } from 'src/utils/theme.js';
 import { stringWidth } from '../../ink/stringWidth.js';
 import { Box, NoSelect, Text, useTheme, wrapText } from '../../ink.js';
+import { wordDiffTooLarge } from '../../native-ts/color-diff/wordDiffGuard.mjs';
 
 /*
  * StructuredDiffFallback Component: Word-Level Diff Highlighting Example
@@ -247,6 +248,15 @@ function generateWordDiffElements(item: DiffLine, width: number, maxWidth: numbe
   }
   const removedLineText = type === 'remove' ? originalCode : matchedLine.originalCode;
   const addedLineText = type === 'remove' ? matchedLine.originalCode : originalCode;
+  // Skip the unbounded Myers word-diff for a very long changed line: calculateWordDiffs
+  // runs synchronously inside the Ink render, so a multi-MB minified/lockfile/base64 line
+  // would freeze the TUI (or OOM). Returning null falls through to whole-line add/remove
+  // highlighting — byte-identical to the change-ratio early-out below, and to the sibling
+  // color-diff guard (native-ts/color-diff/index.ts:609). wordDiffGuard.mjs is the single
+  // source of truth for the bound; #440 only wired it into the color-diff path.
+  if (wordDiffTooLarge(removedLineText, addedLineText)) {
+    return null;
+  }
   const wordDiffs = calculateWordDiffs(removedLineText, addedLineText);
 
   // Check if we should use word-level diffing
