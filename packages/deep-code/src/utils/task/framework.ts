@@ -17,6 +17,7 @@ import type { TaskState } from '../../tasks/types.js'
 import { enqueuePendingNotification } from '../messageQueueManager.js'
 import { enqueueSdkEvent } from '../sdkEventQueue.js'
 import { getTaskOutputDelta, getTaskOutputPath } from './diskOutput.js'
+import { pruneAgentNameRegistry } from './pruneAgentNameRegistry.mjs'
 
 // Standard polling interval for all tasks
 export const POLL_INTERVAL_MS = 1000
@@ -139,7 +140,14 @@ export function evictTerminalTask(
       return prev
     }
     const { [taskId]: _, ...remainingTasks } = prev.tasks
-    return { ...prev, tasks: remainingTasks }
+    // The timer-driven eviction path must prune the name→agentId entry too —
+    // same reason as applyTaskOffsetsAndEvictions: nothing else removes it, so
+    // an evicted agent's name would leak / mis-route a SendMessage. (This is the
+    // SECOND deletion path; both route the prune through the same leaf.)
+    const agentNameRegistry = pruneAgentNameRegistry(prev.agentNameRegistry, [
+      taskId,
+    ])
+    return { ...prev, tasks: remainingTasks, agentNameRegistry }
   })
 }
 
@@ -222,6 +230,7 @@ export function applyTaskOffsetsAndEvictions(
   setAppState(prev => {
     let changed = false
     const newTasks = { ...prev.tasks }
+    const deletedIds: string[] = []
     for (const id of offsetIds) {
       const fresh = newTasks[id]
       // Re-check status on fresh state — task may have completed during the
@@ -242,9 +251,20 @@ export function applyTaskOffsetsAndEvictions(
         continue
       }
       delete newTasks[id]
+      deletedIds.push(id)
       changed = true
     }
-    return changed ? { ...prev, tasks: newTasks } : prev
+    if (!changed) {
+      return prev
+    }
+    // Evicting a task must also drop its name→agentId entry — nothing else does,
+    // so the registry would leak the name forever and a SendMessage to it would
+    // route to a dead agent. The registry value IS the agent/task id.
+    const agentNameRegistry = pruneAgentNameRegistry(
+      prev.agentNameRegistry,
+      deletedIds,
+    )
+    return { ...prev, tasks: newTasks, agentNameRegistry }
   })
 }
 
