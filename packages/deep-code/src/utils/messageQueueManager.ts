@@ -532,6 +532,26 @@ export function getCommandsByMaxPriority(
 }
 
 /**
+ * Non-destructive snapshot of matching commands in EFFECTIVE DISPATCH ORDER
+ * (priority, then queue index) — the exact order repeated dequeue(filter) would
+ * pull them. Used to select a contiguous, FIFO-preserving drain batch without
+ * mutating the queue (the actual removal is done by reference via remove()).
+ */
+export function peekAllInDispatchOrder(
+  filter?: (cmd: QueuedCommand) => boolean,
+): QueuedCommand[] {
+  return commandQueue
+    .map((cmd, idx) => ({ cmd, idx }))
+    .filter(({ cmd }) => !filter || filter(cmd))
+    .sort(
+      (a, b) =>
+        PRIORITY_ORDER[a.cmd.priority ?? 'next'] -
+          PRIORITY_ORDER[b.cmd.priority ?? 'next'] || a.idx - b.idx,
+    )
+    .map(({ cmd }) => cmd)
+}
+
+/**
  * Returns true if the command is a slash command that should be routed through
  * processSlashCommand rather than sent to the model as text.
  *

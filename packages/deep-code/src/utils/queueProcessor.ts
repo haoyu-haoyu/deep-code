@@ -1,10 +1,10 @@
 import type { QueuedCommand } from '../types/textInputTypes.js'
 import {
-  dequeue,
-  dequeueAllMatching,
   hasCommandsInQueue,
-  peek,
+  peekAllInDispatchOrder,
+  remove,
 } from './messageQueueManager.js'
+import { selectQueueDrainBatch } from './queueBatchSelection.mjs'
 
 type ProcessQueueParams = {
   executeInput: (commands: QueuedCommand[]) => Promise<void>
@@ -52,36 +52,28 @@ function isSlashCommand(cmd: QueuedCommand): boolean {
 export function processQueueIfReady({
   executeInput,
 }: ProcessQueueParams): ProcessQueueResult {
-  // This processor runs on the REPL main thread between turns. Skip anything
-  // addressed to a subagent — an unfiltered peek() returning a subagent
-  // notification would set targetMode, dequeueAllMatching would find nothing
-  // matching that mode with agentId===undefined, and we'd return processed:
-  // false with the queue unchanged → the React effect never re-fires and any
-  // queued user prompt stalls permanently.
+  // This processor runs on the REPL main thread between turns. Restrict the
+  // snapshot to main-thread commands — a subagent notification has agentId set
+  // and is drained elsewhere; including it here would batch nothing for the main
+  // thread and we'd return processed:false with the queue unchanged → the React
+  // effect never re-fires and any queued user prompt stalls permanently.
   const isMainThread = (cmd: QueuedCommand) => cmd.agentId === undefined
 
-  const next = peek(isMainThread)
-  if (!next) {
-    return { processed: false }
-  }
-
-  // Slash commands and bash-mode commands are processed individually.
-  // Bash commands need per-command error isolation, exit codes, and progress UI.
-  if (isSlashCommand(next) || next.mode === 'bash') {
-    const cmd = dequeue(isMainThread)!
-    void executeInput([cmd])
-    return { processed: true }
-  }
-
-  // Drain all non-slash-command items with the same mode at once.
-  const targetMode = next.mode
-  const commands = dequeueAllMatching(
-    cmd => isMainThread(cmd) && !isSlashCommand(cmd) && cmd.mode === targetMode,
+  // Select the drain batch from a non-destructive, dispatch-ordered snapshot and
+  // remove exactly those by reference. selectQueueDrainBatch takes only the
+  // CONTIGUOUS leading run (a slash/bash head alone; a prompt head + its
+  // same-mode prompt followers, stopping at the first sandwiched slash/bash so it
+  // keeps its FIFO position). Using a position-agnostic whole-queue scan here
+  // previously jumped a sandwiched /clear past later prompts.
+  const commands = selectQueueDrainBatch(
+    peekAllInDispatchOrder(isMainThread),
+    isSlashCommand,
   )
   if (commands.length === 0) {
     return { processed: false }
   }
 
+  remove(commands)
   void executeInput(commands)
   return { processed: true }
 }
