@@ -2,9 +2,28 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { flattenSettledBlocks } from '../src/services/mcp/flattenSettledBlocks.mjs'
+import { describeUnknownContentBlock } from '../src/services/mcp/describeUnknownContentBlock.mjs'
 
 const ok = value => ({ status: 'fulfilled', value })
 const err = reason => ({ status: 'rejected', reason })
+
+// transformResultContent's default case feeds this placeholder instead of [] so
+// an unrecognized MCP content block is surfaced to the model, not silently dropped.
+test('describeUnknownContentBlock surfaces the type + server (no silent drop)', () => {
+  assert.equal(
+    describeUnknownContentBlock('video', 'my-server'),
+    '[Unsupported content block type "video" from MCP server "my-server"]',
+  )
+})
+
+test('describeUnknownContentBlock labels a missing/empty/non-string type as "unknown"', () => {
+  for (const bad of [undefined, null, '', 0, {}, []]) {
+    assert.equal(
+      describeUnknownContentBlock(bad, 'srv'),
+      '[Unsupported content block type "unknown" from MCP server "srv"]',
+    )
+  }
+})
 
 test('a single bad block degrades to a placeholder but keeps every valid sibling', () => {
   // The bug: Promise.all rejected the WHOLE result on one throwing block, so the

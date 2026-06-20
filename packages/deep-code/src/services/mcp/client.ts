@@ -41,6 +41,7 @@ import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
+import { describeUnknownContentBlock } from './describeUnknownContentBlock.mjs'
 import { flattenSettledBlocks } from './flattenSettledBlocks.mjs'
 import { paginateMcpList } from './paginateMcpList.mjs'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
@@ -2621,7 +2622,19 @@ export async function transformResultContent(
       ]
     }
     default:
-      return []
+      // A content block type this client doesn't render (a future MCP spec
+      // type, or a non-conformant server). Surface a placeholder rather than
+      // silently dropping it — mirrors the resource / resource_link cases above,
+      // which deliberately avoid losing a block without a trace.
+      return [
+        {
+          type: 'text',
+          text: describeUnknownContentBlock(
+            (resultContent as { type?: unknown }).type,
+            serverName,
+          ),
+        },
+      ]
   }
 }
 
