@@ -49,6 +49,7 @@ import {
   isMcpServerDisabled,
   setMcpServerEnabled,
 } from 'src/services/mcp/config.js'
+import { shouldApplyPendingMcpUpdate } from 'src/services/mcp/reconcilePendingMcpUpdate.mjs'
 import type { AppState } from 'src/state/AppState.js'
 import type { PluginError } from 'src/types/plugin.js'
 import { logForDebugging } from 'src/utils/debug.js'
@@ -224,6 +225,13 @@ export function useManageMCPConnections(
       let mcp = prevState.mcp
 
       for (const update of updates) {
+        // A buffered non-terminal update can flush AFTER the user disabled (or a
+        // config edit removed) the server during the ~16ms coalesce window — re-
+        // check the disk truth so a late list_changed/connect can't resurrect a
+        // disabled server as 'connected' with live tools.
+        if (!shouldApplyPendingMcpUpdate(update, isMcpServerDisabled)) {
+          continue
+        }
         const {
           tools: rawTools,
           commands: rawCmds,

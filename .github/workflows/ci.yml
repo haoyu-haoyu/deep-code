@@ -182,6 +182,7 @@ jobs:
             test/mcp-flatten-settled-blocks.test.mjs \
             test/mcp-stdio-transport-predicate.test.mjs \
             test/mcp-resource-mention-gate.test.mjs \
+            test/mcp-reconcile-pending-update.test.mjs \
             test/ssrf-blocked-address.test.mjs \
             test/image-format-support.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
