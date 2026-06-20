@@ -43,6 +43,7 @@ import pMap from 'p-map'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { describeUnknownContentBlock } from './describeUnknownContentBlock.mjs'
 import { flattenSettledBlocks } from './flattenSettledBlocks.mjs'
+import { isStdioTransportConfig } from './isStdioTransportConfig.mjs'
 import { paginateMcpList } from './paginateMcpList.mjs'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
@@ -893,7 +894,7 @@ export const connectToServer = memoize(
         logMCPDebug(name, `claude.ai proxy transport created successfully`)
       } else if (
         feature('CHICAGO_MCP') &&
-        (serverRef.type === 'stdio' || !serverRef.type) &&
+        isStdioTransportConfig(serverRef.type) &&
         isComputerUseMCPServer!(name)
       ) {
         // Run the Computer Use MCP server in-process. The package's CallTool
@@ -910,7 +911,7 @@ export const connectToServer = memoize(
         await inProcessServer.connect(serverTransport)
         transport = clientTransport
         logMCPDebug(name, `In-process Computer Use MCP server started`)
-      } else if (serverRef.type === 'stdio' || !serverRef.type) {
+      } else if (isStdioTransportConfig(serverRef.type)) {
         const finalCommand =
           process.env.CLAUDE_CODE_SHELL_PREFIX || serverRef.command
         const finalArgs = process.env.CLAUDE_CODE_SHELL_PREFIX
@@ -934,7 +935,7 @@ export const connectToServer = memoize(
       // Store handler reference for cleanup to prevent memory leaks
       let stderrHandler: ((data: Buffer) => void) | undefined
       let stderrOutput = ''
-      if (serverRef.type === 'stdio' || !serverRef.type) {
+      if (isStdioTransportConfig(serverRef.type)) {
         const stdioTransport = transport as StdioClientTransport
         if (stdioTransport.stderr) {
           stderrHandler = (data: Buffer) => {
@@ -1387,15 +1388,17 @@ export const connectToServer = memoize(
         }
 
         // Remove stderr event listener to prevent memory leaks
-        if (stderrHandler && (serverRef.type === 'stdio' || !serverRef.type)) {
+        if (stderrHandler && isStdioTransportConfig(serverRef.type)) {
           const stdioTransport = transport as StdioClientTransport
           stdioTransport.stderr?.off('data', stderrHandler)
         }
 
         // For stdio transports, explicitly terminate the child process with proper signals
         // NOTE: StdioClientTransport.close() only sends an abort signal, but many MCP servers
-        // (especially Docker containers) need explicit SIGINT/SIGTERM signals to trigger graceful shutdown
-        if (serverRef.type === 'stdio') {
+        // (especially Docker containers) need explicit SIGINT/SIGTERM signals to trigger graceful shutdown.
+        // Use the shared predicate so a typeless `{command,args}` stdio config (no `type` field)
+        // gets the same escalation as an explicit `type:'stdio'` — it spawns a child the same way.
+        if (isStdioTransportConfig(serverRef.type)) {
           try {
             const stdioTransport = transport as StdioClientTransport
             const childPid = stdioTransport.pid
@@ -1968,7 +1971,7 @@ export const fetchToolsForClient = memoizeWithLRU(
               return `${client.name} - ${displayName} (MCP)`
             },
             ...(feature('CHICAGO_MCP') &&
-            (client.config.type === 'stdio' || !client.config.type) &&
+            isStdioTransportConfig(client.config.type) &&
             isComputerUseMCPServer!(client.name)
               ? computerUseWrapper!().getComputerUseMCPToolOverrides(tool.name)
               : {}),
