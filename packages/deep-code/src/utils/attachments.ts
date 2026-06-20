@@ -69,6 +69,7 @@ import {
 } from 'src/types/textInputTypes.js'
 import { randomUUID, type UUID } from 'crypto'
 import { getSettings_DEPRECATED } from './settings/settings.js'
+import { stripLeadingBom } from './bom.mjs'
 import { getSnippetForTwoFileDiff } from 'src/tools/FileEditTool/utils.js'
 import type {
   ContentBlockParam,
@@ -2105,9 +2106,16 @@ export async function getChangedFiles(
         const result = await FileReadTool.call(fileInput, toolUseContext)
         // Extract only the changed section
         if (result.data.type === 'text') {
+          // Normalize the leading BOM on BOTH sides before diffing. readFileState
+          // entries written by a whole-file read (FileEdit's updatedFile, the sed
+          // path's newContent) KEEP the U+FEFF, while FileReadTool.call here reads
+          // via the range reader which STRIPS it — so an unmodified BOM file (mtime
+          // bumped by a bare external touch) would otherwise show a phantom line-1
+          // change. This mirrors the staleness checks' stripLeadingBom-both-sides
+          // (FileEditTool/FileWriteTool) — see src/utils/bom.mjs.
           const snippet = getSnippetForTwoFileDiff(
-            fileState.content,
-            result.data.file.content,
+            stripLeadingBom(fileState.content),
+            stripLeadingBom(result.data.file.content),
           )
 
           // File was touched but not modified

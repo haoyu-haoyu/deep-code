@@ -62,6 +62,32 @@ test('staleness comparison: a BOM-kept whole-file read equals a BOM-stripped ran
   assert.equal(stripLeadingBom(wholeFileRead), stripLeadingBom(rangeRead)) // fixed
 })
 
+// --- getChangedFiles phantom diff: the diff must stripLeadingBom BOTH sides -----
+
+test('getChangedFiles: a BOM file edit + a fresh range read must be BOM-normalized before diffing', () => {
+  // bug #1 covers the staleness === checks. getChangedFiles is the OTHER consumer
+  // of readFileState.content: it line-DIFFs the stored content against a fresh
+  // FileReadTool read (range reader → BOM stripped) via a BOM-naive structuredPatch.
+  // readFileState entries written by a whole-file read — FileEdit's `updatedFile`
+  // and the BashTool sed path's `newContent` — KEEP the BOM, so for an UNTOUCHED
+  // BOM file (mtime bumped by a bare external touch) the diff showed a phantom
+  // line-1 change and injected a bogus edited_text_file attachment. The fix mirrors
+  // the staleness checks: stripLeadingBom BOTH sides at the getChangedFiles diff.
+  const onDisk = 'line1\nline2\n'
+  const storedAfterEdit = BOM + onDisk // a whole-file-read store (BOM kept)
+  const freshRangeRead = onDisk // getChangedFiles' re-read (BOM stripped)
+
+  // Raw, the two differ only by the BOM → line 1 mismatches → structuredPatch
+  // produces a (phantom) hunk.
+  assert.notEqual(storedAfterEdit, freshRangeRead)
+  assert.notEqual(storedAfterEdit.split('\n')[0], freshRangeRead.split('\n')[0])
+
+  // Stripping BOTH sides (as the fix does) makes them byte-identical → no hunks →
+  // no phantom attachment (the empty-snippet suppression now correctly fires). This
+  // closes the bug for EVERY whole-file-read writer in one consumer-side place.
+  assert.equal(stripLeadingBom(storedAfterEdit), stripLeadingBom(freshRangeRead))
+})
+
 // --- bug #3: UTF-16LE write keeps its detectable BOM -----------------------
 
 // Mirror the encoding auto-detection in src/utils/fileRead.ts.
