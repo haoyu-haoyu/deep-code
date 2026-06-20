@@ -180,6 +180,7 @@ jobs:
             test/mcp-error-text.test.mjs \
             test/mcp-flatten-settled-blocks.test.mjs \
             test/mcp-stdio-transport-predicate.test.mjs \
+            test/mcp-resource-mention-gate.test.mjs \
             test/ssrf-blocked-address.test.mjs \
             test/image-format-support.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \

@@ -132,10 +132,15 @@ import {
   formatAgentLine,
   shouldInjectAgentListInMessages,
 } from '../tools/AgentTool/prompt.js'
-import { filterDeniedAgents } from './permissions/permissions.js'
+import {
+  filterDeniedAgents,
+  getAskRuleForTool,
+  getDenyRuleForTool,
+} from './permissions/permissions.js'
 import { mcpInfoFromString } from '../services/mcp/mcpStringUtils.js'
 import { ensureConnectedClient } from '../services/mcp/client.js'
 import { readMcpResourceWithReconnect } from './readMcpResourceWithReconnect.mjs'
+import { isMcpResourceMentionSuppressed } from './mcpResourceMentionGate.mjs'
 import {
   checkReadPermissionForTool,
   pathInAllowedWorkingPath,
@@ -1997,6 +2002,18 @@ async function processMcpResourceAttachments(
   if (resourceMentions.length === 0) return []
 
   const mcpClients = toolUseContext.options.mcpClients || []
+
+  // Honor a user's deny/ask rule on ReadMcpResourceTool, mirroring the @-file
+  // path's isFileReadDenied. Without this, an un-prompted @server:uri read
+  // (incl. one auto-triggered by an untrusted skill body) bypasses a configured
+  // rule. Resolved once: the rule is per-tool, not per-resource.
+  if (
+    isMcpResourceReadSuppressed(
+      toolUseContext.getAppState().toolPermissionContext,
+    )
+  ) {
+    return []
+  }
 
   const results = await Promise.all(
     resourceMentions.map(async mention => {
@@ -3964,4 +3981,20 @@ function isFileReadDenied(
     decision.behavior === 'ask' &&
     decision.decisionReason?.type !== 'workingDir'
   )
+}
+
+// The @-file path above consults the permission system; an @server:uri
+// MCP-resource mention had no equivalent. A configured deny/ask rule on
+// ReadMcpResourceTool must suppress an un-prompted resource read here too (an
+// MCP resource has no path, so this matches the whole-tool rule, not a path
+// rule). 'ReadMcpResourceTool' is the tool's `name` (ReadMcpResourceTool.ts);
+// a drift-guard test pins the two in sync.
+function isMcpResourceReadSuppressed(
+  toolPermissionContext: ToolPermissionContext,
+): boolean {
+  const descriptor = { name: 'ReadMcpResourceTool' } as const
+  return isMcpResourceMentionSuppressed({
+    denyRule: getDenyRuleForTool(toolPermissionContext, descriptor),
+    askRule: getAskRuleForTool(toolPermissionContext, descriptor),
+  })
 }
