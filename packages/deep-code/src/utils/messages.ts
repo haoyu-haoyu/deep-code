@@ -24,6 +24,8 @@ import type { AgentId } from 'src/types/ids.js'
 import { companionIntroText } from '../buddy/prompt.js'
 import { NO_CONTENT_MESSAGE } from '../constants/messages.js'
 import { OUTPUT_STYLE_CONFIG } from '../constants/outputStyles.js'
+import { DEFAULT_MAX_RESULT_SIZE_CHARS } from '../constants/toolLimits.js'
+import { buildMcpResourceTextBlocks } from './mcpResourceBlocks.mjs'
 import { isAutoMemoryEnabled } from '../memdir/paths.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -3886,40 +3888,17 @@ You have exited auto mode. The user may now want to interact more directly. You 
         ])
       }
 
-      // Transform each content item using the MCP transform function
-      const transformedBlocks: ContentBlockParam[] = []
-
-      // Handle the resource contents - only process text content
-      for (const item of content.contents) {
-        if (item && typeof item === 'object') {
-          if ('text' in item && typeof item.text === 'string') {
-            transformedBlocks.push(
-              {
-                type: 'text',
-                text: 'Full contents of resource:',
-              },
-              {
-                type: 'text',
-                text: item.text,
-              },
-              {
-                type: 'text',
-                text: 'Do NOT read this resource again unless you think it may have changed, since you already have the full contents.',
-              },
-            )
-          } else if ('blob' in item) {
-            // Skip binary content including images
-            const mimeType =
-              'mimeType' in item
-                ? String(item.mimeType)
-                : 'application/octet-stream'
-            transformedBlocks.push({
-              type: 'text',
-              text: `[Binary content: ${mimeType}]`,
-            })
-          }
-        }
-      }
+      // Flatten the resource contents into text blocks, bounding the total text
+      // by the system-wide tool-result ceiling. The resource is server-controlled
+      // and its size is unknown until read (resources/list shows only metadata),
+      // and this is the sole place it enters the model context — without the cap
+      // a single huge resource blows the context window / inflates cost in one
+      // turn. Mirrors the ReadMcpResourceTool's bound (clamped to the same
+      // DEFAULT_MAX_RESULT_SIZE_CHARS in the tool-result pipeline).
+      const transformedBlocks: ContentBlockParam[] = buildMcpResourceTextBlocks(
+        content.contents,
+        DEFAULT_MAX_RESULT_SIZE_CHARS,
+      )
 
       // If we have any content blocks, return them as a message
       if (transformedBlocks.length > 0) {
