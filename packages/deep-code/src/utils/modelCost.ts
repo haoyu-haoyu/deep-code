@@ -229,3 +229,14 @@ export function getModelPricingString(model: string): string | undefined {
   if (!costs) return undefined
   return formatModelPricing(costs)
 }
+
+/**
+ * Whether a model has a USD price entry, so calculateUSDCost is meaningful and a
+ * --max-budget-usd cap could actually fire. Side-effect-free: unlike
+ * getModelCosts, it does NOT log tengu_unknown_model_cost or set the
+ * unknown-cost flag for an unpriced model — it's a pure lookup. A DeepSeek model
+ * (this fork's default) returns false: the fork prices DeepSeek input-only.
+ */
+export function isModelPriceableUSD(model: string): boolean {
+  return MODEL_COSTS[getCanonicalName(model)] !== undefined
+}
