@@ -8,6 +8,7 @@ import { getClaudeConfigHomeDir, isEnvTruthy } from './utils/envUtils.js'
 import { getErrnoCode } from './utils/errors.js'
 import { readLinesReverse } from './utils/fsOperations.js'
 import { lock } from './utils/lockfile.js'
+import { resolveFlushedQueue } from './utils/resolveFlushedQueue.mjs'
 import {
   hashPastedText,
   retrievePastedText,
@@ -295,6 +296,11 @@ async function immediateFlushHistory(): Promise<void> {
   }
 
   let release
+  // Set once we've snapshotted+cleared the buffer; the finally then re-queues the
+  // batch if the write failed (otherwise it's silently dropped — a transient
+  // appendFile error must not lose prompt history).
+  let flushing: LogEntry[] | undefined
+  let succeeded = false
   try {
     const historyPath = join(getClaudeConfigHomeDir(), 'history.jsonl')
 
@@ -313,13 +319,21 @@ async function immediateFlushHistory(): Promise<void> {
       },
     })
 
-    const jsonLines = pendingEntries.map(entry => jsonStringify(entry) + '\n')
+    flushing = pendingEntries
     pendingEntries = []
+    const jsonLines = flushing.map(entry => jsonStringify(entry) + '\n')
 
     await appendFile(historyPath, jsonLines.join(''), { mode: 0o600 })
+    succeeded = true
   } catch (error) {
     logForDebugging(`Failed to write prompt history: ${error}`)
   } finally {
+    // Restore the buffer BEFORE releasing the lock so a throwing release() can't
+    // strand the un-written batch. No-op on success (keeps only entries pushed
+    // during the write); on failure re-queues the batch ahead of them.
+    if (flushing) {
+      pendingEntries = resolveFlushedQueue(flushing, pendingEntries, succeeded)
+    }
     if (release) {
       await release()
     }
