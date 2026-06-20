@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { realpathSync } from 'node:fs'
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -194,12 +194,38 @@ export function resolveWorkspacePath(workspaceRoot, filePath) {
     realRoot = root
   }
   let probe = resolved
+  let symlinkHops = 0
   // eslint-disable-next-line no-constant-condition
   while (true) {
     let realProbe
     try {
       realProbe = realpathSync(probe)
     } catch {
+      // realpathSync throws for a not-yet-existing leaf AND for a DANGLING
+      // symlink (the link node is present but its target is missing). These must
+      // NOT be conflated: a write follows the dead link to its target
+      // (atomicWriteFile does `resolve(dirname, readlink(...))`), so a dangling
+      // link pointing OUTSIDE must be rejected here — otherwise the content (and
+      // the .tmp rename artifact) land outside the workspace sandbox. lstat does
+      // not follow the final component, so it still sees the dangling link.
+      let stat
+      try {
+        stat = lstatSync(probe)
+      } catch {
+        stat = null
+      }
+      if (stat && stat.isSymbolicLink()) {
+        if (++symlinkHops > 64) {
+          // a symlink cycle or an absurd chain — refuse rather than loop
+          throw new Error(`Path escapes workspace via symlink: ${filePath}`)
+        }
+        // Re-validate the link's target through this same loop (matching
+        // atomicWriteFile's target resolution exactly). A target inside the
+        // workspace is allowed (its deepest existing ancestor resolves inside);
+        // one outside is caught when the loop reaches its existing ancestor.
+        probe = resolve(dirname(probe), readlinkSync(probe))
+        continue
+      }
       const parent = dirname(probe)
       if (parent === probe) break // reached the filesystem root, nothing resolved
       probe = parent

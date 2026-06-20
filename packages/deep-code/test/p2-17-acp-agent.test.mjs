@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, symlinkSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -10,6 +10,10 @@ import {
   mapProviderEventToAcp,
   pumpUpdates,
 } from '../src/cli/serve/acp/agentTurn.mjs'
+import {
+  createDeepSeekLocalTools,
+  resolveWorkspacePath,
+} from '../src/deepcode/local-toolchain.mjs'
 import { mapStopReason } from '../src/cli/serve/acp/protocol.mjs'
 import { providerSupports } from '../src/deepcode/provider-capabilities.mjs'
 import { createDeepSeekProvider } from '../src/services/providers/deepseek.mjs'
@@ -340,6 +344,80 @@ test('Read rejects a symlinked PARENT directory escape (even for a not-yet-exist
       () => read.execute({ file_path: 'linkdir/whatever.txt' }, { toolCall: { id: 'c' } }),
       /escapes workspace via symlink/,
     )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(outside, { recursive: true, force: true })
+  }
+})
+
+// --- dangling-symlink Write escape -----------------------------------------
+// A DANGLING symlink (link present, target absent) made realpathSync throw
+// ENOENT just like a brand-new file, so the sandbox guard returned the lexical
+// path unvalidated and a Write followed the dead link OUTSIDE the workspace.
+// Read can't trigger it (it readFile()s first → ENOENT), so the guard itself is
+// the seam.
+
+test('resolveWorkspacePath rejects a dangling symlink pointing OUTSIDE the workspace', () => {
+  const root = mkdtempSync(join(tmpdir(), 'acp-ws-'))
+  const outside = mkdtempSync(join(tmpdir(), 'acp-out-'))
+  // link.txt → outside/evil.txt, which does NOT exist yet (dangling).
+  symlinkSync(join(outside, 'evil.txt'), join(root, 'link.txt'))
+  try {
+    assert.throws(
+      () => resolveWorkspacePath(root, 'link.txt'),
+      /escapes workspace via symlink/,
+      'a dangling link to outside must be rejected, not treated as a new file',
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(outside, { recursive: true, force: true })
+  }
+})
+
+test('resolveWorkspacePath ALLOWS a dangling symlink pointing INSIDE the workspace (no over-reject)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'acp-ws-'))
+  // link.txt → ./sub/new.txt (new.txt absent) — a legit in-workspace dangling
+  // link; writing through it must still be permitted.
+  symlinkSync(join(root, 'sub', 'new.txt'), join(root, 'link.txt'))
+  try {
+    assert.equal(resolveWorkspacePath(root, 'link.txt'), join(root, 'link.txt'))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('resolveWorkspacePath refuses a symlink cycle rather than looping forever', () => {
+  const root = mkdtempSync(join(tmpdir(), 'acp-ws-'))
+  symlinkSync(join(root, 'b'), join(root, 'a')) // a → b
+  symlinkSync(join(root, 'a'), join(root, 'b')) // b → a (cycle)
+  try {
+    assert.throws(() => resolveWorkspacePath(root, 'a'), /escapes workspace via symlink/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('a genuinely new (non-symlink) file still resolves inside the workspace (regression)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'acp-ws-'))
+  try {
+    assert.equal(resolveWorkspacePath(root, 'brand-new.txt'), join(root, 'brand-new.txt'))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Write through a dangling outside symlink is rejected and creates NOTHING outside', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'acp-ws-'))
+  const outside = mkdtempSync(join(tmpdir(), 'acp-out-'))
+  const outsideTarget = join(outside, 'evil.txt')
+  symlinkSync(outsideTarget, join(root, 'link.txt'))
+  try {
+    const write = createDeepSeekLocalTools({ cwd: root }).find(t => t.name === 'Write')
+    await assert.rejects(
+      () => write.execute({ file_path: 'link.txt', content: 'PWNED' }, { toolCall: { id: 'c' } }),
+      /escapes workspace via symlink/,
+    )
+    assert.equal(existsSync(outsideTarget), false, 'no content written outside the workspace')
   } finally {
     rmSync(root, { recursive: true, force: true })
     rmSync(outside, { recursive: true, force: true })
