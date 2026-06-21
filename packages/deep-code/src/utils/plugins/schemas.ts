@@ -2,6 +2,7 @@ import { z } from 'zod/v4'
 import { HooksSchema } from '../../schemas/hooks.js'
 import { McpServerConfigSchema } from '../../services/mcp/types.js'
 import { lazySchema } from '../lazySchema.js'
+import { relPathWithinBase } from './relPathWithinBase.mjs'
 
 /**
  * First-layer defense against official marketplace impersonation.
@@ -157,9 +158,22 @@ export function validateOfficialNameSource(
 }
 
 /**
- * Schema for relative file paths that must start with './'
+ * Schema for relative file paths that must start with './' AND stay within the
+ * plugin/marketplace base dir. The `startsWith('./')` alone permits './../../etc/...'
+ * (a leading './' is satisfied while a '..' segment walks out); the refine rejects any
+ * '..' segment so the schema name's implied containment is real — closing every
+ * manifest/marketplace component-path consumer at parse time (mirrors the sibling
+ * MarketplaceNameSchema '..' refinement and the install-time validatePathWithinBase).
  */
-const RelativePath = lazySchema(() => z.string().startsWith('./'))
+const RelativePath = lazySchema(() =>
+  z
+    .string()
+    .startsWith('./')
+    .refine(relPathWithinBase, {
+      message:
+        "Path cannot contain '..' segments — it must stay within the plugin directory",
+    }),
+)
 
 /**
  * Schema for relative paths to JSON files
