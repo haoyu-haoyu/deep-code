@@ -32,6 +32,7 @@ import {
 import { builtInCommandNames } from '../commands.js'
 import { COMMAND_NAME_TAG, TICK_TAG } from '../constants/xml.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
+import { safeToolResultIdComponent } from './safeToolResultIdComponent.mjs'
 import * as sessionIngress from '../services/sessionLog.js'
 import { REPL_TOOL_NAME } from '../tools/REPLTool/constants.js'
 import {
@@ -260,7 +261,16 @@ export function getAgentTranscriptPath(agentId: AgentId): string {
   const base = subdir
     ? join(projectDir, sessionId, 'subagents', subdir)
     : join(projectDir, sessionId, 'subagents')
-  return join(base, `agent-${agentId}.jsonl`)
+  // Confine the id to a single safe filename component. Most agentIds are
+  // created locally (createAgentId), but the CCR v2 resume path derives one from
+  // a REMOTE event's agent_id via the brand-only asAgentId() cast (no validation,
+  // unlike toAgentId), so an id like '../../../../tmp/evil' would otherwise let
+  // `join` escape the per-session subagents dir and plant a forged transcript a
+  // later load trusts. safeToolResultIdComponent passes a well-formed agentId
+  // through unchanged (stable same-id→same-path for the read-back) and hashes
+  // anything that could traverse — the same shared primitive getToolResultPath
+  // applies to model-controlled tool_use ids.
+  return join(base, `agent-${safeToolResultIdComponent(agentId)}.jsonl`)
 }
 
 function getAgentMetadataPath(agentId: AgentId): string {
