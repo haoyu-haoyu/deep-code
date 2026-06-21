@@ -92,3 +92,11 @@ export const PDF_AT_MENTION_INLINE_THRESHOLD = 10
  * We validate client-side to provide a clear error message.
  */
 export const API_MAX_MEDIA_PER_REQUEST = 100
+
+/**
+ * Max concurrent media-block decodes when transforming a single MCP tool/resource
+ * result. Each decode (base64 → sharp pixel buffer, or a blob disk write) can hold
+ * a large transient buffer, so bounding the parallelism caps peak memory regardless
+ * of how many blocks a (server-controlled) result carries.
+ */
+export const MCP_MEDIA_DECODE_CONCURRENCY = 3
