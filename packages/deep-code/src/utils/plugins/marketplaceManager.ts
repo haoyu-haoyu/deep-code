@@ -67,6 +67,10 @@ import {
   OFFICIAL_MARKETPLACE_NAME,
   OFFICIAL_MARKETPLACE_SOURCE,
 } from './officialMarketplace.js'
+import {
+  isSafeMarketplaceGitRef,
+  isSafeMarketplaceGitUrl,
+} from './marketplaceGitSource.mjs'
 import { fetchOfficialMarketplaceFromGcs } from './officialMarketplaceGcs.js'
 import {
   deletePluginDataDir,
@@ -1089,6 +1093,31 @@ async function cacheMarketplaceFromGit(
   onProgress?: MarketplaceProgressCallback,
   options?: { disableCredentialHelper?: boolean },
 ): Promise<void> {
+  // Defense-in-depth chokepoint: both gitPull and gitClone for every caller
+  // (git/github source, autoUpdate refresh) converge here, so validate the git
+  // URL and ref before spawning any git process — even if a programmatic caller
+  // bypassed the MarketplaceSource schema refine. An ext:: / leading-dash URL is
+  // clone-time RCE (git's ext transport runs a command); a leading-dash ref is
+  // git option-injection (--upload-pack). Mirrors the schema guards in
+  // marketplaceGitSource.mjs.
+  if (!isSafeMarketplaceGitUrl(gitUrl)) {
+    // JSON.stringify the rejected value: it failed validation so it may carry
+    // newline/ANSI/OSC control bytes, and this message flows into logForDebugging
+    // and may render to a terminal (the survey-60 escape-injection vein).
+    throw new Error(
+      `Refusing to fetch marketplace from an unsupported or unsafe git URL: ${JSON.stringify(
+        redactUrlCredentials(gitUrl),
+      )}. Only https://, http://, file:// and git@host: SSH URLs are allowed.`,
+    )
+  }
+  if (ref !== undefined && !isSafeMarketplaceGitRef(ref)) {
+    throw new Error(
+      `Refusing to use an unsafe marketplace git ref: ${JSON.stringify(
+        ref,
+      )}. Refs must not start with '-' or '/', contain '..', or include shell metacharacters.`,
+    )
+  }
+
   const fs = getFsImplementation()
 
   // Attempt incremental update; fall back to re-clone if the repo is absent,
