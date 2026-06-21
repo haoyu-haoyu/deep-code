@@ -24,6 +24,7 @@ import {
 import { plural } from '../stringUtils.js'
 import { permissionModeTitle } from './PermissionMode.js'
 import { resolvePermissionPrecedence } from './resolvePermissionPrecedence.mjs'
+import { permittedRuleSourcesUnderLockdown } from './permittedRuleSourcesUnderLockdown.mjs'
 import type {
   PermissionAskDecision,
   PermissionDecision,
@@ -123,7 +124,15 @@ export function permissionRuleSourceDisplayString(
 export function getAllowRules(
   context: ToolPermissionContext,
 ): PermissionRule[] {
-  return PERMISSION_RULE_SOURCES.flatMap(source =>
+  // Under allowManagedPermissionRulesOnly, only managed (policy) + flag sources
+  // may allow a tool — the in-memory 'command' source (a project/plugin slash
+  // command's allowed-tools self-grant) is dropped here, the resolver chokepoint,
+  // because it can't be cleared from the context like cliArg/session are.
+  const sources = permittedRuleSourcesUnderLockdown(
+    PERMISSION_RULE_SOURCES,
+    shouldAllowManagedPermissionRulesOnly(),
+  )
+  return sources.flatMap(source =>
     (context.alwaysAllowRules[source] || []).map(ruleString => ({
       source,
       ruleBehavior: 'allow',
@@ -222,7 +231,13 @@ export function getDenyRules(context: ToolPermissionContext): PermissionRule[] {
 }
 
 export function getAskRules(context: ToolPermissionContext): PermissionRule[] {
-  return PERMISSION_RULE_SOURCES.flatMap(source =>
+  // Same lockdown gate as getAllowRules: a workspace/plugin 'command' source must
+  // not inject an ask-rule that overrides the managed posture either.
+  const sources = permittedRuleSourcesUnderLockdown(
+    PERMISSION_RULE_SOURCES,
+    shouldAllowManagedPermissionRulesOnly(),
+  )
+  return sources.flatMap(source =>
     (context.alwaysAskRules[source] || []).map(ruleString => ({
       source,
       ruleBehavior: 'ask',

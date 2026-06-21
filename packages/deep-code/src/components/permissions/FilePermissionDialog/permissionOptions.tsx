@@ -8,6 +8,7 @@ import { getShortcutDisplay } from '../../../keybindings/shortcutFormat.js';
 import type { ToolPermissionContext } from '../../../Tool.js';
 import { expandPath, getDirectoryForPath } from '../../../utils/path.js';
 import { normalizeCaseForComparison, pathInAllowedWorkingPath } from '../../../utils/permissions/filesystem.js';
+import { shouldShowAlwaysAllowOptions } from '../../../utils/permissions/permissionsLoader.js';
 import type { OptionWithDescription } from '../../CustomSelect/select.js';
 /**
  * Check if a path is within the project's .claude/ folder.
@@ -99,55 +100,60 @@ export function getFilePermissionOptions({
   const inClaudeFolder = isInClaudeFolder(filePath);
   const inGlobalClaudeFolder = isInGlobalClaudeFolder(filePath);
 
-  // Option 2: For .claude/ folder, show special option instead of generic session option
-  // Note: Session-level options are always shown since they only affect in-memory state,
-  // not persisted settings. The allowManagedPermissionRulesOnly setting only restricts
-  // persisted permission rules.
-  if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== 'read') {
-    options.push({
-      label: getMessage('permission.fileOptions.yesClaudeFolder'),
-      value: 'yes-claude-folder',
-      option: {
-        type: 'accept-session',
-        scope: inGlobalClaudeFolder ? 'global-claude-folder' : 'claude-folder'
-      }
-    });
-  } else {
-    // Option 2: Allow all changes/reads during session
-    let sessionLabel: ReactNode;
-    if (inAllowedPath) {
-      // Inside working directory
-      if (operationType === 'read') {
-        sessionLabel = getMessage('permission.fileOptions.yesDuringSession');
-      } else {
-        const [editsSessA, editsSessB] = getMessage('permission.fileOptions.yesAllEditsSession').split(/\(\{shortcut\}\)/);
-        sessionLabel = <Text>
-            {editsSessA}<Text bold>({modeCycleShortcut})</Text>{editsSessB}
-          </Text>;
-      }
+  // Option 2: a session-scoped "always allow" grant. Under allowManagedPermissionRulesOnly
+  // these in-memory session grants are neutralized at the permission resolver — getAllowRules
+  // now drops the 'session' source under the lockdown (the same way it drops the
+  // workspace/plugin 'command' source), so the option would grant nothing. Hide it under the
+  // lockdown, matching the Bash/PowerShell/Skill/WebFetch/Fallback dialogs which all gate their
+  // always-allow option on shouldShowAlwaysAllowOptions().
+  if (shouldShowAlwaysAllowOptions()) {
+    // For a .claude/ folder, show the special option instead of the generic session one.
+    if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== 'read') {
+      options.push({
+        label: getMessage('permission.fileOptions.yesClaudeFolder'),
+        value: 'yes-claude-folder',
+        option: {
+          type: 'accept-session',
+          scope: inGlobalClaudeFolder ? 'global-claude-folder' : 'claude-folder'
+        }
+      });
     } else {
-      // Outside working directory - include directory name
-      const dirPath = getDirectoryForPath(filePath);
-      const dirName = basename(dirPath) || getMessage('permission.fileOptions.thisDirectory');
-      if (operationType === 'read') {
-        const [readDirA, readDirB] = getMessage('permission.fileOptions.yesAllowReadingFromDir').split(/\{dir\}\//);
-        sessionLabel = <Text>
-            {readDirA}<Text bold>{dirName}/</Text>{readDirB}
-          </Text>;
+      // Allow all changes/reads during session
+      let sessionLabel: ReactNode;
+      if (inAllowedPath) {
+        // Inside working directory
+        if (operationType === 'read') {
+          sessionLabel = getMessage('permission.fileOptions.yesDuringSession');
+        } else {
+          const [editsSessA, editsSessB] = getMessage('permission.fileOptions.yesAllEditsSession').split(/\(\{shortcut\}\)/);
+          sessionLabel = <Text>
+              {editsSessA}<Text bold>({modeCycleShortcut})</Text>{editsSessB}
+            </Text>;
+        }
       } else {
-        const [editsDirA, editsDirB, editsDirC] = getMessage('permission.fileOptions.yesAllEditsInDirSession').split(/\{dir\}\/|\(\{shortcut\}\)/);
-        sessionLabel = <Text>
-            {editsDirA}<Text bold>{dirName}/</Text>{editsDirB}<Text bold>({modeCycleShortcut})</Text>{editsDirC}
-          </Text>;
+        // Outside working directory - include directory name
+        const dirPath = getDirectoryForPath(filePath);
+        const dirName = basename(dirPath) || getMessage('permission.fileOptions.thisDirectory');
+        if (operationType === 'read') {
+          const [readDirA, readDirB] = getMessage('permission.fileOptions.yesAllowReadingFromDir').split(/\{dir\}\//);
+          sessionLabel = <Text>
+              {readDirA}<Text bold>{dirName}/</Text>{readDirB}
+            </Text>;
+        } else {
+          const [editsDirA, editsDirB, editsDirC] = getMessage('permission.fileOptions.yesAllEditsInDirSession').split(/\{dir\}\/|\(\{shortcut\}\)/);
+          sessionLabel = <Text>
+              {editsDirA}<Text bold>{dirName}/</Text>{editsDirB}<Text bold>({modeCycleShortcut})</Text>{editsDirC}
+            </Text>;
+        }
       }
+      options.push({
+        label: sessionLabel,
+        value: 'yes-session',
+        option: {
+          type: 'accept-session'
+        }
+      });
     }
-    options.push({
-      label: sessionLabel,
-      value: 'yes-session',
-      option: {
-        type: 'accept-session'
-      }
-    });
   }
 
   // When in input mode, show input field for reject
