@@ -10,6 +10,7 @@ import { selectableUserMessagesFilter } from '../components/MessageSelector.js'
 import type { SpinnerMode } from '../components/Spinner/types.js'
 import type { QuerySource } from '../constants/querySource.js'
 import { expandPastedTextRefs, parseReferences } from '../history.js'
+import { extractPastedMentions } from './pastedMentionConfine.mjs'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import type { IDESelection } from '../hooks/useIdeSelection.js'
 import type { AppState } from '../state/AppState.js'
@@ -228,6 +229,12 @@ export async function handlePromptSubmit(
   )
   logEvent('tengu_paste_text', { pastedTextCount, pastedTextBytes })
 
+  // Collect @-mentions hidden inside the (collapsed, user-invisible) pasted text
+  // so the attachment path can confine them — pastedContents is dropped from the
+  // QueuedCommand for text pastes, so this must be computed here while it exists.
+  const { files: pastedFileMentions, resources: pastedResourceMentions } =
+    extractPastedMentions(pastedContents)
+
   // Handle local-jsx immediate commands (e.g., /config, /doctor)
   // Skip for remote bridge messages — slash commands from CCR clients are plain text
   if (!skipSlashCommands && finalInput.trim().startsWith('/')) {
@@ -338,6 +345,8 @@ export async function handlePromptSubmit(
       preExpansionValue: input.trim(),
       mode,
       pastedContents: hasImages ? pastedContents : undefined,
+      ...(pastedFileMentions.length ? { pastedFileMentions } : {}),
+      ...(pastedResourceMentions.length ? { pastedResourceMentions } : {}),
       skipSlashCommands,
       uuid,
     })
@@ -361,6 +370,8 @@ export async function handlePromptSubmit(
     preExpansionValue: input,
     mode,
     pastedContents: hasImages ? pastedContents : undefined,
+    ...(pastedFileMentions.length ? { pastedFileMentions } : {}),
+    ...(pastedResourceMentions.length ? { pastedResourceMentions } : {}),
     skipSlashCommands,
     uuid,
   }
@@ -480,6 +491,8 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
           setToolJSX,
           context: makeContext(),
           pastedContents: isFirst ? cmd.pastedContents : undefined,
+          pastedFileMentions: cmd.pastedFileMentions,
+          pastedResourceMentions: cmd.pastedResourceMentions,
           messages,
           setUserInputOnProcessing: isFirst
             ? setUserInputOnProcessing

@@ -94,6 +94,8 @@ export async function processUserInput({
   bridgeOrigin,
   isMeta,
   skipAttachments,
+  pastedFileMentions,
+  pastedResourceMentions,
 }: {
   input: string | Array<ContentBlockParam>
   /**
@@ -129,6 +131,14 @@ export async function processUserInput({
    */
   isMeta?: boolean
   skipAttachments?: boolean
+  /**
+   * @-file / @-resource mentions found inside collapsed pasted text (computed at
+   * submit). The attachment path confines paste-origin @-file mentions to the
+   * workspace and suppresses paste-origin @-resource mentions, so a hidden
+   * out-of-workspace path in a paste is not silently read into context.
+   */
+  pastedFileMentions?: string[]
+  pastedResourceMentions?: string[]
 }): Promise<ProcessUserInputBaseResult> {
   const inputString = typeof input === 'string' ? input : null
   // Immediately show the user input prompt while we are still processing the input.
@@ -159,6 +169,8 @@ export async function processUserInput({
     bridgeOrigin,
     isMeta,
     skipAttachments,
+    pastedFileMentions,
+    pastedResourceMentions,
   )
   queryCheckpoint('query_process_user_input_base_end')
 
@@ -286,6 +298,8 @@ async function processUserInputBase(
   bridgeOrigin?: boolean,
   isMeta?: boolean,
   skipAttachments?: boolean,
+  pastedFileMentions?: string[],
+  pastedResourceMentions?: string[],
 ): Promise<ProcessUserInputBaseResult> {
   let inputString: string | null = null
   let precedingInputBlocks: ContentBlockParam[] = []
@@ -458,6 +472,7 @@ async function processUserInputBase(
           [], // queuedCommands - handled by query.ts for mid-turn attachments
           messages,
           querySource,
+          { pastedFileMentions, pastedResourceMentions },
         ),
       )
     : []
