@@ -160,6 +160,7 @@ jobs:
             test/resolve-command-by-name.test.mjs \
             test/permission-rule-classify.test.mjs \
             test/permission-precedence.test.mjs \
+            test/permission-managed-lockdown-sources.test.mjs \
             test/escape-gitignore-pattern.test.mjs \
             test/glob-search-dir.test.mjs \
             test/first-chain-deny-match.test.mjs \
