@@ -43,6 +43,11 @@ import pMap from 'p-map'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { describeUnknownContentBlock } from './describeUnknownContentBlock.mjs'
 import { flattenSettledBlocks } from './flattenSettledBlocks.mjs'
+import { overBudgetMediaIndices } from './mcpMediaBudget.mjs'
+import {
+  API_MAX_MEDIA_PER_REQUEST,
+  MCP_MEDIA_DECODE_CONCURRENCY,
+} from '../../constants/apiLimits.js'
 import { isStdioTransportConfig } from './isStdioTransportConfig.mjs'
 import { paginateMcpList } from './paginateMcpList.mjs'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
@@ -2084,10 +2089,29 @@ export const fetchCommandsForClient = memoizeWithLRU(
                 name: prompt.name,
                 arguments: zipObject(argNames, argsArray),
               })
-              const transformed = await Promise.all(
-                result.messages.map(message =>
-                  transformResultContent(message.content, connectedClient.name),
-                ),
+              // Same DoS gate as transformMCPResult: result.messages is
+              // server-controlled and each message.content can be an image/audio/blob
+              // that runs the sharp/disk decode. Cap the media count and bound the
+              // decode concurrency so a hostile prompt server can't OOM the client.
+              const promptBlocks = result.messages.map(
+                message => message.content,
+              )
+              const overBudget = overBudgetMediaIndices(
+                promptBlocks,
+                API_MAX_MEDIA_PER_REQUEST,
+              )
+              const transformed = await pMap(
+                promptBlocks,
+                (content, i) =>
+                  overBudget.has(i)
+                    ? Promise.resolve([
+                        {
+                          type: 'text' as const,
+                          text: `[media block from ${connectedClient.name} omitted: exceeds the per-result media budget of ${API_MAX_MEDIA_PER_REQUEST}]`,
+                        },
+                      ])
+                    : transformResultContent(content, connectedClient.name),
+                { concurrency: MCP_MEDIA_DECODE_CONCURRENCY },
               )
               return transformed.flat()
             } catch (error) {
@@ -2741,8 +2765,35 @@ export async function transformMCPResult(
       // just that block to a text placeholder so the model still gets the text
       // answer sitting in a perfectly good neighbour.
       const blocks = result.content
-      const settled = await Promise.allSettled(
-        blocks.map(item => transformResultContent(item, name)),
+      // A server-controlled result.content array is decoded here (base64 → sharp
+      // pixel buffer / blob disk write). Bound BOTH axes so a hostile server can't
+      // OOM the client: (1) only the first API_MAX_MEDIA_PER_REQUEST media blocks are
+      // decoded — the rest degrade to a text placeholder via the rejected path; and
+      // (2) decodes run with bounded concurrency (pMap) instead of an unbounded
+      // Promise.allSettled, capping peak memory regardless of block count. The
+      // per-block try/catch preserves the degrade-one-bad-block semantics.
+      const overBudget = overBudgetMediaIndices(blocks, API_MAX_MEDIA_PER_REQUEST)
+      const settled = await pMap(
+        blocks,
+        async (item, i) => {
+          if (overBudget.has(i)) {
+            return {
+              status: 'rejected' as const,
+              reason: new Error(
+                `exceeds the per-result media budget of ${API_MAX_MEDIA_PER_REQUEST}`,
+              ),
+            }
+          }
+          try {
+            return {
+              status: 'fulfilled' as const,
+              value: await transformResultContent(item, name),
+            }
+          } catch (reason) {
+            return { status: 'rejected' as const, reason }
+          }
+        },
+        { concurrency: MCP_MEDIA_DECODE_CONCURRENCY },
       )
       const { content: transformedContent, rejected } = flattenSettledBlocks(
         settled,
