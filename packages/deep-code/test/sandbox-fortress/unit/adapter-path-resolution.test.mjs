@@ -36,6 +36,12 @@ const fsProjectorSourcePath = resolve(
   packageRoot,
   'src/sandbox-fortress/rule-engine/fsProjector.mjs',
 )
+// legacy.ts selects the host-spawned ripgrep config from trusted sources only
+// (./ripgrepConfigSource.mjs) — a pure same-dir leaf with no deps.
+const ripgrepConfigSourcePath = resolve(
+  packageRoot,
+  'src/sandbox-fortress/adapter/ripgrepConfigSource.mjs',
+)
 const harnessSourcePath = resolve(
   packageRoot,
   'test/sandbox-fortress/harness.mjs',
@@ -72,6 +78,13 @@ function writeLegacyFixture(root) {
   const fsProjectorTarget = join(root, 'src/sandbox-fortress/rule-engine/fsProjector.mjs')
   mkdirSync(dirname(fsProjectorTarget), { recursive: true })
   copyFileSync(fsProjectorSourcePath, fsProjectorTarget)
+
+  // The pure ripgrep-source selector legacy.ts uses to gate the host-spawned rg
+  // binary to trusted sources. Same dir as legacy.ts (already created above).
+  copyFileSync(
+    ripgrepConfigSourcePath,
+    join(root, 'src/sandbox-fortress/adapter/ripgrepConfigSource.mjs'),
+  )
 
   const harnessTarget = join(root, 'test/sandbox-fortress/harness.mjs')
   mkdirSync(dirname(harnessTarget), { recursive: true })

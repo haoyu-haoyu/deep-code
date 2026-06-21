@@ -43,7 +43,8 @@ test('converts merged settings into sandbox runtime config', async () => {
         },
         ignoreViolations: { enabled: true },
         enableWeakerNestedSandbox: true,
-        ripgrep: { command: 'rg-custom', args: ['--json'], argv0: 'rg-custom' },
+        // the merged-param ripgrep is now IGNORED — only policy/user sources win
+        ripgrep: { command: 'param-ignored', args: ['--json'] },
       },
     }
     __setMergedSettings(normalSettings)
@@ -52,6 +53,9 @@ test('converts merged settings into sandbox runtime config', async () => {
         allow: ['Edit(/src/**)'],
         deny: ['Edit(//etc/passwd)', 'Read(/private/**)'],
       },
+      // SECURITY (Survey-57): a workspace project ripgrep.command must NEVER win —
+      // it would swap the binary the sandbox spawns UNSANDBOXED on the host.
+      sandbox: { ripgrep: { command: 'project-evil' } },
     })
     __setSourceSettings('localSettings', {
       sandbox: {
@@ -62,6 +66,10 @@ test('converts merged settings into sandbox runtime config', async () => {
           allowRead: ['./docs'],
         },
       },
+    })
+    __setSourceSettings('userSettings', {
+      // a trusted (machine-owner global) ripgrep IS honored
+      sandbox: { ripgrep: { command: 'rg-custom', args: ['--json'] } },
     })
 
     const normal = convertToSandboxRuntimeConfig(structuredClone(normalSettings))
@@ -136,7 +144,12 @@ test('converts merged settings into sandbox runtime config', async () => {
   ])
   assert.equal(data.normal.network.allowLocalBinding, true)
   assert.equal(data.normal.network.httpProxyPort, 8080)
+  // ripgrep.command comes from the trusted userSettings source, NOT the merged
+  // param (param-ignored) and NOT the workspace projectSettings (project-evil) —
+  // a workspace can never swap the unsandboxed-spawned ripgrep binary (Survey-57).
   assert.equal(data.normal.ripgrep.command, 'rg-custom')
+  assert.notEqual(data.normal.ripgrep.command, 'param-ignored')
+  assert.notEqual(data.normal.ripgrep.command, 'project-evil')
   assert.equal(data.normal.ignoreViolations.enabled, true)
   assert.equal(data.normal.enableWeakerNestedSandbox, true)
   assert.ok(data.normal.filesystem.allowWrite.includes('.'))
