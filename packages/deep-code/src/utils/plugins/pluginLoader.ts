@@ -45,7 +45,7 @@ import {
   symlink,
 } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
-import { basename, dirname, join, relative, resolve, sep } from 'path'
+import { basename, dirname, join, relative, resolve } from 'path'
 import { getInlinePlugins } from '../../bootstrap/state.js'
 import {
   BUILTIN_MARKETPLACE_NAME,
@@ -59,6 +59,7 @@ import type {
   PluginManifest,
 } from '../../types/plugin.js'
 import { logForDebugging } from '../debug.js'
+import { isSymlinkTargetContained } from './symlinkContainment.mjs'
 import { isEnvTruthy } from '../envUtils.js'
 import {
   errorMessage,
@@ -312,8 +313,14 @@ export async function copyDir(src: string, dest: string): Promise<void> {
       try {
         resolvedTarget = await realpath(srcPath)
       } catch {
-        // Broken symlink - copy the raw link target as-is
-        await symlink(linkTarget, destPath)
+        // Broken / unresolvable symlink — SKIP it. Re-creating the raw link in
+        // the cache is useless (it points nowhere) and a relative target that is
+        // broken at the source can resolve to an out-of-tree file from the cache
+        // location, so it must not be materialized. See the containment note below.
+        logForDebugging(
+          `copyDir: skipping unresolvable plugin symlink ${srcPath} -> ${linkTarget}`,
+          { level: 'warn' },
+        )
         continue
       }
 
@@ -325,14 +332,7 @@ export async function copyDir(src: string, dest: string): Promise<void> {
         resolvedSrc = src
       }
 
-      // Check if target is within the source tree (using proper path prefix matching)
-      const srcPrefix = resolvedSrc.endsWith(sep)
-        ? resolvedSrc
-        : resolvedSrc + sep
-      if (
-        resolvedTarget.startsWith(srcPrefix) ||
-        resolvedTarget === resolvedSrc
-      ) {
+      if (isSymlinkTargetContained(resolvedTarget, resolvedSrc)) {
         // Target is within source tree - create relative symlink that preserves
         // the same structure in the destination
         const targetRelativeToSrc = relative(resolvedSrc, resolvedTarget)
@@ -340,8 +340,18 @@ export async function copyDir(src: string, dest: string): Promise<void> {
         const relativeLinkPath = relative(dirname(destPath), destTargetPath)
         await symlink(relativeLinkPath, destPath)
       } else {
-        // Target is outside source tree - use absolute resolved path
-        await symlink(resolvedTarget, destPath)
+        // Target escapes the source tree — SKIP it. Re-creating an out-of-tree
+        // symlink in the versioned cache is the plugin-install escape: a plugin
+        // could ship `evil -> <home>/.ssh/id_rsa`, and the manifest commandsPaths /
+        // agentsPaths / .mcp.json loaders read with fs.stat+fs.readFile, which
+        // FOLLOW the link → arbitrary host-file read into the model context. The
+        // lexical guards (validatePathWithinBase / the #591 relPathWithinBase
+        // refine) are symlink-blind, so this realpath check is the one that closes it.
+        logForDebugging(
+          `copyDir: skipping out-of-tree plugin symlink ${srcPath} -> ${resolvedTarget} (outside ${resolvedSrc})`,
+          { level: 'warn' },
+        )
+        continue
       }
     }
   }
