@@ -1,5 +1,6 @@
 import chalk from 'chalk'
 import { supportsHyperlinks } from '../ink/supports-hyperlinks.js'
+import { stripOscControlChars } from '../ink/termio/stripOscControlChars.mjs'
 
 // OSC 8 hyperlink escape sequences
 // Format: \e]8;;URL\e\\TEXT\e]8;;\e\\
@@ -26,14 +27,18 @@ export function createHyperlink(
   content?: string,
   options?: HyperlinkOptions,
 ): string {
+  // Strip embedded control bytes — a bare ESC/CSI in the URL would break out of the
+  // OSC 8 sequence and run as a live terminal control sequence. (The display text is
+  // re-tokenized by the cell grid, which already strips control bytes.)
+  const safeUrl = stripOscControlChars(url)
   const hasSupport = options?.supportsHyperlinks ?? supportsHyperlinks()
   if (!hasSupport) {
-    return url
+    return safeUrl
   }
 
   // Apply basic ANSI blue color - wrap-ansi preserves this across line breaks
   // RGB colors (like theme colors) are NOT preserved by wrap-ansi with OSC 8
-  const displayText = content ?? url
+  const displayText = content ?? safeUrl
   const coloredText = chalk.blue(displayText)
-  return `${OSC8_START}${url}${OSC8_END}${coloredText}${OSC8_START}${OSC8_END}`
+  return `${OSC8_START}${safeUrl}${OSC8_END}${coloredText}${OSC8_START}${OSC8_END}`
 }
