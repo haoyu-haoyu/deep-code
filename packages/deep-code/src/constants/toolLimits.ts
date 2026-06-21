@@ -49,6 +49,19 @@ export const MAX_TOOL_RESULT_BYTES = MAX_TOOL_RESULT_TOKENS * BYTES_PER_TOKEN
 export const MAX_TOOL_RESULTS_PER_MESSAGE_CHARS = 200_000
 
 /**
+ * Maximum aggregate size in characters for ALL MCP-resource @-mention text
+ * injected in a SINGLE turn. The per-resource render cap
+ * (DEFAULT_MAX_RESULT_SIZE_CHARS) bounds one @server:uri resource, but the mention
+ * COUNT is unbounded (extractMcpResourceMentions only dedups), so without a running
+ * per-turn budget N mentions could each inject a fresh 50K of server-controlled
+ * text. This is the cumulative ceiling — 4 × the per-resource cap, matching the
+ * per-message tool-result aggregate above and mirroring RELEVANT_MEMORIES_CONFIG's
+ * cumulative MAX_SESSION_BYTES gate. Enforced via mcpResourceBudget.mjs at the
+ * per-turn convergence point (processMcpResourceAttachments).
+ */
+export const MAX_TURN_MCP_RESOURCE_CHARS = 4 * DEFAULT_MAX_RESULT_SIZE_CHARS
+
+/**
  * Maximum character length for tool summary strings in compact views.
  * Used by getToolUseSummary() implementations to truncate long inputs
  * for display in grouped agent rendering.

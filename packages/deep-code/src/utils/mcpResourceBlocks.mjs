@@ -19,7 +19,11 @@
 //
 // Pure value-in/value-out so the cap + block shape is node-testable (messages.ts,
 // the sole caller, is bun-tainted).
-//
+
+// A server-controlled blob mimeType is clamped to this length in its placeholder
+// so it can't be an uncapped injection channel (a real mimeType is short).
+const MAX_MIME_TYPE_CHARS = 80
+
 // @param {Array<unknown>} contents  the ReadResourceResult.contents array
 // @param {number} [maxChars]  total text budget. Any FINITE number is a hard cap
 //   (a negative value clamps to 0 = truncate everything); only a non-finite
@@ -61,8 +65,16 @@ export function buildMcpResourceTextBlocks(contents, maxChars) {
         budget = 0
       }
     } else if ('blob' in item) {
-      const mimeType =
+      // A blob renders a lightweight marker, not its bytes, and (by design — see
+      // the "do not consume the text budget" contract) does NOT draw down the text
+      // budget. The mimeType is server-controlled, so clamp it: an unbounded
+      // mimeType string would otherwise be an uncapped injection channel.
+      const rawMimeType =
         'mimeType' in item ? String(item.mimeType) : 'application/octet-stream'
+      const mimeType =
+        rawMimeType.length > MAX_MIME_TYPE_CHARS
+          ? rawMimeType.slice(0, MAX_MIME_TYPE_CHARS) + '…'
+          : rawMimeType
       blocks.push({ type: 'text', text: `[Binary content: ${mimeType}]` })
     }
   }
