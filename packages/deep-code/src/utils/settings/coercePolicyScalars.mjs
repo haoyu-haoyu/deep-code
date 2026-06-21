@@ -17,17 +17,29 @@
 // MOST RESTRICTIVE setting (fail-closed) so the malformed policy never relaxes the
 // lockdown, and — by becoming schema-valid — no longer nulls the rest of the file.
 //
-// defaultMode is intentionally NOT handled here: it is the one field with a safe
-// app default (an absent defaultMode forces nothing), and its enum is feature-gated,
-// so it is dropped to undefined by a `.catch(undefined)` on the schema field itself
-// rather than guessing which restrictive mode the admin intended.
+// Two managed fields are intentionally NOT coerced here because their restrictive
+// direction is AMBIGUOUS — guessing it would be wrong as often as right — so each is
+// dropped to undefined by a `.catch(undefined)` on its own schema field instead (which
+// equally makes the parse succeed so the rest of the file survives):
+//   - defaultMode: an absent value forces nothing (the safe app default), and its enum
+//     is feature-gated; we don't guess which restrictive mode the admin intended.
+//   - disableAllHooks: `true` is NOT a pure add-restriction like the allowManaged*Only
+//     booleans — it DISABLES all hooks, which can disable a managed *enforcement* hook
+//     (a mandatory block/audit control). A typo could be `"true"` (intent: hooks off) or
+//     `"false"` (intent: hooks on); coercing to true on the latter both inverts intent
+//     and kills the control. Dropping to undefined (hooks run, incl. managed ones) never
+//     disables a managed control and matches `policySettings?.disableAllHooks === true`'s
+//     default-off semantics.
 //
-// Scope (honest residual): this salvages the security-critical SCALARS only. A typo
-// on some OTHER recognized key (an unrelated `env`, `model`, a malformed array) still
-// fails the whole-object parse and nulls the managed file — that broader robustness
-// gap (fail-closed-on-any-managed-parse-error / per-key salvage) is a separate change.
-// What this closes is the confirmed security case: a mistyped value on one of these
-// lockdown scalars no longer silently re-opens the org policy.
+// Scope (honest residual): a typo on a DIFFERENT-shape managed lockdown still fails the
+// whole-object parse and nulls the managed file: the array allowlists (allowedHttpHookUrls,
+// httpHookAllowedEnvVars, strictKnownMarketplaces — restrictive value is `[]`, but coercing
+// arrays needs per-consumer verification of empty-means-deny), blockedMarketplaces (a
+// blocklist — no fail-closed array value), forceLoginMethod (a multi-value enum), and the
+// nested sandbox.* object — plus any unrelated key (`env`, `model`). Closing those generally
+// (fail-closed-on-any-managed-parse-error / per-key salvage) is a separate, deliberate
+// change. What this closes is the confirmed security case: a mistyped value on one of the
+// unambiguous scalar lockdowns no longer silently re-opens the org policy.
 
 // enum(['disable']) fields: 'disable' is the only valid (restrictive) value, so any
 // present value other than 'disable' (a typo, a boolean, null) => 'disable'.
@@ -49,6 +61,8 @@ const DISABLE_ENUM_FIELDS = [
 // (only managed settings apply), so any present non-boolean => true. All three
 // allowManaged*Only lockdowns are the same family — coerce them consistently, or a
 // typo on the omitted one still nulls the whole file and re-opens that surface.
+// (disableAllHooks is NOT here — its true/false direction is ambiguous; see the
+// header note: it is dropped via `.catch(undefined)` on its schema field instead.)
 const MANAGED_ONLY_BOOL_FIELDS = [
   {
     key: 'allowManagedPermissionRulesOnly',

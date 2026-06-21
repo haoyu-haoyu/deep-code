@@ -23,6 +23,9 @@ const MirrorSchema = z
     allowManagedPermissionRulesOnly: z.boolean().optional(),
     allowManagedMcpServersOnly: z.boolean().optional(),
     allowManagedHooksOnly: z.boolean().optional(),
+    // mirrors types.ts:493 — dropped to undefined on a present-but-invalid value
+    // (ambiguous true/false direction) rather than coerced by the leaf
+    disableAllHooks: z.boolean().optional().catch(undefined),
     model: z.string().optional(),
   })
   .passthrough()
@@ -79,6 +82,30 @@ test('all three managed-only toggles fail-close to true (the whole allowManaged*
   assert.equal(data.allowManagedHooksOnly, true)
   assert.equal(MirrorSchema.safeParse(data).success, true)
   assert.equal(warnings.length, 3)
+})
+
+test('a mistyped disableAllHooks is dropped by the schema .catch AND the sibling deny rule survives', () => {
+  // the #577-sibling: disableAllHooks (types.ts:493) is a boolean lockdown with no
+  // unambiguous restrictive direction, so it gets .catch(undefined) like defaultMode
+  // (NOT leaf coercion). A string typo would otherwise null the WHOLE managed file,
+  // dropping the deny rule too. The leaf does not touch it.
+  const data = {
+    permissions: { deny: ['Bash(curl:*)'] },
+    disableAllHooks: 'true', // typo (string, not bool)
+  }
+  const warnings = coercePolicyScalars(data, '/etc/managed-settings.json')
+  assert.equal(data.disableAllHooks, 'true') // leaf leaves it for the schema .catch
+  const parsed = MirrorSchema.safeParse(data)
+  assert.equal(parsed.success, true)
+  assert.equal(parsed.data.disableAllHooks, undefined) // dropped, hooks run (incl managed)
+  assert.deepEqual(parsed.data.permissions.deny, ['Bash(curl:*)'])
+  assert.equal(warnings.length, 0) // not a leaf-coerced field
+})
+
+test('a valid disableAllHooks (true or false) survives the schema .catch', () => {
+  for (const v of [true, false]) {
+    assert.equal(MirrorSchema.safeParse({ disableAllHooks: v }).data.disableAllHooks, v)
+  }
 })
 
 test('top-level and nested disableAutoMode both fail-close to "disable"', () => {
