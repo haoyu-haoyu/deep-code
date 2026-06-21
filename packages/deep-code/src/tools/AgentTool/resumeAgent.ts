@@ -17,6 +17,7 @@ import {
   filterWhitespaceOnlyAssistantMessages,
 } from '../../utils/messages.js'
 import { getAgentModel } from '../../utils/model/agent.js'
+import { isBypassPermissionsModeDisabled } from '../../utils/permissions/permissionSetup.js'
 import { getQuerySourceForAgent } from '../../utils/promptCategory.js'
 import {
   getAgentTranscript,
@@ -27,6 +28,7 @@ import type { SystemPrompt } from '../../utils/systemPromptType.js'
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js'
 import { getParentSessionId } from '../../utils/teammate.js'
 import { reconstructForSubagentResume } from '../../utils/toolResultStorage.js'
+import { gateAgentBypassPermissionMode } from './agentBypassPermissionGate.mjs'
 import { runAsyncAgentLifecycle } from './agentToolUtils.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import { FORK_AGENT, isForkSubagentEnabled } from './forkSubagent.js'
@@ -157,7 +159,13 @@ export async function resumeAgentBackground({
 
   const workerPermissionContext = {
     ...appState.toolPermissionContext,
-    mode: selectedAgent.permissionMode ?? 'acceptEdits',
+    // Drop a resumed agent's bypassPermissions when the managed killswitch is
+    // active; undefined falls back to the standard 'acceptEdits' resume default.
+    mode:
+      gateAgentBypassPermissionMode(
+        selectedAgent.permissionMode,
+        isBypassPermissionsModeDisabled(),
+      ) ?? 'acceptEdits',
   }
   const workerTools = isResumedFork
     ? toolUseContext.options.tools

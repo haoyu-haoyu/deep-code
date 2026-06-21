@@ -26,6 +26,7 @@ import { lazySchema } from '../../utils/lazySchema.js';
 import { createUserMessage, extractTextContent, isSyntheticMessage, normalizeMessages } from '../../utils/messages.js';
 import { getAgentModel } from '../../utils/model/agent.js';
 import { permissionModeSchema } from '../../utils/permissions/PermissionMode.js';
+import { isBypassPermissionsModeDisabled } from '../../utils/permissions/permissionSetup.js';
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js';
 import { filterDeniedAgents, getDenyRuleForAgent } from '../../utils/permissions/permissions.js';
 import { enqueueSdkEvent } from '../../utils/sdkEventQueue.js';
@@ -43,6 +44,7 @@ import { BASH_TOOL_NAME } from '../BashTool/toolName.js';
 import { BackgroundHint } from '../BashTool/UI.js';
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
 import { spawnTeammate } from '../shared/spawnMultiAgent.js';
+import { gateAgentBypassPermissionMode } from './agentBypassPermissionGate.mjs';
 import { setAgentColor } from './agentColorManager.js';
 import { agentToolResultSchema, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, getLastToolUseName, runAsyncAgentLifecycle } from './agentToolUtils.js';
 import { synthesizeSubagentResult } from './synthesizeSubagentResult.js';
@@ -524,7 +526,9 @@ export const AgentTool = buildTool({
     // import from tools.ts (which would create a circular dependency).
     const workerPermissionContext = {
       ...appState.toolPermissionContext,
-      mode: selectedAgent.permissionMode ?? 'acceptEdits'
+      // Drop the agent's bypassPermissions when the managed killswitch is active;
+      // undefined falls back to the standard 'acceptEdits' worker default.
+      mode: gateAgentBypassPermissionMode(selectedAgent.permissionMode, isBypassPermissionsModeDisabled()) ?? 'acceptEdits'
     };
     const workerTools = assembleToolPool(workerPermissionContext, appState.mcp.tools);
 
