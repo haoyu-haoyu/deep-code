@@ -175,6 +175,7 @@ jobs:
             test/bom-handling.test.mjs \
             test/attachment-read-gate.test.mjs \
             test/body-trusted-dir-source.test.mjs \
+            test/select-managed-hook-family-value.test.mjs \
             test/todo-resume-collapse.test.mjs \
             test/todo-restore-scan.test.mjs \
             test/uselogmessages-record-plan.test.mjs \

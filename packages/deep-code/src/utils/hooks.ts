@@ -50,6 +50,8 @@ import {
   shouldAllowManagedHooksOnly,
   shouldDisableAllHooksIncludingManaged,
 } from './hooks/hooksConfigSnapshot.js'
+import { selectManagedHookFamilyValue } from './hooks/selectManagedHookFamilyValue.mjs'
+import { isRestrictedToPluginOnly } from './settings/pluginOnlyPolicy.js'
 import {
   getTranscriptPathForSession,
   getAgentTranscriptPath,
@@ -4745,14 +4747,18 @@ export async function executeStatusLineCommand(
     return undefined
   }
 
-  // When disableAllHooks is set in non-managed settings, only managed statusLine runs
-  // (non-managed settings cannot disable managed commands, but non-managed commands are disabled)
-  let statusLine
-  if (shouldAllowManagedHooksOnly()) {
-    statusLine = getSettingsForSource('policySettings')?.statusLine
-  } else {
-    statusLine = getSettings_DEPRECATED()?.statusLine
-  }
+  // statusLine is a hook-equivalent (runs a shell command via execCommandHook), so
+  // it must honor the managed hook-family lockdowns. When allowManagedHooksOnly OR
+  // strictPluginOnlyCustomization('hooks') is active, only the managed
+  // (policySettings) statusLine runs — a workspace-controlled project/local
+  // .claude/settings.json statusLine must not run under the lockdown (mirrors
+  // getHooksFromAllowedSources). Otherwise the merged value (legacy behavior).
+  const statusLine = selectManagedHookFamilyValue({
+    managedOnly: shouldAllowManagedHooksOnly(),
+    pluginOnlyLocked: isRestrictedToPluginOnly('hooks'),
+    policyValue: getSettingsForSource('policySettings')?.statusLine,
+    mergedValue: getSettings_DEPRECATED()?.statusLine,
+  })
 
   if (!statusLine || statusLine.type !== 'command') {
     return undefined
@@ -4835,14 +4841,18 @@ export async function executeFileSuggestionCommand(
     return []
   }
 
-  // When disableAllHooks is set in non-managed settings, only managed fileSuggestion runs
-  // (non-managed settings cannot disable managed commands, but non-managed commands are disabled)
-  let fileSuggestion
-  if (shouldAllowManagedHooksOnly()) {
-    fileSuggestion = getSettingsForSource('policySettings')?.fileSuggestion
-  } else {
-    fileSuggestion = getSettings_DEPRECATED()?.fileSuggestion
-  }
+  // fileSuggestion is a hook-equivalent (runs a shell command via execCommandHook),
+  // so it must honor the managed hook-family lockdowns. When allowManagedHooksOnly OR
+  // strictPluginOnlyCustomization('hooks') is active, only the managed
+  // (policySettings) fileSuggestion runs — a workspace-controlled project/local
+  // .claude/settings.json fileSuggestion must not run under the lockdown (mirrors
+  // getHooksFromAllowedSources). Otherwise the merged value (legacy behavior).
+  const fileSuggestion = selectManagedHookFamilyValue({
+    managedOnly: shouldAllowManagedHooksOnly(),
+    pluginOnlyLocked: isRestrictedToPluginOnly('hooks'),
+    policyValue: getSettingsForSource('policySettings')?.fileSuggestion,
+    mergedValue: getSettings_DEPRECATED()?.fileSuggestion,
+  })
 
   if (!fileSuggestion || fileSuggestion.type !== 'command') {
     return []
