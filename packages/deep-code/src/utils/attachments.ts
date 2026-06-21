@@ -17,6 +17,14 @@ import {
 } from '../tools/FileReadTool/FileReadTool.js'
 import { FileTooLargeError, readFileInRange } from './readFileInRange.js'
 import { shouldSuppressAttachmentRead } from './attachmentReadGate.mjs'
+import {
+  DEFAULT_MAX_RESULT_SIZE_CHARS,
+  MAX_TURN_MCP_RESOURCE_CHARS,
+} from '../constants/toolLimits.js'
+import {
+  mcpResourceContentLength,
+  nextResourceAllowance,
+} from './mcpResourceBudget.mjs'
 import { expandPath } from './path.js'
 import { countCharInString } from './stringUtils.js'
 import { count, uniq } from './array.js'
@@ -612,6 +620,11 @@ export type Attachment =
       name: string
       description?: string
       content: ReadResourceResult
+      // Per-turn aggregate text budget for THIS resource, stamped by
+      // processMcpResourceAttachments from one running counter across all
+      // @server:uri mentions in the input. The render (messages.ts) passes it to
+      // buildMcpResourceTextBlocks; falls back to the per-resource cap if unset.
+      maxChars?: number
     }
   | {
       type: 'command_permissions'
@@ -2083,9 +2096,37 @@ async function processMcpResourceAttachments(
     }),
   )
 
-  return results.filter(
+  const attachments = results.filter(
     (result): result is NonNullable<typeof result> => result !== null,
   ) as Attachment[]
+
+  // Per-turn aggregate budget across ALL @server:uri resources in this input.
+  // Each resource is rendered with a fresh per-resource cap, and the mention
+  // count is unbounded, so without one running budget N mentions could each
+  // inject up to the per-resource cap of server-controlled text. Stamp each
+  // mcp_resource a shrinking allowance from a single counter (mirrors
+  // RELEVANT_MEMORIES_CONFIG's cumulative cap); the render honors maxChars.
+  // Walked here, after the Promise.all, so the counter is sequential (no race) —
+  // do NOT hoist this to a budget shared with the parallel @-file family.
+  let used = 0
+  for (const attachment of attachments) {
+    if (attachment.type !== 'mcp_resource') continue
+    // Each resource still keeps the historical per-resource cap
+    // (DEFAULT_MAX_RESULT_SIZE_CHARS) so a single @-mention renders identically to
+    // before and stays symmetric with ReadMcpResourceTool; the running budget only
+    // ADDS the per-turn aggregate ceiling across resources.
+    const allowance = Math.min(
+      DEFAULT_MAX_RESULT_SIZE_CHARS,
+      nextResourceAllowance(MAX_TURN_MCP_RESOURCE_CHARS, used),
+    )
+    attachment.maxChars = allowance
+    used += Math.min(
+      mcpResourceContentLength(attachment.content?.contents),
+      allowance,
+    )
+  }
+
+  return attachments
 }
 
 export async function getChangedFiles(

@@ -3888,16 +3888,16 @@ You have exited auto mode. The user may now want to interact more directly. You 
         ])
       }
 
-      // Flatten the resource contents into text blocks, bounding the total text
-      // by the system-wide tool-result ceiling. The resource is server-controlled
-      // and its size is unknown until read (resources/list shows only metadata),
-      // and this is the sole place it enters the model context — without the cap
-      // a single huge resource blows the context window / inflates cost in one
-      // turn. Mirrors the ReadMcpResourceTool's bound (clamped to the same
-      // DEFAULT_MAX_RESULT_SIZE_CHARS in the tool-result pipeline).
+      // Flatten the resource contents into text blocks, bounding the total text.
+      // The resource is server-controlled and its size is unknown until read
+      // (resources/list shows only metadata), and this is the sole place it enters
+      // the model context. attachment.maxChars is the per-turn aggregate allowance
+      // stamped by processMcpResourceAttachments (one running budget across all
+      // @server:uri mentions, so N mentions can't each inject a fresh cap); it
+      // falls back to the per-resource DEFAULT_MAX_RESULT_SIZE_CHARS when unstamped.
       const transformedBlocks: ContentBlockParam[] = buildMcpResourceTextBlocks(
         content.contents,
-        DEFAULT_MAX_RESULT_SIZE_CHARS,
+        attachment.maxChars ?? DEFAULT_MAX_RESULT_SIZE_CHARS,
       )
 
       // If we have any content blocks, return them as a message
