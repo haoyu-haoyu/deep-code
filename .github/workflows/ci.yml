@@ -206,6 +206,7 @@ jobs:
             test/pasted-mention-confine.test.mjs \
             test/ide-extension-gate.test.mjs \
             test/agent-transcript-path-confine.test.mjs \
+            test/symlink-containment.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
             test/elicitation-queue-remove.test.mjs \
             test/single-flight.test.mjs \
