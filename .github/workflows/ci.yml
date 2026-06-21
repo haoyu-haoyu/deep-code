@@ -202,6 +202,7 @@ jobs:
             test/agent-bypass-permission-gate.test.mjs \
             test/marketplace-git-source.test.mjs \
             test/safe-tool-result-id-component.test.mjs \
+            test/agent-memory-path-traversal.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
             test/elicitation-queue-remove.test.mjs \
             test/single-flight.test.mjs \
