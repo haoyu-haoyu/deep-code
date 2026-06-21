@@ -28,6 +28,7 @@ import { logError } from '../log.js'
 import { getPlatform } from '../platform.js'
 import { clone, jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
+import { coercePolicyScalars } from './coercePolicyScalars.mjs'
 import {
   type EditableSettingSource,
   getEnabledSettingSources,
@@ -62,6 +63,21 @@ import {
  */
 function getManagedSettingsFilePath(): string {
   return join(getManagedFilePath(), 'managed-settings.json')
+}
+
+/**
+ * Is this the path of an admin-owned managed-policy file (the base
+ * managed-settings.json or a managed-settings.d/*.json drop-in)? Only managed
+ * sources get fail-closed scalar coercion — a malformed user/project/local file
+ * keeps the existing whole-object behavior (its own fail is benign and intended).
+ */
+function isManagedSettingsPath(path: string): boolean {
+  try {
+    if (path === getManagedSettingsFilePath()) return true
+    return dirname(path) === getManagedSettingsDropInDir()
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -221,14 +237,24 @@ function parseSettingsFileUncached(path: string): {
     // rule doesn't cause the entire settings file to be rejected.
     const ruleWarnings = filterInvalidPermissionRules(data, path)
 
+    // For a managed-policy source, fail-close security scalars before validation
+    // too — so one mistyped scalar can't null the whole file and silently re-open
+    // the org lockdown (drop every other restriction in the same file).
+    const scalarWarnings = isManagedSettingsPath(path)
+      ? coercePolicyScalars(data, path)
+      : []
+
     const result = SettingsSchema().safeParse(data)
 
     if (!result.success) {
       const errors = formatZodError(result.error, path)
-      return { settings: null, errors: [...ruleWarnings, ...errors] }
+      return {
+        settings: null,
+        errors: [...ruleWarnings, ...scalarWarnings, ...errors],
+      }
     }
 
-    return { settings: result.data, errors: ruleWarnings }
+    return { settings: result.data, errors: [...ruleWarnings, ...scalarWarnings] }
   } catch (error) {
     handleFileSystemError(error, path)
     return { settings: null, errors: [] }
