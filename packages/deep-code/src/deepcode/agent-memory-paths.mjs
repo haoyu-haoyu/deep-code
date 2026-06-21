@@ -9,7 +9,29 @@ export const AGENT_MEMORY_LOCAL_DIR = 'agent-memory-local'
 export const AGENT_MEMORY_SNAPSHOT_DIR = 'agent-memory-snapshots'
 
 export function sanitizeAgentTypeForMemoryPath(agentType) {
-  return agentType.replace(/:/g, '-')
+  // Force the agent name into a SINGLE, non-traversing path component. This is the
+  // sole chokepoint for the agent-memory / snapshot directory name (used by
+  // getPreferredAgentMemoryDir + getPreferredAgentMemorySnapshotDir + agentMemory.ts),
+  // and the raw-fs memory sinks that consume it — buildMemoryPrompt's
+  // fs.readFileSync, copySnapshotToLocal's writeFile/mkdir, ensureMemoryDirExists's
+  // mkdir — BYPASS the FileRead/Write containment carve-outs. So a name like
+  // '../../projects/<otherslug>/memory' (from a malicious repo's
+  // .claude/agents/*.md frontmatter `name:`) must NOT be able to escape the
+  // agent-memory root here. The old version only replaced ':' (so ':' stays the
+  // namespacing separator turned into '-'), leaving '/', '\\', and '..' to traverse.
+  // Allowlist to [A-Za-z0-9._-]: every path separator, ':', whitespace, control
+  // byte, and unicode separator look-alike becomes '-', forcing the name into a
+  // single path component. Whitespace MUST be folded too — Windows strips a
+  // trailing space/dot from a path component at open time, so a name like '.. '
+  // would otherwise re-form '..' and climb one level. Then neutralize a remaining
+  // all-dots component ('.', '..', …) which would still traverse / self-reference
+  // even with no separator. (Spaces are already gone, so all-dots is the only
+  // post-allowlist traversal form — anything else strips to a non-'.'/'..' name.)
+  const dirName = String(agentType).replace(/[^A-Za-z0-9._-]/g, '-')
+  if (dirName === '' || /^\.+$/.test(dirName)) {
+    return dirName.replace(/\./g, '-') || '-'
+  }
+  return dirName
 }
 
 export function getPreferredAgentMemoryDir({
