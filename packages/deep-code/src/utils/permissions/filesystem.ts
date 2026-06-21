@@ -13,6 +13,7 @@ import {
 } from 'src/tools/FileEditTool/constants.js'
 import type { z } from 'zod/v4'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
+import { bodyTrustedWorkingDirSet } from './bodyTrustedDirSource.mjs'
 import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../featureFlags.js'
 import type { AnyObject, Tool, ToolPermissionContext } from '../../Tool.js'
 import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js'
@@ -713,6 +714,29 @@ export function pathInAllowedWorkingPath(
 
   // All paths must be within allowed working paths
   // If any resolved path is outside, deny access
+  return pathsToCheck.every(pathToCheck =>
+    workingPaths.some(workingPath =>
+      pathInWorkingPath(pathToCheck, workingPath),
+    ),
+  )
+}
+
+// Like pathInAllowedWorkingPath, but the working-directory set is restricted to
+// the workspace root + only the additional dirs whose SOURCE is body-trusted
+// (excludes the workspace-controlled project/local .claude settings sources). Used
+// to confine a BODY-sourced @-mention read (#580) so an opened repo can't widen the
+// reach via its own committed permissions.additionalDirectories. A live user-typed
+// @-mention is NOT routed here — it keeps the full additionalWorkingDirectories.
+export function pathInBodyTrustedWorkingPath(
+  path: string,
+  toolPermissionContext: ToolPermissionContext,
+): boolean {
+  const pathsToCheck = getPathsForPermissionCheck(path)
+  const workingPaths = Array.from(
+    bodyTrustedWorkingDirSet(getOriginalCwd(), [
+      ...toolPermissionContext.additionalWorkingDirectories.values(),
+    ]),
+  ).flatMap(wp => getResolvedWorkingDirPaths(wp))
   return pathsToCheck.every(pathToCheck =>
     workingPaths.some(workingPath =>
       pathInWorkingPath(pathToCheck, workingPath),
