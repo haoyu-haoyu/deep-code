@@ -8,7 +8,8 @@ import {
 import type { LoadedPlugin, PluginError } from '../../types/plugin.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage, isENOENT } from '../errors.js'
-import { getFsImplementation } from '../fsOperations.js'
+import { getFsImplementation, safeResolvePath } from '../fsOperations.js'
+import { confineResolvedWithinBase } from './confineResolvedWithinBase.mjs'
 import { jsonParse } from '../slowOperations.js'
 import {
   isMcpbSource,
@@ -222,6 +223,22 @@ async function loadMcpServersFromFile(
 ): Promise<Record<string, McpServerConfig> | null> {
   const fs = getFsImplementation()
   const filePath = join(pluginPath, relativePath)
+
+  // Read-time symlink containment (see loadPluginCommands): a plugin .mcp.json
+  // path resolving outside the plugin dir must not be read.
+  if (
+    !confineResolvedWithinBase(
+      p => safeResolvePath(fs, p).resolvedPath,
+      pluginPath,
+      filePath,
+    )
+  ) {
+    logForDebugging(
+      `Skipping plugin MCP config resolving outside the plugin dir: ${filePath}`,
+      { level: 'warn' },
+    )
+    return null
+  }
 
   let content: string
   try {

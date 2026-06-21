@@ -19,7 +19,12 @@ import {
   parseFrontmatter,
   parseShellFrontmatter,
 } from '../frontmatterParser.js'
-import { getFsImplementation, isDuplicatePath } from '../fsOperations.js'
+import {
+  getFsImplementation,
+  isDuplicatePath,
+  safeResolvePath,
+} from '../fsOperations.js'
+import { confineResolvedWithinBase } from './confineResolvedWithinBase.mjs'
 import { relativeNamespace } from './commandNamespace.mjs'
 import {
   extractDescriptionFromMarkdown,
@@ -471,6 +476,23 @@ export const getPluginCommands = memoize(async (): Promise<Command[]> => {
           plugin.commandsPaths.map(async (commandPath): Promise<Command[]> => {
             try {
               const fs = getFsImplementation()
+              // Read-time symlink containment: a commandsPath that resolves OUTSIDE
+              // the plugin dir (a symlink to ~/.ssh/id_rsa etc.) must not be
+              // stat'd/read — the cache-only/in-place load paths skip copyDir's
+              // #601 install-time guard, and validatePathWithinBase is symlink-blind.
+              if (
+                !confineResolvedWithinBase(
+                  p => safeResolvePath(fs, p).resolvedPath,
+                  plugin.path,
+                  commandPath,
+                )
+              ) {
+                logForDebugging(
+                  `Skipping plugin ${plugin.name} commandsPath resolving outside the plugin dir: ${commandPath}`,
+                  { level: 'warn' },
+                )
+                return []
+              }
               const stats = await fs.stat(commandPath)
               logForDebugging(
                 `Checking commandPath ${commandPath} - isDirectory: ${stats.isDirectory()}, isFile: ${stats.isFile()}`,
@@ -777,6 +799,23 @@ async function loadSkillsFromDirectory(
 
       const skillDirPath = join(skillsPath, entry.name)
       const skillFilePath = join(skillDirPath, 'SKILL.md')
+
+      // The skills walk deliberately follows a symlinked skill dir (entry may be a
+      // symlink). Containment-check the resolved SKILL.md against the plugin root so
+      // a skill-dir symlink to an out-of-tree location can't read an arbitrary file.
+      if (
+        !confineResolvedWithinBase(
+          p => safeResolvePath(fs, p).resolvedPath,
+          pluginPath,
+          skillFilePath,
+        )
+      ) {
+        logForDebugging(
+          `Skipping plugin skill resolving outside the plugin dir: ${skillFilePath}`,
+          { level: 'warn' },
+        )
+        return
+      }
 
       // Try to read SKILL.md directly; skip if it doesn't exist
       let content: string

@@ -7,7 +7,12 @@ import {
   coerceDescriptionToString,
   parseFrontmatter,
 } from '../frontmatterParser.js'
-import { getFsImplementation, isDuplicatePath } from '../fsOperations.js'
+import {
+  getFsImplementation,
+  isDuplicatePath,
+  safeResolvePath,
+} from '../fsOperations.js'
+import { confineResolvedWithinBase } from './confineResolvedWithinBase.mjs'
 import { extractDescriptionFromMarkdown } from '../markdownConfigLoader.js'
 import { loadAllPluginsCacheOnly } from './pluginLoader.js'
 import { walkPluginMarkdown } from './walkPluginMarkdown.js'
@@ -128,6 +133,23 @@ export const loadPluginOutputStyles = memoize(
         for (const stylePath of plugin.outputStylesPaths) {
           try {
             const fs = getFsImplementation()
+            // Read-time symlink containment (see loadPluginCommands): an
+            // outputStylesPath resolving outside the plugin dir must not be read —
+            // its markdown body is injected into the model SYSTEM PROMPT, so an
+            // out-of-tree symlink would exfiltrate an arbitrary host file.
+            if (
+              !confineResolvedWithinBase(
+                p => safeResolvePath(fs, p).resolvedPath,
+                plugin.path,
+                stylePath,
+              )
+            ) {
+              logForDebugging(
+                `Skipping plugin ${plugin.name} outputStylesPath resolving outside the plugin dir: ${stylePath}`,
+                { level: 'warn' },
+              )
+              continue
+            }
             const stats = await fs.stat(stylePath)
 
             if (stats.isDirectory()) {

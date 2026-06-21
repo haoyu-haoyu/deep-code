@@ -18,7 +18,12 @@ import {
   parseFrontmatter,
   parsePositiveIntFromFrontmatter,
 } from '../frontmatterParser.js'
-import { getFsImplementation, isDuplicatePath } from '../fsOperations.js'
+import {
+  getFsImplementation,
+  isDuplicatePath,
+  safeResolvePath,
+} from '../fsOperations.js'
+import { confineResolvedWithinBase } from './confineResolvedWithinBase.mjs'
 import {
   parseAgentToolsFromFrontmatter,
   parseSlashCommandToolsFromFrontmatter,
@@ -281,6 +286,21 @@ export const loadPluginAgents = memoize(
               async (agentPath): Promise<AgentDefinition[]> => {
                 try {
                   const fs = getFsImplementation()
+                  // Read-time symlink containment (see loadPluginCommands): an
+                  // agentsPath resolving outside the plugin dir must not be read.
+                  if (
+                    !confineResolvedWithinBase(
+                      p => safeResolvePath(fs, p).resolvedPath,
+                      plugin.path,
+                      agentPath,
+                    )
+                  ) {
+                    logForDebugging(
+                      `Skipping plugin ${plugin.name} agentsPath resolving outside the plugin dir: ${agentPath}`,
+                      { level: 'warn' },
+                    )
+                    return []
+                  }
                   const stats = await fs.stat(agentPath)
 
                   if (stats.isDirectory()) {
