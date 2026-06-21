@@ -1,6 +1,7 @@
 import { useContext, useEffect } from 'react'
 import stripAnsi from 'strip-ansi'
 import { OSC, osc } from '../termio/osc.js'
+import { stripOscControlChars } from '../termio/stripOscControlChars.mjs'
 import { TerminalWriteContext } from '../useTerminalNotification.js'
 
 /**
@@ -20,7 +21,10 @@ export function useTerminalTitle(title: string | null): void {
   useEffect(() => {
     if (title === null || !writeRaw) return
 
-    const clean = stripAnsi(title)
+    // stripAnsi removes well-formed ANSI sequences but NOT a bare BEL (0x07),
+    // which would prematurely terminate the OSC 0 title; stripOscControlChars
+    // removes any residual control bytes (BEL, lone ESC) so the title can't be split.
+    const clean = stripOscControlChars(stripAnsi(title))
 
     if (process.platform === 'win32') {
       process.title = clean

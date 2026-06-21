@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo } from 'react'
 import { isProgressReportingAvailable, type Progress } from './terminal.js'
 import { BEL } from './termio/ansi.js'
 import { ITERM2, OSC, osc, PROGRESS, wrapForMultiplexer } from './termio/osc.js'
+import { stripOscControlChars } from './termio/stripOscControlChars.mjs'
 
 type WriteRaw = (data: string) => void
 
@@ -32,7 +33,16 @@ export function useTerminalNotification(): TerminalNotification {
 
   const notifyITerm2 = useCallback(
     ({ message, title }: { message: string; title?: string }) => {
-      const displayString = title ? `${title}:\n${message}` : message
+      // Strip control bytes from the (attacker-influenceable: MCP tool name,
+      // worker-mailbox field) title/message before embedding in the OSC — a bare
+      // BEL/ESC would break out of the notification sequence and run as a live
+      // terminal control sequence. Sanitize the parts so the code-added `:\n`/`\n\n`
+      // framing is preserved.
+      const safeMessage = stripOscControlChars(message)
+      const safeTitle = title ? stripOscControlChars(title) : title
+      const displayString = safeTitle
+        ? `${safeTitle}:\n${safeMessage}`
+        : safeMessage
       writeRaw(wrapForMultiplexer(osc(OSC.ITERM2, `\n\n${displayString}`)))
     },
     [writeRaw],
@@ -48,8 +58,17 @@ export function useTerminalNotification(): TerminalNotification {
       title: string
       id: number
     }) => {
-      writeRaw(wrapForMultiplexer(osc(OSC.KITTY, `i=${id}:d=0:p=title`, title)))
-      writeRaw(wrapForMultiplexer(osc(OSC.KITTY, `i=${id}:p=body`, message)))
+      // Strip control bytes (BEL/ESC break-out) from the embedded title/message.
+      writeRaw(
+        wrapForMultiplexer(
+          osc(OSC.KITTY, `i=${id}:d=0:p=title`, stripOscControlChars(title)),
+        ),
+      )
+      writeRaw(
+        wrapForMultiplexer(
+          osc(OSC.KITTY, `i=${id}:p=body`, stripOscControlChars(message)),
+        ),
+      )
       writeRaw(wrapForMultiplexer(osc(OSC.KITTY, `i=${id}:d=1:a=focus`, '')))
     },
     [writeRaw],
@@ -57,7 +76,17 @@ export function useTerminalNotification(): TerminalNotification {
 
   const notifyGhostty = useCallback(
     ({ message, title }: { message: string; title: string }) => {
-      writeRaw(wrapForMultiplexer(osc(OSC.GHOSTTY, 'notify', title, message)))
+      // Strip control bytes (BEL/ESC break-out) from the embedded title/message.
+      writeRaw(
+        wrapForMultiplexer(
+          osc(
+            OSC.GHOSTTY,
+            'notify',
+            stripOscControlChars(title),
+            stripOscControlChars(message),
+          ),
+        ),
+      )
     },
     [writeRaw],
   )
