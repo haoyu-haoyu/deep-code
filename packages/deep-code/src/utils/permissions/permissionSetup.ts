@@ -18,6 +18,7 @@ import { SETTING_SOURCES } from '../settings/constants.js'
 import {
   getSettings_DEPRECATED,
   getSettingsFilePathForSource,
+  getSettingsForSource,
   getUseAutoModeDuringPlan,
   hasAutoModeOptIn,
 } from '../settings/settings.js'
@@ -995,22 +996,56 @@ export async function initializeToolPermissionContext({
     ...(settings.permissions?.additionalDirectories || []),
     ...addDirs,
   ]
+  // Stamp each additional dir with its TRUE trust source so a BODY-sourced @-mention
+  // read (#580, attachments.ts) can EXCLUDE the WORKSPACE-controlled settings
+  // sources: a dir contributed ONLY by an opened repo's .claude/settings.json
+  // (projectSettings) or .claude/settings.local.json (localSettings) is stamped
+  // untrusted, while a --add-dir, --settings flag, managed, or user-global dir stays
+  // 'cliArg' (body-trusted). The working-dir `source` is otherwise unread, so this
+  // changes only the body @-mention confinement — the set of added dirs is identical.
+  const projectSettingDirs = new Set<string>(
+    getSettingsForSource('projectSettings')?.permissions?.additionalDirectories ||
+      [],
+  )
+  const localSettingDirs = new Set<string>(
+    getSettingsForSource('localSettings')?.permissions?.additionalDirectories || [],
+  )
+  const bodyTrustedSettingDirs = new Set<string>([
+    ...(getSettingsForSource('userSettings')?.permissions?.additionalDirectories ||
+      []),
+    ...(getSettingsForSource('flagSettings')?.permissions?.additionalDirectories ||
+      []),
+    ...(getSettingsForSource('policySettings')?.permissions?.additionalDirectories ||
+      []),
+    ...addDirs,
+  ])
+  // A dir is body-trusted ('cliArg') unless it is contributed ONLY by a
+  // workspace-controlled settings file (and not also by a trusted source / --add-dir).
+  // Stamp the accurate untrusted source so the working-dir `source` field stays
+  // honest; both projectSettings and localSettings are excluded from body-trust.
+  const destinationForDir = (dir: string): PermissionUpdateDestination => {
+    if (bodyTrustedSettingDirs.has(dir)) return 'cliArg'
+    if (projectSettingDirs.has(dir)) return 'projectSettings'
+    if (localSettingDirs.has(dir)) return 'localSettings'
+    return 'cliArg'
+  }
   // Parallelize fs validation; apply updates serially (cumulative context).
   // validateDirectoryForWorkspace only reads permissionContext to check if the
   // dir is already covered — behavioral difference from parallelizing is benign
   // (two overlapping --add-dirs both succeed instead of one being flagged
   // alreadyInWorkingDirectory, which was silently skipped anyway).
   const validationResults = await Promise.all(
-    allAdditionalDirectories.map(dir =>
-      validateDirectoryForWorkspace(dir, toolPermissionContext),
-    ),
+    allAdditionalDirectories.map(async dir => ({
+      dir,
+      result: await validateDirectoryForWorkspace(dir, toolPermissionContext),
+    })),
   )
-  for (const result of validationResults) {
+  for (const { dir, result } of validationResults) {
     if (result.resultType === 'success') {
       toolPermissionContext = applyPermissionUpdate(toolPermissionContext, {
         type: 'addDirectories',
         directories: [result.absolutePath],
-        destination: 'cliArg',
+        destination: destinationForDir(dir),
       })
     } else if (
       result.resultType !== 'alreadyInWorkingDirectory' &&

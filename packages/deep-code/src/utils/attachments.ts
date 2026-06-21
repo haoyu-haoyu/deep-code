@@ -145,6 +145,7 @@ import { isMcpResourceMentionSuppressed } from './mcpResourceMentionGate.mjs'
 import {
   checkReadPermissionForTool,
   pathInAllowedWorkingPath,
+  pathInBodyTrustedWorkingPath,
 } from './permissions/filesystem.js'
 import {
   generateTaskAttachments,
@@ -3990,7 +3991,18 @@ function isFileReadDenied(
     { file_path: filePath },
     toolPermissionContext,
   )
-  return shouldSuppressAttachmentRead(decision, { bodySourced })
+  if (shouldSuppressAttachmentRead(decision, { bodySourced })) return true
+  // #580 hardening: a body @-mention read that the permission check would ALLOW
+  // (the path is inside a working directory) must ALSO be inside a BODY-TRUSTED
+  // working dir — the workspace root or a --add-dir / managed / user-global dir,
+  // NOT a dir added by an opened repo's own .claude/settings(.local).json. Else a
+  // malicious repo could ship additionalDirectories:["/"] to re-open the
+  // out-of-workspace body read this gate closes. (A live user @-mention keeps the
+  // full additionalWorkingDirectories — it is never bodySourced.)
+  if (bodySourced && !pathInBodyTrustedWorkingPath(filePath, toolPermissionContext)) {
+    return true
+  }
+  return false
 }
 
 // The @-file path above consults the permission system; an @server:uri
