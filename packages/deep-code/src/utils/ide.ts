@@ -9,6 +9,7 @@ import { basename, join, sep as pathSeparator, resolve } from 'path'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getIsScrollDraining, getOriginalCwd } from '../bootstrap/state.js'
 import { callIdeRpc } from '../services/mcp/client.js'
+import { isConnectedIdeExtension } from './ideExtensionGate.mjs'
 import type {
   ConnectedMCPServer,
   MCPServerConnection,
@@ -838,10 +839,10 @@ export async function maybeNotifyIDEConnected(client: Client) {
 export function hasAccessToIDEExtensionDiffFeature(
   mcpClients: MCPServerConnection[],
 ): boolean {
-  // Check if there's a connected IDE client in the provided MCP clients list
-  return mcpClients.some(
-    client => client.type === 'connected' && client.name === 'ide',
-  )
+  // Check if there's a connected IDE EXTENSION (dynamic scope + sse-ide/ws-ide
+  // transport) — a static .mcp.json server merely named 'ide' must NOT count, or
+  // it could impersonate the diff-approval channel and write unreviewed content.
+  return mcpClients.some(isConnectedIdeExtension)
 }
 
 const EXTENSION_ID =
@@ -1179,9 +1180,7 @@ export function resetDetectRunningIDEs(): void {
 export function getConnectedIdeName(
   mcpClients: MCPServerConnection[],
 ): string | null {
-  const ideClient = mcpClients.find(
-    client => client.type === 'connected' && client.name === 'ide',
-  )
+  const ideClient = mcpClients.find(isConnectedIdeExtension)
   return getIdeClientName(ideClient)
 }
 
@@ -1255,9 +1254,7 @@ export function getConnectedIdeClient(
     return undefined
   }
 
-  const ideClient = mcpClients.find(
-    client => client.type === 'connected' && client.name === 'ide',
-  )
+  const ideClient = mcpClients.find(isConnectedIdeExtension)
 
   // Type guard to ensure we return the correct type
   return ideClient?.type === 'connected' ? ideClient : undefined
