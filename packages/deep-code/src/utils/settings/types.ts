@@ -63,6 +63,13 @@ export const PermissionsSchema = lazySchema(() =>
             : EXTERNAL_PERMISSION_MODES,
         )
         .optional()
+        // A present-but-invalid value (e.g. an admin typo "Plan") must not fail the
+        // union and null the whole managed-settings file — that silently drops every
+        // OTHER restriction in it. Drop the bad value to undefined (the unforced app
+        // default, the safe baseline) instead; the fail-closed scalars are handled in
+        // coercePolicyScalars.mjs. Same resilience the schema already gives other
+        // managed fields (strictPluginOnlyCustomization, effortLevel).
+        .catch(undefined)
         .describe('Default permission mode when DeepCode needs access'),
       disableBypassPermissionsMode: z
         .enum(['disable'])

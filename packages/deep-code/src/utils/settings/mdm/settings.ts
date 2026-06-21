@@ -25,6 +25,7 @@ import { readFileSync } from '../../fileRead.js'
 import { getFsImplementation } from '../../fsOperations.js'
 import { safeParseJSON } from '../../json.js'
 import { profileCheckpoint } from '../../startupProfiler.js'
+import { coercePolicyScalars } from '../coercePolicyScalars.mjs'
 import {
   getManagedFilePath,
   getManagedSettingsDropInDir,
@@ -190,12 +191,15 @@ export function parseCommandOutputAsSettings(
   }
 
   const ruleWarnings = filterInvalidPermissionRules(data, sourcePath)
+  // MDM output is always a managed-policy source — fail-close security scalars so
+  // one mistyped scalar can't reject the whole object and silently drop the policy.
+  const scalarWarnings = coercePolicyScalars(data, sourcePath)
   const parseResult = SettingsSchema().safeParse(data)
   if (!parseResult.success) {
     const errors = formatZodError(parseResult.error, sourcePath)
-    return { settings: {}, errors: [...ruleWarnings, ...errors] }
+    return { settings: {}, errors: [...ruleWarnings, ...scalarWarnings, ...errors] }
   }
-  return { settings: parseResult.data, errors: ruleWarnings }
+  return { settings: parseResult.data, errors: [...ruleWarnings, ...scalarWarnings] }
 }
 
 /**
