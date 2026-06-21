@@ -16,6 +16,7 @@ import {
   readImageWithTokenBudget,
 } from '../tools/FileReadTool/FileReadTool.js'
 import { FileTooLargeError, readFileInRange } from './readFileInRange.js'
+import { shouldSuppressAttachmentRead } from './attachmentReadGate.mjs'
 import { expandPath } from './path.js'
 import { countCharInString } from './stringUtils.js'
 import { count, uniq } from './array.js'
@@ -757,7 +758,7 @@ export async function getAttachments(
   queuedCommands: QueuedCommand[],
   messages?: Message[],
   querySource?: QuerySource,
-  options?: { skipSkillDiscovery?: boolean },
+  options?: { skipSkillDiscovery?: boolean; bodySourced?: boolean },
 ): Promise<Attachment[]> {
   if (
     isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS) ||
@@ -783,7 +784,7 @@ export async function getAttachments(
   const userInputAttachments = input
     ? [
         maybe('at_mentioned_files', () =>
-          processAtMentionedFiles(input, context),
+          processAtMentionedFiles(input, context, options?.bodySourced),
         ),
         maybe('mcp_resources', () =>
           processMcpResourceAttachments(input, context),
@@ -1891,6 +1892,9 @@ async function getOpenedFileFromIDE(
 async function processAtMentionedFiles(
   input: string,
   toolUseContext: ToolUseContext,
+  // true when `input` is a pre-written command/skill/plugin/MCP body rather than a
+  // live user-typed message — suppresses out-of-workspace @-mention reads.
+  bodySourced = false,
 ): Promise<Attachment[]> {
   const files = extractAtMentionedFiles(input)
   if (files.length === 0) return []
@@ -1903,7 +1907,11 @@ async function processAtMentionedFiles(
         const absoluteFilename = expandPath(filename)
 
         if (
-          isFileReadDenied(absoluteFilename, appState.toolPermissionContext)
+          isFileReadDenied(
+            absoluteFilename,
+            appState.toolPermissionContext,
+            bodySourced,
+          )
         ) {
           return null
         }
@@ -2909,7 +2917,7 @@ export async function* getAttachmentMessages(
   queuedCommands: QueuedCommand[],
   messages?: Message[],
   querySource?: QuerySource,
-  options?: { skipSkillDiscovery?: boolean },
+  options?: { skipSkillDiscovery?: boolean; bodySourced?: boolean },
 ): AsyncGenerator<AttachmentMessage, void> {
   // TODO: Compute this upstream
   const attachments = await getAttachments(
@@ -3970,17 +3978,19 @@ export function getContextEfficiencyAttachment(
 function isFileReadDenied(
   filePath: string,
   toolPermissionContext: ToolPermissionContext,
+  // When the @-mention text came from a pre-written command/skill/plugin/MCP body
+  // (not a live user-typed @-mention), the default out-of-workspace "workingDir"
+  // ask must NOT be exempted — a body @-mention is not the user's intent, so an
+  // out-of-workspace read is suppressed (confined to the workspace). See
+  // shouldSuppressAttachmentRead / attachmentReadGate.mjs.
+  bodySourced = false,
 ): boolean {
   const decision = checkReadPermissionForTool(
     FileReadTool,
     { file_path: filePath },
     toolPermissionContext,
   )
-  if (decision.behavior === 'deny') return true
-  return (
-    decision.behavior === 'ask' &&
-    decision.decisionReason?.type !== 'workingDir'
-  )
+  return shouldSuppressAttachmentRead(decision, { bodySourced })
 }
 
 // The @-file path above consults the permission system; an @server:uri

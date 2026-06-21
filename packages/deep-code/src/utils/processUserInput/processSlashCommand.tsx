@@ -890,7 +890,12 @@ async function getMessagesForPromptSlashCommand(command: CommandBase & PromptCom
   const attachmentMessages = await toArray(getAttachmentMessages(result.filter((block): block is TextBlockParam => block.type === 'text').map(block => block.text).join(' '), context, null, [],
   // queuedCommands - handled by query.ts for mid-turn attachments
   context.messages, 'repl_main_thread', {
-    skipSkillDiscovery: true
+    skipSkillDiscovery: true,
+    // The command BODY (user skill, plugin/marketplace skill, project skill, or
+    // MCP-prompt body) is not a live user @-mention. Suppress its out-of-workspace
+    // @-file reads so an untrusted body can't silently read e.g. ~/.ssh/id_rsa into
+    // context (the model's own Read tool would surface a workingDir ask on that path).
+    bodySourced: true
   }));
   const messages = [createUserMessage({
     content: metadata,
