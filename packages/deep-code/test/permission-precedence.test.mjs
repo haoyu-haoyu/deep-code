@@ -118,6 +118,45 @@ test('safety-check ask fires for a safetyCheck-type content ask', () => {
   )
 })
 
+// --- compound (subcommandResults) ask: the bypass-immune slot -----------------
+
+test('a bypass-immune compound ask maps to content-ask-rule (not continue)', () => {
+  // `echo ok && curl evil` where curl matched ask: Bash(curl:*). Flattened to
+  // type 'subcommandResults'; the caller computed contentAskBypassImmune=true.
+  assert.equal(
+    resolvePermissionPrecedence({
+      toolWideAsk: false,
+      contentBehavior: 'ask',
+      contentReasonType: 'subcommandResults',
+      contentAskBypassImmune: true,
+    }),
+    'content-ask-rule',
+  )
+})
+
+test('a NON-bypass-immune compound ask still continues (tool-wide allow / bypass may auto-allow)', () => {
+  assert.equal(
+    resolvePermissionPrecedence({
+      toolWideAsk: false,
+      contentBehavior: 'ask',
+      contentReasonType: 'subcommandResults',
+      contentAskBypassImmune: false,
+    }),
+    'continue',
+  )
+})
+
+test('a content DENY still wins over a compound bypass-immune ask (deny precedence)', () => {
+  assert.equal(
+    resolvePermissionPrecedence({
+      contentBehavior: 'deny',
+      contentReasonType: 'subcommandResults',
+      contentAskBypassImmune: true,
+    }),
+    'content-deny',
+  )
+})
+
 // --- no objection -------------------------------------------------------------
 
 test('no signals → continue (caller proceeds to mode/allow handling)', () => {
