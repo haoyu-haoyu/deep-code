@@ -8,6 +8,7 @@ import type { MCPResultType } from '../services/mcp/client.js'
 import { toError } from './errors.js'
 import { formatFileSize } from './format.js'
 import { logError } from './log.js'
+import { safeToolResultIdComponent } from './safeToolResultIdComponent.mjs'
 import { ensureToolResultsDir, getToolResultsDir } from './toolResultStorage.js'
 
 /**
@@ -152,7 +153,14 @@ export async function persistBinaryContent(
 ): Promise<PersistBinaryResult> {
   await ensureToolResultsDir()
   const ext = extensionForMimeType(mimeType)
-  const filepath = join(getToolResultsDir(), `${persistId}.${ext}`)
+  // Confine the persist id to a single safe filename component. Callers pass
+  // app-generated ids today, but this path uses an overwriting writeFile, so
+  // route through the same guard as getToolResultPath to keep it traversal-safe
+  // if a model-controlled id ever reaches here.
+  const filepath = join(
+    getToolResultsDir(),
+    `${safeToolResultIdComponent(persistId)}.${ext}`,
+  )
 
   try {
     await writeFile(filepath, bytes)
