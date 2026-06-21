@@ -9,8 +9,10 @@ import { expandEnvVarsInString } from '../../services/mcp/envExpansion.js'
 import type { LoadedPlugin, PluginError } from '../../types/plugin.js'
 import { logForDebugging } from '../debug.js'
 import { isENOENT, toError } from '../errors.js'
+import { getFsImplementation, safeResolvePath } from '../fsOperations.js'
 import { logError } from '../log.js'
 import { jsonParse } from '../slowOperations.js'
+import { confineResolvedWithinBase } from './confineResolvedWithinBase.mjs'
 import { getPluginDataDir } from './pluginDirectories.js'
 import {
   getPluginStorageId,
@@ -63,6 +65,21 @@ export async function loadPluginLspServers(
   // 1. Check for .lsp.json file in plugin directory
   const lspJsonPath = join(plugin.path, '.lsp.json')
   try {
+    // Read-time symlink containment (see loadPluginCommands / the .mcp.json
+    // sibling): a .lsp.json that is a symlink resolving outside the plugin dir
+    // must not be read. Throwing a synthetic ENOENT routes it through the
+    // existing optional-file handling below (skip without surfacing an error).
+    if (
+      !confineResolvedWithinBase(
+        p => safeResolvePath(getFsImplementation(), p).resolvedPath,
+        plugin.path,
+        lspJsonPath,
+      )
+    ) {
+      const skip = new Error('skip out-of-tree .lsp.json') as NodeJS.ErrnoException
+      skip.code = 'ENOENT'
+      throw skip
+    }
     const content = await readFile(lspJsonPath, 'utf-8')
     const parsed = jsonParse(content)
     const result = z
@@ -154,6 +171,23 @@ async function loadLspServersFromManifest(
             'Invalid path: must be relative and within plugin directory',
           source: 'plugin',
         })
+        continue
+      }
+
+      // Read-time symlink containment: the lexical validatePathWithinPlugin above
+      // is symlink-blind, so also reject a declared LSP config path that RESOLVES
+      // outside the plugin dir (a symlink) before reading it.
+      if (
+        !confineResolvedWithinBase(
+          p => safeResolvePath(getFsImplementation(), p).resolvedPath,
+          pluginPath,
+          validatedPath,
+        )
+      ) {
+        logForDebugging(
+          `Skipping plugin ${pluginName} LSP config resolving outside the plugin dir: ${decl}`,
+          { level: 'warn' },
+        )
         continue
       }
 
