@@ -8,6 +8,7 @@ import { nodeCache, pendingClears } from './node-cache.js'
 import type Output from './output.js'
 import renderBorder from './render-border.js'
 import type { Screen } from './screen.js'
+import { stripOscControlChars } from './termio/stripOscControlChars.mjs'
 import {
   type StyledSegment,
   squashTextNodesToSegments,
@@ -182,7 +183,9 @@ const OSC = '\u001B]'
 const BEL = '\u0007'
 
 function wrapWithOsc8Link(text: string, url: string): string {
-  return `${OSC}8;;${url}${BEL}${text}${OSC}8;;${BEL}`
+  // Strip embedded control bytes from the URL — a bare ESC/CSI would break out of
+  // this OSC 8 sequence and execute on the terminal. (text is grid-protected.)
+  return `${OSC}8;;${stripOscControlChars(url)}${BEL}${text}${OSC}8;;${BEL}`
 }
 
 /**

@@ -6,6 +6,7 @@ import { Buffer } from 'buffer'
 import { env } from '../../utils/env.js'
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
 import { BEL, ESC, ESC_TYPE, SEP } from './ansi.js'
+import { stripOscControlChars } from './stripOscControlChars.mjs'
 import type { Action, Color, TabStatusAction } from './types.js'
 
 export const OSC_PREFIX = ESC + String.fromCharCode(ESC_TYPE.OSC)
@@ -402,11 +403,14 @@ function* splitTabStatusPairs(data: string): Generator<[string, string]> {
  *  Empty url = close sequence (empty params per spec). */
 export function link(url: string, params?: Record<string, string>): string {
   if (!url) return LINK_END
-  const p = { id: osc8Id(url), ...params }
+  // Strip embedded control bytes — a bare ESC/CSI inside the URL would break out of
+  // this OSC 8 sequence and execute as a live control sequence on the terminal.
+  const safeUrl = stripOscControlChars(url)
+  const p = { id: osc8Id(safeUrl), ...params }
   const paramStr = Object.entries(p)
     .map(([k, v]) => `${k}=${v}`)
     .join(':')
-  return osc(OSC.HYPERLINK, paramStr, url)
+  return osc(OSC.HYPERLINK, paramStr, safeUrl)
 }
 
 function osc8Id(url: string): string {

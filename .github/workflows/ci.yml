@@ -173,6 +173,7 @@ jobs:
             test/utf8-tail.test.mjs \
             test/word-diff-guard.test.mjs \
             test/escape-for-diff.test.mjs \
+            test/strip-osc-control-chars.test.mjs \
             test/paste-id.test.mjs \
             test/bom-handling.test.mjs \
             test/attachment-read-gate.test.mjs \
