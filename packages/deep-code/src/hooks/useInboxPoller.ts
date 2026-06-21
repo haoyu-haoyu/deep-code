@@ -12,6 +12,7 @@ import {
   useSetAppState,
 } from '../state/AppState.js'
 import { findToolByName } from '../Tool.js'
+import { isTrustedLeaderControlMessage } from './isTrustedLeaderControlMessage.mjs'
 import { isInProcessTeammateTask } from '../tasks/InProcessTeammateTask/types.js'
 import { getAllBaseTools } from '../tools.js'
 import type { PermissionUpdate } from '../types/permissions.js'
@@ -501,6 +502,20 @@ export function useInboxPoller({
       )
 
       for (const m of teamPermissionUpdates) {
+        // Provenance gate: a team_permission_update auto-applies a session
+        // allow-rule to THIS teammate's permission context, so it must come
+        // from the team-lead. Without this, a prompt-injected worker could send
+        // a forged update to silently escalate the victim's tool permissions
+        // (the type has no legitimate producer — every message reaching this
+        // consumer is forged). Mirrors the mode_set_request / plan_approval
+        // siblings that already gate on the team-lead identity.
+        if (!isTrustedLeaderControlMessage(m.from, TEAM_LEAD_NAME)) {
+          logForDebugging(
+            `[InboxPoller] Ignoring team permission update from non-team-lead: ${m.from}`,
+          )
+          continue
+        }
+
         const parsed = isTeamPermissionUpdate(m.text)
         if (!parsed) {
           logForDebugging(
