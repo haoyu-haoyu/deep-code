@@ -2122,7 +2122,23 @@ async function loadPluginFromMarketplaceEntryCacheOnly(
       })
       return null
     }
-    pluginPath = join(marketplaceDir, entry.source)
+    // Confine the resolved plugin root to the marketplace dir, mirroring the
+    // install-time guard at copyPluginToVersionedCache (416). The RelativePath schema
+    // refine already rejects a '..' source at parse (and this entry.source was parsed
+    // through PluginMarketplaceSchema), so this is defense-in-depth + install-site
+    // parity — a backstop against a future schema bypass/regression, not a currently
+    // open window.
+    try {
+      pluginPath = validatePathWithinBase(marketplaceDir, entry.source)
+    } catch {
+      errorsOut.push({
+        type: 'plugin-cache-miss',
+        source: pluginId,
+        plugin: entry.name,
+        installPath: marketplaceInstallLocation,
+      })
+      return null
+    }
     // finishLoadingPluginFromPath reads pluginPath — its error handling
     // surfaces ENOENT as a load failure, no need to pre-check here.
   } else {
