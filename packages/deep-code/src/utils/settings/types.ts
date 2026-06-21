@@ -493,6 +493,13 @@ export const SettingsSchema = lazySchema(() =>
       disableAllHooks: z
         .boolean()
         .optional()
+        // A present-but-invalid value (an admin typo like "true"/"false") must not fail
+        // the union and null the whole managed-settings file — that silently drops every
+        // OTHER restriction in it. Drop the bad value to undefined (hooks run, incl. any
+        // managed enforcement hook) instead of guessing true/false: unlike a pure
+        // add-restriction toggle, disableAllHooks:true would DISABLE hooks, so coercing a
+        // typo to true could kill a managed control. Same resilience as defaultMode.
+        .catch(undefined)
         .describe('Disable all hooks and statusLine execution'),
       // Which shell backs input-box `!` (see docs/design/ps-shell-selection.md §4.2)
       defaultShell: z
