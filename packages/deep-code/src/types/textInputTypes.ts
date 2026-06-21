@@ -306,6 +306,16 @@ export type QueuedCommand = {
   /** Raw pasted contents including images. Images are resized at execution time. */
   pastedContents?: Record<number, PastedContent>
   /**
+   * @-file / @-resource mentions found INSIDE the pasted-text blobs of this
+   * command (computed at submit, where pastedContents is still available — it is
+   * dropped here for text pastes). A collapsed paste hides its body, so these
+   * mentions are not the user's visible intent; downstream the @-file path
+   * confines them to the workspace (bodySourced) and the @-resource path
+   * suppresses them, closing a silent out-of-workspace read from a hidden paste.
+   */
+  pastedFileMentions?: string[]
+  pastedResourceMentions?: string[]
+  /**
    * The input string before [Pasted text #N] placeholders were expanded.
    * Used for ultraplan keyword detection so pasted content containing the
    * keyword does not trigger a CCR session. Falls back to `value` when

@@ -772,7 +772,12 @@ export async function getAttachments(
   queuedCommands: QueuedCommand[],
   messages?: Message[],
   querySource?: QuerySource,
-  options?: { skipSkillDiscovery?: boolean; bodySourced?: boolean },
+  options?: {
+    skipSkillDiscovery?: boolean
+    bodySourced?: boolean
+    pastedFileMentions?: string[]
+    pastedResourceMentions?: string[]
+  },
 ): Promise<Attachment[]> {
   if (
     isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_ATTACHMENTS) ||
@@ -798,10 +803,19 @@ export async function getAttachments(
   const userInputAttachments = input
     ? [
         maybe('at_mentioned_files', () =>
-          processAtMentionedFiles(input, context, options?.bodySourced),
+          processAtMentionedFiles(
+            input,
+            context,
+            options?.bodySourced,
+            options?.pastedFileMentions,
+          ),
         ),
         maybe('mcp_resources', () =>
-          processMcpResourceAttachments(input, context),
+          processMcpResourceAttachments(
+            input,
+            context,
+            options?.pastedResourceMentions,
+          ),
         ),
         maybe('agent_mentions', () =>
           Promise.resolve(
@@ -1909,6 +1923,10 @@ async function processAtMentionedFiles(
   // true when `input` is a pre-written command/skill/plugin/MCP body rather than a
   // live user-typed message — suppresses out-of-workspace @-mention reads.
   bodySourced = false,
+  // @-file mentions that came from a collapsed (user-invisible) paste; these are
+  // confined to the workspace like a body-sourced mention even on the live-user
+  // path, so a hidden out-of-workspace @-path in a paste is not silently read.
+  pastedFileMentions?: string[],
 ): Promise<Attachment[]> {
   const files = extractAtMentionedFiles(input)
   if (files.length === 0) return []
@@ -1920,11 +1938,16 @@ async function processAtMentionedFiles(
         const { filename, lineStart, lineEnd } = parseAtMentionedFileLines(file)
         const absoluteFilename = expandPath(filename)
 
+        // A mention that appeared inside a hidden paste is not the user's visible
+        // intent → confine it to the workspace (bodySourced) even on the live path.
+        const effectiveBodySourced =
+          bodySourced || (pastedFileMentions?.includes(file) ?? false)
+
         if (
           isFileReadDenied(
             absoluteFilename,
             appState.toolPermissionContext,
-            bodySourced,
+            effectiveBodySourced,
           )
         ) {
           return null
@@ -2019,8 +2042,18 @@ function processAgentMentions(
 async function processMcpResourceAttachments(
   input: string,
   toolUseContext: ToolUseContext,
+  // @server:uri mentions that came from a collapsed (user-invisible) paste. Unlike
+  // @-files there is no workspace to confine a resource to, so a paste-origin
+  // resource mention is suppressed entirely — a hidden pasted @server:uri must not
+  // silently pull a (possibly sensitive) resource from a trusted connected server.
+  pastedResourceMentions?: string[],
 ): Promise<Attachment[]> {
-  const resourceMentions = extractMcpResourceMentions(input)
+  let resourceMentions = extractMcpResourceMentions(input)
+  if (pastedResourceMentions?.length) {
+    resourceMentions = resourceMentions.filter(
+      m => !pastedResourceMentions.includes(m),
+    )
+  }
   if (resourceMentions.length === 0) return []
 
   const mcpClients = toolUseContext.options.mcpClients || []
@@ -2959,7 +2992,12 @@ export async function* getAttachmentMessages(
   queuedCommands: QueuedCommand[],
   messages?: Message[],
   querySource?: QuerySource,
-  options?: { skipSkillDiscovery?: boolean; bodySourced?: boolean },
+  options?: {
+    skipSkillDiscovery?: boolean
+    bodySourced?: boolean
+    pastedFileMentions?: string[]
+    pastedResourceMentions?: string[]
+  },
 ): AsyncGenerator<AttachmentMessage, void> {
   // TODO: Compute this upstream
   const attachments = await getAttachments(
