@@ -37,6 +37,7 @@ import {
   sandboxUnavailableReason,
 } from '../sandboxAvailability.mjs'
 import { resolveNetworkDecision } from '../networkDecision.mjs'
+import { selectSandboxRipgrepConfig } from './ripgrepConfigSource.mjs'
 import { hasUnfaithfulGlob } from '../rule-engine/fsProjector.mjs'
 import { settingsChangeDetector } from '../../utils/settings/changeDetector.js'
 import { SETTING_SOURCES, type SettingSource } from '../../utils/settings/constants.js'
@@ -403,14 +404,25 @@ export function convertToSandboxRuntimeConfig(
       }
     }
   }
-  // Ripgrep config for sandbox. User settings take priority; otherwise pass our rg.
+  // Ripgrep config for sandbox. The bundled rg is spawned HOST-SIDE and UNSANDBOXED
+  // while building the sandbox profile, so sandbox.ripgrep.command must come only
+  // from ADMIN (policySettings) or OWNER (userSettings) sources — NEVER a workspace
+  // project/local .claude/settings.json, which could otherwise swap the binary for
+  // unsandboxed RCE on opening a trusted repo. (Reading the merged settings here was
+  // the un-gated sibling of the #583 network managed-lock.) See ripgrepConfigSource.mjs.
+  //
+  // The machine OWNER (userSettings) override is honored intentionally. Locking it to
+  // policy-ONLY under a managed hard-sandbox (the way #583 drops even userSettings
+  // network under allowManagedDomainsOnly) would need a DEDICATED managed flag — the
+  // network-domains flag is the wrong key for the rg binary — so that stricter
+  // owner-distrust posture is deferred to a separate config decision.
   // In embedded mode (argv0='rg' dispatch), sandbox-runtime spawns with argv0 set.
   const { rgPath, rgArgs, argv0 } = ripgrepCommand()
-  const ripgrepConfig = settings.sandbox?.ripgrep ?? {
-    command: rgPath,
-    args: rgArgs,
-    argv0,
-  }
+  const ripgrepConfig = selectSandboxRipgrepConfig({
+    policyRipgrep: getSettingsForSource('policySettings')?.sandbox?.ripgrep,
+    userRipgrep: getSettingsForSource('userSettings')?.sandbox?.ripgrep,
+    fallback: { command: rgPath, args: rgArgs, argv0 },
+  })
 
   // allowedDomains/deniedDomains above are locked to policySettings under
   // shouldAllowManagedSandboxDomainsOnly(); lock the REST of the same
