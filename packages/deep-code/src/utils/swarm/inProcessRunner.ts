@@ -399,7 +399,15 @@ function createInProcessCanUseTool(
             const msg = allMessages[i]
             if (msg && !msg.read) {
               const parsed = isPermissionResponse(msg.text)
-              if (parsed && parsed.request_id === request.id) {
+              // Provenance: only the team-lead legitimately answers a permission
+              // request — authenticate the envelope sender, not just request_id,
+              // so a peer/self cannot forge an approval (mirrors the
+              // useInboxPoller permission_response gate).
+              if (
+                parsed &&
+                parsed.request_id === request.id &&
+                msg.from === TEAM_LEAD_NAME
+              ) {
                 await markMessageAsReadByIndex(
                   identity.agentName,
                   identity.teamName,

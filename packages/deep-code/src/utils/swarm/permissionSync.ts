@@ -41,6 +41,7 @@ import {
   createSandboxPermissionResponseMessage,
   writeToMailbox,
 } from '../teammateMailbox.js'
+import { TEAM_LEAD_NAME } from './constants.js'
 import { getTeamDir, readTeamFileAsync } from './teamHelpers.js'
 
 /**
@@ -755,14 +756,14 @@ export async function sendPermissionResponseViaMailbox(
       permission_updates: resolution.permissionUpdates,
     })
 
-    // Get the sender name (leader's name)
-    const senderName = getAgentName() || 'team-lead'
-
-    // Send to worker's mailbox (routes to in-process or file-based based on recipient)
+    // A permission RESPONSE is only ever sent by the leader. Stamp the envelope
+    // sender explicitly as the team-lead (mirroring plan_approval_response) so
+    // the worker-side consumer can authenticate it with a from===team-lead gate,
+    // independent of whatever getAgentName() happens to resolve to on the leader.
     await writeToMailbox(
       workerName,
       {
-        from: senderName,
+        from: TEAM_LEAD_NAME,
         text: jsonStringify(message),
         timestamp: new Date().toISOString(),
       },
@@ -901,13 +902,14 @@ export async function sendSandboxPermissionResponseViaMailbox(
       allow,
     })
 
-    const senderName = getAgentName() || 'team-lead'
-
-    // Send to worker's mailbox (routes to in-process or file-based based on recipient)
+    // A sandbox permission RESPONSE is only ever sent by the leader. Stamp the
+    // envelope sender explicitly as the team-lead so the worker-side consumer
+    // can authenticate it with a from===team-lead gate (see the permission
+    // response producer above).
     await writeToMailbox(
       workerName,
       {
-        from: senderName,
+        from: TEAM_LEAD_NAME,
         text: jsonStringify(message),
         timestamp: new Date().toISOString(),
       },

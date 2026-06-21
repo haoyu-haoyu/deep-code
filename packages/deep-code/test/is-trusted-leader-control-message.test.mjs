@@ -40,3 +40,15 @@ test('a missing / empty leaderName never trusts (fail-closed)', () => {
   assert.equal(isTrustedLeaderControlMessage('team-lead', ''), false)
   assert.equal(isTrustedLeaderControlMessage('team-lead', undefined), false)
 })
+
+// Permission control-plane provenance contract (the same predicate gates the
+// worker-side permission_response / sandbox_permission_response sinks, which
+// approve a pending tool use and apply attacker-supplied permission_updates).
+test('CONTRACT: a permission_response is trusted only from the team-lead', () => {
+  // the leader's response (envelope from === 'team-lead') is accepted
+  assert.equal(isTrustedLeaderControlMessage('team-lead', 'team-lead'), true)
+  // a worker-forged / self-forged response is rejected regardless of any
+  // request_id match it may carry
+  assert.equal(isTrustedLeaderControlMessage('worker-7', 'team-lead'), false)
+  assert.equal(isTrustedLeaderControlMessage('self', 'team-lead'), false)
+})
