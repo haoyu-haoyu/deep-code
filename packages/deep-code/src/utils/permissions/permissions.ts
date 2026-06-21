@@ -24,6 +24,7 @@ import {
 import { plural } from '../stringUtils.js'
 import { permissionModeTitle } from './PermissionMode.js'
 import { resolvePermissionPrecedence } from './resolvePermissionPrecedence.mjs'
+import { compoundAskIsBypassImmune } from './compoundAskBypassImmune.mjs'
 import { permittedRuleSourcesUnderLockdown } from './permittedRuleSourcesUnderLockdown.mjs'
 import type {
   PermissionAskDecision,
@@ -1138,6 +1139,7 @@ export async function checkRuleBasedPermissions(
     contentReasonType: contentReason?.type,
     contentRuleBehavior:
       contentReason?.type === 'rule' ? contentReason.rule.ruleBehavior : undefined,
+    contentAskBypassImmune: compoundAskIsBypassImmune(contentReason),
   })
 
   // 1d. Content-specific deny — outranks the tool-wide ask (deny always wins).
@@ -1233,6 +1235,7 @@ async function hasPermissionsToUseToolInner(
     contentReasonType: contentReason?.type,
     contentRuleBehavior:
       contentReason?.type === 'rule' ? contentReason.rule.ruleBehavior : undefined,
+    contentAskBypassImmune: compoundAskIsBypassImmune(contentReason),
     requiresUserInteraction: tool.requiresUserInteraction?.() ?? false,
   })
 

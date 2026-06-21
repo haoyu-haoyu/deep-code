@@ -42,8 +42,12 @@
  *   (already AND-ed with `!canSandboxAutoAllow` by the caller)
  * @param {'deny'|'ask'|'allow'|'passthrough'|undefined} signals.contentBehavior
  *   the behavior tool.checkPermissions() returned
- * @param {string} [signals.contentReasonType]        decisionReason.type ('rule'|'safetyCheck'|…)
+ * @param {string} [signals.contentReasonType]        decisionReason.type ('rule'|'safetyCheck'|'subcommandResults'|…)
  * @param {string} [signals.contentRuleBehavior]      decisionReason.rule.ruleBehavior ('ask'|…)
+ * @param {boolean} [signals.contentAskBypassImmune]  for a compound bash ask
+ *   (contentReasonType==='subcommandResults'), whether any inner subcommand is an
+ *   explicit ask rule or safety check — i.e. the flattened compound ask is itself
+ *   bypass-immune (compoundAskIsBypassImmune(decisionReason))
  * @param {boolean} [signals.requiresUserInteraction] tool.requiresUserInteraction() (full pipeline only)
  * @returns {PermissionPrecedenceSlot}
  */
@@ -53,6 +57,7 @@ export function resolvePermissionPrecedence({
   contentBehavior,
   contentReasonType,
   contentRuleBehavior,
+  contentAskBypassImmune = false,
   requiresUserInteraction = false,
 }) {
   // 1a. Entire tool denied by rule.
@@ -75,6 +80,19 @@ export function resolvePermissionPrecedence({
   // 1g. Bypass-immune safety check (.git/, .claude/, shell configs, …).
   if (contentBehavior === 'ask' && contentReasonType === 'safetyCheck') {
     return 'safety-check-ask'
+  }
+  // 1h. A COMPOUND bash ask (`a && b`) is flattened to type 'subcommandResults',
+  // which slips past 1f/1g even when an inner subcommand matched an explicit ask
+  // rule or a safety check. When the caller has determined it's bypass-immune
+  // (compoundAskIsBypassImmune), restore the single-command guarantee by mapping it
+  // to the same bypass-immune outcome — otherwise a tool-wide `allow: Bash` or
+  // bypass mode would silently downgrade the chained ask to allow.
+  if (
+    contentBehavior === 'ask' &&
+    contentReasonType === 'subcommandResults' &&
+    contentAskBypassImmune
+  ) {
+    return 'content-ask-rule'
   }
   // No rule-based objection.
   return 'continue'
