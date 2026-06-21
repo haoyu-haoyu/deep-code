@@ -1,7 +1,11 @@
 import type { UUID } from 'crypto'
 import { logEvent } from 'src/services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from 'src/services/analytics/metadata.js'
-import { type Command, getCommandName, isCommandEnabled } from '../commands.js'
+import {
+  type Command,
+  isCommandEnabled,
+  resolveCommandByName,
+} from '../commands.js'
 import { selectableUserMessagesFilter } from '../components/MessageSelector.js'
 import type { SpinnerMode } from '../components/Spinner/types.js'
 import type { QuerySource } from '../constants/querySource.js'
@@ -236,13 +240,9 @@ export async function handlePromptSubmit(
     const commandArgs =
       spaceIndex === -1 ? '' : trimmedInput.slice(spaceIndex + 1).trim()
 
-    const immediateCommand = commands.find(
-      cmd =>
-        cmd.immediate &&
-        isCommandEnabled(cmd) &&
-        (cmd.name === commandName ||
-          cmd.aliases?.includes(commandName) ||
-          getCommandName(cmd) === commandName),
+    const immediateCommand = resolveCommandByName(
+      commandName,
+      commands.filter(cmd => cmd.immediate && isCommandEnabled(cmd)),
     )
 
     if (

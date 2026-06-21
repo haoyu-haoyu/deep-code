@@ -157,6 +157,7 @@ jobs:
             test/gitdiff-header.test.mjs \
             test/settings-source-order.test.mjs \
             test/coerce-policy-scalars.test.mjs \
+            test/resolve-command-by-name.test.mjs \
             test/permission-rule-classify.test.mjs \
             test/permission-precedence.test.mjs \
             test/escape-gitignore-pattern.test.mjs \
