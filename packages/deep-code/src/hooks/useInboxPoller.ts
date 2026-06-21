@@ -13,6 +13,7 @@ import {
 } from '../state/AppState.js'
 import { findToolByName } from '../Tool.js'
 import { isTrustedLeaderControlMessage } from './isTrustedLeaderControlMessage.mjs'
+import { resolveTrustedShutdownTarget } from './resolveTrustedShutdownTarget.mjs'
 import { isInProcessTeammateTask } from '../tasks/InProcessTeammateTask/types.js'
 import { getAllBaseTools } from '../tools.js'
 import type { PermissionUpdate } from '../types/permissions.js'
@@ -702,8 +703,26 @@ export function useInboxPoller({
         const parsed = isShutdownApproved(m.text)
         if (!parsed) continue
 
-        // Kill the pane if we have the info (pane-based teammates)
-        if (parsed.paneId && parsed.backendType) {
+        // SECURITY (provenance): the leader acts on a shutdown_approved by
+        // killing a pane and evicting a teammate. Both the identity and the
+        // pane MUST come from the leader's own authoritative state keyed by the
+        // AUTHENTICATED envelope sender (m.from) — NEVER the payload-supplied
+        // parsed.from / parsed.paneId, which a prompt-injected worker fully
+        // controls. Otherwise a forged approval naming another teammate + an
+        // arbitrary pane would evict that teammate and kill any pane. A forged
+        // message thus resolves only to the sender's OWN record (or null).
+        const target = resolveTrustedShutdownTarget(
+          m.from,
+          currentAppState.teamContext?.teammates,
+        )
+
+        // Kill the teammate's OWN recorded pane (pane-based teammates). paneId
+        // comes from teamContext, so a forged message can only ever target the
+        // authenticated sender's own pane; backendType (payload) merely selects
+        // the backend impl that operates on that already-trusted pane.
+        if (target?.paneId && parsed.backendType) {
+          const paneId = target.paneId
+          const targetName = target.name
           void (async () => {
             try {
               // Ensure backend classes are imported (no subprocess probes)
@@ -712,28 +731,22 @@ export function useInboxPoller({
               const backend = getBackendByType(
                 parsed.backendType as PaneBackendType,
               )
-              const success = await backend?.killPane(
-                parsed.paneId!,
-                !insideTmux,
-              )
+              const success = await backend?.killPane(paneId, !insideTmux)
               logForDebugging(
-                `[InboxPoller] Killed pane ${parsed.paneId} for ${parsed.from}: ${success}`,
+                `[InboxPoller] Killed pane ${paneId} for ${targetName}: ${success}`,
               )
             } catch (error) {
               logForDebugging(
-                `[InboxPoller] Failed to kill pane for ${parsed.from}: ${error}`,
+                `[InboxPoller] Failed to kill pane for ${targetName}: ${error}`,
               )
             }
           })()
         }
 
         // Remove the teammate from teamContext.teammates so the count is accurate
-        const teammateToRemove = parsed.from
+        const teammateToRemove = target?.name
         if (teammateToRemove && currentAppState.teamContext?.teammates) {
-          // Find the teammate ID by name
-          const teammateId = Object.entries(
-            currentAppState.teamContext.teammates,
-          ).find(([, t]) => t.name === teammateToRemove)?.[0]
+          const teammateId = target?.teammateId
 
           if (teammateId) {
             // Remove from team file (leader owns team file mutations)

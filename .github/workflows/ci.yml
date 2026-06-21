@@ -209,6 +209,7 @@ jobs:
             test/symlink-containment.test.mjs \
             test/confine-resolved-within-base.test.mjs \
             test/is-trusted-leader-control-message.test.mjs \
+            test/resolve-trusted-shutdown-target.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
             test/elicitation-queue-remove.test.mjs \
             test/single-flight.test.mjs \
