@@ -2,6 +2,10 @@ import { z } from 'zod/v4'
 import { HooksSchema } from '../../schemas/hooks.js'
 import { McpServerConfigSchema } from '../../services/mcp/types.js'
 import { lazySchema } from '../lazySchema.js'
+import {
+  isSafeMarketplaceGitRef,
+  isSafeMarketplaceGitUrl,
+} from './marketplaceGitSource.mjs'
 import { relPathWithinBase } from './relPathWithinBase.mjs'
 
 /**
@@ -940,12 +944,20 @@ export const MarketplaceSourceSchema = lazySchema(() =>
       repo: z.string().describe('GitHub repository in owner/repo format'),
       ref: z
         .string()
+        .refine(isSafeMarketplaceGitRef, {
+          message:
+            'Invalid git ref: must not start with "-" or "/", contain "..", or include characters outside [A-Za-z0-9/._+@-] (option-injection guard).',
+        })
         .optional()
         .describe(
           'Git branch or tag to use (e.g., "main", "v1.0.0"). Defaults to repository default branch.',
         ),
       path: z
         .string()
+        .refine(relPathWithinBase, {
+          message:
+            'Invalid marketplace path: must stay within the cloned repository (no ".." segment).',
+        })
         .optional()
         .describe(
           'Path to marketplace.json within repo (defaults to .claude-plugin/marketplace.json)',
@@ -969,15 +981,29 @@ export const MarketplaceSourceSchema = lazySchema(() =>
       // (TF401019). AWS CodeCommit also omits the suffix. If the user
       // explicitly wrote source:'git', they know it's a git repo; a typo'd
       // URL fails at `git clone` with a clearer error anyway. (gh-31256)
-      url: z.string().describe('Full git repository URL'),
+      url: z
+        .string()
+        .refine(isSafeMarketplaceGitUrl, {
+          message:
+            'Invalid git URL: only https://, http://, file:// and git@host: SSH URLs are allowed (blocks ext:: transport / option-injection).',
+        })
+        .describe('Full git repository URL'),
       ref: z
         .string()
+        .refine(isSafeMarketplaceGitRef, {
+          message:
+            'Invalid git ref: must not start with "-" or "/", contain "..", or include characters outside [A-Za-z0-9/._+@-] (option-injection guard).',
+        })
         .optional()
         .describe(
           'Git branch or tag to use (e.g., "main", "v1.0.0"). Defaults to repository default branch.',
         ),
       path: z
         .string()
+        .refine(relPathWithinBase, {
+          message:
+            'Invalid marketplace path: must stay within the cloned repository (no ".." segment).',
+        })
         .optional()
         .describe(
           'Path to marketplace.json within repo (defaults to .claude-plugin/marketplace.json)',
