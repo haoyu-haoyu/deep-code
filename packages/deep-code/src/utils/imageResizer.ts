@@ -7,7 +7,9 @@ import {
   IMAGE_MAX_HEIGHT,
   IMAGE_MAX_WIDTH,
   IMAGE_TARGET_RAW_SIZE,
+  MAX_IMAGE_DECODE_PIXELS,
 } from '../constants/apiLimits.js'
+import { exceedsDecodePixelBudget } from './imageDecodePixelGuard.mjs'
 import { logEvent } from '../services/analytics/index.js'
 import {
   getImageProcessor,
@@ -204,6 +206,24 @@ export async function maybeResizeAndDownsampleImageBuffer(
     const originalWidth = metadata.width
     const originalHeight = metadata.height
 
+    // Pre-decode pixel-bomb gate: the resize/compress paths below decode the original
+    // to raw RGBA (≈ pixels × 4 bytes); a small payload declaring enormous dimensions
+    // would force a multi-GB allocation. metadata() is header-only (cheap), so reject
+    // an over-budget image HERE, before any decode (processor-agnostic — bounds both
+    // sharp and the bundled native processor).
+    if (
+      exceedsDecodePixelBudget(
+        originalWidth,
+        originalHeight,
+        MAX_IMAGE_DECODE_PIXELS,
+      )
+    ) {
+      throw new ImageResizeError(
+        `Image dimensions ${originalWidth}×${originalHeight} have too many pixels ` +
+          `to decode safely (max ${MAX_IMAGE_DECODE_PIXELS}). Please resize the image.`,
+      )
+    }
+
     // Calculate dimensions while maintaining aspect ratio
     let width = originalWidth
     let height = originalHeight
@@ -381,6 +401,15 @@ export async function maybeResizeAndDownsampleImageBuffer(
       },
     }
   } catch (error) {
+    // The pre-decode pixel-bomb gate above throws ImageResizeError to REJECT the
+    // image. Re-throw it instead of falling through to the raw-buffer fallback below
+    // (which would otherwise forward a non-PNG bomb's bytes uncapped), so an
+    // over-budget image is consistently rejected for every format. (The only
+    // ImageResizeError thrown inside this try is that gate — the empty-buffer check
+    // is before the try.)
+    if (error instanceof ImageResizeError) {
+      throw error
+    }
     // Log the error and emit analytics event
     logError(error as Error)
     const errorType = classifyImageError(error)

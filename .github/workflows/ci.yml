@@ -198,6 +198,7 @@ jobs:
             test/mcp-reconcile-pending-update.test.mjs \
             test/ssrf-blocked-address.test.mjs \
             test/image-format-support.test.mjs \
+            test/image-decode-pixel-guard.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
             test/elicitation-queue-remove.test.mjs \
             test/single-flight.test.mjs \

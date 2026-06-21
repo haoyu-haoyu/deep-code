@@ -42,6 +42,17 @@ export const IMAGE_TARGET_RAW_SIZE = (API_IMAGE_MAX_BASE64_SIZE * 3) / 4 // 3.75
 export const IMAGE_MAX_WIDTH = 2000
 export const IMAGE_MAX_HEIGHT = 2000
 
+/**
+ * Maximum raster pixel count (width × height) of an image we will DECODE. The
+ * resize path decodes the original to raw RGBA (≈ pixels × 4 bytes) before
+ * downsampling, so a small compressed payload declaring enormous dimensions is a
+ * decompression bomb. 100 megapixels (≈ a 10000×10000 image, ~400 MB raw) is generous
+ * for any real photo/screenshot/scan (a 50 MP camera image is ~50 Mpx) while rejecting
+ * the absurd dimensions of a pixel-flood bomb, and is enforced BEFORE the decode so it
+ * bounds peak memory regardless of the underlying image processor's own default.
+ */
+export const MAX_IMAGE_DECODE_PIXELS = 100_000_000
+
 // =============================================================================
 // PDF LIMITS
 // =============================================================================
