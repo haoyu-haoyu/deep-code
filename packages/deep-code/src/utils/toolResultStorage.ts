@@ -20,6 +20,7 @@ import { logForDebugging } from './debug.js'
 import { getErrnoCode, toError } from './errors.js'
 import { formatFileSize } from './format.js'
 import { logError } from './log.js'
+import { safeToolResultIdComponent } from './safeToolResultIdComponent.mjs'
 import { getProjectDir } from './sessionStorage.js'
 import { jsonStringify } from './slowOperations.js'
 
@@ -113,7 +114,12 @@ export const PREVIEW_SIZE_BYTES = 2000
  */
 export function getToolResultPath(id: string, isJson: boolean): string {
   const ext = isJson ? 'json' : 'txt'
-  return join(getToolResultsDir(), `${id}.${ext}`)
+  // Confine the id to a single safe filename component: a verbatim model
+  // tool_use id is attacker-influenced and `join` does not contain a '..' in it,
+  // so an unsanitized id could escape the session tool-results dir and write
+  // out-of-tree. safeToolResultIdComponent passes legit ids through unchanged
+  // (stable same-id→same-file path) and hashes anything that could traverse.
+  return join(getToolResultsDir(), `${safeToolResultIdComponent(id)}.${ext}`)
 }
 
 /**
