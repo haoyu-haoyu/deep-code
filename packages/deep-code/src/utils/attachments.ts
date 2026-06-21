@@ -268,6 +268,7 @@ import {
 } from './teammate.js'
 import { isInProcessTeammate } from './teammateContext.js'
 import { removeTeammateFromTeamFile } from './swarm/teamHelpers.js'
+import { resolveTrustedShutdownTarget } from '../hooks/resolveTrustedShutdownTarget.mjs'
 import { unassignTeammateTasks } from './tasks.js'
 import { getCompanionIntroAttachment } from '../buddy/prompt.js'
 
@@ -3758,19 +3759,21 @@ async function getTeammateMailboxAttachments(
     for (const m of allMessages) {
       const shutdownApproval = isShutdownApproved(m.text)
       if (shutdownApproval) {
-        const teammateToRemove = shutdownApproval.from
+        // SECURITY (provenance): evict the AUTHENTICATED envelope sender
+        // (m.from), NOT the payload-supplied shutdownApproval.from — a forged
+        // approval must not let a worker evict another teammate. Mirrors the
+        // useInboxPoller / print.ts shutdown_approved gate.
+        const target = resolveTrustedShutdownTarget(
+          m.from,
+          appState.teamContext?.teammates,
+        )
+        const teammateToRemove = target?.name
+        const teammateId = target?.teammateId
         logForDebugging(
           `[SwarmMailbox] Processing shutdown_approved from ${teammateToRemove}`,
         )
 
-        // Find the teammate ID by name
-        const teammateId = appState.teamContext?.teammates
-          ? Object.entries(appState.teamContext.teammates).find(
-              ([, t]) => t.name === teammateToRemove,
-            )?.[0]
-          : undefined
-
-        if (teammateId) {
+        if (teammateId && teammateToRemove) {
           // Remove from team file
           removeTeammateFromTeamFile(teamName, {
             agentId: teammateId,

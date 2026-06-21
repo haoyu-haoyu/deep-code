@@ -320,6 +320,7 @@ import {
   isShutdownApproved,
 } from '../utils/teammateMailbox.js'
 import { removeTeammateFromTeamFile } from '../utils/swarm/teamHelpers.js'
+import { resolveTrustedShutdownTarget } from '../hooks/resolveTrustedShutdownTarget.mjs'
 import { unassignTeammateTasks } from '../utils/tasks.js'
 import { getRunningTasks } from '../utils/task/framework.js'
 import { isBackgroundTask } from '../tasks/types.js'
@@ -2444,19 +2445,21 @@ function runHeadlessStreaming(
             for (const m of unread) {
               const shutdownApproval = isShutdownApproved(m.text)
               if (shutdownApproval && teamName) {
-                const teammateToRemove = shutdownApproval.from
+                // SECURITY (provenance): evict the AUTHENTICATED envelope sender
+                // (m.from), NOT the payload-supplied shutdownApproval.from — a
+                // forged approval must not let a worker evict another teammate.
+                // Mirrors useInboxPoller's shutdown_approved gate.
+                const target = resolveTrustedShutdownTarget(
+                  m.from,
+                  refreshedState.teamContext?.teammates,
+                )
+                const teammateToRemove = target?.name
+                const teammateId = target?.teammateId
                 logForDebugging(
                   `[print.ts] Processing shutdown_approved from ${teammateToRemove}`,
                 )
 
-                // Find the teammate ID by name
-                const teammateId = refreshedState.teamContext?.teammates
-                  ? Object.entries(refreshedState.teamContext.teammates).find(
-                      ([, t]) => t.name === teammateToRemove,
-                    )?.[0]
-                  : undefined
-
-                if (teammateId) {
+                if (teammateId && teammateToRemove) {
                   // Remove from team file
                   removeTeammateFromTeamFile(teamName, {
                     agentId: teammateId,
