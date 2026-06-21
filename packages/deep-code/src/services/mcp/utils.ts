@@ -10,8 +10,10 @@ import { getGlobalClaudeFile } from '../../utils/env.js'
 import { isSettingSourceEnabled } from '../../utils/settings/constants.js'
 import {
   getSettings_DEPRECATED,
+  getSettingsForSource,
   hasSkipDangerousModePermissionPrompt,
 } from '../../utils/settings/settings.js'
+import { resolveProjectMcpServerStatus } from './projectMcpApproval.mjs'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { getEnterpriseMcpFilePath, getMcpConfigByName } from './config.js'
 import { mcpInfoFromString } from './mcpStringUtils.js'
@@ -354,23 +356,34 @@ export function getProjectMcpServerStatus(
   const settings = getSettings_DEPRECATED()
   const normalizedName = normalizeNameForMCP(serverName)
 
-  // TODO: This fails an e2e test if the ?. is not present. This is likely a bug in the e2e test.
-  // Will fix this in a follow-up PR.
-  if (
-    settings?.disabledMcpjsonServers?.some(
-      name => normalizeNameForMCP(name) === normalizedName,
-    )
-  ) {
-    return 'rejected'
-  }
-
-  if (
-    settings?.enabledMcpjsonServers?.some(
-      name => normalizeNameForMCP(name) === normalizedName,
-    ) ||
-    settings?.enableAllProjectMcpServers
-  ) {
-    return 'approved'
+  // SECURITY: the ENABLE signal (enableAllProjectMcpServers / enabledMcpjsonServers)
+  // is read ONLY from trusted sources — never projectSettings, the repo's committed
+  // .claude/settings.json — so an opened repo can't self-approve its own .mcp.json
+  // server and zero-click-connect it past the per-server approval dialog. Mirrors
+  // hasSkipDangerousModePermissionPrompt's {userSettings, localSettings, flagSettings,
+  // policySettings} exclusion (the approval dialog writes these to localSettings, so
+  // a legitimate approval is unaffected). The DISABLE signal stays on merged settings
+  // (fail-closed: a repo can only deny its own server).
+  const trustedSources = [
+    getSettingsForSource('userSettings'),
+    getSettingsForSource('localSettings'),
+    getSettingsForSource('flagSettings'),
+    getSettingsForSource('policySettings'),
+  ]
+  const status = resolveProjectMcpServerStatus({
+    targetName: normalizedName,
+    // TODO: This fails an e2e test if the ?. is not present. This is likely a bug
+    // in the e2e test. Will fix this in a follow-up PR.
+    disabledNamesMerged: (settings?.disabledMcpjsonServers ?? []).map(
+      normalizeNameForMCP,
+    ),
+    enabledNamesTrusted: trustedSources.flatMap(s =>
+      (s?.enabledMcpjsonServers ?? []).map(normalizeNameForMCP),
+    ),
+    enableAllTrusted: trustedSources.some(s => !!s?.enableAllProjectMcpServers),
+  })
+  if (status !== 'pending') {
+    return status
   }
 
   // In bypass permissions mode (--dangerously-skip-permissions), there's no way
