@@ -173,6 +173,7 @@ import {
   getCommandName,
   isCommandEnabled,
 } from './types/command.js'
+import { resolveCommandByName } from './commands/resolveCommandByName.mjs'
 import {
   loadWorkspaceCommands,
   mergeWorkspaceSlashCommands,
@@ -189,6 +190,7 @@ export type {
   ResumeEntrypoint,
 } from './types/command.js'
 export { getCommandName, isCommandEnabled } from './types/command.js'
+export { resolveCommandByName } from './commands/resolveCommandByName.mjs'
 
 // Commands that get eliminated from the external build
 export const INTERNAL_ONLY_COMMANDS = [
@@ -658,12 +660,10 @@ export function findCommand(
   commandName: string,
   commands: Command[],
 ): Command | undefined {
-  return commands.find(
-    _ =>
-      _.name === commandName ||
-      getCommandName(_) === commandName ||
-      _.aliases?.includes(commandName),
-  )
+  // Two-pass resolution: a canonical name/alias always beats a display-name
+  // (userFacingName) alias, so a plugin command's free-form frontmatter `name`
+  // can no longer shadow a built-in. See resolveCommandByName.mjs.
+  return resolveCommandByName(commandName, commands)
 }
 
 export function hasCommand(commandName: string, commands: Command[]): boolean {
