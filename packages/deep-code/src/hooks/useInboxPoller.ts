@@ -265,6 +265,19 @@ export function useInboxPoller({
         const parsed = isPermissionRequest(m.text)
         if (!parsed) continue
 
+        // Provenance: the approval dialog + desktop notification are attributed
+        // to parsed.agent_id and the response routes back to it. Bind that
+        // claimed worker identity to the AUTHENTICATED envelope sender so a
+        // prompt-injected worker cannot forge a request impersonating a peer to
+        // mis-attribute a dangerous approval prompt to the human. The honest
+        // producer sets agent_id === the sender's own name (permissionSync.ts).
+        if (m.from !== parsed.agent_id) {
+          logForDebugging(
+            `[InboxPoller] Ignoring permission request whose envelope sender ${m.from} != claimed agent_id ${parsed.agent_id}`,
+          )
+          continue
+        }
+
         if (setToolUseConfirmQueue) {
           // Route through the standard ToolUseConfirmQueue so tmux workers
           // get the same tool-specific UI (BashPermissionRequest, FileEditToolDiff, etc.)
@@ -352,9 +365,19 @@ export function useInboxPoller({
         }
       }
 
-      // Send desktop notification for the first request
-      const firstParsed = isPermissionRequest(permissionRequests[0]?.text ?? '')
-      if (firstParsed && !isLoading && !focusedInputDialog) {
+      // Send desktop notification for the first request (only for an authentic
+      // request whose envelope sender matches its claimed agent_id, so a forged
+      // request cannot trigger a mis-attributed notification — matching the
+      // per-request provenance gate above).
+      const firstMsg = permissionRequests[0]
+      const firstParsed = firstMsg ? isPermissionRequest(firstMsg.text) : null
+      if (
+        firstParsed &&
+        firstMsg &&
+        firstMsg.from === firstParsed.agent_id &&
+        !isLoading &&
+        !focusedInputDialog
+      ) {
         void sendNotification(
           {
             message: `${firstParsed.agent_id} needs permission for ${firstParsed.tool_name}`,
@@ -374,6 +397,19 @@ export function useInboxPoller({
       for (const m of permissionResponses) {
         const parsed = isPermissionResponse(m.text)
         if (!parsed) continue
+
+        // Provenance: a permission_response APPROVES the worker's pending tool
+        // use and applies attacker-supplied permission_updates. It must come
+        // from the team-lead (the only legitimate responder) — a request_id
+        // match alone is not enough, since the worker knows its own id and
+        // could otherwise forge a self-approval. Mirrors the team_permission_update
+        // / mode_set_request / plan_approval gates.
+        if (!isTrustedLeaderControlMessage(m.from, TEAM_LEAD_NAME)) {
+          logForDebugging(
+            `[InboxPoller] Ignoring permission response from non-team-lead: ${m.from}`,
+          )
+          continue
+        }
 
         if (hasPermissionCallback(parsed.request_id)) {
           logForDebugging(
@@ -419,6 +455,17 @@ export function useInboxPoller({
       for (const m of sandboxPermissionRequests) {
         const parsed = isSandboxPermissionRequest(m.text)
         if (!parsed) continue
+
+        // Provenance: bind the claimed worker identity (parsed.workerName, used
+        // in the queue entry + notification) to the authenticated envelope
+        // sender, so a worker cannot forge a sandbox request impersonating a
+        // peer (see the permission_request gate above).
+        if (m.from !== parsed.workerName) {
+          logForDebugging(
+            `[InboxPoller] Ignoring sandbox permission request whose envelope sender ${m.from} != claimed workerName ${parsed.workerName}`,
+          )
+          continue
+        }
 
         // Validate required nested fields to prevent crashes from malformed messages
         if (!parsed.hostPattern?.host) {
@@ -473,6 +520,16 @@ export function useInboxPoller({
       for (const m of sandboxPermissionResponses) {
         const parsed = isSandboxPermissionResponse(m.text)
         if (!parsed) continue
+
+        // Provenance: only the team-lead legitimately answers a sandbox
+        // permission request — authenticate the envelope sender, not just the
+        // request_id (see the permission_response gate above).
+        if (!isTrustedLeaderControlMessage(m.from, TEAM_LEAD_NAME)) {
+          logForDebugging(
+            `[InboxPoller] Ignoring sandbox permission response from non-team-lead: ${m.from}`,
+          )
+          continue
+        }
 
         // Check if we have a registered callback for this request
         if (hasSandboxPermissionCallback(parsed.requestId)) {
