@@ -412,15 +412,29 @@ export function convertToSandboxRuntimeConfig(
     argv0,
   }
 
+  // allowedDomains/deniedDomains above are locked to policySettings under
+  // shouldAllowManagedSandboxDomainsOnly(); lock the REST of the same
+  // sandbox.network object (sockets, local binding, proxy ports) the same way.
+  // Otherwise a workspace-controlled project/local .claude/settings.json could
+  // RELAX the managed network sandbox (e.g. allowAllUnixSockets:true, or redirect
+  // the enforcing proxy via httpProxyPort) despite the admin's allowManagedDomainsOnly
+  // lock — the way allowedDomains already can't. Sourcing from the managed object only
+  // is fail-closed (a workspace relaxation is dropped, never added). The top-level
+  // sandbox.* isolation flags (enableWeaker*/ignoreViolations) and the
+  // additionalDirectories->allowWrite fold are a separate gate/trust-model decision,
+  // left unchanged here.
+  const networkConfigSource = shouldAllowManagedSandboxDomainsOnly()
+    ? getSettingsForSource('policySettings')?.sandbox?.network
+    : settings.sandbox?.network
   return {
     network: {
       allowedDomains,
       deniedDomains,
-      allowUnixSockets: settings.sandbox?.network?.allowUnixSockets,
-      allowAllUnixSockets: settings.sandbox?.network?.allowAllUnixSockets,
-      allowLocalBinding: settings.sandbox?.network?.allowLocalBinding,
-      httpProxyPort: settings.sandbox?.network?.httpProxyPort,
-      socksProxyPort: settings.sandbox?.network?.socksProxyPort,
+      allowUnixSockets: networkConfigSource?.allowUnixSockets,
+      allowAllUnixSockets: networkConfigSource?.allowAllUnixSockets,
+      allowLocalBinding: networkConfigSource?.allowLocalBinding,
+      httpProxyPort: networkConfigSource?.httpProxyPort,
+      socksProxyPort: networkConfigSource?.socksProxyPort,
     },
     filesystem: {
       denyRead,

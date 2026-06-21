@@ -82,6 +82,7 @@ test('converts merged settings into sandbox runtime config', async () => {
         network: {
           allowManagedDomainsOnly: true,
           allowedDomains: ['managed.example.com'],
+          httpProxyPort: 8080,
         },
         filesystem: {
           allowManagedReadPathsOnly: true,
@@ -105,7 +106,14 @@ test('converts merged settings into sandbox runtime config', async () => {
         deny: [],
       },
       sandbox: {
-        network: { allowedDomains: ['settings.example.com'] },
+        network: {
+          allowedDomains: ['settings.example.com'],
+          // workspace-controlled network RELAXATIONS — must be DROPPED under the
+          // allowManagedDomainsOnly lock (sourced from policySettings only)
+          allowAllUnixSockets: true,
+          allowUnixSockets: ['/var/run/docker.sock'],
+          httpProxyPort: 9999,
+        },
       },
     })
 
@@ -212,6 +220,14 @@ test('converts merged settings into sandbox runtime config', async () => {
   assert.deepEqual(data.managedOnly.filesystem.allowRead, [
     '/settings/policy/policy-read',
   ])
+  // SECURITY (Survey-56): under allowManagedDomainsOnly the WHOLE sandbox.network
+  // object is sourced from policySettings, so a workspace-controlled network
+  // relaxation is DROPPED (fail-closed) — not just allowedDomains. The proxy port
+  // is the managed 8080, not the workspace 9999; the workspace socket relaxations
+  // (allowAllUnixSockets / allowUnixSockets) vanish because policy never set them.
+  assert.equal(data.managedOnly.network.httpProxyPort, 8080)
+  assert.equal(data.managedOnly.network.allowAllUnixSockets, undefined)
+  assert.equal(data.managedOnly.network.allowUnixSockets, undefined)
 })
 
 test('rejects invalid conversion inputs and schema shapes', async () => {
