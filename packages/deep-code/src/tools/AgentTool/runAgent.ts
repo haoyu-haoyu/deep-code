@@ -61,6 +61,7 @@ import {
   setAgentTranscriptSubdir,
   writeAgentMetadata,
 } from '../../utils/sessionStorage.js'
+import { isBypassPermissionsModeDisabled } from '../../utils/permissions/permissionSetup.js'
 import {
   isRestrictedToPluginOnly,
   isSourceAdminTrusted,
@@ -76,6 +77,7 @@ import {
 } from '../../utils/telemetry/perfettoTracing.js'
 import type { ContentReplacementState } from '../../utils/toolResultStorage.js'
 import { createAgentId } from '../../utils/uuid.js'
+import { gateAgentBypassPermissionMode } from './agentBypassPermissionGate.mjs'
 import { resolveAgentTools } from './agentToolUtils.js'
 import { type AgentDefinition, isBuiltInAgent } from './loadAgentsDir.js'
 
@@ -407,9 +409,20 @@ export async function* runAgent({
     const state = toolUseContext.getAppState()
     let toolPermissionContext = state.toolPermissionContext
 
+    // Re-check the managed bypass killswitch per tool-use (it can flip mid-session,
+    // e.g. after /login): an agent definition may request bypassPermissions, but if
+    // disableBypassPermissionsMode is active we must NOT honor it here — otherwise
+    // any agent definition, including a folder-trusted workspace .claude/agents/*.md,
+    // could silently run this subagent in full bypass and defeat the admin control
+    // per-subagent. Mirrors the sibling agent-definition gates (mcpServers/hooks).
+    const effectivePermissionMode = gateAgentBypassPermissionMode(
+      agentPermissionMode,
+      isBypassPermissionsModeDisabled(),
+    )
+
     // Override permission mode if agent defines one (unless parent is bypassPermissions, acceptEdits, or auto)
     if (
-      agentPermissionMode &&
+      effectivePermissionMode &&
       state.toolPermissionContext.mode !== 'bypassPermissions' &&
       state.toolPermissionContext.mode !== 'acceptEdits' &&
       !(
@@ -419,7 +432,7 @@ export async function* runAgent({
     ) {
       toolPermissionContext = {
         ...toolPermissionContext,
-        mode: agentPermissionMode,
+        mode: effectivePermissionMode,
       }
     }
 
