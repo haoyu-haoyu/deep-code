@@ -150,6 +150,7 @@ import { mcpInfoFromString } from '../services/mcp/mcpStringUtils.js'
 import { ensureConnectedClient } from '../services/mcp/client.js'
 import { readMcpResourceWithReconnect } from './readMcpResourceWithReconnect.mjs'
 import { isMcpResourceMentionSuppressed } from './mcpResourceMentionGate.mjs'
+import { getOrCreateBounded } from './getOrCreateBounded.mjs'
 import {
   checkReadPermissionForTool,
   pathInAllowedWorkingPath,
@@ -2714,6 +2715,14 @@ async function getDynamicSkillAttachments(
 // (empty string = main thread) so subagents get their own turn-0 listing —
 // without per-agent scoping, the main thread populating this Set would cause
 // every subagent's filterToBundledAndMcp result to dedup to empty.
+//
+// The key is a per-spawn-unique agentId, so the outer Map is bounded with an
+// MRU policy: the main-thread key ('') and any actively-running agent are
+// touched every turn and stay warm; only stale/finished subagents (whose unique
+// id never recurs) are evicted, which is behavior-preserving. Without the bound
+// the Map grew one permanent entry per subagent spawn (its only removal is the
+// global clear below, which compaction deliberately skips).
+const MAX_AGENT_SKILL_MEMORY_ENTRIES = 128
 const sentSkillNames = new Map<string, Set<string>>()
 
 // Called when the skill set genuinely changes (plugin reload, skill file
@@ -2807,11 +2816,12 @@ async function getSkillListingAttachments(
   }
 
   const agentKey = toolUseContext.agentId ?? ''
-  let sent = sentSkillNames.get(agentKey)
-  if (!sent) {
-    sent = new Set()
-    sentSkillNames.set(agentKey, sent)
-  }
+  const sent = getOrCreateBounded(
+    sentSkillNames,
+    agentKey,
+    () => new Set<string>(),
+    MAX_AGENT_SKILL_MEMORY_ENTRIES,
+  )
 
   // Resume path: prior process already injected a listing; it's in the
   // transcript. Mark everything current as sent so only post-resume deltas
