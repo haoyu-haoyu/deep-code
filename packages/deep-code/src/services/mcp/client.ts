@@ -36,7 +36,10 @@ import {
   type PromptMessage,
   type ResourceLink,
 } from '@modelcontextprotocol/sdk/types.js'
-import mapValues from 'lodash-es/mapValues.js'
+import {
+  redactSensitiveHeaders,
+  stripUrlCredentials,
+} from './redactSensitiveLogData.mjs'
 import memoize from 'lodash-es/memoize.js'
 import zipObject from 'lodash-es/zipObject.js'
 import pMap from 'p-map'
@@ -671,7 +674,10 @@ export const connectToServer = memoize(
         )
         logMCPDebug(name, `SSE transport initialized, awaiting connection`)
       } else if (serverRef.type === 'sse-ide') {
-        logMCPDebug(name, `Setting up SSE-IDE transport to ${serverRef.url}`)
+        logMCPDebug(
+          name,
+          `Setting up SSE-IDE transport to ${stripUrlCredentials(serverRef.url)}`,
+        )
         // IDE servers don't need authentication
         // TODO: Use the auth token provided in the lockfile
         const proxyOptions = getProxyFetchOptions()
@@ -730,7 +736,7 @@ export const connectToServer = memoize(
       } else if (serverRef.type === 'ws') {
         logMCPDebug(
           name,
-          `Initializing WebSocket transport to ${serverRef.url}`,
+          `Initializing WebSocket transport to ${stripUrlCredentials(serverRef.url)}`,
         )
 
         const combinedHeaders = await getMcpServerHeaders(name, serverRef)
@@ -744,15 +750,13 @@ export const connectToServer = memoize(
           ...combinedHeaders,
         }
 
-        // Redact sensitive headers before logging
-        const wsHeadersForLogging = mapValues(wsHeaders, (value, key) =>
-          key.toLowerCase() === 'authorization' ? '[REDACTED]' : value,
-        )
+        // Redact all credential-bearing headers (not just authorization) before logging
+        const wsHeadersForLogging = redactSensitiveHeaders(wsHeaders)
 
         logMCPDebug(
           name,
           `WebSocket transport options: ${jsonStringify({
-            url: serverRef.url,
+            url: stripUrlCredentials(serverRef.url),
             headers: wsHeadersForLogging,
             hasSessionAuth: !!sessionIngressToken,
           })}`,
@@ -777,7 +781,10 @@ export const connectToServer = memoize(
         }
         transport = new WebSocketTransport(wsClient)
       } else if (serverRef.type === 'http') {
-        logMCPDebug(name, `Initializing HTTP transport to ${serverRef.url}`)
+        logMCPDebug(
+          name,
+          `Initializing HTTP transport to ${stripUrlCredentials(serverRef.url)}`,
+        )
         logMCPDebug(
           name,
           `Node version: ${process.version}, Platform: ${process.platform}`,
@@ -834,19 +841,17 @@ export const connectToServer = memoize(
           },
         }
 
-        // Redact sensitive headers before logging
-        const headersForLogging = transportOptions.requestInit?.headers
-          ? mapValues(
-              transportOptions.requestInit.headers as Record<string, string>,
-              (value, key) =>
-                key.toLowerCase() === 'authorization' ? '[REDACTED]' : value,
-            )
-          : undefined
+        // Redact all credential-bearing headers (not just authorization) before logging
+        const headersForLogging = redactSensitiveHeaders(
+          transportOptions.requestInit?.headers as
+            | Record<string, string>
+            | undefined,
+        )
 
         logMCPDebug(
           name,
           `HTTP transport options: ${jsonStringify({
-            url: serverRef.url,
+            url: stripUrlCredentials(serverRef.url),
             headers: headersForLogging,
             hasAuthProvider: !!authProvider,
             timeoutMs: MCP_REQUEST_TIMEOUT_MS,
@@ -1000,7 +1005,10 @@ export const connectToServer = memoize(
 
       // For HTTP transport, try a basic connectivity test first
       if (serverRef.type === 'http') {
-        logMCPDebug(name, `Testing basic HTTP connectivity to ${serverRef.url}`)
+        logMCPDebug(
+          name,
+          `Testing basic HTTP connectivity to ${stripUrlCredentials(serverRef.url)}`,
+        )
         try {
           const testUrl = new URL(serverRef.url)
           logMCPDebug(
@@ -1069,7 +1077,7 @@ export const connectToServer = memoize(
           logMCPDebug(
             name,
             `SSE Connection failed after ${elapsed}ms: ${jsonStringify({
-              url: serverRef.url,
+              url: stripUrlCredentials(serverRef.url),
               error: error.message,
               errorType: error.constructor.name,
               stack: error.stack,
