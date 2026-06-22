@@ -132,6 +132,7 @@ jobs:
             test/diagnostic-dedup.test.mjs \
             test/lsp-diagnostic-dedup.test.mjs \
             test/file-encoding.test.mjs \
+            test/detect-line-endings.test.mjs \
             test/sed-validation.test.mjs \
             test/argv-wrapper-stripping.test.mjs \
             test/sed-edit-parser.test.mjs \

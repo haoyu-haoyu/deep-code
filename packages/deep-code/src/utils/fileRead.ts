@@ -13,6 +13,7 @@
  */
 
 import { logForDebugging } from './debug.js'
+import { detectLineEndingsForString } from './detectLineEndings.mjs'
 import { detectEncodingFromHeadBytes } from './fileEncoding.mjs'
 import { getFsImplementation, safeResolvePath } from './fsOperations.js'
 
@@ -27,22 +28,8 @@ export function detectEncodingForResolvedPath(
   return detectEncodingFromHeadBytes(buffer, bytesRead)
 }
 
-export function detectLineEndingsForString(content: string): LineEndingType {
-  let crlfCount = 0
-  let lfCount = 0
-
-  for (let i = 0; i < content.length; i++) {
-    if (content[i] === '\n') {
-      if (i > 0 && content[i - 1] === '\r') {
-        crlfCount++
-      } else {
-        lfCount++
-      }
-    }
-  }
-
-  return crlfCount > lfCount ? 'CRLF' : 'LF'
-}
+// Re-exported so existing importers (file.ts) keep their import path.
+export { detectLineEndingsForString }
 
 /**
  * Like readFileSync but also returns the detected encoding and original line
@@ -65,10 +52,12 @@ export function readFileSyncWithMetadata(filePath: string): {
 
   const encoding = detectEncodingForResolvedPath(resolvedPath)
   const raw = fs.readFileSync(resolvedPath, { encoding })
-  // Detect line endings from the raw head before CRLF normalization erases
-  // the distinction. 4096 code units is ≥ detectLineEndings's 4096-byte
-  // readSync sample (line endings are ASCII, so the unit mismatch is moot).
-  const lineEndings = detectLineEndingsForString(raw.slice(0, 4096))
+  // Detect line endings from the WHOLE content before CRLF normalization erases
+  // the distinction. The full file is already in `raw` (and fully scanned by the
+  // replaceAll below), so scan all of it: a 4096-char prefix that lacks the
+  // file's first newline (a long first line) misdetects the style, and the
+  // write-back then flips every newline in the file to the wrong style.
+  const lineEndings = detectLineEndingsForString(raw)
   return {
     content: raw.replaceAll('\r\n', '\n'),
     encoding,
