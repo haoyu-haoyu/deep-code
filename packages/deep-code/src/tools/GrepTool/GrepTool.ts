@@ -24,6 +24,7 @@ import { semanticBoolean } from '../../utils/semanticBoolean.js'
 import { semanticNumber } from '../../utils/semanticNumber.js'
 import { plural } from '../../utils/stringUtils.js'
 import { GREP_TOOL_NAME, getDescription } from './prompt.js'
+import { splitGlobPatterns } from './splitGlobPatterns.mjs'
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -390,21 +391,10 @@ export const GrepTool = buildTool({
     }
 
     if (glob) {
-      // Split on commas and spaces, but preserve patterns with braces
-      const globPatterns: string[] = []
-      const rawPatterns = glob.split(/\s+/)
-
-      for (const rawPattern of rawPatterns) {
-        // If pattern contains braces, don't split further
-        if (rawPattern.includes('{') && rawPattern.includes('}')) {
-          globPatterns.push(rawPattern)
-        } else {
-          // Split on commas for patterns without braces
-          globPatterns.push(...rawPattern.split(',').filter(Boolean))
-        }
-      }
-
-      for (const globPattern of globPatterns.filter(Boolean)) {
+      // Split on whitespace and brace-depth-0 commas (a comma inside a {...}
+      // alternation stays part of the glob), so a mixed token like
+      // `*.{ts,tsx},*.js` becomes two valid globs instead of one invalid one.
+      for (const globPattern of splitGlobPatterns(glob)) {
         args.push('--glob', globPattern)
       }
     }
