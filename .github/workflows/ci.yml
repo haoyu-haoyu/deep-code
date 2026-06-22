@@ -46,6 +46,7 @@ jobs:
             test/deepcode-package.test.mjs \
             test/perf-baseline.test.mjs \
             test/s3-render-perf.test.mjs \
+            test/is-zero-width.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
