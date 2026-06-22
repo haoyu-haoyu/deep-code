@@ -21,6 +21,8 @@ import {
   getSettingsForSource,
   getUseAutoModeDuringPlan,
   hasAutoModeOptIn,
+  hasSkipDangerousModePermissionPrompt,
+  hasTrustedBypassDefaultMode,
 } from '../settings/settings.js'
 import {
   type PermissionMode,
@@ -768,6 +770,25 @@ export function initialPermissionModeFromCLI({
       } else {
         orderedModes.push('auto')
       }
+    }
+    // A defaultMode of bypassPermissions coming ONLY from a folder-trust-gated
+    // project .claude/settings.json must NOT silently enter bypass mode: the
+    // interactive TUI re-gates it through the BypassPermissionsModeDialog (whose
+    // consent reader excludes projectSettings), but headless --print never
+    // reaches that dialog and would otherwise run Bash/Edit/Write unprompted
+    // (RCE risk). Honor a settings-sourced bypass default only when a TRUSTED
+    // source (user/local/flag/policy) backs it OR bypass consent was recorded.
+    // The explicit --dangerously-skip-permissions flag is unaffected (it enters
+    // via the higher-priority dangerouslySkipPermissions branch above).
+    else if (
+      settingsMode === 'bypassPermissions' &&
+      !hasTrustedBypassDefaultMode() &&
+      !hasSkipDangerousModePermissionPrompt()
+    ) {
+      logForDebugging(
+        'settings defaultMode "bypassPermissions" ignored: not backed by a trusted source and no bypass consent recorded — set it in user/local settings or use --dangerously-skip-permissions',
+        { level: 'warn' },
+      )
     } else {
       orderedModes.push(settingsMode)
     }

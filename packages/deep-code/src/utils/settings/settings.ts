@@ -28,6 +28,7 @@ import { logError } from '../log.js'
 import { getPlatform } from '../platform.js'
 import { clone, jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
+import { isBypassDefaultModeTrusted } from './bypassDefaultModeTrust.mjs'
 import { coercePolicyScalars } from './coercePolicyScalars.mjs'
 import {
   type EditableSettingSource,
@@ -1044,6 +1045,18 @@ export function hasSkipDangerousModePermissionPrompt(): boolean {
     getSettingsForSource('flagSettings')?.skipDangerousModePermissionPrompt ||
     getSettingsForSource('policySettings')?.skipDangerousModePermissionPrompt
   )
+}
+
+/**
+ * Returns true iff a TRUSTED settings source (user/local/flag/policy) sets
+ * permissions.defaultMode to 'bypassPermissions'. projectSettings is
+ * intentionally excluded — a folder-trust-gated project could otherwise
+ * silently enter bypass mode in headless --print (which never reaches the
+ * BypassPermissionsModeDialog consent gate) = RCE risk. Mirrors the trusted
+ * source set of hasSkipDangerousModePermissionPrompt.
+ */
+export function hasTrustedBypassDefaultMode(): boolean {
+  return isBypassDefaultModeTrusted(getSettingsForSource)
 }
 
 /**
