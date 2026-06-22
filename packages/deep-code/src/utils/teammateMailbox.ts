@@ -14,9 +14,15 @@ import { TEAMMATE_MESSAGE_TAG } from '../constants/xml.js'
 import { PermissionModeSchema } from '../entrypoints/sdk/coreSchemas.js'
 import { SEND_MESSAGE_TOOL_NAME } from '../tools/SendMessageTool/constants.js'
 import type { Message } from '../types/message.js'
+import {
+  MAX_MAILBOX_MESSAGE_CHARS,
+  MAX_MAILBOX_MESSAGES,
+  MAX_MAILBOX_TOTAL_CHARS,
+} from '../constants/toolLimits.js'
 import { generateRequestId } from './agentId.js'
 import { count } from './array.js'
 import { logForDebugging } from './debug.js'
+import { boundInboxMessages, resolveReadMarkIndex } from './inboxBound.mjs'
 import { getTeamsDir } from './envUtils.js'
 import { getErrnoCode } from './errors.js'
 import { lazySchema } from './lazySchema.js'
@@ -177,7 +183,27 @@ export async function writeToMailbox(
 
     messages.push(newMessage)
 
-    await writeFile(inboxPath, jsonStringify(messages, null, 2), 'utf-8')
+    // Bound the inbox so it cannot grow without limit: prune read tombstones,
+    // truncate an oversized non-control body, and drop the oldest messages over
+    // the count/char caps. Structured control messages (shutdown/permission/plan)
+    // are EVICTION-LAST (a flood sheds plain peer chatter first) but NOT immune —
+    // isStructuredProtocolMessage keys off the forgeable body, so the cap stays
+    // absolute (a forged-"protected" flood is still bounded). The just-appended
+    // newest message is never dropped/truncated.
+    const bounded = boundInboxMessages(messages, {
+      isProtected: m => isStructuredProtocolMessage(m.text),
+      maxMessages: MAX_MAILBOX_MESSAGES,
+      maxTotalChars: MAX_MAILBOX_TOTAL_CHARS,
+      maxMessageChars: MAX_MAILBOX_MESSAGE_CHARS,
+    })
+    if (bounded.dropped.length > 0 || bounded.truncatedCount > 0) {
+      logForDebugging(
+        `[TeammateMailbox] inbox for ${recipientName} bounded: dropped ${bounded.dropped.length} oldest message(s), truncated ${bounded.truncatedCount}, pruned ${bounded.prunedRead} read`,
+        { level: 'warn' },
+      )
+    }
+
+    await writeFile(inboxPath, jsonStringify(bounded.messages, null, 2), 'utf-8')
     logForDebugging(
       `[TeammateMailbox] Wrote message to ${recipientName}'s inbox from ${message.from}`,
     )
@@ -202,6 +228,7 @@ export async function markMessageAsReadByIndex(
   agentName: string,
   teamName: string | undefined,
   messageIndex: number,
+  expected: Pick<TeammateMessage, 'from' | 'timestamp' | 'text'>,
 ): Promise<void> {
   const inboxPath = getInboxPath(agentName, teamName)
   logForDebugging(
@@ -227,26 +254,26 @@ export async function markMessageAsReadByIndex(
       `[TeammateMailbox] markMessageAsReadByIndex: read ${messages.length} messages after lock`,
     )
 
-    if (messageIndex < 0 || messageIndex >= messages.length) {
+    // The index was computed from an UNLOCKED snapshot; now that the inbox can
+    // prune read tombstones / evict over-cap messages (changing positions),
+    // resolve identity-verified which message to mark — use the supplied index
+    // iff it still points at the expected unread message, else re-find by
+    // from+timestamp+text, else -1 (already consumed/pruned → no-op). This also
+    // closes the pre-existing read→mark TOCTOU and marks EXACTLY ONE message.
+    const targetIndex = resolveReadMarkIndex(messages, messageIndex, expected)
+    if (targetIndex < 0) {
       logForDebugging(
-        `[TeammateMailbox] markMessageAsReadByIndex: index ${messageIndex} out of bounds (${messages.length} messages)`,
+        `[TeammateMailbox] markMessageAsReadByIndex: no matching unread message for index ${messageIndex} (already read/pruned)`,
       )
       return
     }
 
-    const message = messages[messageIndex]
-    if (!message || message.read) {
-      logForDebugging(
-        `[TeammateMailbox] markMessageAsReadByIndex: message already read or missing`,
-      )
-      return
-    }
-
-    messages[messageIndex] = { ...message, read: true }
+    const message = messages[targetIndex]
+    messages[targetIndex] = { ...message, read: true }
 
     await writeFile(inboxPath, jsonStringify(messages, null, 2), 'utf-8')
     logForDebugging(
-      `[TeammateMailbox] markMessageAsReadByIndex: marked message at index ${messageIndex} as read`,
+      `[TeammateMailbox] markMessageAsReadByIndex: marked message at index ${targetIndex} as read`,
     )
   } catch (error) {
     const code = getErrnoCode(error)
