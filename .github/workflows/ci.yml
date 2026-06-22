@@ -50,6 +50,7 @@ jobs:
             test/display-width-truncate.test.mjs \
             test/rg-ignore-glob.test.mjs \
             test/relative-time-direction.test.mjs \
+            test/relative-time-core.test.mjs \
             test/grep-split-glob-patterns.test.mjs \
             test/format-date-key-label.test.mjs \
             test/s2-streaming-text.test.mjs \
