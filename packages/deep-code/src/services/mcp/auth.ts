@@ -51,6 +51,10 @@ import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { logEvent } from '../analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics/metadata.js'
 import { buildRedirectUri, findAvailablePort } from './oauthPort.js'
+import {
+  redactSensitiveHeaders,
+  stripUrlCredentials,
+} from './redactSensitiveLogData.mjs'
 import type { McpHTTPServerConfig, McpSSEServerConfig } from './types.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 import { performCrossAppAccess, XaaTokenExchangeError } from './xaa.js'
@@ -688,11 +692,7 @@ async function performMCPXaaAuth(
     const haveKeys = Object.keys(
       getSecureStorage().read()?.mcpOAuthClientConfig ?? {},
     )
-    const headersForLogging = Object.fromEntries(
-      Object.entries(serverConfig.headers ?? {}).map(([k, v]) =>
-        k.toLowerCase() === 'authorization' ? [k, '[REDACTED]'] : [k, v],
-      ),
-    )
+    const headersForLogging = redactSensitiveHeaders(serverConfig.headers ?? {})
     logMCPDebug(
       serverName,
       `XAA: secret lookup miss. wanted=${wantedKey} have=[${haveKeys.join(', ')}] configHeaders=${jsonStringify(headersForLogging)}`,
@@ -1158,7 +1158,10 @@ export async function performMCPOAuthFlow(
       server.listen(port, '127.0.0.1', async () => {
         try {
           logMCPDebug(serverName, `Starting SDK auth`)
-          logMCPDebug(serverName, `Server URL: ${serverConfig.url}`)
+          logMCPDebug(
+            serverName,
+            `Server URL: ${stripUrlCredentials(serverConfig.url)}`,
+          )
 
           // First call to start the auth flow - should redirect
           // Pass the scope and resource_metadata from WWW-Authenticate header if available

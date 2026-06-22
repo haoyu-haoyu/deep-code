@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { join } from 'path'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
+import { stripUrlCredentials } from './redactSensitiveLogData.mjs'
 import type { Command } from '../../commands.js'
 import type { AgentMcpServerInfo } from '../../components/mcp/types.js'
 import type { Tool } from '../../Tool.js'
@@ -566,10 +567,10 @@ export function extractAgentMcpServers(
 }
 
 /**
- * Extracts the MCP server base URL (without query string) for analytics logging.
- * Query strings are stripped because they can contain access tokens.
- * Trailing slashes are also removed for normalization.
- * Returns undefined for stdio/sdk servers or if URL parsing fails.
+ * Extracts the MCP server base URL for analytics logging. The query string (may
+ * carry access tokens) AND the user:pass@ userinfo (basic-auth credentials) are
+ * stripped; trailing slashes are removed for normalization. Returns undefined for
+ * stdio/sdk servers or if URL parsing fails.
  */
 export function getLoggingSafeMcpBaseUrl(
   config: McpServerConfig,
@@ -577,12 +578,5 @@ export function getLoggingSafeMcpBaseUrl(
   if (!('url' in config) || typeof config.url !== 'string') {
     return undefined
   }
-
-  try {
-    const url = new URL(config.url)
-    url.search = ''
-    return url.toString().replace(/\/$/, '')
-  } catch {
-    return undefined
-  }
+  return stripUrlCredentials(config.url)
 }

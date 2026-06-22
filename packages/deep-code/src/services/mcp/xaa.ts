@@ -24,6 +24,7 @@ import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { z } from 'zod/v4'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logMCPDebug } from '../../utils/log.js'
+import { stripUrlCredentials } from './redactSensitiveLogData.mjs'
 import { jsonStringify } from '../../utils/slowOperations.js'
 
 const XAA_REQUEST_TIMEOUT_MS = 30000
@@ -155,7 +156,7 @@ export async function discoverProtectedResource(
   }
   if (normalizeUrl(prm.resource) !== normalizeUrl(serverUrl)) {
     throw new Error(
-      `XAA: PRM discovery failed: PRM resource mismatch: expected ${serverUrl}, got ${prm.resource}`,
+      `XAA: PRM discovery failed: PRM resource mismatch: expected ${stripUrlCredentials(serverUrl)}, got ${prm.resource}`,
     )
   }
   return {
@@ -431,7 +432,10 @@ export async function performCrossAppAccess(
 ): Promise<XaaResult> {
   const fetchFn = makeXaaFetch(abortSignal)
 
-  logMCPDebug(serverName, `XAA: discovering PRM for ${serverUrl}`)
+  logMCPDebug(
+    serverName,
+    `XAA: discovering PRM for ${stripUrlCredentials(serverUrl)}`,
+  )
   const prm = await discoverProtectedResource(serverUrl, { fetchFn })
   logMCPDebug(
     serverName,
