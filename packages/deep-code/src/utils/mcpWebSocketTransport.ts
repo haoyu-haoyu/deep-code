@@ -7,6 +7,7 @@ import type WsWebSocket from 'ws'
 import { logForDiagnosticsNoPII } from './diagLogs.js'
 import { toError } from './errors.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
+import { attachOneShotConnectListeners } from './wsConnectListeners.mjs'
 
 // WebSocket readyState constants (same for both native and ws)
 const WS_CONNECTING = 0
@@ -45,13 +46,18 @@ export class WebSocketTransport implements Transport {
         nws.addEventListener('error', onError)
       } else {
         const nws = this.ws as unknown as WsWebSocket
-        nws.on('open', () => {
-          resolve()
-        })
-        nws.on('error', error => {
-          logForDiagnosticsNoPII('error', 'mcp_websocket_connect_fail')
-          reject(error)
-        })
+        // Mirror the Bun branch: remove BOTH temp connect listeners on settle
+        // so they don't leak and a post-connect 'error' can't re-fire the
+        // connect-fail handler (it already routes through the persistent
+        // onNodeError instead).
+        attachOneShotConnectListeners(
+          nws,
+          () => resolve(),
+          error => {
+            logForDiagnosticsNoPII('error', 'mcp_websocket_connect_fail')
+            reject(error)
+          },
+        )
       }
     })
 
