@@ -53,6 +53,7 @@ jobs:
             test/shell-exit-code.test.mjs \
             test/a4-paste-cleanup.test.mjs \
             test/tokenizer-meta-input.test.mjs \
+            test/vim-operator-dollar.test.mjs \
             test/bash-command-stripping.test.mjs \
             test/bash-command-text.test.mjs \
             test/compact-boundary.test.mjs \
