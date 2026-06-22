@@ -174,7 +174,11 @@ export function displayWidth(value) {
 
 /**
  * Longest prefix of `value` (ANSI stripped) whose display width is <= maxWidth,
- * cut on a code-point boundary so a wide char is never split in half.
+ * cut on a GRAPHEME-CLUSTER boundary so neither a wide char nor a multi-code-point
+ * glyph (a ZWJ emoji family, a base+combining-mark, a skin-tone-modified emoji) is
+ * ever split in half. Iterating by code point would stop mid-cluster — e.g.
+ * truncating 👨‍👩‍👧 (man ZWJ woman ZWJ girl) to width 3 would keep "man + ZWJ" and
+ * emit a dangling U+200D joiner.
  * @param {string} value
  * @param {number} maxWidth
  * @returns {string}
@@ -183,11 +187,11 @@ export function truncateToWidth(value, maxWidth) {
   const string = stripAnsi(value)
   let width = 0
   let result = ''
-  for (const char of string) {
-    const charWidth = displayWidth(char)
-    if (width + charWidth > maxWidth) break
-    width += charWidth
-    result += char
+  for (const { segment } of getGraphemeSegmenter().segment(string)) {
+    const segmentWidth = displayWidth(segment)
+    if (width + segmentWidth > maxWidth) break
+    width += segmentWidth
+    result += segment
   }
   return result
 }
