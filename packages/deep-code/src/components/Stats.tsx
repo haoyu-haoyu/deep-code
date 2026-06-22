@@ -17,6 +17,7 @@ import { Ansi, Box, Text, useInput } from '../ink.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getGlobalConfig } from '../utils/config.js';
 import { formatDuration, formatNumber } from '../utils/format.js';
+import { formatDateKeyLabel } from '../utils/formatDateKeyLabel.mjs';
 import { generateHeatmap } from '../utils/heatmap.js';
 import { renderModelName } from '../utils/model/model.js';
 import { copyAnsiToClipboard } from '../utils/screenshotClipboard.js';
@@ -44,11 +45,9 @@ function modelUsageTokenTotal(usage: {
   );
 }
 function formatPeakDay(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric'
-  });
+  // dateStr is a YYYY-MM-DD day key — parse as a local date so the label shows
+  // the key's own day rather than the previous one west of UTC.
+  return formatDateKeyLabel(dateStr);
 }
 type Props = {
   onClose: (result?: string, options?: {
@@ -1082,11 +1081,9 @@ function generateXAxisLabels(data: DailyModelTokens[], _chartWidth: number, yAxi
   }[] = [];
   for (let i = 0; i < numLabels; i++) {
     const idx = Math.min(i * step, data.length - 1);
-    const date = new Date(data[idx]!.date);
-    const label = date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric'
-    });
+    // data[idx].date is a YYYY-MM-DD day key — parse as a local date so the
+    // x-axis tick matches the key's own day rather than the previous one west of UTC.
+    const label = formatDateKeyLabel(data[idx]!.date);
     labelPositions.push({
       pos: idx,
       label
