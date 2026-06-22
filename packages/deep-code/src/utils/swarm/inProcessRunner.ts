@@ -412,6 +412,7 @@ function createInProcessCanUseTool(
                   identity.agentName,
                   identity.teamName,
                   i,
+                  { from: msg.from, timestamp: msg.timestamp, text: msg.text },
                 )
                 if (parsed.subtype === 'success') {
                   processMailboxPermissionResponse({
@@ -803,6 +804,7 @@ async function waitForNextPromptOrShutdown(
           identity.agentName,
           identity.teamName,
           shutdownIndex,
+          { from: msg.from, timestamp: msg.timestamp, text: msg.text },
         )
         return {
           type: 'shutdown_request',
@@ -841,6 +843,7 @@ async function waitForNextPromptOrShutdown(
             identity.agentName,
             identity.teamName,
             selectedIndex,
+            { from: msg.from, timestamp: msg.timestamp, text: msg.text },
           )
           return {
             type: 'new_message',

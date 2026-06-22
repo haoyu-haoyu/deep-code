@@ -62,6 +62,30 @@ export const MAX_TOOL_RESULTS_PER_MESSAGE_CHARS = 200_000
 export const MAX_TURN_MCP_RESOURCE_CHARS = 4 * DEFAULT_MAX_RESULT_SIZE_CHARS
 
 /**
+ * Bounds for a teammate mailbox file (the per-agent JSON IPC queue). The inbox
+ * is rewritten in full under a lock on every send, and read tombstones were
+ * never pruned, so a flood or a giant single message would blow up the model
+ * context + cause O(N^2) IO. Enforced in writeToMailbox via inboxBound.mjs.
+ * Structured control messages (shutdown/permission/plan) are EVICTION-LAST and
+ * never truncated (a flood sheds plain peer chatter first), but NOT immune — the
+ * `isProtected` test keys off the forgeable message body, so once only protected
+ * messages remain over a cap the oldest is evicted as a last resort, keeping the
+ * cap absolute (a forged-"protected" flood cannot reopen the unbounded DoS).
+ * Values are generous so a legitimate exchange never reaches eviction.
+ */
+// Per-message body cap — one "unit of content" (mirrors DEFAULT_MAX_RESULT_SIZE_CHARS);
+// a full plan/diff fits, a multi-MB message is truncated (non-structured only).
+export const MAX_MAILBOX_MESSAGE_CHARS = DEFAULT_MAX_RESULT_SIZE_CHARS
+// Summary preview cap — the documented "5-10 word summary".
+export const MAX_MAILBOX_SUMMARY_CHARS = 200
+// Retained-message count cap — generous: a teammate draining every poll interval
+// never nears this; it bounds a tiny-message flood's array/XML-block count.
+export const MAX_MAILBOX_MESSAGES = 1_000
+// Total inbox text cap — generous (~20 max-size messages); bounds the file/IO and
+// the unread bytes a poller could concatenate into the model context.
+export const MAX_MAILBOX_TOTAL_CHARS = 1_000_000
+
+/**
  * Maximum character length for tool summary strings in compact views.
  * Used by getToolUseSummary() implementations to truncate long inputs
  * for display in grouped agent rendering.

@@ -211,6 +211,7 @@ jobs:
             test/is-trusted-leader-control-message.test.mjs \
             test/resolve-trusted-shutdown-target.test.mjs \
             test/bypassDefaultModeTrust.test.mjs \
+            test/teammate-inbox-bound.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
             test/elicitation-queue-remove.test.mjs \
             test/single-flight.test.mjs \

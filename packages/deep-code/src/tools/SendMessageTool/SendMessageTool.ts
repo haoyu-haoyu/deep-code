@@ -1,5 +1,9 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
+import {
+  MAX_MAILBOX_MESSAGE_CHARS,
+  MAX_MAILBOX_SUMMARY_CHARS,
+} from '../../constants/toolLimits.js'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { findTeammateTaskByAgentId } from '../../tasks/InProcessTeammateTask/InProcessTeammateTask.js'
@@ -73,12 +77,16 @@ const inputSchema = lazySchema(() =>
       ),
     summary: z
       .string()
+      .max(MAX_MAILBOX_SUMMARY_CHARS)
       .optional()
       .describe(
         'A 5-10 word summary shown as a preview in the UI (required when message is a string)',
       ),
     message: z.union([
-      z.string().describe('Plain text message content'),
+      z
+        .string()
+        .max(MAX_MAILBOX_MESSAGE_CHARS)
+        .describe('Plain text message content'),
       StructuredMessage(),
     ]),
   }),
