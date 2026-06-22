@@ -13,6 +13,7 @@ import {
   resolveMotion,
 } from './motions.js'
 import { findTextObject } from './textObjects.js'
+import { shouldApplyInclusiveBump } from './operatorRangeCore.mjs'
 import type {
   FindType,
   Operator,
@@ -462,7 +463,17 @@ function getOperatorRange(
     } else {
       to = nextNewline + 1
     }
-  } else if (isInclusiveMotion(motion) && cursor.offset <= target.offset) {
+  } else if (
+    shouldApplyInclusiveBump({
+      isInclusive: isInclusiveMotion(motion),
+      cursorOffset: cursor.offset,
+      targetOffset: target.offset,
+      // '$' lands `to` ON the line's '\n' (endOfLogicalLine is already exclusive
+      // of the newline); suppress the inclusive bump there so D/C/d$/c$ keep the
+      // line break instead of joining the next line. e/E land on a visible char.
+      charAtEnd: cursor.text[to],
+    })
+  ) {
     to = cursor.measuredText.nextOffset(to)
   }
 
