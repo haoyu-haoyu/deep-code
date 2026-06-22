@@ -24,6 +24,7 @@ import {
 } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import { getAncestorPidsAsync } from './genericProcessUtils.js'
+import { isProcessRunning } from './isProcessRunning.mjs'
 import { isJetBrainsPluginInstalledCached } from './jetbrains.js'
 import { logError } from './log.js'
 import { getPlatform } from './platform.js'
@@ -46,15 +47,6 @@ import {
 } from './idePathConversion.js'
 import { sleep } from './sleep.js'
 import { jsonParse } from './slowOperations.js'
-
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
-}
 
 // Returns a function that lazily fetches our process's ancestor PID chain,
 // caching within the closure's lifetime. Callers should scope this to a

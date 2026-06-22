@@ -8,24 +8,11 @@ import {
 // - Win32, as `ps` within cygwin and WSL may not behave as expected, particularly when attempting to access processes on the host.
 // - Unix vs BSD-style `ps` have different options.
 
-/**
- * Check if a process with the given PID is running (signal 0 probe).
- *
- * PID ≤ 1 returns false (0 is current process group, 1 is init).
- *
- * Note: `process.kill(pid, 0)` throws EPERM when the process exists but is
- * owned by another user. This reports such processes as NOT running, which
- * is conservative for lock recovery (we won't steal a live lock).
- */
-export function isProcessRunning(pid: number): boolean {
-  if (pid <= 1) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
-}
+// isProcessRunning lives in a dependency-free leaf so every lock-recovery
+// caller (cron/session/dream locks, the native-installer pid lock, the IDE
+// lockfile, the computer-use lock) shares one guarded implementation.
+// Re-exported here for this module's existing importers.
+export { isProcessRunning } from './isProcessRunning.mjs'
 
 /**
  * Gets the ancestor process chain for a given process (up to maxDepth levels)
