@@ -4,6 +4,7 @@ import { getRelativeTimeFormat, getTimeZone } from './intl.js'
 // Byte-band formatting lives in a pure leaf (chooses the unit AFTER rounding so
 // a just-under-threshold value never renders a nonsensical "1024KB").
 import { formatFileSize } from './fileSize.mjs'
+import { subSecondRelativeNarrow } from './relativeTimeDirection.mjs'
 
 export { formatFileSize }
 
@@ -161,9 +162,11 @@ export function formatRelativeTime(
     }
   }
 
-  // For values less than 1 second
+  // For values less than 1 second. Decide direction from diffInMs's sign, not the
+  // truncated-to-zero diffInSeconds (which would mislabel a sub-second-future
+  // instant as past) — see subSecondRelativeNarrow.
   if (style === 'narrow') {
-    return diffInSeconds <= 0 ? '0s ago' : 'in 0s'
+    return subSecondRelativeNarrow(diffInMs)
   }
   return getRelativeTimeFormat(style, numeric).format(0, 'second')
 }
