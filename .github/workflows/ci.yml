@@ -129,6 +129,7 @@ jobs:
             test/config-freshness.test.mjs \
             test/read-text-result-classify.test.mjs \
             test/diagnostic-dedup.test.mjs \
+            test/lsp-diagnostic-dedup.test.mjs \
             test/file-encoding.test.mjs \
             test/sed-validation.test.mjs \
             test/argv-wrapper-stripping.test.mjs \

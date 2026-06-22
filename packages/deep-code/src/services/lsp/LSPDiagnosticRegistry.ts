@@ -5,6 +5,7 @@ import { toError } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import type { DiagnosticFile } from '../diagnosticTracking.js'
+import { dedupeDiagnosticFiles } from './dedupeDiagnosticFiles.mjs'
 
 /**
  * Pending LSP diagnostic notification
@@ -136,51 +137,20 @@ function createDiagnosticKey(diag: {
 function deduplicateDiagnosticFiles(
   allFiles: DiagnosticFile[],
 ): DiagnosticFile[] {
-  // Group diagnostics by file URI
-  const fileMap = new Map<string, Set<string>>()
-  const dedupedFiles: DiagnosticFile[] = []
-
-  for (const file of allFiles) {
-    if (!fileMap.has(file.uri)) {
-      fileMap.set(file.uri, new Set())
-      dedupedFiles.push({ uri: file.uri, diagnostics: [] })
-    }
-
-    const seenDiagnostics = fileMap.get(file.uri)!
-    const dedupedFile = dedupedFiles.find(f => f.uri === file.uri)!
-
-    // Get previously delivered diagnostics for this file (for cross-turn dedup)
-    const previouslyDelivered = deliveredDiagnostics.get(file.uri) || new Set()
-
-    for (const diag of file.diagnostics) {
-      try {
-        const key = createDiagnosticKey(diag)
-
-        // Skip if already seen in this batch OR already delivered in previous turns
-        if (seenDiagnostics.has(key) || previouslyDelivered.has(key)) {
-          continue
-        }
-
-        seenDiagnostics.add(key)
-        dedupedFile.diagnostics.push(diag)
-      } catch (error: unknown) {
-        const err = toError(error)
-        const truncatedMessage =
-          diag.message?.substring(0, 100) || '<no message>'
-        logError(
-          new Error(
-            `Failed to deduplicate diagnostic in ${file.uri}: ${err.message}. ` +
-              `Diagnostic message: ${truncatedMessage}`,
-          ),
-        )
-        // Include the diagnostic anyway to avoid losing information
-        dedupedFile.diagnostics.push(diag)
-      }
-    }
-  }
-
-  // Filter out files with no diagnostics after deduplication
-  return dedupedFiles.filter(f => f.diagnostics.length > 0)
+  return dedupeDiagnosticFiles(allFiles, {
+    getPreviouslyDelivered: uri => deliveredDiagnostics.get(uri) || new Set(),
+    createKey: createDiagnosticKey,
+    onKeyError: (uri, diag, error) => {
+      const err = toError(error)
+      const truncatedMessage = diag.message?.substring(0, 100) || '<no message>'
+      logError(
+        new Error(
+          `Failed to deduplicate diagnostic in ${uri}: ${err.message}. ` +
+            `Diagnostic message: ${truncatedMessage}`,
+        ),
+      )
+    },
+  })
 }
 
 /**
