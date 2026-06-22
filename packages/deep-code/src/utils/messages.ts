@@ -26,6 +26,7 @@ import { NO_CONTENT_MESSAGE } from '../constants/messages.js'
 import { OUTPUT_STYLE_CONFIG } from '../constants/outputStyles.js'
 import { DEFAULT_MAX_RESULT_SIZE_CHARS } from '../constants/toolLimits.js'
 import { buildMcpResourceTextBlocks } from './mcpResourceBlocks.mjs'
+import { applyToolInputDelta } from './applyToolInputDelta.mjs'
 import { isAutoMemoryEnabled } from '../memdir/paths.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -2957,19 +2958,13 @@ export function handleMessageFromStream(
           const delta = message.event.delta.partial_json
           const index = message.event.index
           onUpdateLength(delta)
-          onStreamingToolUses(_ => {
-            const element = _.find(_ => _.index === index)
-            if (!element) {
-              return _
-            }
-            return [
-              ..._.filter(_ => _ !== element),
-              {
-                ...element,
-                unparsedToolInput: element.unparsedToolInput + delta,
-              },
-            ]
-          })
+          // Accumulate the arg delta in place — preserving array order and each
+          // element's contentBlock identity — so parallel streaming tool-use
+          // previews stay in content-block order and the positional Messages
+          // memo comparator keeps skipping the re-render. The old
+          // find+filter+re-append reordered the array on every delta, defeating
+          // both.
+          onStreamingToolUses(_ => applyToolInputDelta(_, index, delta))
           return
         }
         case 'thinking_delta':
