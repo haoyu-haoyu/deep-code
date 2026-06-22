@@ -213,6 +213,7 @@ jobs:
             test/bypassDefaultModeTrust.test.mjs \
             test/teammate-inbox-bound.test.mjs \
             test/redact-sensitive-log-data.test.mjs \
+            test/safe-analytics-mime-type.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
             test/elicitation-queue-remove.test.mjs \
             test/single-flight.test.mjs \

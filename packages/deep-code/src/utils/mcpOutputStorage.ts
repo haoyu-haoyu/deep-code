@@ -8,6 +8,7 @@ import type { MCPResultType } from '../services/mcp/client.js'
 import { toError } from './errors.js'
 import { formatFileSize } from './format.js'
 import { logError } from './log.js'
+import { safeAnalyticsMimeType } from './safeAnalyticsMimeType.mjs'
 import { safeToolResultIdComponent } from './safeToolResultIdComponent.mjs'
 import { ensureToolResultsDir, getToolResultsDir } from './toolResultStorage.js'
 
@@ -170,10 +171,13 @@ export async function persistBinaryContent(
     return { error: err.message }
   }
 
-  // mime type and extension are safe fixed-vocabulary strings (not paths/code)
+  // `ext` is mime-derived (a fixed vocabulary), but the raw Content-Type
+  // (mimeType) is attacker-server-controlled — normalize it to a safe
+  // type/subtype (or 'other') before egress so a crafted header can't reach
+  // analytics verbatim.
   logEvent('tengu_binary_content_persisted', {
-    mimeType: (mimeType ??
-      'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+    mimeType:
+      safeAnalyticsMimeType(mimeType) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     sizeBytes: bytes.length,
     ext: ext as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   })
