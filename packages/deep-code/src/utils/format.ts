@@ -4,7 +4,7 @@ import { getRelativeTimeFormat, getTimeZone } from './intl.js'
 // Byte-band formatting lives in a pure leaf (chooses the unit AFTER rounding so
 // a just-under-threshold value never renders a nonsensical "1024KB").
 import { formatFileSize } from './fileSize.mjs'
-import { subSecondRelativeNarrow } from './relativeTimeDirection.mjs'
+import { formatRelativeTimeCore } from './relativeTimeCore.mjs'
 
 export { formatFileSize }
 
@@ -132,43 +132,15 @@ export function formatRelativeTime(
   options: RelativeTimeOptions & { now?: Date } = {},
 ): string {
   const { style = 'narrow', numeric = 'always', now = new Date() } = options
-  const diffInMs = date.getTime() - now.getTime()
-  // Use Math.trunc to truncate towards zero for both positive and negative values
-  const diffInSeconds = Math.trunc(diffInMs / 1000)
-
-  // Define time intervals with custom short units
-  const intervals = [
-    { unit: 'year', seconds: 31536000, shortUnit: 'y' },
-    { unit: 'month', seconds: 2592000, shortUnit: 'mo' },
-    { unit: 'week', seconds: 604800, shortUnit: 'w' },
-    { unit: 'day', seconds: 86400, shortUnit: 'd' },
-    { unit: 'hour', seconds: 3600, shortUnit: 'h' },
-    { unit: 'minute', seconds: 60, shortUnit: 'm' },
-    { unit: 'second', seconds: 1, shortUnit: 's' },
-  ] as const
-
-  // Find the appropriate unit
-  for (const { unit, seconds: intervalSeconds, shortUnit } of intervals) {
-    if (Math.abs(diffInSeconds) >= intervalSeconds) {
-      const value = Math.trunc(diffInSeconds / intervalSeconds)
-      // For short style, use custom format
-      if (style === 'narrow') {
-        return diffInSeconds < 0
-          ? `${Math.abs(value)}${shortUnit} ago`
-          : `in ${value}${shortUnit}`
-      }
-      // For days and longer, use long style regardless of the style parameter
-      return getRelativeTimeFormat('long', numeric).format(value, unit)
-    }
-  }
-
-  // For values less than 1 second. Decide direction from diffInMs's sign, not the
-  // truncated-to-zero diffInSeconds (which would mislabel a sub-second-future
-  // instant as past) — see subSecondRelativeNarrow.
-  if (style === 'narrow') {
-    return subSecondRelativeNarrow(diffInMs)
-  }
-  return getRelativeTimeFormat(style, numeric).format(0, 'second')
+  // The interval table + narrow/short/long + sub-second logic live in the pure,
+  // node-testable relativeTimeCore leaf; getRelativeTimeFormat (the cached Intl
+  // formatter) is injected so the leaf stays free of the intl.ts cache.
+  return formatRelativeTimeCore(
+    date.getTime() - now.getTime(),
+    style,
+    numeric,
+    getRelativeTimeFormat,
+  )
 }
 
 export function formatRelativeTimeAgo(
