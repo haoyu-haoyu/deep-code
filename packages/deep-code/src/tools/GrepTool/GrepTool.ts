@@ -18,6 +18,7 @@ import {
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
 import { getGlobExclusionsForPluginCache } from '../../utils/plugins/orphanedPluginFilter.js'
+import { rgIgnoreGlob } from '../../utils/rgIgnoreGlob.mjs'
 import { ripGrep } from '../../utils/ripgrep.js'
 import { semanticBoolean } from '../../utils/semanticBoolean.js'
 import { semanticNumber } from '../../utils/semanticNumber.js'
@@ -415,15 +416,12 @@ export const GrepTool = buildTool({
       getCwd(),
     )
     for (const ignorePattern of ignorePatterns) {
-      // Note: ripgrep only applies gitignore patterns relative to the working directory
-      // So for non-absolute paths, we need to prefix them with '**'
+      // rgIgnoreGlob negates the pattern and (for a non-rooted, slash-bearing
+      // pattern) anchors it at any depth with a double-star prefix — ripgrep only
+      // applies a relative slash-glob relative to the working directory. Shared
+      // with GlobTool so both hide the same Read-deny files.
       // See: https://github.com/BurntSushi/ripgrep/discussions/2156#discussioncomment-2316335
-      //
-      // We also need to negate the pattern with `!` to exclude it
-      const rgIgnorePattern = ignorePattern.startsWith('/')
-        ? `!${ignorePattern}`
-        : `!**/${ignorePattern}`
-      args.push('--glob', rgIgnorePattern)
+      args.push('--glob', rgIgnoreGlob(ignorePattern))
     }
 
     // Exclude orphaned plugin version directories

@@ -8,6 +8,7 @@ import {
 } from './permissions/filesystem.js'
 import { getPlatform } from './platform.js'
 import { getGlobExclusionsForPluginCache } from './plugins/orphanedPluginFilter.js'
+import { rgIgnoreGlob } from './rgIgnoreGlob.mjs'
 import { ripGrep } from './ripgrep.js'
 
 // extractGlobBaseDirectory + resolveGlobSearchDir now live in the pure, node-testable
@@ -61,9 +62,12 @@ export async function glob(
     ...(hidden ? ['--hidden'] : []),
   ]
 
-  // Add ignore patterns
+  // Add ignore patterns. A relative (non-rooted) deny pattern containing a slash
+  // must get a leading double-star prefix or ripgrep anchors it at the search root
+  // and nested copies leak — rgIgnoreGlob applies the SAME rule GrepTool uses so
+  // the two tools hide the same files.
   for (const pattern of ignorePatterns) {
-    args.push('--glob', `!${pattern}`)
+    args.push('--glob', rgIgnoreGlob(pattern))
   }
 
   // Exclude orphaned plugin version directories

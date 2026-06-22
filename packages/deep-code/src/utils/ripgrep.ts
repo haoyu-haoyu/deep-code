@@ -17,6 +17,7 @@ import {
   createUtf8ChunkDecoder,
   isRipgrepUsageError,
 } from './ripgrepDecode.mjs'
+import { rgIgnoreGlob } from './rgIgnoreGlob.mjs'
 import { countCharInString } from './stringUtils.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -541,9 +542,12 @@ export const countFilesRoundedRg = memoize(
       // --hidden: Search hidden files and directories
       const args = ['--files', '--hidden']
 
-      // Add ignore patterns if provided
+      // Add ignore patterns if provided. Use the shared rgIgnoreGlob rule (same as
+      // GlobTool/GrepTool) so a relative slash-bearing deny pattern is excluded at
+      // any depth rather than only at the root — keeps this rounded file count
+      // consistent with what the read-gated tools actually expose.
       ignorePatterns.forEach(pattern => {
-        args.push('--glob', `!${pattern}`)
+        args.push('--glob', rgIgnoreGlob(pattern))
       })
 
       const count = await ripGrepFileCount(args, dirPath, abortSignal)
