@@ -1,6 +1,7 @@
 import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '../../../types/sdk-shim.js'
 import type { PendingClassifierCheck } from '../../../types/permissions.js'
+import { addDisposableAbortListener } from '../../../utils/addDisposableAbortListener.mjs'
 import { isAgentSwarmsEnabled } from '../../../utils/agentSwarmsEnabled.js'
 import { toError } from '../../../utils/errors.js'
 import { logError } from '../../../utils/log.js'
@@ -67,6 +68,13 @@ async function handleSwarmWorkerPermission(
     const decision = await new Promise<PermissionDecision>(resolve => {
       const { resolve: resolveOnce, claim } = createResolveOnce(resolve)
 
+      // Removes the abort listener attached below. Declared here so the
+      // allow/reject paths can drop it the moment they win; assigned once the
+      // listener is actually attached (no-op until then). Without this the
+      // one-shot abort listener lingers on the turn-scoped abort controller
+      // after every settled-elsewhere request.
+      let disposeAbortListener: () => void = () => {}
+
       // Create the permission request
       const request = createPermissionRequest({
         toolName: ctx.tool.name,
@@ -88,6 +96,7 @@ async function handleSwarmWorkerPermission(
           contentBlocks?: ContentBlockParam[],
         ) {
           if (!claim()) return // atomic check-and-mark before await
+          disposeAbortListener()
           clearPendingRequest()
 
           // Merge the updated input with the original input
@@ -108,6 +117,7 @@ async function handleSwarmWorkerPermission(
         },
         onReject(feedback?: string, contentBlocks?: ContentBlockParam[]) {
           if (!claim()) return
+          disposeAbortListener()
           clearPendingRequest()
 
           ctx.logDecision({
@@ -133,16 +143,17 @@ async function handleSwarmWorkerPermission(
       }))
 
       // If the abort signal fires while waiting for the leader response,
-      // resolve the promise with a cancel decision so it does not hang.
-      ctx.toolUseContext.abortController.signal.addEventListener(
-        'abort',
+      // resolve the promise with a cancel decision so it does not hang. The
+      // disposer lets onAllow/onReject remove this listener when they win, so
+      // it does not linger on the turn-scoped abort controller.
+      disposeAbortListener = addDisposableAbortListener(
+        ctx.toolUseContext.abortController.signal,
         () => {
           if (!claim()) return
           clearPendingRequest()
           ctx.logCancelled()
           resolveOnce(ctx.cancelAndAbort(undefined, true))
         },
-        { once: true },
       )
     })
 

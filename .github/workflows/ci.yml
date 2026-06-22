@@ -217,6 +217,7 @@ jobs:
             test/is-process-running.test.mjs \
             test/cleanup-registry-settled.test.mjs \
             test/ws-connect-listeners.test.mjs \
+            test/disposable-abort-listener.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
             test/elicitation-queue-remove.test.mjs \
             test/single-flight.test.mjs \
