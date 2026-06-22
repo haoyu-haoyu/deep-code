@@ -49,6 +49,7 @@ jobs:
             test/is-zero-width.test.mjs \
             test/display-width-truncate.test.mjs \
             test/rg-ignore-glob.test.mjs \
+            test/relative-time-direction.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
