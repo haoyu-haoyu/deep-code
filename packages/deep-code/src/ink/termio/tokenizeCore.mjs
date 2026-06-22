@@ -23,14 +23,14 @@ const isCSIParam = b => b >= 0x30 && b <= 0x3f
 
 /**
  * @param {string} input
- * @param {string} initialState
+ * @param {'ground'|'escape'|'escapeIntermediate'|'csi'|'ss3'|'osc'|'dcs'|'apc'} initialState
  * @param {string} initialBuffer
  * @param {boolean} flush
  * @param {boolean} x10Mouse
  * @param {boolean} [metaInput] stdin only: decode ESC-prefixed meta keys
  *   (Alt/Option). OFF for output parsing, where ESC ESC and ESC+intermediate
  *   carry terminal-control meaning rather than a Meta modifier.
- * @returns {{ tokens: Array<{type:string,value:string}>, state: {state:string, buffer:string} }}
+ * @returns {{ tokens: Array<{type:'text'|'sequence',value:string}>, state: {state:'ground'|'escape'|'escapeIntermediate'|'csi'|'ss3'|'osc'|'dcs'|'apc', buffer:string} }}
  */
 export function tokenize(
   input,

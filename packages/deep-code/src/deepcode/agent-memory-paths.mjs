@@ -39,9 +39,9 @@ export function getPreferredAgentMemoryDir({
   scope,
   cwd,
   memoryBaseDir,
-  legacyMemoryBaseDir,
-  remoteLocalDir,
-  exists = () => false,
+  legacyMemoryBaseDir = /** @type {string | undefined} */ (undefined),
+  remoteLocalDir = /** @type {string | undefined} */ (undefined),
+  exists = /** @type {(path: string) => boolean} */ (() => false),
 }) {
   const dirName = sanitizeAgentTypeForMemoryPath(agentType)
   if (scope === 'user') {
@@ -74,7 +74,7 @@ export function getPreferredAgentMemoryDir({
 export function getPreferredAgentMemorySnapshotDir({
   agentType,
   cwd,
-  exists = () => false,
+  exists = /** @type {(path: string) => boolean} */ (() => false),
 }) {
   const dirName = sanitizeAgentTypeForMemoryPath(agentType)
   return preferExistingPath(

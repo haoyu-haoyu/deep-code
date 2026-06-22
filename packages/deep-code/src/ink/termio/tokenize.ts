@@ -77,7 +77,7 @@ export function createTokenizer(options?: TokenizerOptions): Tokenizer {
         x10Mouse,
         metaInput,
       )
-      currentState = result.state.state as State
+      currentState = result.state.state
       currentBuffer = result.state.buffer
       return result.tokens
     },
@@ -91,7 +91,7 @@ export function createTokenizer(options?: TokenizerOptions): Tokenizer {
         x10Mouse,
         metaInput,
       )
-      currentState = result.state.state as State
+      currentState = result.state.state
       currentBuffer = result.state.buffer
       return result.tokens
     },
