@@ -635,10 +635,15 @@ async function checkPermissionsAndCallTool(
     logEvent('tengu_tool_use_error', {
       error:
         'InputValidationError' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      errorDetails: errorContent.slice(
-        0,
-        2000,
-      ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      // errorContent (the zod validation error) can echo model-supplied input,
+      // including file paths — only egress the free-text detail for ant sessions
+      // (mirrors warningHandler); everyone still gets the safe error type/code.
+      ...(process.env.USER_TYPE === 'ant' && {
+        errorDetails: errorContent.slice(
+          0,
+          2000,
+        ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      }),
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizeToolNameForAnalytics(tool.name),
@@ -692,8 +697,13 @@ async function checkPermissionsAndCallTool(
       messageID:
         messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       toolName: sanitizeToolNameForAnalytics(tool.name),
-      error:
-        isValidCall.message as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      // isValidCall.message can contain model-supplied file paths (e.g. GlobTool
+      // "Path is not a directory: <path>") — only egress the free-text for ant
+      // sessions; non-ant gets the structured errorCode + a generic type
+      // (mirrors warningHandler's ant-gated message).
+      error: (process.env.USER_TYPE === 'ant'
+        ? isValidCall.message
+        : 'ToolValidationError') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       errorCode: isValidCall.errorCode,
       isMcp: tool.isMcp ?? false,
 
