@@ -140,3 +140,65 @@ export function resolveReadMarkIndex(messages, index, expected) {
   }
   return messages.findIndex(matches)
 }
+
+/**
+ * Stable, collision-free identity key for a mailbox message — the same
+ * (from,timestamp,text) triple resolveReadMarkIndex matches on, encoded as JSON
+ * so arbitrary text (including separators/NUL) cannot collide two distinct
+ * triples.
+ *
+ * @param {{from?:string,timestamp?:string,text?:string}} m
+ * @returns {string}
+ */
+function messageIdentityKey(m) {
+  return JSON.stringify([m && m.from, m && m.timestamp, m && m.text])
+}
+
+/**
+ * Mark read EXACTLY the messages a poll consumed (its UNLOCKED `unread`
+ * snapshot), identified by the same (from,timestamp,text) triple as
+ * resolveReadMarkIndex, leaving every other message untouched.
+ *
+ * The poller reads unread messages WITHOUT the lock, routes that snapshot, then
+ * marks read under the lock. The old mark-all path set read:true on EVERY
+ * message in the under-lock re-read — including any message a concurrent
+ * writeToMailbox appended AFTER the snapshot (a mid-poll arrival). That late
+ * message was never in the snapshot, so it was never delivered, yet it was
+ * marked read → silent permanent loss, defeating the poller's stated no-loss
+ * intent. Marking only the consumed snapshot leaves a mid-poll arrival unread so
+ * the next poll delivers it.
+ *
+ * Uses a per-identity COUNT (multiset), not a Set: if a mid-poll arrival happens
+ * to share an identical (from,timestamp,text) triple with a consumed message,
+ * only as many copies as were actually consumed are marked, and the extra stays
+ * unread. Walks oldest→newest, marking the oldest matching unread copies first.
+ * Returns a NEW array; unchanged messages are returned by reference (mirroring
+ * markMessagesAsReadByPredicate's .map shape). Non-array `messages` is returned
+ * as-is; a missing/empty `consumed` marks nothing.
+ *
+ * @param {Array<{from?:string,timestamp?:string,text?:string,read?:boolean}>} messages - the under-lock re-read array
+ * @param {Array<{from?:string,timestamp?:string,text?:string}>} consumed - the snapshot the poll actually read/routed
+ * @returns {Array} a new array with read:true on the consumed-and-still-unread messages
+ */
+export function applyConsumedReadMarks(messages, consumed) {
+  if (!Array.isArray(messages)) return messages
+  const remaining = new Map()
+  if (Array.isArray(consumed)) {
+    for (const c of consumed) {
+      if (!c) continue
+      const key = messageIdentityKey(c)
+      remaining.set(key, (remaining.get(key) ?? 0) + 1)
+    }
+  }
+  return messages.map(m => {
+    if (m && m.read !== true) {
+      const key = messageIdentityKey(m)
+      const left = remaining.get(key) ?? 0
+      if (left > 0) {
+        remaining.set(key, left - 1)
+        return { ...m, read: true }
+      }
+    }
+    return m
+  })
+}

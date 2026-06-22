@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  applyConsumedReadMarks,
   boundInboxMessages,
   resolveReadMarkIndex,
 } from '../src/utils/inboxBound.mjs'
@@ -220,4 +221,78 @@ test('resolveReadMarkIndex: no identity match → -1', () => {
     -1,
   )
   assert.equal(resolveReadMarkIndex(ms, 0, undefined), -1)
+})
+
+// --- applyConsumedReadMarks: mark ONLY the consumed snapshot by identity ---
+
+test('applyConsumedReadMarks THE FIX: a mid-poll arrival not in the snapshot stays unread', () => {
+  const m1 = { from: 'lead', timestamp: 't1', text: 'task A', read: false }
+  // m2 was appended by a concurrent writeToMailbox AFTER the poll snapshot
+  const m2 = { from: 'lead', timestamp: 't2', text: 'task B', read: false }
+  const consumed = [m1] // the poll only ever saw m1
+  const out = applyConsumedReadMarks([m1, m2], consumed)
+  assert.equal(out[0].read, true) // consumed → marked
+  assert.equal(out[1].read, false) // mid-poll arrival → left unread (delivered next poll)
+})
+
+test('applyConsumedReadMarks marks every consumed message (steady state == old behaviour)', () => {
+  const a = { from: 'w', timestamp: 't1', text: 'a', read: false }
+  const b = { from: 'w', timestamp: 't2', text: 'b', read: false }
+  const out = applyConsumedReadMarks([a, b], [a, b])
+  assert.deepEqual(out.map(m => m.read), [true, true])
+})
+
+test('applyConsumedReadMarks duplicate identity: marks exactly as many as were consumed, oldest first', () => {
+  // three unread copies of an identical (from,timestamp,text) triple in the file,
+  // but only two were in the consumed snapshot → the 3rd (a mid-poll dup) survives
+  const dup = () => ({ from: 'w', timestamp: 't1', text: 'dup', read: false })
+  const file = [dup(), dup(), dup()]
+  const consumed = [dup(), dup()]
+  const out = applyConsumedReadMarks(file, consumed)
+  assert.deepEqual(out.map(m => m.read), [true, true, false])
+})
+
+test('applyConsumedReadMarks does not re-mark or over-decrement already-read messages', () => {
+  const read = { from: 'w', timestamp: 't1', text: 'x', read: true }
+  const unread = { from: 'w', timestamp: 't1', text: 'x', read: false }
+  // consumed names the identity once; the already-read copy must not consume the
+  // count, so the unread copy still gets marked
+  const out = applyConsumedReadMarks([read, unread], [unread])
+  assert.equal(out[0].read, true)
+  assert.equal(out[1].read, true)
+})
+
+test('applyConsumedReadMarks empty consumed marks nothing; refs preserved for unchanged', () => {
+  const a = { from: 'w', timestamp: 't1', text: 'a', read: false }
+  const out = applyConsumedReadMarks([a], [])
+  assert.equal(out[0].read, false)
+  assert.equal(out[0], a) // unchanged message returned by reference
+})
+
+test('applyConsumedReadMarks: a consumed message absent from the file is a no-op (evicted by bounding)', () => {
+  const a = { from: 'w', timestamp: 't1', text: 'a', read: false }
+  const gone = { from: 'w', timestamp: 't9', text: 'evicted', read: false }
+  const out = applyConsumedReadMarks([a], [a, gone])
+  assert.deepEqual(out.map(m => m.read), [true])
+})
+
+test('applyConsumedReadMarks returns a NEW array; only changed messages are fresh objects', () => {
+  const a = { from: 'w', timestamp: 't1', text: 'a', read: false }
+  const b = { from: 'w', timestamp: 't2', text: 'b', read: false }
+  const input = [a, b]
+  const out = applyConsumedReadMarks(input, [a])
+  assert.notEqual(out, input) // a new array, not the input array
+  assert.notEqual(out[0], a) // marked → fresh object
+  assert.equal(out[1], b) // unchanged → same reference
+  assert.equal(a.read, false) // input not mutated
+})
+
+test('applyConsumedReadMarks: non-array messages returned as-is; identity uses from+timestamp+text', () => {
+  assert.equal(applyConsumedReadMarks(null, []), null)
+  assert.equal(applyConsumedReadMarks(undefined, [{}]), undefined)
+  // same text+timestamp but different sender → NOT the same message
+  const x = { from: 'a', timestamp: 't1', text: 'hi', read: false }
+  const y = { from: 'b', timestamp: 't1', text: 'hi', read: false }
+  const out = applyConsumedReadMarks([x, y], [x])
+  assert.deepEqual(out.map(m => m.read), [true, false])
 })

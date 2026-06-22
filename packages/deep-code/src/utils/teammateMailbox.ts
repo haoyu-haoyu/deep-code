@@ -20,9 +20,12 @@ import {
   MAX_MAILBOX_TOTAL_CHARS,
 } from '../constants/toolLimits.js'
 import { generateRequestId } from './agentId.js'
-import { count } from './array.js'
 import { logForDebugging } from './debug.js'
-import { boundInboxMessages, resolveReadMarkIndex } from './inboxBound.mjs'
+import {
+  applyConsumedReadMarks,
+  boundInboxMessages,
+  resolveReadMarkIndex,
+} from './inboxBound.mjs'
 import { getTeamsDir } from './envUtils.js'
 import { getErrnoCode } from './errors.js'
 import { lazySchema } from './lazySchema.js'
@@ -298,72 +301,71 @@ export async function markMessageAsReadByIndex(
 }
 
 /**
- * Mark all messages in a teammate's inbox as read
- * Uses file locking to prevent race conditions
+ * Mark read ONLY the messages a poll actually consumed — its UNLOCKED `unread`
+ * snapshot — identified by (from,timestamp,text), under the lock.
+ *
+ * This replaces the old "mark every message in the re-read array" behaviour,
+ * which had a read→mark TOCTOU: a message appended by a concurrent
+ * writeToMailbox AFTER the poll's unlocked read but BEFORE this locked mark was
+ * set read:true without ever being delivered → silent permanent loss. Marking
+ * only the consumed snapshot leaves such a mid-poll arrival unread, so the next
+ * poll delivers it — honouring the poller's stated no-loss intent.
+ *
  * @param agentName - The agent name to mark messages as read for
+ * @param consumed - The snapshot the poll read and routed (its `unread` array)
  * @param teamName - Optional team name
  */
-export async function markMessagesAsRead(
+export async function markMessagesAsReadForConsumed(
   agentName: string,
+  consumed: Pick<TeammateMessage, 'from' | 'timestamp' | 'text'>[],
   teamName?: string,
 ): Promise<void> {
   const inboxPath = getInboxPath(agentName, teamName)
   logForDebugging(
-    `[TeammateMailbox] markMessagesAsRead called: agentName=${agentName}, teamName=${teamName}, path=${inboxPath}`,
+    `[TeammateMailbox] markMessagesAsReadForConsumed called: agentName=${agentName}, teamName=${teamName}, consumed=${consumed.length}, path=${inboxPath}`,
   )
 
   const lockFilePath = `${inboxPath}.lock`
 
   let release: (() => Promise<void>) | undefined
   try {
-    logForDebugging(`[TeammateMailbox] markMessagesAsRead: acquiring lock...`)
     release = await lockfile.lock(inboxPath, {
       lockfilePath: lockFilePath,
       ...LOCK_OPTIONS,
     })
-    logForDebugging(`[TeammateMailbox] markMessagesAsRead: lock acquired`)
 
     // Re-read messages after acquiring lock to get the latest state
     const messages = await readMailbox(agentName, teamName)
-    logForDebugging(
-      `[TeammateMailbox] markMessagesAsRead: read ${messages.length} messages after lock`,
-    )
-
     if (messages.length === 0) {
-      logForDebugging(
-        `[TeammateMailbox] markMessagesAsRead: no messages to mark`,
-      )
       return
     }
 
-    const unreadCount = count(messages, m => !m.read)
-    logForDebugging(
-      `[TeammateMailbox] markMessagesAsRead: ${unreadCount} unread of ${messages.length} total`,
-    )
+    // Mark exactly the consumed snapshot (by identity); a message that arrived
+    // after the unlocked read is not in `consumed`, so it stays unread.
+    const updated = applyConsumedReadMarks(messages, consumed)
 
-    // messages comes from jsonParse — fresh, unshared objects safe to mutate
-    for (const m of messages) m.read = true
-
-    await writeFile(inboxPath, jsonStringify(messages, null, 2), 'utf-8')
+    await writeFile(inboxPath, jsonStringify(updated, null, 2), 'utf-8')
     logForDebugging(
-      `[TeammateMailbox] markMessagesAsRead: WROTE ${unreadCount} message(s) as read to ${inboxPath}`,
+      `[TeammateMailbox] markMessagesAsReadForConsumed: marked up to ${consumed.length} message(s) as read in ${inboxPath}`,
     )
   } catch (error) {
     const code = getErrnoCode(error)
     if (code === 'ENOENT') {
       logForDebugging(
-        `[TeammateMailbox] markMessagesAsRead: file does not exist at ${inboxPath}`,
+        `[TeammateMailbox] markMessagesAsReadForConsumed: file does not exist at ${inboxPath}`,
       )
       return
     }
     logForDebugging(
-      `[TeammateMailbox] markMessagesAsRead FAILED for ${agentName}: ${error}`,
+      `[TeammateMailbox] markMessagesAsReadForConsumed FAILED for ${agentName}: ${error}`,
     )
     logError(error)
   } finally {
     if (release) {
       await release()
-      logForDebugging(`[TeammateMailbox] markMessagesAsRead: lock released`)
+      logForDebugging(
+        `[TeammateMailbox] markMessagesAsReadForConsumed: lock released`,
+      )
     }
   }
 }
@@ -1123,7 +1125,7 @@ export function isStructuredProtocolMessage(messageText: string): boolean {
 
 /**
  * Marks only messages matching a predicate as read, leaving others unread.
- * Uses the same file-locking mechanism as markMessagesAsRead.
+ * Uses the same file-locking mechanism as the other mailbox mutators.
  */
 export async function markMessagesAsReadByPredicate(
   agentName: string,
