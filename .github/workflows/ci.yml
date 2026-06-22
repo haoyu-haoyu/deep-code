@@ -219,6 +219,7 @@ jobs:
             test/ws-connect-listeners.test.mjs \
             test/disposable-abort-listener.test.mjs \
             test/get-or-create-bounded.test.mjs \
+            test/apply-tool-input-delta.test.mjs \
             test/mcp-mention-resource-reconnect.test.mjs \
             test/elicitation-queue-remove.test.mjs \
             test/single-flight.test.mjs \
