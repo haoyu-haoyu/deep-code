@@ -5,6 +5,8 @@ import { markBackslashReturnUsed } from '../commands/terminalSetup/terminalSetup
 import { addToHistory } from '../history.js'
 import { getMessage } from '../i18n/index.js'
 import type { Key } from '../ink.js'
+import { stringWidth } from '../ink/stringWidth.js'
+import { expandTabs } from '../ink/tabstops.js'
 import type {
   InlineGhostText,
   TextInputState,
@@ -23,6 +25,7 @@ import { env } from '../utils/env.js'
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js'
 import type { ImageDimensions } from '../utils/imageResizer.js'
 import { isModifierPressed, prewarmModifiers } from '../utils/modifiers.js'
+import { tabAwareCursorColumn } from './tabAwareCursorColumn.mjs'
 import { useDoublePress } from './useDoublePress.js'
 
 type MaybeCursor = void | Cursor
@@ -512,6 +515,21 @@ export function useTextInput({
       : undefined
 
   const cursorPos = cursor.getPosition()
+  // The native declared cursor (IME/screen-reader position) needs a tab-stop-aware
+  // column, since stringWidth counts a pasted literal tab as 0 cells; the inverted
+  // render caret is already tab-correct via the output layer. Only adjusts a
+  // logical-line-start row containing a tab (exact prefix), else uses cursorPos.column.
+  const currentWrappedLine = cursor.measuredText.getWrappedLines()[cursorPos.line]
+  const cursorColumn = currentWrappedLine
+    ? tabAwareCursorColumn({
+        lineText: currentWrappedLine.text,
+        prefixEnd: offset - currentWrappedLine.startOffset,
+        isPrecededByNewline: currentWrappedLine.isPrecededByNewline,
+        fallbackColumn: cursorPos.column,
+        expandTabs,
+        measureWidth: stringWidth,
+      })
+    : cursorPos.column
 
   return {
     onInput,
@@ -525,7 +543,7 @@ export function useTextInput({
     offset,
     setOffset,
     cursorLine: cursorPos.line - cursor.getViewportStartLine(maxVisibleLines),
-    cursorColumn: cursorPos.column,
+    cursorColumn,
     viewportCharOffset: cursor.getViewportCharOffset(maxVisibleLines),
     viewportCharEnd: cursor.getViewportCharEnd(maxVisibleLines),
   }
