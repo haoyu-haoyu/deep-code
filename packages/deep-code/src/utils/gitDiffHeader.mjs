@@ -17,11 +17,35 @@
 //
 // (With `core.quotepath=false` git emits non-ASCII paths raw; it still appends a
 // trailing TAB to a `+++`/`---` path that contains spaces, so strip from the
-// first TAB.)
+// first TAB. A name containing a `"`/`\`/tab/newline is still C-quoted even under
+// quotepath=false — `+++ "b/has\"q.txt"` — so the quoted form is decoded via
+// unquoteGitPath, which the numstat key parser shares so the two paths join.)
+
+import { unquoteGitPath } from './unquoteGitPath.mjs'
 
 function stripTrailingTab(path) {
   const i = path.indexOf('\t')
   return i === -1 ? path : path.slice(0, i)
+}
+
+/**
+ * Parse the path out of a `+++ `/`--- ` header's payload, handling both the
+ * unquoted (`b/path`) and the git C-quoted (`"b/has\"q.txt"`) forms.
+ * @param {string} rest        the text after `+++ ` / `--- `
+ * @param {string} sidePrefix  `b/` or `a/`
+ * @returns {string | null}
+ */
+function sidePath(rest, sidePrefix) {
+  if (rest.startsWith('"')) {
+    // C-quoted: the quotes wrap the whole `b/<path>`; decode then drop `b/`.
+    const decoded = unquoteGitPath(rest)
+    return decoded.startsWith(sidePrefix)
+      ? decoded.slice(sidePrefix.length)
+      : null
+  }
+  return rest.startsWith(sidePrefix)
+    ? stripTrailingTab(rest.slice(sidePrefix.length))
+    : null
 }
 
 /**
@@ -34,10 +58,12 @@ export function extractDiffFilePath(lines) {
   let minusPath
   for (const line of lines) {
     if (line.startsWith('@@')) break // reached the first hunk — stop scanning
-    if (plusPath === undefined && line.startsWith('+++ b/')) {
-      plusPath = stripTrailingTab(line.slice('+++ b/'.length))
-    } else if (minusPath === undefined && line.startsWith('--- a/')) {
-      minusPath = stripTrailingTab(line.slice('--- a/'.length))
+    if (plusPath === undefined && line.startsWith('+++ ')) {
+      const p = sidePath(line.slice('+++ '.length), 'b/')
+      if (p !== null) plusPath = p
+    } else if (minusPath === undefined && line.startsWith('--- ')) {
+      const m = sidePath(line.slice('--- '.length), 'a/')
+      if (m !== null) minusPath = m
     }
   }
   if (plusPath !== undefined) return plusPath
