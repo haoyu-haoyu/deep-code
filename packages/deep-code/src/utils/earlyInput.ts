@@ -11,6 +11,7 @@
  * 3. stopCapturingEarlyInput() is called automatically when input is consumed
  */
 
+import { processEarlyInputChunk } from './earlyInputChunk.mjs'
 import { lastGrapheme } from './intl.js'
 
 // Buffer for early input characters
@@ -67,71 +68,28 @@ export function startCapturingEarlyInput(): void {
 }
 
 /**
- * Process a chunk of input data
+ * Process a chunk of input data.
+ *
+ * The byte-folding (including the escape-sequence skip — arrow/function keys,
+ * focus events, bracketed-paste markers) lives in a pure, node-tested leaf; this
+ * wrapper applies the result and acts on any control signal. Ctrl+C exits here
+ * (not via gracefulShutdown) because at this early startup stage the shutdown
+ * machinery isn't initialized yet.
  */
 function processChunk(str: string): void {
-  let i = 0
-  while (i < str.length) {
-    const char = str[i]!
-    const code = char.charCodeAt(0)
+  const { buffer, control } = processEarlyInputChunk(
+    earlyInputBuffer,
+    str,
+    lastGrapheme,
+  )
+  earlyInputBuffer = buffer
 
-    // Ctrl+C (code 3) - stop capturing and exit immediately.
-    // We use process.exit here instead of gracefulShutdown because at this
-    // early stage of startup, the shutdown machinery isn't initialized yet.
-    if (code === 3) {
-      stopCapturingEarlyInput()
-      // eslint-disable-next-line custom-rules/no-process-exit
-      process.exit(130) // Standard exit code for Ctrl+C
-      return
-    }
-
-    // Ctrl+D (code 4) - EOF, stop capturing
-    if (code === 4) {
-      stopCapturingEarlyInput()
-      return
-    }
-
-    // Backspace (code 127 or 8) - remove last grapheme cluster
-    if (code === 127 || code === 8) {
-      if (earlyInputBuffer.length > 0) {
-        const last = lastGrapheme(earlyInputBuffer)
-        earlyInputBuffer = earlyInputBuffer.slice(0, -(last.length || 1))
-      }
-      i++
-      continue
-    }
-
-    // Skip escape sequences (arrow keys, function keys, focus events, etc.)
-    // All escape sequences start with ESC (0x1B) and end with a byte in 0x40-0x7E
-    if (code === 27) {
-      i++ // Skip the ESC character
-      // Skip until the terminating byte (@ to ~) or end of string
-      while (
-        i < str.length &&
-        !(str.charCodeAt(i) >= 64 && str.charCodeAt(i) <= 126)
-      ) {
-        i++
-      }
-      if (i < str.length) i++ // Skip the terminating byte
-      continue
-    }
-
-    // Skip other control characters (except tab and newline)
-    if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
-      i++
-      continue
-    }
-
-    // Convert carriage return to newline
-    if (code === 13) {
-      earlyInputBuffer += '\n'
-      i++
-      continue
-    }
-
-    // Add printable characters and allowed control chars to buffer
-    earlyInputBuffer += char
-    i++
+  if (control === 'sigint') {
+    stopCapturingEarlyInput()
+    // eslint-disable-next-line custom-rules/no-process-exit
+    process.exit(130) // Standard exit code for Ctrl+C
+  } else if (control === 'eof') {
+    stopCapturingEarlyInput()
   }
 }
 
