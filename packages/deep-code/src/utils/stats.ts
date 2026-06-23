@@ -6,6 +6,7 @@ import type { Entry, TranscriptMessage } from '../types/logs.js'
 import { logForDebugging } from './debug.js'
 import { errorMessage, isENOENT } from './errors.js'
 import { getFsImplementation } from './fsOperations.js'
+import { getNextDay } from './getNextDay.mjs'
 import { readJSONLFile } from './json.js'
 import { SYNTHETIC_MODEL } from './messages.js'
 import { getProjectsDir, isTranscriptMessage } from './sessionStorage.js'
@@ -845,15 +846,6 @@ function processedStatsToClaudeCodeStats(
   }
 
   return result
-}
-
-/**
- * Get the next day after a given date string (YYYY-MM-DD format).
- */
-function getNextDay(dateStr: string): string {
-  const date = new Date(dateStr)
-  date.setDate(date.getDate() + 1)
-  return toDateString(date)
 }
 
 function calculateStreaks(dailyActivity: DailyActivity[]): StreakInfo {
