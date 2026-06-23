@@ -13,7 +13,11 @@ import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { parseCellId, readNotebook } from '../../utils/notebook.js'
+import {
+  parseCellId,
+  processNotebookCells,
+  readNotebook,
+} from '../../utils/notebook.js'
 import { checkWritePermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { stripLeadingBom } from '../../utils/bom.mjs'
@@ -454,8 +458,17 @@ export const NotebookEditTool = buildTool({
       // FileWriteTool). offset:undefined breaks FileReadTool's dedup match —
       // without this, Read→NotebookEdit→Read in the same millisecond would
       // return the file_unchanged stub against stale in-context content.
+      //
+      // content MUST be the processed cells JSON (the shape FileReadTool stores
+      // and the staleness fallback above re-derives via jsonStringify(readNotebook)),
+      // NOT `updatedContent` — that is the raw notebook FILE JSON just written to
+      // disk, a different shape that never compares equal. Storing the raw form
+      // here made a later edit→touch→edit spuriously fail the mtime-bump fallback
+      // with "modified since read". Derive it from the in-memory post-write
+      // notebook via the same producer readNotebook uses (no re-read, and it
+      // can't throw after a successful write).
       readFileState.set(fullPath, {
-        content: updatedContent,
+        content: jsonStringify(processNotebookCells(notebook)),
         timestamp: getFileModificationTime(fullPath),
         offset: undefined,
         limit: undefined,
