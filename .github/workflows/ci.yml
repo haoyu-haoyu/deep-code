@@ -53,6 +53,7 @@ jobs:
             test/relative-time-direction.test.mjs \
             test/relative-time-core.test.mjs \
             test/grep-split-glob-patterns.test.mjs \
+            test/shell-token-span.test.mjs \
             test/format-date-key-label.test.mjs \
             test/compute-context-percent.test.mjs \
             test/build-file-completion.test.mjs \
