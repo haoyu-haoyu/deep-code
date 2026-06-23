@@ -20,7 +20,9 @@ import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js';
 import type { InlineGhostText, PromptInputMode } from '../types/textInputTypes.js';
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { generateProgressiveArgumentHint, parseArguments } from '../utils/argumentSubstitution.js';
-import { getShellCompletions, type ShellCompletionType } from '../utils/bash/shellCompletion.js';
+import { getShellCompletions, parseInputContext, type ShellCompletionType } from '../utils/bash/shellCompletion.js';
+import { quote } from '../utils/bash/shellQuote.js';
+import { escapeFileCompletion } from '../utils/bash/shellTokenSpan.mjs';
 import { formatLogMetadata } from '../utils/format.js';
 import { getSessionIdFromLog, searchSessionsByCustomTitle } from '../utils/sessionStorage.js';
 import { applyCommandSuggestion, findMidInputSlashCommand, generateCommandSuggestions, getBestCommandMatch, isCommandInput } from '../utils/suggestions/commandSuggestions.js';
@@ -177,9 +179,10 @@ export function formatReplacementValue(options: {
  * Apply a shell completion suggestion by replacing the current word
  */
 export function applyShellSuggestion(suggestion: SuggestionItem, input: string, cursorOffset: number, onInputChange: (value: string) => void, setCursorOffset: (offset: number) => void, completionType: ShellCompletionType | undefined): void {
-  const beforeCursor = input.slice(0, cursorOffset);
-  const lastSpaceIndex = beforeCursor.lastIndexOf(' ');
-  const wordStart = lastSpaceIndex + 1;
+  // Replace the WHOLE current token (shell-quote-aware), not just the text after
+  // the last literal space — an escaped/quoted space lives INSIDE the token, so
+  // lastIndexOf(' ') would cut through it and duplicate the earlier fragment.
+  const { replaceStart } = parseInputContext(input, cursorOffset);
 
   // Prepare the replacement text based on completion type
   let replacementText: string;
@@ -188,11 +191,13 @@ export function applyShellSuggestion(suggestion: SuggestionItem, input: string, 
   } else if (completionType === 'command') {
     replacementText = suggestion.displayText + ' ';
   } else {
-    replacementText = suggestion.displayText;
+    // File/dir: shell-escape so a path with spaces (or other metacharacters)
+    // stays a single argument. Clean names pass through unchanged.
+    replacementText = escapeFileCompletion(suggestion.displayText, quote);
   }
-  const newInput = input.slice(0, wordStart) + replacementText + input.slice(cursorOffset);
+  const newInput = input.slice(0, replaceStart) + replacementText + input.slice(cursorOffset);
   onInputChange(newInput);
-  setCursorOffset(wordStart + replacementText.length);
+  setCursorOffset(replaceStart + replacementText.length);
 }
 const DM_MEMBER_RE = /(^|\s)@[\w-]*$/;
 function applyTriggerSuggestion(suggestion: SuggestionItem, input: string, cursorOffset: number, triggerRe: RegExp, onInputChange: (value: string) => void, setCursorOffset: (offset: number) => void): void {

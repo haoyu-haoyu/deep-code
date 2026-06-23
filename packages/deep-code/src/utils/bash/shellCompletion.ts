@@ -7,6 +7,7 @@ import {
 import { logForDebugging } from '../debug.js'
 import { getShellType } from '../localInstaller.js'
 import * as Shell from '../Shell.js'
+import { quotedTokenStart } from './shellTokenSpan.mjs'
 
 // Constants
 const MAX_SHELL_COMPLETIONS = 15
@@ -18,6 +19,24 @@ export type ShellCompletionType = 'command' | 'variable' | 'file'
 type InputContext = {
   prefix: string
   completionType: ShellCompletionType
+  // Offset in `input` where the token being completed starts — the span the
+  // applied suggestion must replace. Differs from `cursorOffset - prefix.length`
+  // only when the token is quoted/escaped (the raw text is longer than `prefix`).
+  replaceStart: number
+}
+
+/**
+ * Where the current token starts in `beforeCursor`. For an unquoted token the
+ * parsed value is a literal suffix of the input, so the start is just
+ * length - prefix.length; when quoting/escaping is present the raw token is longer,
+ * so fall back to shell-quote to locate the boundary.
+ */
+function shellReplaceStart(beforeCursor: string, prefix: string): number {
+  const literalStart = beforeCursor.length - prefix.length
+  if (literalStart >= 0 && beforeCursor.slice(literalStart) === prefix) {
+    return literalStart
+  }
+  return quotedTokenStart(beforeCursor, prefix, tryParseShellCommand)
 }
 
 /**
@@ -77,13 +96,20 @@ function isNewCommandContext(
 /**
  * Parse input to extract completion context
  */
-function parseInputContext(input: string, cursorOffset: number): InputContext {
+export function parseInputContext(
+  input: string,
+  cursorOffset: number,
+): InputContext {
   const beforeCursor = input.slice(0, cursorOffset)
 
   // Check if it's a variable prefix, before expanding with shell-quote
   const varMatch = beforeCursor.match(/\$[a-zA-Z_][a-zA-Z0-9_]*$/)
   if (varMatch) {
-    return { prefix: varMatch[0], completionType: 'variable' }
+    return {
+      prefix: varMatch[0],
+      completionType: 'variable',
+      replaceStart: beforeCursor.length - varMatch[0].length,
+    }
   }
 
   // Parse with shell-quote
@@ -96,7 +122,8 @@ function parseInputContext(input: string, cursorOffset: number): InputContext {
     const completionType = isFirstToken
       ? 'command'
       : getCompletionTypeFromPrefix(prefix)
-    return { prefix, completionType }
+    // The split token is a literal suffix of beforeCursor.
+    return { prefix, completionType, replaceStart: beforeCursor.length - prefix.length }
   }
 
   // Extract current token
@@ -108,21 +135,23 @@ function parseInputContext(input: string, cursorOffset: number): InputContext {
       lastParsedToken && isCommandOperator(lastParsedToken)
         ? 'command'
         : 'command' // Default to command at start
-    return { prefix: '', completionType }
+    return { prefix: '', completionType, replaceStart: beforeCursor.length }
   }
 
   // If there's a trailing space, the user is starting a new argument
   if (beforeCursor.endsWith(' ')) {
     // After first token (command) with space = file argument expected
-    return { prefix: '', completionType: 'file' }
+    return { prefix: '', completionType: 'file', replaceStart: beforeCursor.length }
   }
+
+  const replaceStart = shellReplaceStart(beforeCursor, lastToken.token)
 
   // Determine completion type from context
   const baseType = getCompletionTypeFromPrefix(lastToken.token)
 
   // If it's clearly a file or variable based on prefix, use that type
   if (baseType === 'variable' || baseType === 'file') {
-    return { prefix: lastToken.token, completionType: baseType }
+    return { prefix: lastToken.token, completionType: baseType, replaceStart }
   }
 
   // For command-like tokens, check context: are we starting a new command?
@@ -133,7 +162,7 @@ function parseInputContext(input: string, cursorOffset: number): InputContext {
     ? 'command'
     : 'file' // Not after operator = file argument
 
-  return { prefix: lastToken.token, completionType }
+  return { prefix: lastToken.token, completionType, replaceStart }
 }
 
 /**
