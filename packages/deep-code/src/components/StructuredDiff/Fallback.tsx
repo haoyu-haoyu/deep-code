@@ -6,6 +6,7 @@ import type { ThemeName } from 'src/utils/theme.js';
 import { stringWidth } from '../../ink/stringWidth.js';
 import { Box, NoSelect, Text, useTheme, wrapText } from '../../ink.js';
 import { wordDiffTooLarge } from '../../native-ts/color-diff/wordDiffGuard.mjs';
+import { stripNoNewlineMarkerLines } from '../../utils/diffNoNewlineMarker.mjs';
 import { numberDiffLines } from './numberDiffLines.mjs';
 
 /*
@@ -361,8 +362,10 @@ function formatDiff(lines: string[], startingLineNumber: number, width: number, 
   // Ensure width is at least 1 to prevent rendering issues with very narrow terminals
   const safeWidth = Math.max(1, Math.floor(width));
 
-  // Step 1: Transform lines to line objects with type information
-  const lineObjects = transformLinesToObjects(lines);
+  // Step 1: Transform lines to line objects with type information. Drop the
+  // "\ No newline at end of file" marker so it is not rendered as a phantom
+  // context line nor counted toward line numbers.
+  const lineObjects = transformLinesToObjects(stripNoNewlineMarkerLines(lines));
 
   // Step 2: Group adjacent add/remove lines for word-level diffing
   const processedLines = processAdjacentLines(lineObjects);

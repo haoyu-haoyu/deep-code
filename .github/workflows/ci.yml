@@ -56,6 +56,7 @@ jobs:
             test/compute-context-percent.test.mjs \
             test/build-file-completion.test.mjs \
             test/file-size-format.test.mjs \
+            test/diff-no-newline-marker.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \

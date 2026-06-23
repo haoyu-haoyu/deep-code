@@ -44,6 +44,7 @@ function hljs(): HLJSApi {
 }
 
 import { stringWidth } from '../../ink/stringWidth.js'
+import { stripNoNewlineMarkerLines } from '../../utils/diffNoNewlineMarker.mjs'
 import { logError } from '../../utils/log.js'
 
 // ---------------------------------------------------------------------------
@@ -879,9 +880,11 @@ export class ColorDiff {
     let newLine = this.hunk.newStart
     const effectiveWidth = Math.max(1, width - maxDigits - 2 - 1)
 
-    // First pass: assign markers + line numbers
+    // First pass: assign markers + line numbers. Drop the "\ No newline at end
+    // of file" marker first — it is not a real line (and not counted in the hunk
+    // totals), so numbering it as context would mis-number everything after it.
     type Entry = { lineNumber: number; marker: Marker; code: string }
-    const entries: Entry[] = this.hunk.lines.map(rawLine => {
+    const entries: Entry[] = stripNoNewlineMarkerLines(this.hunk.lines).map(rawLine => {
       const marker = parseMarker(rawLine.slice(0, 1))
       const code = rawLine.slice(1)
       let lineNumber: number
