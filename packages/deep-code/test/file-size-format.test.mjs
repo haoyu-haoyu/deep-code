@@ -9,6 +9,13 @@ const GiB = 1024 * MiB
 const TiB = 1024 * GiB
 const PiB = 1024 * TiB
 
+test('THE FIX: a count of exactly 1 byte is singular; 0 and 2+ stay plural', () => {
+  assert.equal(formatFileSize(1), '1 byte') // was "1 bytes"
+  assert.equal(formatFileSize(0), '0 bytes')
+  assert.equal(formatFileSize(2), '2 bytes')
+  assert.equal(formatFileSize(1023), '1023 bytes')
+})
+
 test('existing KB/MB/GB behavior is unchanged', () => {
   assert.equal(formatFileSize(512), '512 bytes')
   assert.equal(formatFileSize(1536), '1.5KB')

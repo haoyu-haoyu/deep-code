@@ -19,7 +19,8 @@
  */
 export function formatFileSize(sizeInBytes) {
   if (sizeInBytes / 1024 < 1) {
-    return `${sizeInBytes} bytes`
+    // Singular only for exactly 1 byte; 0 and 2+ are plural ("0 bytes").
+    return `${sizeInBytes} ${sizeInBytes === 1 ? 'byte' : 'bytes'}`
   }
   const units = ['KB', 'MB', 'GB', 'TB', 'PB']
   let value = sizeInBytes / 1024
