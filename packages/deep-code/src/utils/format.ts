@@ -5,6 +5,7 @@ import { getRelativeTimeFormat, getTimeZone } from './intl.js'
 // a just-under-threshold value never renders a nonsensical "1024KB").
 import { formatFileSize } from './fileSize.mjs'
 import { formatRelativeTimeCore } from './relativeTimeCore.mjs'
+import { plural } from './stringUtils.js'
 
 export { formatFileSize }
 
@@ -173,7 +174,7 @@ export function formatLogMetadata(log: {
   const sizeOrCount =
     log.fileSize !== undefined
       ? formatFileSize(log.fileSize)
-      : `${log.messageCount} messages`
+      : `${log.messageCount} ${plural(log.messageCount, 'message')}`
   const parts = [
     formatRelativeTimeAgo(log.modified, { style: 'short' }),
     ...(log.gitBranch ? [log.gitBranch] : []),
