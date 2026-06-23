@@ -13,8 +13,10 @@ import {
   convertLeadingTabsToSpaces,
   readFileSyncCached,
 } from '../../utils/file.js'
-import { deleteOccurrences } from './deleteOccurrences.mjs'
+import { applyEditToFile } from './applyEditToFile.mjs'
 import type { EditInput, FileEdit } from './types.js'
+
+export { applyEditToFile }
 
 // The model can't output curly quotes, so we define them as constants here for it to use
 // in the code. We do this because we normalize curly quotes to straight quotes
@@ -98,34 +100,6 @@ export function findActualString(
 // code/JSON/shell the model newly wrote — see the leaf for the full rationale.
 // Extracted to a node-testable leaf.
 export { preserveQuoteStyle } from './preserveQuoteStyle.mjs'
-
-/**
- * Transform edits to ensure replace_all always has a boolean value
- * @param edits Array of edits with optional replace_all
- * @returns Array of edits with replace_all guaranteed to be boolean
- */
-export function applyEditToFile(
-  originalContent: string,
-  oldString: string,
-  newString: string,
-  replaceAll: boolean = false,
-): string {
-  // Empty new_string is a deletion. A dedicated scanner removes every (or, for a
-  // single edit, the first) occurrence and consumes each occurrence's own trailing
-  // newline. The previous code prepended one global `oldString + '\n'` search,
-  // which matched ONLY occurrences immediately followed by a newline and silently
-  // skipped the rest — so a replace_all delete over mixed trailing context left
-  // occurrences behind while still reporting "All occurrences were replaced".
-  if (newString === '') {
-    return deleteOccurrences(originalContent, oldString, replaceAll)
-  }
-
-  // Non-empty replacement: function replacers so `$`-sequences in new_string are
-  // inserted literally (no $&/$1 special-pattern interpretation).
-  return replaceAll
-    ? originalContent.replaceAll(oldString, () => newString)
-    : originalContent.replace(oldString, () => newString)
-}
 
 /**
  * Applies an edit to a file and returns the patch and updated file.
