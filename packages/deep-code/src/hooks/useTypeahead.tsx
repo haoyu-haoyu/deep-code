@@ -1066,10 +1066,12 @@ export function useTypeahead({
             isQuoted: completionToken.isQuoted,
             isComplete: false // partial completion
           });
-          applyFileSuggestion(replacementValue, input, completionToken.token, completionToken.startPos, onInputChange, setCursorOffset);
-          // Don't clear suggestions so user can continue typing or select a specific option
-          // Instead, update for the new prefix
-          void updateSuggestions(input.replace(completionToken.token, replacementValue), cursorOffset);
+          const { newInput, cursorPos } = applyFileSuggestion(replacementValue, input, completionToken.token, completionToken.startPos, onInputChange, setCursorOffset);
+          // Don't clear suggestions so user can continue typing or select a specific option.
+          // Refresh against the exact committed text + cursor (not a first-occurrence
+          // text replace with a stale offset), mirroring the directory branch above,
+          // so the dropdown re-searches the just-extended prefix.
+          void updateSuggestions(newInput, cursorPos);
         } else if (index < suggestions.length) {
           // Otherwise, apply the selected suggestion
           const suggestion = suggestions[index];
