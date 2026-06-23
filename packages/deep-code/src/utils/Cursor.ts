@@ -5,6 +5,7 @@ import {
   getGraphemeSegmenter,
   getWordSegmenter,
 } from './intl.js'
+import { preservedColumnOffset } from './preservedColumnOffset.mjs'
 import { reconstructWrappedLineOffsets } from './reconstructWrappedLineOffsets.mjs'
 
 /**
@@ -479,16 +480,26 @@ export class Cursor {
     }
   }
 
-  // Helper to create cursor with preserved column, clamped to line length
-  // Snaps to grapheme boundary to avoid landing mid-grapheme
-  private createCursorWithColumn(
-    lineStart: number,
-    lineEnd: number,
-    targetColumn: number,
+  // Move to the same DISPLAY column on a target logical line (vim j/k curswant).
+  // currentStart/End bound the cursor's current logical line; targetStart/End the
+  // destination. Measures the cursor's display column on the current line and
+  // finds the code-unit offset at that display column on the target line (which
+  // also clamps to the target line's end), then snaps to a grapheme boundary.
+  // Code-unit-only arithmetic drifts off the screen column over wide chars/tabs.
+  private cursorPreservingColumn(
+    currentStart: number,
+    currentEnd: number,
+    targetStart: number,
+    targetEnd: number,
   ): Cursor {
-    const lineLength = lineEnd - lineStart
-    const clampedColumn = Math.min(targetColumn, lineLength)
-    const rawOffset = lineStart + clampedColumn
+    const rawOffset = preservedColumnOffset(
+      this.text.slice(currentStart, currentEnd),
+      this.offset - currentStart,
+      this.text.slice(targetStart, targetEnd),
+      targetStart,
+      (text, index) => this.measuredText.stringIndexToDisplayWidth(text, index),
+      (text, width) => this.measuredText.displayWidthToStringIndex(text, width),
+    )
     const offset = this.measuredText.snapToGraphemeBoundary(rawOffset)
     return new Cursor(this.measuredText, offset, 0)
   }
@@ -510,24 +521,22 @@ export class Cursor {
   }
 
   upLogicalLine(): Cursor {
-    const { start: currentStart } = this.getLogicalLineBounds()
+    const { start: currentStart, end: currentEnd } = this.getLogicalLineBounds()
 
     // At first line - stay at beginning
     if (currentStart === 0) {
       return new Cursor(this.measuredText, 0, 0)
     }
 
-    // Calculate target column position
-    const currentColumn = this.offset - currentStart
-
     // Find previous line bounds
     const prevLineEnd = currentStart - 1
     const prevLineStart = this.findLogicalLineStart(prevLineEnd)
 
-    return this.createCursorWithColumn(
+    return this.cursorPreservingColumn(
+      currentStart,
+      currentEnd,
       prevLineStart,
       prevLineEnd,
-      currentColumn,
     )
   }
 
@@ -539,17 +548,15 @@ export class Cursor {
       return new Cursor(this.measuredText, this.text.length, 0)
     }
 
-    // Calculate target column position
-    const currentColumn = this.offset - currentStart
-
     // Find next line bounds
     const nextLineStart = currentEnd + 1
     const nextLineEnd = this.findLogicalLineEnd(nextLineStart)
 
-    return this.createCursorWithColumn(
+    return this.cursorPreservingColumn(
+      currentStart,
+      currentEnd,
       nextLineStart,
       nextLineEnd,
-      currentColumn,
     )
   }
 
