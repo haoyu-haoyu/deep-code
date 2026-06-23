@@ -2,16 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { reconcileEditsToContents } from '../src/hooks/reconcilePatchEdits.mjs'
-import { deleteOccurrences } from '../src/tools/FileEditTool/deleteOccurrences.mjs'
-
-// Faithful port of applyEditToFile (utils.ts): empty new_string → deleteOccurrences
-// (the real leaf), else a function-replacer replace/replaceAll.
-function applyEditToFile(content, oldS, newS, replaceAll = false) {
-  if (newS === '') return deleteOccurrences(content, oldS, replaceAll)
-  return replaceAll
-    ? content.replaceAll(oldS, () => newS)
-    : content.replace(oldS, () => newS)
-}
+// The real applyEditToFile leaf (was a local port here, a drift hazard).
+import { applyEditToFile } from '../src/tools/FileEditTool/applyEditToFile.mjs'
 
 // Faithful port of the (original, marker-unaware) getEditsForPatch.
 function getEditsForPatch(hunks) {

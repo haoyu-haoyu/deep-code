@@ -68,6 +68,7 @@ import {
   userFacingName,
 } from './UI.js'
 import {
+  applyEditToFile,
   areFileEditsInputsEquivalent,
   findActualString,
   getPatchForEdit,
@@ -379,12 +380,20 @@ export const FileEditTool = buildTool({
     const settingsValidationResult = validateInputForSettingsFileEdit(
       fullFilePath,
       file,
-      () => {
-        // Simulate the edit to get the final content using the exact same logic as the tool
-        return replace_all
-          ? file.replaceAll(actualOldString, new_string)
-          : file.replace(actualOldString, new_string)
-      },
+      () =>
+        // Simulate the edit with the SAME logic the write path uses (call() ->
+        // getPatchForEdit -> applyEditToFile), including preserveQuoteStyle, so
+        // the validator inspects byte-for-byte what will be written. A bare
+        // file.replace(actualOldString, new_string) diverged: it skipped
+        // preserveQuoteStyle, left deletion (empty new_string) trailing newlines
+        // that deleteOccurrences consumes, and interpreted `$`-sequences in
+        // new_string as replacement patterns.
+        applyEditToFile(
+          file,
+          actualOldString,
+          preserveQuoteStyle(old_string, actualOldString, new_string),
+          replace_all,
+        ),
     )
 
     if (settingsValidationResult !== null) {

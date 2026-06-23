@@ -63,6 +63,7 @@ jobs:
             test/diff-no-newline-marker.test.mjs \
             test/unquote-git-path.test.mjs \
             test/argument-substitution-core.test.mjs \
+            test/apply-edit-to-file.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
