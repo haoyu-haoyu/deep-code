@@ -5,6 +5,7 @@ import {
   getGraphemeSegmenter,
   getWordSegmenter,
 } from './intl.js'
+import { reconstructWrappedLineOffsets } from './reconstructWrappedLineOffsets.mjs'
 
 /**
  * Kill ring for storing killed (cut) text that can be yanked (pasted) with Ctrl+Y.
@@ -1296,76 +1297,20 @@ export class MeasuredText {
       trim: false,
     })
 
-    const wrappedLines: WrappedLine[] = []
-    let searchOffset = 0
-    let lastNewLinePos = -1
-
-    const lines = wrappedText.split('\n')
-    for (let i = 0; i < lines.length; i++) {
-      const text = lines[i]!
-      const isPrecededByNewline = (startOffset: number) =>
-        i === 0 || (startOffset > 0 && this.text[startOffset - 1] === '\n')
-
-      if (text.length === 0) {
-        // For blank lines, find the next newline character after the last one
-        lastNewLinePos = this.text.indexOf('\n', lastNewLinePos + 1)
-
-        if (lastNewLinePos !== -1) {
-          const startOffset = lastNewLinePos
-          const endsWithNewline = true
-
-          wrappedLines.push(
-            new WrappedLine(
-              text,
-              startOffset,
-              isPrecededByNewline(startOffset),
-              endsWithNewline,
-            ),
-          )
-        } else {
-          // If we can't find another newline, this must be the end of text
-          const startOffset = this.text.length
-          wrappedLines.push(
-            new WrappedLine(
-              text,
-              startOffset,
-              isPrecededByNewline(startOffset),
-              false,
-            ),
-          )
-        }
-      } else {
-        // For non-blank lines, find the text in this.text
-        const startOffset = this.text.indexOf(text, searchOffset)
-
-        if (startOffset === -1) {
-          throw new Error('Failed to find wrapped line in text')
-        }
-
-        searchOffset = startOffset + text.length
-
-        // Check if this line ends with a newline in this.text
-        const potentialNewlinePos = startOffset + text.length
-        const endsWithNewline =
-          potentialNewlinePos < this.text.length &&
-          this.text[potentialNewlinePos] === '\n'
-
-        if (endsWithNewline) {
-          lastNewLinePos = potentialNewlinePos
-        }
-
-        wrappedLines.push(
-          new WrappedLine(
-            text,
-            startOffset,
-            isPrecededByNewline(startOffset),
-            endsWithNewline,
-          ),
-        )
-      }
-    }
-
-    return wrappedLines
+    // Reconstruct each wrapped line's source offset with a single forward cursor
+    // so the startOffset array stays monotonic even when wrapAnsi emits a blank
+    // wrapped line for a grapheme wider than the column width (which has no source
+    // newline). The previous two-cursor scan mis-bound such blanks to a newline /
+    // end-of-text, producing non-monotonic offsets and a cursor-row desync.
+    return reconstructWrappedLineOffsets(wrappedText.split('\n'), this.text).map(
+      r =>
+        new WrappedLine(
+          r.text,
+          r.startOffset,
+          r.isPrecededByNewline,
+          r.endsWithNewline,
+        ),
+    )
   }
 
   public getWrappedText(): WrappedText {
