@@ -1,10 +1,13 @@
 // Terminal-cell display width for the native welcome/picker/status surface.
 // CJK/fullwidth/emoji count as 2 cells, combining marks and control chars as 0,
-// everything else as 1; ANSI is stripped first. Self-contained (no deps) so it
-// stays usable from the dependency-free native path — the chalk/Ink TUI uses the
-// richer src/ink/stringWidth.ts instead. The fullwidth ranges and the
-// per-code-point loop are ported from the repo's own bundle string-width stub
-// (scripts/build-full-cli.mjs), so the cell counts match the shipped bundle.
+// everything else as 1; ANSI is stripped first. The zero-width test is shared
+// with the Ink TUI via the dependency-free src/ink/isZeroWidth.mjs leaf (the only
+// import — no heavy deps) so the native path and the TUI agree on which code
+// points occupy no cells; the chalk/Ink TUI uses the richer src/ink/stringWidth.ts
+// for the rest. The fullwidth ranges and the per-code-point loop are ported from
+// the repo's own bundle string-width stub (scripts/build-full-cli.mjs).
+
+import { isZeroWidth } from '../ink/isZeroWidth.mjs'
 
 // The canonical ansi-regex (strip-ansi) pattern — the repo's bundle string-width
 // stub is a simplified copy of it. Strips CSI *and* OSC sequences, including
@@ -38,30 +41,6 @@ function isFullWidthCodePoint(codePoint) {
       (codePoint >= 0x1f900 && codePoint <= 0x1f9ff) || // Supplemental Symbols
       (codePoint >= 0x20000 && codePoint <= 0x3fffd)) // CJK Ext B+
   )
-}
-
-// Zero-width / invisible code points that can appear glued inside a grapheme
-// cluster (ported from src/ink/stringWidth.ts isZeroWidth). Used ONLY on the
-// segmentation path below, so the non-emoji fast path stays byte-identical.
-function isZeroWidthInCluster(cp) {
-  if (cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f)) return true // controls
-  if (cp >= 0x200b && cp <= 0x200d) return true // ZW space / non-joiner / joiner
-  if (cp === 0xfeff) return true // BOM
-  if (cp >= 0x2060 && cp <= 0x2064) return true // word joiner & invisibles
-  if (cp >= 0xfe00 && cp <= 0xfe0f) return true // variation selectors (incl. VS16)
-  if (cp >= 0xe0100 && cp <= 0xe01ef) return true // supplementary variation selectors
-  if (cp >= 0x1f3fb && cp <= 0x1f3ff) return true // emoji skin-tone modifiers
-  if (
-    (cp >= 0x300 && cp <= 0x36f) ||
-    (cp >= 0x1ab0 && cp <= 0x1aff) ||
-    (cp >= 0x1dc0 && cp <= 0x1dff) ||
-    (cp >= 0x20d0 && cp <= 0x20ff) ||
-    (cp >= 0xfe20 && cp <= 0xfe2f)
-  ) {
-    return true // combining-mark blocks
-  }
-  if (cp >= 0xe0000 && cp <= 0xe007f) return true // tag chars
-  return false
 }
 
 // True iff the string carries any code point the per-code-point loop measures wrong
@@ -131,10 +110,11 @@ function emojiClusterWidth(grapheme) {
 function clusterWidth(grapheme) {
   if (clusterIsEmoji(grapheme)) return emojiClusterWidth(grapheme)
   // Non-emoji cluster (base + combining marks) renders as one glyph: the width of
-  // its first non-zero-width code point.
+  // its first non-zero-width code point. (Skin-tone modifiers never reach here —
+  // a cluster containing one is classified emoji above.)
   for (const ch of grapheme) {
     const cp = ch.codePointAt(0)
-    if (!isZeroWidthInCluster(cp)) return isFullWidthCodePoint(cp) ? 2 : 1
+    if (!isZeroWidth(cp)) return isFullWidthCodePoint(cp) ? 2 : 1
   }
   return 0
 }
@@ -158,15 +138,17 @@ export function displayWidth(value) {
     }
     return width
   }
-  // Fast path: no emoji/VS/ZWJ → the original per-code-point loop is exact and
-  // BYTE-IDENTICAL to before (zero cost for the common non-emoji case).
+  // Fast path: no emoji/VS/ZWJ. Same shared isZeroWidth test as the cluster path,
+  // so a Thai/Arabic/Indic/bidi combining mark (not just U+0300–U+036F) and an
+  // astral zero-width code point count as 0 cells here too. The surrogate-pair
+  // advance happens BEFORE the skip so a zero-width astral code point (a
+  // supplementary variation selector or tag char) still consumes both code units.
   let width = 0
   for (let index = 0; index < string.length; index += 1) {
     const codePoint = string.codePointAt(index)
     if (codePoint === undefined) continue
-    if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)) continue // control
-    if (codePoint >= 0x300 && codePoint <= 0x36f) continue // combining diacriticals
     if (codePoint > 0xffff) index += 1 // surrogate pair consumes two code units
+    if (isZeroWidth(codePoint)) continue
     width += isFullWidthCodePoint(codePoint) ? 2 : 1
   }
   return width
