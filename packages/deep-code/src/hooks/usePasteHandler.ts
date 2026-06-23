@@ -11,6 +11,7 @@ import {
 } from '../utils/imagePaste.js'
 import type { ImageDimensions } from '../utils/imageResizer.js'
 import { getPlatform } from '../utils/platform.js'
+import { stripTailFocusMarker } from './stripPasteFocusMarker.mjs'
 
 const CLIPBOARD_CHECK_DEBOUNCE_MS = 50
 const PASTE_COMPLETION_TIMEOUT_MS = 100
@@ -108,12 +109,11 @@ export function usePasteHandler({
         ) => {
           pastePendingRef.current = false
           setPasteState(({ chunks }) => {
-            // Join chunks and filter out orphaned focus sequences
-            // These can appear when focus events split during paste
-            const pastedText = chunks
-              .join('')
-              .replace(/\[I$/, '')
-              .replace(/\[O$/, '')
+            // Join chunks and strip a terminal focus marker (ESC[I / ESC[O) that
+            // landed at the paste tail. Anchoring to the full ESC-prefixed marker
+            // avoids orphaning the ESC and avoids deleting legitimate pasted text
+            // that merely ends in '[I' / '[O'.
+            const pastedText = stripTailFocusMarker(chunks.join(''))
 
             // Check if the pasted text contains image file paths
             // When dragging multiple images, they may come as:
