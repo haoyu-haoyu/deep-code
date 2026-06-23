@@ -182,6 +182,21 @@ export async function readNotebook(
     }
     return [processCell(cell, notebook.cells.indexOf(cell), language, true)]
   }
+  return processNotebookCells(notebook)
+}
+
+/**
+ * Map a parsed notebook to the processed cell views the read path returns. This
+ * is the SOLE producer of the shape jsonStringify(...)'d into readFileState by
+ * FileReadTool and re-derived by NotebookEditTool's staleness fallback, so the
+ * read and write paths cannot drift: NotebookEditTool reuses this on its
+ * post-write in-memory notebook to store the SAME processed-cells JSON a fresh
+ * Read would, instead of the raw notebook file JSON it writes to disk.
+ */
+export function processNotebookCells(
+  notebook: NotebookContent,
+): NotebookCellSource[] {
+  const language = notebook.metadata.language_info?.name ?? 'python'
   return notebook.cells.map((cell, index) =>
     processCell(cell, index, language, false),
   )

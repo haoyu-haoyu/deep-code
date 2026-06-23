@@ -72,6 +72,62 @@ test('an injected/partial view (isPartialView) is never trusted', () => {
   )
 })
 
+// REGRESSION (edit→touch→edit shape mismatch): the content NotebookEdit stores
+// in readFileState after a write must be the PROCESSED cells JSON
+// (jsonStringify(processNotebookCells(notebook)) — the exact shape FileReadTool
+// stores and the fallback re-derives), NOT the raw notebook FILE JSON
+// (jsonStringify(notebook, null, 1)) it writes to disk. If the raw form is
+// stored, a later edit compares processed-cells (current) vs raw-notebook
+// (stored) and the strings never match → spurious "modified since read".
+test('a processed-cells stored shape engages; a raw-notebook stored shape does not', () => {
+  // what processNotebookCells(...) + jsonStringify yields: a bare array of
+  // processed cell views (cellType/source/cell_id, NOT cell_type/metadata/...).
+  const processedCellsJson = JSON.stringify([
+    {
+      cellType: 'code',
+      source: 'print(1)',
+      cell_id: 'c1',
+      language: 'python',
+    },
+  ])
+  // what the OLD writeback stored: the whole notebook FILE object, indented.
+  const rawNotebookJson = JSON.stringify(
+    {
+      cells: [
+        {
+          cell_type: 'code',
+          id: 'c1',
+          source: ['print(1)'],
+          metadata: {},
+          execution_count: null,
+          outputs: [],
+        },
+      ],
+      metadata: {},
+      nbformat: 4,
+      nbformat_minor: 5,
+    },
+    null,
+    1,
+  )
+  // the two shapes are genuinely different (so this is not a contrived equal)
+  assert.notEqual(processedCellsJson, rawNotebookJson)
+  // FIXED: edit stored processed cells → a later fallback (also processed) matches
+  assert.equal(
+    notebookUnchangedDespiteMtime(processedCellsJson, {
+      content: processedCellsJson,
+    }),
+    true,
+  )
+  // BUG: edit stored the raw notebook → the processed re-derivation never matches
+  assert.equal(
+    notebookUnchangedDespiteMtime(processedCellsJson, {
+      content: rawNotebookJson,
+    }),
+    false,
+  )
+})
+
 test('missing read state → not unchanged (fail safe)', () => {
   assert.equal(notebookUnchangedDespiteMtime('X', undefined), false)
   assert.equal(notebookUnchangedDespiteMtime('X', null), false)
