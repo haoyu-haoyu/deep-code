@@ -48,6 +48,7 @@ jobs:
             test/s3-render-perf.test.mjs \
             test/is-zero-width.test.mjs \
             test/display-width-truncate.test.mjs \
+            test/display-width-combining-marks.test.mjs \
             test/rg-ignore-glob.test.mjs \
             test/relative-time-direction.test.mjs \
             test/relative-time-core.test.mjs \
