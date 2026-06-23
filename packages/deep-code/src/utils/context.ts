@@ -4,6 +4,7 @@ import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
+import { computeContextPercent } from './computeContextPercent.mjs'
 // @ts-expect-error Deep Code context policy is JS while this legacy module remains TypeScript.
 import {
   isDeepCode1mContextDisabled,
@@ -149,10 +150,7 @@ export function calculateContextPercentages(
     currentUsage.cache_creation_input_tokens +
     currentUsage.cache_read_input_tokens
 
-  const usedPercentage = Math.round(
-    (totalInputTokens / contextWindowSize) * 100,
-  )
-  const clampedUsed = Math.min(100, Math.max(0, usedPercentage))
+  const clampedUsed = computeContextPercent(totalInputTokens, contextWindowSize)
 
   return {
     used: clampedUsed,

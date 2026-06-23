@@ -8,6 +8,7 @@ import { microcompactMessages } from 'src/services/compact/microCompact.js'
 import { getSdkBetas } from '../bootstrap/state.js'
 import { getCommandName } from '../commands.js'
 import { getSystemContext } from '../context.js'
+import { computeContextPercent } from './computeContextPercent.mjs'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
 import {
   AUTOCOMPACT_BUFFER_TOKENS,
@@ -1320,7 +1321,7 @@ export async function analyzeContextUsage(
     totalTokens: finalTotalTokens,
     maxTokens: contextWindow,
     rawMaxTokens: contextWindow,
-    percentage: Math.round((finalTotalTokens / contextWindow) * 100),
+    percentage: computeContextPercent(finalTotalTokens, contextWindow),
     gridRows,
     model: runtimeModel,
     memoryFiles: memoryFileDetails,
