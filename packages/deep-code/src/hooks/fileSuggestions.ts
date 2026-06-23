@@ -1,6 +1,7 @@
 import { statSync } from 'fs'
 import ignore from 'ignore'
 import * as path from 'path'
+import { buildFileCompletion } from './buildFileCompletion.mjs'
 import { filterIgnoredGitPaths } from './fileSuggestionsIgnore.mjs'
 import {
   CLAUDE_CONFIG_DIRECTORIES,
@@ -801,19 +802,20 @@ export function applyFileSuggestion(
   startPos: number,
   onInputChange: (value: string) => void,
   setCursorOffset: (offset: number) => void,
-): void {
+): { newInput: string; cursorPos: number } {
   // Extract suggestion text from string or SuggestionItem
   const suggestionText =
     typeof suggestion === 'string' ? suggestion : suggestion.displayText
 
-  // Replace the partial path with the selected file path
-  const newInput =
-    input.substring(0, startPos) +
-    suggestionText +
-    input.substring(startPos + partialPath.length)
+  // Replace the partial path with the selected file path (positionally, at
+  // startPos — never a first-occurrence text replace).
+  const { newInput, cursorPos } = buildFileCompletion(
+    input,
+    suggestionText,
+    startPos,
+    partialPath.length,
+  )
   onInputChange(newInput)
-
-  // Move cursor to end of the file path
-  const newCursorPos = startPos + suggestionText.length
-  setCursorOffset(newCursorPos)
+  setCursorOffset(cursorPos)
+  return { newInput, cursorPos }
 }
