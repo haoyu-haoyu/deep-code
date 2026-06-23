@@ -1,5 +1,5 @@
 /**
- * Format a byte count as a human-readable KB/MB/GB string.
+ * Format a byte count as a human-readable KB/MB/GB/TB/PB string.
  *
  * The unit is chosen AFTER the 1-decimal rounding, not before. Picking the band
  * from the raw value and only then `toFixed(1)`-rounding lets a value just under
@@ -8,8 +8,12 @@
  * "1024.0" → "1024KB" (KB never exceeds 1024). Promote to the next unit whenever
  * the rounded mantissa reaches 1024, so 1048575 → "1MB" and 1073741823 → "1GB".
  *
+ * The table runs up to PB so a TiB+ value never renders the same "1024<unit>"
+ * anti-pattern one tier higher (1 TiB → "1TB", not "1024GB").
+ *
  * @example formatFileSize(1536) // "1.5KB"
  * @example formatFileSize(1048575) // "1MB"
+ * @example formatFileSize(1099511627776) // "1TB"
  * @param {number} sizeInBytes
  * @returns {string}
  */
@@ -17,7 +21,7 @@ export function formatFileSize(sizeInBytes) {
   if (sizeInBytes / 1024 < 1) {
     return `${sizeInBytes} bytes`
   }
-  const units = ['KB', 'MB', 'GB']
+  const units = ['KB', 'MB', 'GB', 'TB', 'PB']
   let value = sizeInBytes / 1024
   let unitIndex = 0
   // Round at the current unit; if rounding pushes the mantissa to a full 1024,
