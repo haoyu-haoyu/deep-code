@@ -107,6 +107,7 @@ import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js';
 import { TeamsDialog } from '../teams/TeamsDialog.js';
 import VimTextInput from '../VimTextInput.js';
 import { getModeFromInput, getValueFromInput } from './inputModes.js';
+import { normalizePastedText } from './normalizePastedText.mjs';
 import { reconcilePasteId } from './pasteId.mjs';
 import { FOOTER_TEMPORARY_STATUS_TIMEOUT, Notifications } from './Notifications.js';
 import PromptInputFooter from './PromptInputFooter.js';
@@ -1093,7 +1094,7 @@ function PromptInput({
   function onTextPaste(rawText: string) {
     pendingSpaceAfterPillRef.current = false;
     // Clean up pasted text - strip ANSI escape codes and normalize line endings and tabs
-    let text = stripAnsi(rawText).replace(/\r/g, '\n').replaceAll('\t', '    ');
+    let text = normalizePastedText(stripAnsi(rawText));
 
     // Match typed/auto-suggest: `!cmd` pasted into empty input enters bash mode.
     if (input.length === 0) {
