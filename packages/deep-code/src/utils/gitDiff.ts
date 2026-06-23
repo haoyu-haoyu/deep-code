@@ -10,6 +10,7 @@ import {
   gitDiffShortstatArgs,
 } from './gitDiffArgs.mjs'
 import { extractDiffFilePath } from './gitDiffHeader.mjs'
+import { unquoteGitPath } from './unquoteGitPath.mjs'
 import { isFileWithinReadSizeLimit } from './file.js'
 import {
   findGitRoot,
@@ -166,7 +167,9 @@ export function parseGitNumstat(stdout: string): NumstatResult {
     validFileCount++
     const addStr = parts[0]
     const remStr = parts[1]
-    const filePath = parts.slice(2).join('\t') // filename may contain tabs
+    // Decode git's C-quoting so this key matches extractDiffFilePath's path
+    // (a `"`/`\`/tab/newline name is quoted even under core.quotepath=false).
+    const filePath = unquoteGitPath(parts.slice(2).join('\t'))
     const isBinary = addStr === '-' || remStr === '-'
     const fileAdded = isBinary ? 0 : parseInt(addStr ?? '0', 10) || 0
     const fileRemoved = isBinary ? 0 : parseInt(remStr ?? '0', 10) || 0
