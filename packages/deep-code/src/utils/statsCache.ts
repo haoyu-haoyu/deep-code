@@ -10,9 +10,16 @@ import { getFsImplementation } from './fsOperations.js'
 import { logError } from './log.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
 import type { DailyActivity, DailyModelTokens, SessionStats } from './stats.js'
+import { toLocalDateKey } from './toLocalDateKey.mjs'
 
-export const STATS_CACHE_VERSION = 3
-const MIN_MIGRATABLE_VERSION = 1
+// v4: day keys switched from UTC to the LOCAL calendar day (see toDateString).
+// The date-keyed aggregates (dailyActivity/dailyModelTokens) in a v<=3 cache are
+// UTC-keyed and cannot be re-keyed without the original timestamps, so v<=3 is
+// no longer migratable: it is discarded and recomputed once from the on-disk
+// transcripts (MIN_MIGRATABLE_VERSION raised to 4). Aged-out days beyond the
+// transcript retention window are reset by this one-time rebuild.
+export const STATS_CACHE_VERSION = 4
+const MIN_MIGRATABLE_VERSION = 4
 const STATS_CACHE_FILENAME = 'stats-cache.json'
 
 /**
@@ -398,15 +405,15 @@ export function mergeCacheWithNewStats(
 }
 
 /**
- * Extract the date portion (YYYY-MM-DD) from a Date object.
+ * Day key (YYYY-MM-DD) for a Date, in the LOCAL timezone.
+ *
+ * Keyed by local calendar day so the session buckets line up with the
+ * local-anchored heatmap, streak, and today/yesterday logic. See toLocalDateKey
+ * for the full rationale (a UTC key disagreed with the local anchors by the UTC
+ * offset, hiding east-of-UTC users' current-day activity and shorting the streak).
  */
 export function toDateString(date: Date): string {
-  const parts = date.toISOString().split('T')
-  const dateStr = parts[0]
-  if (!dateStr) {
-    throw new Error('Invalid ISO date string')
-  }
-  return dateStr
+  return toLocalDateKey(date)
 }
 
 /**
