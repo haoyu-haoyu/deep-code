@@ -11,8 +11,7 @@
  */
 
 import { tryParseShellCommand } from './bash/shellQuote.js'
-import { replaceAllLiteral } from './literalReplace.mjs'
-import { escapeRegExp } from './stringUtils.js'
+import { substituteArgumentsCore } from './argumentSubstitutionCore.mjs'
 
 /**
  * Parse an arguments string into an array of individual arguments.
@@ -108,46 +107,13 @@ export function substituteArguments(
   const parsedArgs = parseArguments(args)
   const originalContent = content
 
-  // Replace named arguments (e.g., $foo, $bar) with their values
-  // Named arguments map to positions: argumentNames[0] -> parsedArgs[0], etc.
-  for (let i = 0; i < argumentNames.length; i++) {
-    const name = argumentNames[i]
-    if (!name) continue
-
-    // Match $name but not $name[...] or $nameXxx (word chars)
-    // Also ensure we match word boundaries to avoid partial matches.
-    // escapeRegExp(name): the name comes from a command/skill/plugin .md `arguments:`
-    // frontmatter field (parseArgumentNames only rejects empty/numeric names), so an
-    // installed third-party plugin controls it. Without escaping, a name like `(a+)+`
-    // would compile to a catastrophic-backtracking pattern (ReDoS against the body) and
-    // a name like `[` would make `new RegExp` throw and abort the whole substitution.
-    // Escaping makes `$name` a literal match — a no-op for every normal identifier name.
-    // Function replacer (via replaceAllLiteral) so a value containing $$ / $& /
-    // $` / $' is inserted literally rather than interpreted as a replacement
-    // pattern. The regex is global, so every $name occurrence is still replaced.
-    content = replaceAllLiteral(
-      content,
-      new RegExp(`\\$${escapeRegExp(name)}(?![\\[\\w])`, 'g'),
-      parsedArgs[i] ?? '',
-    )
-  }
-
-  // Replace indexed arguments ($ARGUMENTS[0], $ARGUMENTS[1], etc.)
-  content = content.replace(/\$ARGUMENTS\[(\d+)\]/g, (_, indexStr: string) => {
-    const index = parseInt(indexStr, 10)
-    return parsedArgs[index] ?? ''
-  })
-
-  // Replace shorthand indexed arguments ($0, $1, etc.)
-  content = content.replace(/\$(\d+)(?!\w)/g, (_, indexStr: string) => {
-    const index = parseInt(indexStr, 10)
-    return parsedArgs[index] ?? ''
-  })
-
-  // Replace $ARGUMENTS with the full arguments string. Function replacer (via
-  // replaceAllLiteral) so $$ / $& / $` / $' in the user args aren't interpreted as
-  // replacement patterns.
-  content = replaceAllLiteral(content, '$ARGUMENTS', args)
+  // Resolve every placeholder in a SINGLE pass. Doing it pass-by-pass (named,
+  // then $ARGUMENTS[n], then $n, then $ARGUMENTS) re-scans each pass's output, so
+  // a value that itself contains '$1' / '$ARGUMENTS' / '$ARGUMENTS[0]' is expanded
+  // a second time and leaks into another placeholder's slot. The leaf returns each
+  // value verbatim, which both fixes that double-expansion and keeps $$ / $& / $`
+  // / $' inside a value literal.
+  content = substituteArgumentsCore(content, parsedArgs, args, argumentNames)
 
   // If no placeholders were found and appendIfNoPlaceholder is true, append
   // But only if args is non-empty (empty string means command invoked with no args)
