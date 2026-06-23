@@ -69,6 +69,7 @@ jobs:
             test/snippet-truncate.test.mjs \
             test/early-input-chunk.test.mjs \
             test/strip-paste-focus-marker.test.mjs \
+            test/to-local-date-key.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
