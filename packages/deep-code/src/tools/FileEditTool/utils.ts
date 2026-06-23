@@ -14,6 +14,7 @@ import {
   readFileSyncCached,
 } from '../../utils/file.js'
 import { applyEditToFile } from './applyEditToFile.mjs'
+import { truncateSnippet } from './snippetTruncate.mjs'
 import type { EditInput, FileEdit } from './types.js'
 
 export { applyEditToFile }
@@ -266,17 +267,9 @@ export function getSnippetForTwoFileDiff(
     .map(addLineNumbers)
     .join('\n...\n')
 
-  if (full.length <= DIFF_SNIPPET_MAX_BYTES) {
-    return full
-  }
-
-  // Truncate at the last line boundary that fits within the cap.
-  // Marker format matches BashTool/utils.ts.
-  const cutoff = full.lastIndexOf('\n', DIFF_SNIPPET_MAX_BYTES)
-  const kept =
-    cutoff > 0 ? full.slice(0, cutoff) : full.slice(0, DIFF_SNIPPET_MAX_BYTES)
-  const remaining = countCharInString(full, '\n', kept.length) + 1
-  return `${kept}\n\n... [${remaining} lines truncated] ...`
+  // Truncate at the last line boundary that fits within the cap, with an
+  // accurate hidden-line count (the marker format matches BashTool/utils.ts).
+  return truncateSnippet(full, DIFF_SNIPPET_MAX_BYTES, countCharInString)
 }
 
 const CONTEXT_LINES = 4
