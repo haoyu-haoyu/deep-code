@@ -82,46 +82,6 @@ export function getReservedShortcuts(): ReservedShortcut[] {
   return reserved
 }
 
-/**
- * Normalize a key string for comparison (lowercase, sorted modifiers).
- * Chords (space-separated steps like "ctrl+x ctrl+b") are normalized
- * per-step — splitting on '+' first would mangle "x ctrl" into a mainKey
- * overwritten by the next step, collapsing the chord into its last key.
- */
-export function normalizeKeyForComparison(key: string): string {
-  return key.trim().split(/\s+/).map(normalizeStep).join(' ')
-}
-
-function normalizeStep(step: string): string {
-  const parts = step.split('+')
-  const modifiers: string[] = []
-  let mainKey = ''
-
-  for (const part of parts) {
-    const lower = part.trim().toLowerCase()
-    if (
-      [
-        'ctrl',
-        'control',
-        'alt',
-        'opt',
-        'option',
-        'meta',
-        'cmd',
-        'command',
-        'shift',
-      ].includes(lower)
-    ) {
-      // Normalize modifier names
-      if (lower === 'control') modifiers.push('ctrl')
-      else if (lower === 'option' || lower === 'opt') modifiers.push('alt')
-      else if (lower === 'command' || lower === 'cmd') modifiers.push('cmd')
-      else modifiers.push(lower)
-    } else {
-      mainKey = lower
-    }
-  }
-
-  modifiers.sort()
-  return [...modifiers, mainKey].join('+')
-}
+// normalizeKeyForComparison lives in a pure .mjs leaf so it is node-testable and
+// so its alt/meta collapse stays in lockstep with the runtime matcher.
+export { normalizeKeyForComparison } from './normalizeKeyForComparison.mjs'
