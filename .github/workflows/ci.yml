@@ -75,6 +75,7 @@ jobs:
             test/advance-streaming-boundary.test.mjs \
             test/span-cache.test.mjs \
             test/todo-reminder.test.mjs \
+            test/apply-sequential-edits.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
