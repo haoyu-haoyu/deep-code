@@ -4,6 +4,7 @@ import Link from './components/Link.js';
 import Text from './components/Text.js';
 import type { Color } from './styles.js';
 import { type NamedColor, Parser, type Color as TermioColor, type TextStyle } from './termio.js';
+import { createSpanCache } from './spanCache.mjs';
 type Props = {
   children: string;
   /** When true, force all text to be rendered with dim styling */
@@ -112,10 +113,24 @@ type Span = {
   props: SpanProps;
 };
 
+// Cache the parse by content so an unmount->remount (virtual-scroll window /
+// ctrl+o) is an O(1) lookup instead of a full re-segmentation. Returns a fresh
+// copy each call so the render's in-place span.props.dim mutation never poisons
+// the cache (see spanCache). Module-level only — the <Ansi> render is untouched.
+const getCachedSpans = createSpanCache(
+  computeSpans,
+  (s: Span): Span => ({ text: s.text, props: { ...s.props } }),
+  200,
+);
+
 /**
- * Parse an ANSI string into spans using the termio parser.
+ * Parse an ANSI string into spans using the termio parser (content-cached).
  */
 function parseToSpans(input: string): Span[] {
+  return getCachedSpans(input);
+}
+
+function computeSpans(input: string): Span[] {
   const parser = new Parser();
   const actions = parser.feed(input);
   const spans: Span[] = [];

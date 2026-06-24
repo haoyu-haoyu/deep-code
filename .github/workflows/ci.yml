@@ -73,6 +73,7 @@ jobs:
             test/preserved-column-offset.test.mjs \
             test/measured-text-cache.test.mjs \
             test/advance-streaming-boundary.test.mjs \
+            test/span-cache.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
