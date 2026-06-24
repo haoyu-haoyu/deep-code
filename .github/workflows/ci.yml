@@ -80,6 +80,7 @@ jobs:
             test/at-mention-adjacent-quoted.test.mjs \
             test/percent-of-total.test.mjs \
             test/keystroke-parse.test.mjs \
+            test/normalize-key-for-comparison.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
