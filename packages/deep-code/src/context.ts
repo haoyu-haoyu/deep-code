@@ -11,6 +11,7 @@ import {
   getMemoryFiles,
 } from './utils/claudemd.js'
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js'
+import { truncateAtCodeUnitBoundary } from './utils/truncateAtCodeUnitBoundary.mjs'
 import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
 import { execFileNoThrow } from './utils/execFileNoThrow.js'
 import { getBranch, getDefaultBranch, getIsGit, gitExe } from './utils/git.js'
@@ -84,7 +85,7 @@ export const getGitStatus = memoize(async (): Promise<string | null> => {
     // Check if status exceeds character limit
     const truncatedStatus =
       status.length > MAX_STATUS_CHARS
-        ? status.substring(0, MAX_STATUS_CHARS) +
+        ? truncateAtCodeUnitBoundary(status, MAX_STATUS_CHARS) +
           '\n... (truncated because it exceeds 2k characters. If you need more information, run "git status" using BashTool)'
         : status
 

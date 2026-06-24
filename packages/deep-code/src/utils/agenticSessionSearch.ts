@@ -6,6 +6,7 @@ import { getSmallFastModel } from './model/model.js'
 import { isLiteLog, loadFullLog } from './sessionStorage.js'
 import { sideQuery } from './sideQuery.js'
 import { jsonParse } from './slowOperations.js'
+import { truncateAtCodeUnitBoundary } from './truncateAtCodeUnitBoundary.mjs'
 
 // Limits for transcript extraction
 const MAX_TRANSCRIPT_CHARS = 2000 // Max chars of transcript per session
@@ -103,7 +104,7 @@ function extractTranscript(messages: SerializedMessage[]): string {
     .trim()
 
   return text.length > MAX_TRANSCRIPT_CHARS
-    ? text.slice(0, MAX_TRANSCRIPT_CHARS) + '…'
+    ? truncateAtCodeUnitBoundary(text, MAX_TRANSCRIPT_CHARS) + '…'
     : text
 }
 

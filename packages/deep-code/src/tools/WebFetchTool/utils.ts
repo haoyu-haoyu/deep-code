@@ -7,6 +7,7 @@ import {
 } from '../../services/analytics/index.js'
 import { queryRuntimeHaiku } from '../../services/runtime/messageSend.js'
 import { AbortError } from '../../utils/errors.js'
+import { truncateAtCodeUnitBoundary } from '../../utils/truncateAtCodeUnitBoundary.mjs'
 import { getWebFetchUserAgent } from '../../utils/http.js'
 import {
   isBlockedAddress,
@@ -520,7 +521,7 @@ export async function applyPromptToMarkdown(
   // Truncate content to avoid "Prompt is too long" errors from the secondary model
   const truncatedContent =
     markdownContent.length > MAX_MARKDOWN_LENGTH
-      ? markdownContent.slice(0, MAX_MARKDOWN_LENGTH) +
+      ? truncateAtCodeUnitBoundary(markdownContent, MAX_MARKDOWN_LENGTH) +
         '\n\n[Content truncated due to length...]'
       : markdownContent
 

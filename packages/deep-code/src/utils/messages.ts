@@ -28,6 +28,7 @@ import { DEFAULT_MAX_RESULT_SIZE_CHARS } from '../constants/toolLimits.js'
 import { buildMcpResourceTextBlocks } from './mcpResourceBlocks.mjs'
 import { applyToolInputDelta } from './applyToolInputDelta.mjs'
 import { buildTodoReminderBlock } from './todoReminder.mjs'
+import { truncateAtCodeUnitBoundary } from './truncateAtCodeUnitBoundary.mjs'
 import { isAutoMemoryEnabled } from '../memdir/paths.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -3510,7 +3511,7 @@ Read the team config to discover your teammates' names. Check the task list peri
       const maxSelectionLength = 2000
       const content =
         attachment.content.length > maxSelectionLength
-          ? attachment.content.substring(0, maxSelectionLength) +
+          ? truncateAtCodeUnitBoundary(attachment.content, maxSelectionLength) +
             '\n... (truncated)'
           : attachment.content
 
