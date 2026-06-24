@@ -5,8 +5,18 @@ import {
   getGraphemeSegmenter,
   getWordSegmenter,
 } from './intl.js'
+import { createKeyedCache } from './measuredTextCache.mjs'
 import { preservedColumnOffset } from './preservedColumnOffset.mjs'
 import { reconstructWrappedLineOffsets } from './reconstructWrappedLineOffsets.mjs'
+
+// Share one MeasuredText per (text, columns) across renders so a cursor-only move
+// or an idle re-render doesn't redo the wrapAnsi + grapheme segmentation (a pure
+// function of text+columns). The arrow resolves MeasuredText lazily at the first
+// cache miss (runtime), after the class below is defined. Kept tiny (see leaf).
+const getMeasuredText = createKeyedCache(
+  (text: string, columns: number) => new MeasuredText(text, columns),
+  2,
+)
 
 /**
  * Kill ring for storing killed (cut) text that can be yanked (pasted) with Ctrl+Y.
@@ -167,8 +177,14 @@ export class Cursor {
     offset: number = 0,
     selection: number = 0,
   ): Cursor {
-    // make MeasuredText on less than columns width, to account for cursor
-    return new Cursor(new MeasuredText(text, columns - 1), offset, selection)
+    // make MeasuredText on less than columns width, to account for cursor.
+    // Reuse the same MeasuredText for an unchanged (text, columns): fromText runs
+    // on EVERY render (every keystroke, cursor move, focus blink, animation tick),
+    // but the wrap + grapheme segmentation depends only on (text, columns) and is
+    // unchanged across cursor-only/idle re-renders. MeasuredText is immutable, so
+    // sharing the instance is behavior-identical; only the cheap Cursor wrapper
+    // (which carries the offset) is rebuilt. See measuredTextCache.
+    return new Cursor(getMeasuredText(text, columns - 1), offset, selection)
   }
 
   getViewportStartLine(maxVisibleLines?: number): number {
