@@ -39,12 +39,31 @@ export function extractAtMentionedFiles(content) {
   // Capture an optional #L line-range suffix AFTER the closing quote so a quoted
   // mention carries its range into parseAtMentionedFileLines like an unquoted one
   // (@"my file.txt"#L10-20 → "my file.txt#L10-20").
-  const quotedAtMentionRegex = /(^|\s)@"([^"]+)"(#L\d+(?:-\d+)?)?/g
+  // A quoted mention is valid when it begins at start-of-string, right after
+  // whitespace, OR glued directly to a previous accepted mention. The old anchor
+  // `(^|\s)` required whitespace/start and CONSUMED it, so two adjacent mentions
+  // (@"a"@"b", or @"a"#L1-2@"b") silently dropped the second: the next @ was
+  // preceded by the previous mention's closing quote or trailing range digit, not
+  // whitespace. Verifying the lead-in in code — including "glued to the previous
+  // accepted mention" (start === prevEnd) — captures every adjacency form without
+  // a fragile preceding-char lookbehind, and never matches an in-word @"…"
+  // (e.g. email-like foo@"x"), which is neither whitespace-led nor glued to an
+  // accepted mention. This only ADDS the glued cases to the old whitespace/start
+  // acceptances, so it can never drop a mention the old code found.
+  const quotedAtMentionRegex = /@"([^"]+)"(#L\d+(?:-\d+)?)?/g
   const quotedMatches = []
   let match
+  let prevEnd = -1
   while ((match = quotedAtMentionRegex.exec(content)) !== null) {
-    if (match[2] && !match[2].endsWith(' (agent)')) {
-      quotedMatches.push(match[2] + (match[3] ?? ''))
+    const start = match.index
+    const precededOk =
+      start === 0 || /\s/.test(content[start - 1]) || start === prevEnd
+    if (!precededOk) continue
+    // This span is a valid mention token (even an agent one we skip below), so a
+    // mention glued after it is also accepted.
+    prevEnd = quotedAtMentionRegex.lastIndex
+    if (match[1] && !match[1].endsWith(' (agent)')) {
+      quotedMatches.push(match[1] + (match[2] ?? ''))
     }
   }
 
