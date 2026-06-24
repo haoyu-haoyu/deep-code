@@ -8,6 +8,7 @@ import { getOriginalCwd } from 'src/bootstrap/state.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import type { ToolPermissionContext } from 'src/Tool.js'
 import { getCwd } from 'src/utils/cwd.js'
+import { truncateAtCodeUnitBoundary } from 'src/utils/truncateAtCodeUnitBoundary.mjs'
 import { pathInAllowedWorkingPath } from 'src/utils/permissions/filesystem.js'
 import { setCwd } from 'src/utils/Shell.js'
 import { shouldMaintainProjectWorkingDir } from '../../utils/envUtils.js'
@@ -153,7 +154,7 @@ export function formatOutput(content: string): {
     }
   }
 
-  const truncatedPart = content.slice(0, maxOutputLength)
+  const truncatedPart = truncateAtCodeUnitBoundary(content, maxOutputLength)
   const remainingLines = countCharInString(content, '\n', maxOutputLength) + 1
   const truncated = `${truncatedPart}\n\n... [${remainingLines} lines truncated] ...`
 
