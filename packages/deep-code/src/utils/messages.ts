@@ -27,6 +27,7 @@ import { OUTPUT_STYLE_CONFIG } from '../constants/outputStyles.js'
 import { DEFAULT_MAX_RESULT_SIZE_CHARS } from '../constants/toolLimits.js'
 import { buildMcpResourceTextBlocks } from './mcpResourceBlocks.mjs'
 import { applyToolInputDelta } from './applyToolInputDelta.mjs'
+import { buildTodoReminderBlock } from './todoReminder.mjs'
 import { isAutoMemoryEnabled } from '../memdir/paths.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -3556,14 +3557,8 @@ Read the team config to discover your teammates' names. Check the task list peri
       ])
     }
     case 'todo_reminder': {
-      const todoItems = attachment.content
-        .map((todo, index) => `${index + 1}. [${todo.status}] ${todo.content}`)
-        .join('\n')
-
       let message = `The TodoWrite tool hasn't been used recently. If you're working on tasks that would benefit from tracking progress, consider using the TodoWrite tool to track progress. Also consider cleaning up the todo list if has become stale and no longer matches what you are working on. Only use it if it's relevant to the current work. This is just a gentle reminder - ignore if not applicable. Make sure that you NEVER mention this reminder to the user\n`
-      if (todoItems.length > 0) {
-        message += `\n\nHere are the existing contents of your todo list:\n\n[${todoItems}]`
-      }
+      message += buildTodoReminderBlock(attachment.content)
 
       return wrapMessagesInSystemReminder([
         createUserMessage({
