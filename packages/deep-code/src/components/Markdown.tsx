@@ -6,6 +6,7 @@ import { Ansi, Box, useTheme } from '../ink.js';
 import { type CliHighlight, getCliHighlightPromise } from '../utils/cliHighlight.js';
 import { hashContent } from '../utils/hash.js';
 import { configureMarked, formatToken } from '../utils/markdown.js';
+import { advanceStreamingBoundary } from '../utils/advanceStreamingBoundary.mjs';
 import { stripPromptXMLTags } from '../utils/messages.js';
 import { MarkdownTable } from './MarkdownTable.js';
 type Props = {
@@ -211,17 +212,15 @@ export function StreamingMarkdown({
   const boundary = stablePrefixRef.current.length;
   const tokens = marked.lexer(stripped.substring(boundary));
 
-  // Last non-space token is the growing block; everything before is final
-  let lastContentIdx = tokens.length - 1;
-  while (lastContentIdx >= 0 && tokens[lastContentIdx]!.type === 'space') {
-    lastContentIdx--;
-  }
-  let advance = 0;
-  for (let i = 0; i < lastContentIdx; i++) {
-    advance += tokens[i]!.raw.length;
-  }
-  if (advance > 0) {
-    stablePrefixRef.current = stripped.substring(0, boundary + advance);
+  // Advance the stable boundary past completed blocks. The marked shim returns
+  // the whole reply as a single paragraph token, so the token loop alone never
+  // advances and the entire growing reply re-wraps every frame (O(n^2) over a
+  // turn); advanceStreamingBoundary falls back to the last CLEAN paragraph break
+  // (render-identical split) so the unstable suffix stays bounded to the final
+  // partial paragraph. Monotonic, so the ref write stays idempotent.
+  const newBoundary = advanceStreamingBoundary(stripped, boundary, tokens);
+  if (newBoundary > boundary) {
+    stablePrefixRef.current = stripped.substring(0, newBoundary);
   }
   const stablePrefix = stablePrefixRef.current;
   const unstableSuffix = stripped.substring(stablePrefix.length);
