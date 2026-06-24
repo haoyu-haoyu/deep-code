@@ -14,6 +14,7 @@ import {
   readFileSyncCached,
 } from '../../utils/file.js'
 import { applyEditToFile } from './applyEditToFile.mjs'
+import { applySequentialEdits } from './applySequentialEdits.mjs'
 import { truncateSnippet } from './snippetTruncate.mjs'
 import type { EditInput, FileEdit } from './types.js'
 
@@ -144,7 +145,6 @@ export function getPatchForEdits({
   edits: FileEdit[]
 }): { patch: StructuredPatchHunk[]; updatedFile: string } {
   let updatedFile = fileContents
-  const appliedNewStrings: string[] = []
 
   // Special case for empty files.
   if (
@@ -168,48 +168,8 @@ export function getPatchForEdits({
     return { patch, updatedFile: '' }
   }
 
-  // Apply each edit and check if it actually changes the file
-  for (const edit of edits) {
-    // Strip trailing newlines from old_string before checking
-    const oldStringToCheck = edit.old_string.replace(/\n+$/, '')
-
-    // Check if old_string is a substring of any previously applied new_string
-    for (const previousNewString of appliedNewStrings) {
-      if (
-        oldStringToCheck !== '' &&
-        previousNewString.includes(oldStringToCheck)
-      ) {
-        throw new Error(
-          'Cannot edit file: old_string is a substring of a new_string from a previous edit.',
-        )
-      }
-    }
-
-    const previousContent = updatedFile
-    updatedFile =
-      edit.old_string === ''
-        ? edit.new_string
-        : applyEditToFile(
-            updatedFile,
-            edit.old_string,
-            edit.new_string,
-            edit.replace_all,
-          )
-
-    // If this edit didn't change anything, throw an error
-    if (updatedFile === previousContent) {
-      throw new Error('String not found in file. Failed to apply edit.')
-    }
-
-    // Track the new string that was applied
-    appliedNewStrings.push(edit.new_string)
-  }
-
-  if (updatedFile === fileContents) {
-    throw new Error(
-      'Original and edited file match exactly. Failed to apply edit.',
-    )
-  }
+  // Apply each edit in order (checks for ambiguous / no-op / identity edits).
+  updatedFile = applySequentialEdits(fileContents, edits)
 
   // We already have before/after content, so call getPatchFromContents directly.
   // Previously this went through getPatchForDisplay with edits=[{old:fileContents,new:updatedFile}],
