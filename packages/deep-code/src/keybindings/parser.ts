@@ -4,6 +4,11 @@ import type {
   ParsedBinding,
   ParsedKeystroke,
 } from './types.js'
+// parseKeystroke/parseChord live in a pure .mjs leaf so they are node-testable.
+import {
+  parseChord as parseChordCore,
+  parseKeystroke as parseKeystrokeCore,
+} from './keystrokeParse.mjs'
 
 /**
  * Parse a keystroke string like "ctrl+shift+k" into a ParsedKeystroke.
@@ -11,76 +16,14 @@ import type {
  * cmd/command/super/win).
  */
 export function parseKeystroke(input: string): ParsedKeystroke {
-  const parts = input.split('+')
-  const keystroke: ParsedKeystroke = {
-    key: '',
-    ctrl: false,
-    alt: false,
-    shift: false,
-    meta: false,
-    super: false,
-  }
-  for (const part of parts) {
-    const lower = part.toLowerCase()
-    switch (lower) {
-      case 'ctrl':
-      case 'control':
-        keystroke.ctrl = true
-        break
-      case 'alt':
-      case 'opt':
-      case 'option':
-        keystroke.alt = true
-        break
-      case 'shift':
-        keystroke.shift = true
-        break
-      case 'meta':
-        keystroke.meta = true
-        break
-      case 'cmd':
-      case 'command':
-      case 'super':
-      case 'win':
-        keystroke.super = true
-        break
-      case 'esc':
-        keystroke.key = 'escape'
-        break
-      case 'return':
-        keystroke.key = 'enter'
-        break
-      case 'space':
-        keystroke.key = ' '
-        break
-      case '↑':
-        keystroke.key = 'up'
-        break
-      case '↓':
-        keystroke.key = 'down'
-        break
-      case '←':
-        keystroke.key = 'left'
-        break
-      case '→':
-        keystroke.key = 'right'
-        break
-      default:
-        keystroke.key = lower
-        break
-    }
-  }
-
-  return keystroke
+  return parseKeystrokeCore(input)
 }
 
 /**
  * Parse a chord string like "ctrl+k ctrl+s" into an array of ParsedKeystrokes.
  */
 export function parseChord(input: string): Chord {
-  // A lone space character IS the space key binding, not a separator
-  if (input === ' ') return [parseKeystroke('space')]
-  return input.trim().split(/\s+/).map(parseKeystroke)
+  return parseChordCore(input)
 }
 
 /**
