@@ -18,6 +18,7 @@ import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { getGlobalConfig } from '../utils/config.js';
 import { formatDuration, formatNumber } from '../utils/format.js';
 import { formatDateKeyLabel } from '../utils/formatDateKeyLabel.mjs';
+import { percentOfTotal } from '../utils/percentOfTotal.mjs';
 import { generateHeatmap } from '../utils/heatmap.js';
 import { renderModelName } from '../utils/model/model.js';
 import { copyAnsiToClipboard } from '../utils/screenshotClipboard.js';
@@ -897,7 +898,7 @@ function ModelEntry(t0) {
     t
   } = useTranslation();
   const modelTokens = modelUsageTokenTotal(usage);
-  const t1 = modelTokens / totalTokens * 100;
+  const t1 = percentOfTotal(modelTokens, totalTokens);
   let t2;
   if ($[0] !== t1) {
     t2 = t1.toFixed(1);
@@ -1270,7 +1271,7 @@ function renderModelsToAnsi(stats: ClaudeCodeStats): string[] {
   const topModels = modelEntries.slice(0, 3);
   for (const [model, usage] of topModels) {
     const modelTokens = modelUsageTokenTotal(usage);
-    const percentage = (modelTokens / totalTokens * 100).toFixed(1);
+    const percentage = percentOfTotal(modelTokens, totalTokens).toFixed(1);
     lines.push(`${figures.bullet} ${chalk.bold(renderModelName(model))} ${chalk.gray(`(${percentage}%)`)}`);
     lines.push(chalk.dim(`  ${getMessage('stats.modelEntry.inOut', {
       in: formatNumber(usage.inputTokens),

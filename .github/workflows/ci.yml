@@ -78,6 +78,7 @@ jobs:
             test/apply-sequential-edits.test.mjs \
             test/truncate-at-code-unit-boundary.test.mjs \
             test/at-mention-adjacent-quoted.test.mjs \
+            test/percent-of-total.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
