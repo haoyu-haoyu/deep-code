@@ -26,6 +26,7 @@ import { permissionModeTitle } from './PermissionMode.js'
 import { resolvePermissionPrecedence } from './resolvePermissionPrecedence.mjs'
 import { compoundAskIsBypassImmune } from './compoundAskBypassImmune.mjs'
 import { permittedRuleSourcesUnderLockdown } from './permittedRuleSourcesUnderLockdown.mjs'
+import { lockdownPermissionClears } from './lockdownPermissionClears.mjs'
 import type {
   PermissionAskDecision,
   PermissionDecision,
@@ -1428,27 +1429,30 @@ export function syncPermissionRulesFromDisk(
 ): ToolPermissionContext {
   let context = toolPermissionContext
 
-  // When allowManagedPermissionRulesOnly is enabled, clear all non-policy sources
-  if (shouldAllowManagedPermissionRulesOnly()) {
-    const sourcesToClear: PermissionUpdateDestination[] = [
-      'userSettings',
-      'projectSettings',
-      'localSettings',
-      'cliArg',
-      'session',
-    ]
-    const behaviors: PermissionBehavior[] = ['allow', 'deny', 'ask']
-
-    for (const source of sourcesToClear) {
-      for (const behavior of behaviors) {
-        context = applyPermissionUpdate(context, {
-          type: 'replaceRules',
-          rules: [],
-          behavior,
-          destination: source,
-        })
-      }
-    }
+  // When allowManagedPermissionRulesOnly is enabled, neutralize the GRANT
+  // (allow/ask) rules of every non-managed source. 'deny' is intentionally NOT
+  // cleared — a deny only tightens, so dropping one could only loosen security
+  // (mirrors permittedRuleSourcesUnderLockdown). cliArg/session are not disk
+  // sources and are never re-applied below, so clearing their deny here would
+  // permanently drop a --disallow-tools / session deny on the next settings
+  // change; disk sources' deny is cleared+re-applied from disk regardless.
+  const sourcesToClear: PermissionUpdateDestination[] = [
+    'userSettings',
+    'projectSettings',
+    'localSettings',
+    'cliArg',
+    'session',
+  ]
+  for (const { source, behavior } of lockdownPermissionClears(
+    sourcesToClear,
+    shouldAllowManagedPermissionRulesOnly(),
+  )) {
+    context = applyPermissionUpdate(context, {
+      type: 'replaceRules',
+      rules: [],
+      behavior: behavior as PermissionBehavior,
+      destination: source as PermissionUpdateDestination,
+    })
   }
 
   // Clear all disk-based source:behavior combos before applying new rules.
