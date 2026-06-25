@@ -7,6 +7,7 @@ import { basename } from 'path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { pathExists } from './file.js'
 import { clampHookChunk } from './clampHookChunk.mjs'
+import { resolveHookPermissionReason } from './resolveHookPermissionReason.mjs'
 import { eventSupportsIfCondition } from './hookIfConditionEvents.mjs'
 import { hookBlockPermissionBehavior } from './hooks/hookBlockPermissionBehavior.mjs'
 import { hookOutputBlocks } from './hooks/hookOutputBlocks.mjs'
@@ -629,8 +630,12 @@ function processHookJSONOutput({
               break
           }
         }
-        result.hookPermissionDecisionReason =
-          json.hookSpecificOutput.permissionDecisionReason
+        // Don't let an absent hookSpecificOutput.permissionDecisionReason clobber
+        // the top-level reason bound above (see resolveHookPermissionReason).
+        result.hookPermissionDecisionReason = resolveHookPermissionReason(
+          json.hookSpecificOutput.permissionDecisionReason,
+          result.hookPermissionDecisionReason,
+        )
         // Extract updatedInput if provided
         if (json.hookSpecificOutput.updatedInput) {
           result.updatedInput = json.hookSpecificOutput.updatedInput
