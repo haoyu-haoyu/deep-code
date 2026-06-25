@@ -82,6 +82,7 @@ jobs:
             test/keystroke-parse.test.mjs \
             test/normalize-key-for-comparison.test.mjs \
             test/order-images-by-reference.test.mjs \
+            test/lockdown-permission-clears.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
