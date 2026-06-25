@@ -84,6 +84,7 @@ jobs:
             test/order-images-by-reference.test.mjs \
             test/lockdown-permission-clears.test.mjs \
             test/resolve-hook-permission-reason.test.mjs \
+            test/pre-tool-use-hook-timed-out.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \

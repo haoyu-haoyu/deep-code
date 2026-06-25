@@ -10,6 +10,7 @@ import { clampHookChunk } from './clampHookChunk.mjs'
 import { resolveHookPermissionReason } from './resolveHookPermissionReason.mjs'
 import { eventSupportsIfCondition } from './hookIfConditionEvents.mjs'
 import { hookBlockPermissionBehavior } from './hooks/hookBlockPermissionBehavior.mjs'
+import { preToolUseHookTimedOut } from './hooks/preToolUseHookTimedOut.mjs'
 import { hookOutputBlocks } from './hooks/hookOutputBlocks.mjs'
 import {
   emptyPermissionState,
@@ -2545,6 +2546,34 @@ async function* executeHooks({
       }
 
       if (result.aborted) {
+        // A PreToolUse permission gate that TIMED OUT (combined signal aborted but
+        // the outer cancel signal did not) must fail CLOSED — deny — not fall into
+        // the cancelled branch below which yields no decision and lets the tool run
+        // (a silent permission fail-open). Mirror the exit-2 deny (blockingError +
+        // permissionBehavior so it survives a racing JSON allow via reducePermission).
+        if (
+          preToolUseHookTimedOut(hookEvent, result.aborted, signal?.aborted ?? false)
+        ) {
+          const reason = `[${hook.command}]: PreToolUse hook timed out — denying the tool (fail closed)`
+          emitHookResponse({
+            hookId,
+            hookName,
+            hookEvent,
+            output: result.output,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.status,
+            outcome: 'error',
+          })
+          yield {
+            blockingError: { blockingError: reason, command: hook.command },
+            permissionBehavior: hookBlockPermissionBehavior(hookEvent),
+            hookPermissionDecisionReason: reason,
+            outcome: 'blocking' as const,
+            hook,
+          }
+          return
+        }
         emitHookResponse({
           hookId,
           hookName,
@@ -3437,6 +3466,20 @@ async function executeHooksOutsideREPL({
         cleanup?.()
 
         if (result.aborted) {
+          // A PreToolUse permission gate that TIMED OUT must fail CLOSED — block —
+          // not return blocked:false (a silent permission fail-open). See
+          // preToolUseHookTimedOut. A genuine outer cancellation stays unblocked.
+          if (
+            preToolUseHookTimedOut(hookEvent, result.aborted, signal?.aborted ?? false)
+          ) {
+            logForDebugging(`${hookName} [${hook.command}] timed out — denying (fail closed)`)
+            return {
+              command: hook.command,
+              succeeded: false,
+              output: 'PreToolUse hook timed out — denying the tool (fail closed)',
+              blocked: true,
+            }
+          }
           logForDebugging(`${hookName} [${hook.command}] cancelled`)
           return {
             command: hook.command,
