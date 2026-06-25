@@ -6,6 +6,8 @@ import type {
 import { randomUUID } from 'crypto'
 import type { QuerySource } from 'src/constants/querySource.js'
 import { logEvent } from 'src/services/analytics/index.js'
+import { parseReferences } from '../../history.js'
+import { orderImagePastesByReference } from './orderImagesByReference.mjs'
 import { getContentText } from 'src/utils/messages.js'
 import {
   findCommand,
@@ -352,10 +354,15 @@ async function processUserInputBase(
     throw new Error(`Mode: ${mode} requires a string input.`)
   }
 
-  // Extract and convert image content to content blocks early
-  // Keep track of IDs in order for message storage
+  // Extract and convert image content to content blocks early, ORDERED by the
+  // order the [Image #N] placeholders appear in the prompt text (not by numeric
+  // paste id — Object.values sorts integer keys ascending, which mis-maps images
+  // to their references when ids are non-sequential or the user reorders them).
   const imageContents = pastedContents
-    ? Object.values(pastedContents).filter(isValidImagePaste)
+    ? orderImagePastesByReference(
+        inputString !== null ? parseReferences(inputString).map(r => r.id) : [],
+        Object.values(pastedContents).filter(isValidImagePaste),
+      )
     : []
   const imagePasteIds = imageContents.map(img => img.id)
 
