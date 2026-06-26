@@ -257,6 +257,7 @@ import { dirname, join } from 'path'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
+import { truncateAtCodeUnitBoundary } from '../../utils/truncateAtCodeUnitBoundary.mjs'
 
 const MCP_AUTH_CACHE_TTL_MS = 15 * 60 * 1000 // 15 min
 
@@ -1146,7 +1147,10 @@ export const connectToServer = memoize(
         rawInstructions.length > MAX_MCP_DESCRIPTION_LENGTH
       ) {
         instructions =
-          rawInstructions.slice(0, MAX_MCP_DESCRIPTION_LENGTH) + '… [truncated]'
+          truncateAtCodeUnitBoundary(
+            rawInstructions,
+            MAX_MCP_DESCRIPTION_LENGTH,
+          ) + '… [truncated]'
         logMCPDebug(
           name,
           `Server instructions truncated from ${rawInstructions.length} to ${MAX_MCP_DESCRIPTION_LENGTH} chars`,
@@ -1798,7 +1802,8 @@ export const fetchToolsForClient = memoizeWithLRU(
             async prompt() {
               const desc = tool.description ?? ''
               return desc.length > MAX_MCP_DESCRIPTION_LENGTH
-                ? desc.slice(0, MAX_MCP_DESCRIPTION_LENGTH) + '… [truncated]'
+                ? truncateAtCodeUnitBoundary(desc, MAX_MCP_DESCRIPTION_LENGTH) +
+                    '… [truncated]'
                 : desc
             },
             isConcurrencySafe() {
