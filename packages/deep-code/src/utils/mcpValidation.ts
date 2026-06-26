@@ -8,6 +8,7 @@ import { roughTokenCountEstimation } from './charEstimation.js'
 import { compressImageBlock } from './imageResizer.js'
 import { logError } from './log.js'
 import { jsonStringify } from './slowOperations.js'
+import { truncateAtCodeUnitBoundary } from './truncateAtCodeUnitBoundary.mjs'
 
 export const MCP_TOKEN_COUNT_THRESHOLD_FACTOR = 0.5
 export const IMAGE_TOKEN_ESTIMATE = 1600
@@ -86,7 +87,10 @@ function truncateString(content: string, maxChars: number): string {
   if (content.length <= maxChars) {
     return content
   }
-  return content.slice(0, maxChars)
+  // Back off the cut if it would split a surrogate pair — a lone surrogate
+  // corrupts the JSON sent to the API (mirrors the other truncation sinks
+  // fixed in #655; this one was missed).
+  return truncateAtCodeUnitBoundary(content, maxChars)
 }
 
 async function truncateContentBlocks(
@@ -105,7 +109,10 @@ async function truncateContentBlocks(
         result.push(block)
         currentChars += block.text.length
       } else {
-        result.push({ type: 'text', text: block.text.slice(0, remainingChars) })
+        result.push({
+          type: 'text',
+          text: truncateAtCodeUnitBoundary(block.text, remainingChars),
+        })
         break
       }
     } else if (isImageBlock(block)) {
