@@ -112,8 +112,10 @@ import {
   roughTokenCountEstimation,
   roughTokenCountEstimationForMessages,
 } from '../../utils/charEstimation.js'
+import { compactSummaryHasContent } from './compactSummaryHasContent.mjs'
 import { groupMessagesByApiRound } from './grouping.js'
 import {
+  formatCompactSummary,
   getCompactPrompt,
   getCompactUserSummaryMessage,
   getPartialCompactPrompt,
@@ -512,6 +514,22 @@ export async function compactConversation(
         promptCacheSharingEnabled,
       })
       throw new Error(summary)
+    } else if (!compactSummaryHasContent(formatCompactSummary(summary))) {
+      // The raw response is non-empty (it carries the <analysis> scratchpad
+      // and/or empty <summary> tags) so it slips the !summary guard above, but
+      // formatCompactSummary unwrapped it to nothing — the model was truncated
+      // by the output-token limit before writing the summary section. Using it
+      // would replace the conversation with boilerplate. Fail instead so history
+      // is preserved (manual /compact surfaces the error; auto-compact retries).
+      logEvent('tengu_compact_failed', {
+        reason:
+          'empty_summary' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        preCompactTokenCount,
+        promptCacheSharingEnabled,
+      })
+      throw new Error(
+        'Failed to generate conversation summary - the summary section was empty (the response was likely truncated before the summary was written)',
+      )
     }
 
     // Store the current file state before clearing
@@ -914,6 +932,19 @@ export async function partialCompactConversation(
         ...failureMetadata,
       })
       throw new Error(summary)
+    } else if (!compactSummaryHasContent(formatCompactSummary(summary))) {
+      // See compactConversation: a truncated response with only the <analysis>
+      // scratchpad (or empty <summary> tags) slips the !summary guard but
+      // formats to nothing. Fail so the kept/summarized split is not replaced by
+      // a content-free summary.
+      logEvent('tengu_partial_compact_failed', {
+        reason:
+          'empty_summary' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        ...failureMetadata,
+      })
+      throw new Error(
+        'Failed to generate conversation summary - the summary section was empty (the response was likely truncated before the summary was written)',
+      )
     }
 
     // Store the current file state before clearing
