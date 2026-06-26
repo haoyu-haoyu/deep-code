@@ -4,7 +4,11 @@ import { toError } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import type { DiagnosticFile } from '../diagnosticTracking.js'
-import { registerPendingLSPDiagnostic } from './LSPDiagnosticRegistry.js'
+import { emptyDiagnosticsClearKey } from './emptyDiagnosticsClearKey.mjs'
+import {
+  clearDeliveredDiagnosticsForFile,
+  registerPendingLSPDiagnostic,
+} from './LSPDiagnosticRegistry.js'
 import type { LSPServerManager } from './LSPServerManager.js'
 import type { PublishDiagnosticsParams } from './types.js'
 
@@ -198,6 +202,14 @@ export function registerLSPNotificationHandlers(
               diagnosticFiles.length === 0 ||
               firstFile.diagnostics.length === 0
             ) {
+              // An empty publish is the server's authoritative "this file is now
+              // clean" signal — clear the cross-turn dedup cache for it so a later
+              // re-occurrence of the same diagnostic is delivered again instead of
+              // being suppressed as already-seen.
+              const clearKey = emptyDiagnosticsClearKey(diagnosticFiles)
+              if (clearKey) {
+                clearDeliveredDiagnosticsForFile(clearKey)
+              }
               logForDebugging(
                 `Skipping empty diagnostics from ${serverName} for ${diagnosticParams.uri}`,
               )
