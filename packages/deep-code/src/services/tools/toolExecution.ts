@@ -129,6 +129,7 @@ import {
   runPostToolUseHooks,
   runPreToolUseHooks,
 } from './toolHooks.js'
+import { releaseToolDecision } from './releaseToolDecision.mjs'
 
 /** Minimum total hook duration (ms) to show inline timing summary */
 export const HOOK_TIMING_DISPLAY_THRESHOLD_MS = 500
@@ -1110,6 +1111,11 @@ async function checkPermissionsAndCallTool(
       }
     }
 
+    // The permission-DENY path returns before the try/finally below, so the
+    // decision entry recorded by logPermissionDecision would otherwise leak
+    // (the finally that releases it only runs on the allow/execute path).
+    // Release it here so both terminal paths clean up symmetrically.
+    releaseToolDecision(toolUseContext.toolDecisions, toolUseID)
     return resultingMessages
   }
   logEvent('tengu_tool_use_can_use_tool_allowed', {
@@ -1747,9 +1753,7 @@ async function checkPermissionsAndCallTool(
     ]
   } finally {
     stopSessionActivity('tool_exec')
-    // Clean up decision info after logging
-    if (decisionInfo) {
-      toolUseContext.toolDecisions?.delete(toolUseID)
-    }
+    // Clean up decision info after logging (same release the deny path runs).
+    releaseToolDecision(toolUseContext.toolDecisions, toolUseID)
   }
 }
