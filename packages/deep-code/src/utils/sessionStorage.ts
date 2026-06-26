@@ -98,6 +98,7 @@ import {
 import { sessionBelongsToWorkspace } from './sessionWorkspaceIdentity.mjs'
 import { getSettings_DEPRECATED } from './settings/settings.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
+import { drainBatchChunks } from './drainBatchChunks.mjs'
 import type { ContentReplacementRecord } from './toolResultStorage.js'
 import { validateUuid } from './uuid.js'
 
@@ -549,10 +550,22 @@ class Project {
     }
     this.flushTimer = setTimeout(async () => {
       this.flushTimer = null
-      this.activeDrain = this.drainWriteQueue()
-      await this.activeDrain
-      this.activeDrain = null
-      // If more items arrived during drain, schedule again
+      try {
+        this.activeDrain = this.drainWriteQueue()
+        await this.activeDrain
+      } catch (error) {
+        // drainWriteQueueInner already re-queues on append failure, so this
+        // only fires on an unexpected drain error. Log it instead of leaving an
+        // unhandled rejection and a non-null (rejected) activeDrain that a later
+        // flush() would re-await.
+        logForDebugging(
+          `Session write drain error: ${error instanceof Error ? error.message : String(error)}`,
+          { level: 'warn' },
+        )
+      } finally {
+        this.activeDrain = null
+      }
+      // If more items arrived during the drain (or were re-queued), schedule again
       if (this.writeQueues.size > 0) {
         this.scheduleDrain()
       }
@@ -583,31 +596,29 @@ class Project {
       }
       const batch = queue.splice(0)
 
-      let content = ''
-      const resolvers: Array<() => void> = []
+      // Write the spliced batch in size-bounded chunks, resolving each entry as
+      // its chunk lands. drainBatchChunks returns the unwritten remainder if an
+      // append throws (disk full, EACCES, NFS — after appendToFile's mkdir
+      // retry) instead of letting the spliced entries vanish.
+      const { unwritten, error } = await drainBatchChunks(
+        batch,
+        content => this.appendToFile(filePath, content),
+        entry => jsonStringify(entry),
+        this.MAX_CHUNK_BYTES,
+      )
 
-      for (const { entry, resolve } of batch) {
-        const line = jsonStringify(entry) + '\n'
-
-        if (content.length + line.length >= this.MAX_CHUNK_BYTES) {
-          // Flush chunk and resolve its entries before starting a new one
-          await this.appendToFile(filePath, content)
-          for (const r of resolvers) {
-            r()
-          }
-          resolvers.length = 0
-          content = ''
-        }
-
-        content += line
-        resolvers.push(resolve)
-      }
-
-      if (content.length > 0) {
-        await this.appendToFile(filePath, content)
-        for (const r of resolvers) {
-          r()
-        }
+      if (error) {
+        // Re-queue the unwritten remainder AHEAD of any entries enqueued during
+        // the drain so the next scheduled drain retries them oldest-first — a
+        // transient append failure must not silently drop transcript entries.
+        // Mirrors the prompt-history re-queue (resolveFlushedQueue, #566).
+        const later = this.writeQueues.get(filePath) ?? []
+        this.writeQueues.set(filePath, unwritten.concat(later))
+        logForDebugging(
+          `Session transcript drain failed; re-queued ${unwritten.length} ` +
+            `entr${unwritten.length === 1 ? 'y' : 'ies'} for retry: ${error.message}`,
+          { level: 'warn' },
+        )
       }
     }
 
