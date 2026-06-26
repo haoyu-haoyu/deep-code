@@ -60,6 +60,7 @@ import type {
 } from '../../types/plugin.js'
 import { logForDebugging } from '../debug.js'
 import { isSymlinkTargetContained } from './symlinkContainment.mjs'
+import { sanitizeVersionForPath } from './sanitizeVersionForPath.mjs'
 import { isEnvTruthy } from '../envUtils.js'
 import {
   errorMessage,
@@ -151,8 +152,10 @@ export function getVersionedCachePathIn(
     /[^a-zA-Z0-9\-_]/g,
     '-',
   )
-  // Sanitize version to prevent path traversal attacks
-  const sanitizedVersion = version.replace(/[^a-zA-Z0-9\-_.]/g, '-')
+  // Sanitize version to prevent path traversal. Dots are kept for semver, but a
+  // pure-dot ("." / "..") or empty segment — which path.join would treat as a
+  // traversal token and escape up to the marketplace dir — is neutralized.
+  const sanitizedVersion = sanitizeVersionForPath(version)
   return join(
     baseDir,
     'cache',
