@@ -20,6 +20,7 @@ import {
 } from './git/gitFilesystem.js'
 import { logError } from './log.js'
 import { memoizeWithLRU } from './memoize.js'
+import { parseUntrackedLsFiles } from './parseUntrackedLsFiles.mjs'
 import { whichSync } from './which.js'
 
 const GIT_ROOT_NOT_FOUND = Symbol('git-root-not-found')
@@ -618,16 +619,20 @@ async function captureUntrackedFiles(): Promise<
 > {
   const { stdout, code } = await execFileNoThrow(
     gitExe(),
-    ['ls-files', '--others', '--exclude-standard'],
+    // `-c core.quotepath=false` so a non-ASCII untracked filename is emitted raw
+    // rather than C-quoted (otherwise the quoted string is fed to stat() and the
+    // file is silently skipped). Mirrors the gitDiff/fileSuggestions idiom.
+    ['-c', 'core.quotepath=false', 'ls-files', '--others', '--exclude-standard'],
     { preserveOutputOnError: false },
   )
 
-  const trimmed = stdout.trim()
-  if (code !== 0 || !trimmed) {
+  if (code !== 0) {
     return []
   }
 
-  const files = trimmed.split('\n').filter(Boolean)
+  // Decode any still-quoted paths (a `"`/`\`/tab/newline name is quoted even
+  // under core.quotepath=false); a no-op for raw names.
+  const files = parseUntrackedLsFiles(stdout)
   const result: Array<{ path: string; content: string }> = []
   let totalSize = 0
 
