@@ -16,6 +16,7 @@ import {
 import { applyEditToFile } from './applyEditToFile.mjs'
 import { applySequentialEdits } from './applySequentialEdits.mjs'
 import { truncateSnippet } from './snippetTruncate.mjs'
+import { hunkToSnippetSection } from './twoFileDiffSnippet.mjs'
 import type { EditInput, FileEdit } from './types.js'
 
 export { applyEditToFile }
@@ -216,14 +217,7 @@ export function getSnippetForTwoFileDiff(
   }
 
   const full = patch.hunks
-    .map(_ => ({
-      startLine: _.oldStart,
-      content: _.lines
-        // Filter out deleted lines AND diff metadata lines
-        .filter(_ => !_.startsWith('-') && !_.startsWith('\\'))
-        .map(_ => _.slice(1))
-        .join('\n'),
-    }))
+    .map(hunkToSnippetSection)
     .map(addLineNumbers)
     .join('\n...\n')
 
