@@ -26,6 +26,7 @@ import { NOTEBOOK_EDIT_TOOL_NAME } from './constants.js'
 import { applyReplacedCellShape } from './notebookCellShape.mjs'
 import { notebookUnchangedDespiteMtime } from './notebookStaleness.mjs'
 import { DESCRIPTION, PROMPT } from './prompt.js'
+import { resolveNotebookCellIndex } from './resolveNotebookCellIndex.mjs'
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -379,15 +380,22 @@ export const NotebookEditTool = buildTool({
       if (!cell_id) {
         cellIndex = 0 // Default to inserting at the beginning if no cell_id is provided
       } else {
-        // First try to find the cell by its actual ID
-        cellIndex = notebook.cells.findIndex(cell => cell.id === cell_id)
+        // Resolve by the literal cell id, falling back to the "cell-N" form.
+        cellIndex = resolveNotebookCellIndex(
+          notebook.cells,
+          cell_id,
+          parseCellId,
+        )
 
-        // If not found, try to parse as a numeric index (cell-N format)
+        // A provided cell_id that resolves to nothing must not flow into the
+        // edit: validateInput rejects it, but a UNC-path notebook hits the
+        // security early-return that skips that check, and an external edit
+        // between validate and call can remove a once-valid cell. Without this a
+        // -1 would silently insert at the start, delete the LAST cell via
+        // splice(-1, 1), or dereference cells[-1] in a replace. (The throw is
+        // caught below and returned as an error result.)
         if (cellIndex === -1) {
-          const parsedCellIndex = parseCellId(cell_id)
-          if (parsedCellIndex !== undefined) {
-            cellIndex = parsedCellIndex
-          }
+          throw new Error(`Cell with ID "${cell_id}" not found in notebook.`)
         }
 
         if (originalEditMode === 'insert') {
