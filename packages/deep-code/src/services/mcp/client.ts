@@ -259,6 +259,7 @@ import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { truncateAtCodeUnitBoundary } from '../../utils/truncateAtCodeUnitBoundary.mjs'
 import { elicitationCompletionBuffer } from '../../utils/mcp/elicitationCompletionBuffer.mjs'
+import { evictServerCaches } from './evictServerCaches.mjs'
 
 const MCP_AUTH_CACHE_TTL_MS = 15 * 60 * 1000 // 15 min
 
@@ -1641,24 +1642,37 @@ export async function clearServerCache(
 ): Promise<void> {
   const key = getServerCacheKey(name, serverRef)
 
+  let wrappedClient: MCPServerConnection | undefined
   try {
-    const wrappedClient = await connectToServer(name, serverRef)
-
-    if (wrappedClient.type === 'connected') {
-      await wrappedClient.cleanup()
-    }
+    wrappedClient = await connectToServer(name, serverRef)
   } catch {
     // Ignore errors - server might have failed to connect
   }
 
-  // Clear from cache (both connection and fetch caches so reconnect
-  // fetches fresh tools/resources/commands instead of stale ones)
-  connectToServer.cache.delete(key)
-  fetchToolsForClient.cache.delete(name)
-  fetchResourcesForClient.cache.delete(name)
-  fetchCommandsForClient.cache.delete(name)
-  if (feature('MCP_SKILLS')) {
-    fetchMcpSkillsForClient!.cache.delete(name)
+  // Evict the caches (connection by key, fetch caches by name) BEFORE closing
+  // the connection below. During the async cleanup(), a connectToServer racing
+  // this clear — e.g. a tool call via ensureConnectedClient while a reconnect is
+  // in flight — would otherwise hit the still-cached, now-closing client and
+  // fail with "Connection closed". Evicting first makes that racer miss the
+  // cache and open a fresh connection.
+  evictServerCaches(
+    connectToServer.cache,
+    key,
+    [
+      fetchToolsForClient.cache,
+      fetchResourcesForClient.cache,
+      fetchCommandsForClient.cache,
+      ...(feature('MCP_SKILLS') ? [fetchMcpSkillsForClient!.cache] : []),
+    ],
+    name,
+  )
+
+  if (wrappedClient?.type === 'connected') {
+    try {
+      await wrappedClient.cleanup()
+    } catch {
+      // Ignore errors - cleanup of an already-broken connection may fail
+    }
   }
 }
 
