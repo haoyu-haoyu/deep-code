@@ -2,6 +2,8 @@ import { spawn as nodeSpawn } from 'node:child_process'
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { pruneOpenedFilesForServer } from './pruneOpenedFilesForServer.mjs'
+
 const LSP_ERROR_CONTENT_MODIFIED = -32801
 const MAX_RETRIES_FOR_TRANSIENT_ERRORS = 3
 const RETRY_BASE_DELAY_MS = 500
@@ -873,15 +875,14 @@ export function createLSPServerManagerCore({
           ),
         )
         throw err
-      }
-      // The freshly started process has no open documents. Entries recorded
-      // against the previous process are already invalid (their startedAt no
-      // longer matches — see isOpenInCurrentServerProcess); dropping them here
-      // just keeps the map from accumulating dead generations.
-      for (const [fileUri, entry] of openedFiles) {
-        if (entry.serverName === server.name) {
-          openedFiles.delete(fileUri)
-        }
+      } finally {
+        // Entries recorded against the previous process are already invalid
+        // (their startedAt no longer matches — see isOpenInCurrentServerProcess);
+        // dropping them keeps the map from accumulating dead generations. Run in
+        // finally so a server that repeatedly FAILS to start (the throw above)
+        // does not leak them — the success path cleared them, the failure path
+        // used to skip this entirely.
+        pruneOpenedFilesForServer(openedFiles, server.name)
       }
     }
     return server
