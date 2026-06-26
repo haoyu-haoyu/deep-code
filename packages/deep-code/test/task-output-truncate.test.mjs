@@ -64,6 +64,43 @@ test('THE BUG: header longer than cap no longer leaks the whole output', () => {
   }
 })
 
+// True iff the string contains NO unpaired UTF-16 surrogate.
+function isWellFormed(s) {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const n = s.charCodeAt(i + 1)
+      if (!(n >= 0xdc00 && n <= 0xdfff)) return false
+      i++
+    } else if (c >= 0xdc00 && c <= 0xdfff) {
+      return false
+    }
+  }
+  return true
+}
+
+test('the kept tail never begins on a split surrogate pair (model-facing output)', () => {
+  // GRINNING = U+1F600 as a surrogate pair; build from code units, no escapes.
+  const GRINNING = String.fromCharCode(0xd83d, 0xde00)
+  // An output that exceeds the cap and is dense with astral chars near the
+  // truncation boundary. The tail kept by truncateTaskOutput must be valid
+  // UTF-16 — a raw slice(-N) could begin on the low half of a pair.
+  const out = (GRINNING + 'ab').repeat(20_000) // 80000 units, well over the cap
+  const maxLen = 1000
+  // Sweep the boundary across many header lengths so the cut lands at every
+  // offset relative to the surrogate pairs.
+  for (let extra = 0; extra < 8; extra++) {
+    const header = '[Truncated. Full output: /tmp/p' + 'x'.repeat(extra) + '.txt]\n\n'
+    const r = truncateTaskOutput(out, maxLen, header)
+    assert.equal(r.wasTruncated, true)
+    assert.ok(isWellFormed(r.content), `well-formed content (extra=${extra})`)
+    const tail = r.content.slice(header.length)
+    assert.ok(isWellFormed(tail), `well-formed tail (extra=${extra})`)
+    // the kept tail is still a genuine suffix of the source output
+    assert.ok(out.endsWith(tail), `tail is a suffix (extra=${extra})`)
+  }
+})
+
 test('content length is always bounded by header + max(0, maxLen - header.length)', () => {
   const out = 'q'.repeat(500_000)
   let seed = 12345

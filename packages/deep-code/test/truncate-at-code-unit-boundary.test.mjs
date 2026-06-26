@@ -1,7 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { truncateAtCodeUnitBoundary } from '../src/utils/truncateAtCodeUnitBoundary.mjs'
+import {
+  truncateAtCodeUnitBoundary,
+  truncateEndAtCodeUnitBoundary,
+} from '../src/utils/truncateAtCodeUnitBoundary.mjs'
 
 // Build astral chars from code units so the source has no literal escapes.
 const GRINNING = String.fromCharCode(0xd83d, 0xde00) // U+1F600, 2 UTF-16 units
@@ -96,5 +99,78 @@ test('fuzz: never emits a NEW lone surrogate that a slice would have', () => {
     if (isWellFormed(s)) assert.ok(isWellFormed(out), `iter ${iter} n=${n}`)
     assert.ok(out.length <= Math.max(0, n))
     assert.ok(s.startsWith(out)) // always a prefix of the input
+  }
+})
+
+// --- truncateEndAtCodeUnitBoundary: the tail-keeping mirror ---
+
+test('end: plain ASCII is identical to slice(-N)', () => {
+  assert.equal(truncateEndAtCodeUnitBoundary('abcdef', 3), 'def')
+  assert.equal(truncateEndAtCodeUnitBoundary('abcdef', 0), '')
+  assert.equal(truncateEndAtCodeUnitBoundary('abc', 10), 'abc') // shorter than limit
+  assert.equal(truncateEndAtCodeUnitBoundary('abc', 3), 'abc') // exactly the limit
+})
+
+test('THE FIX (end): keeping a tail that would begin on a split pair drops the whole astral char', () => {
+  // "ab😀cd" — units: a(0) b(1) HIGH(2) LOW(3) c(4) d(5)
+  const s = 'ab' + GRINNING + 'cd'
+  // slice(-3) would keep LOW(3)c(4)d(5) — a leading lone low surrogate (invalid).
+  const out = truncateEndAtCodeUnitBoundary(s, 3)
+  assert.equal(out, 'cd') // advanced past the broken half
+  assert.ok(isWellFormed(out))
+  // a naive slice WOULD be malformed — proves the bug the fix addresses
+  assert.ok(!isWellFormed(s.slice(-3)))
+})
+
+test('end: keeping a tail that starts right ON a full pair keeps it whole', () => {
+  const s = 'ab' + GRINNING + 'cd'
+  const out = truncateEndAtCodeUnitBoundary(s, 4) // HIGH LOW c d
+  assert.equal(out, GRINNING + 'cd')
+  assert.ok(isWellFormed(out))
+})
+
+test('end: a tail that starts after a pair is unaffected', () => {
+  const s = 'ab' + GRINNING + 'cd'
+  assert.equal(truncateEndAtCodeUnitBoundary(s, 2), 'cd')
+  assert.ok(isWellFormed(truncateEndAtCodeUnitBoundary(s, 2)))
+})
+
+test('end: result never exceeds maxUnits and is at most 1 shorter', () => {
+  const s = 'x' + GRINNING + GRINNING + 'y' + GRINNING
+  for (let n = 1; n <= s.length; n++) {
+    const out = truncateEndAtCodeUnitBoundary(s, n)
+    assert.ok(out.length <= n, `len ${out.length} <= ${n}`)
+    assert.ok(out.length >= n - 1, `advances at most 1 (len ${out.length}, n ${n})`)
+    assert.ok(isWellFormed(out), `well-formed at n=${n}`)
+  }
+})
+
+test('end: a pre-existing LONE surrogate at the tail start is preserved (we only avoid CREATING a split)', () => {
+  // "a" + lone LOW + "b": keeping the last 2 starts at LOW, but the unit before
+  // it is 'a' (not a high surrogate), so there is no pair we split — preserve.
+  const s = 'a' + LOW + 'b'
+  assert.equal(truncateEndAtCodeUnitBoundary(s, 2), LOW + 'b')
+  // lone HIGH at the tail start likewise untouched
+  const s2 = 'a' + HIGH + 'b'
+  assert.equal(truncateEndAtCodeUnitBoundary(s2, 2), HIGH + 'b')
+})
+
+test('end fuzz: never emits a NEW lone surrogate that slice(-N) would have', () => {
+  let seed = 0x1234abcd
+  const rnd = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff
+    return seed / 0x7fffffff
+  }
+  const atoms = ['a', 'b', GRINNING, 'cd', 'z' + GRINNING]
+  for (let iter = 0; iter < 5000; iter++) {
+    let s = ''
+    const k = 1 + Math.floor(rnd() * 8)
+    for (let j = 0; j < k; j++) s += atoms[Math.floor(rnd() * atoms.length)]
+    const n = Math.floor(rnd() * (s.length + 2))
+    const out = truncateEndAtCodeUnitBoundary(s, n)
+    // if the input was well-formed, the kept tail must be too
+    if (isWellFormed(s)) assert.ok(isWellFormed(out), `iter ${iter} n=${n}`)
+    assert.ok(out.length <= Math.max(0, n))
+    assert.ok(s.endsWith(out)) // always a suffix of the input
   }
 })

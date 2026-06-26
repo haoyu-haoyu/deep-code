@@ -38,3 +38,39 @@ export function truncateAtCodeUnitBoundary(text, maxUnits) {
   }
   return text.slice(0, maxUnits)
 }
+
+/**
+ * Keep the LAST `maxUnits` UTF-16 code units of `text` WITHOUT splitting a
+ * surrogate pair — the tail-keeping mirror of {@link truncateAtCodeUnitBoundary}.
+ *
+ * A plain `text.slice(-maxUnits)` keeps the tail but can cut between the high and
+ * low halves of an astral character at the START of the kept window, leaving a
+ * lone LOW surrogate as the first code unit. That is invalid UTF-16 with the same
+ * downstream-corruption risk (a JSON/HTTP layer cannot encode it as UTF-8). When
+ * the kept window would begin on the low half of a pair whose high half is being
+ * dropped, advance the start by one code unit so the broken half is excluded too.
+ * The result is therefore always `<= maxUnits` code units.
+ *
+ * A surrogate that is ALREADY lone in the input (its preceding unit is not a high
+ * surrogate) is preserved as-is — this avoids CREATING a split, it does not
+ * sanitise pre-existing malformed input.
+ *
+ * @param {string} text
+ * @param {number} maxUnits  upper bound in UTF-16 code units
+ * @returns {string}
+ */
+export function truncateEndAtCodeUnitBoundary(text, maxUnits) {
+  if (maxUnits <= 0) return ''
+  if (text.length <= maxUnits) return text
+
+  const start = text.length - maxUnits
+  // Would the kept window begin on the low half of a split surrogate pair?
+  const firstKept = text.charCodeAt(start)
+  if (firstKept >= 0xdc00 && firstKept <= 0xdfff) {
+    const lastDropped = text.charCodeAt(start - 1)
+    if (lastDropped >= 0xd800 && lastDropped <= 0xdbff) {
+      return text.slice(start + 1)
+    }
+  }
+  return text.slice(start)
+}
