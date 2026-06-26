@@ -22,6 +22,7 @@ import {
   type RecompactionInfo,
 } from './compact.js'
 import { runPostCompactCleanup } from './postCompactCleanup.js'
+import { effectiveContextWindowSize } from './effectiveContextWindowSize.mjs'
 import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 import { warningBandTokens, errorBandTokens } from './warningBands.mjs'
 
@@ -29,23 +30,20 @@ import { warningBandTokens, errorBandTokens } from './warningBands.mjs'
 // Based on p99.99 of compact summary output being 17,387 tokens.
 const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
 
-// Returns the context window size minus the max output tokens for the model
+// Returns the context window size minus the max output tokens for the model,
+// floored so the override path can't drive it negative (see the leaf).
 export function getEffectiveContextWindowSize(model: string): number {
   const reservedTokensForSummary = Math.min(
     getMaxOutputTokensForModel(model),
     MAX_OUTPUT_TOKENS_FOR_SUMMARY,
   )
-  let contextWindow = getContextWindowForModel(model, getSdkBetas())
+  const contextWindow = getContextWindowForModel(model, getSdkBetas())
 
-  const autoCompactWindow = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW
-  if (autoCompactWindow) {
-    const parsed = parseInt(autoCompactWindow, 10)
-    if (!isNaN(parsed) && parsed > 0) {
-      contextWindow = Math.min(contextWindow, parsed)
-    }
-  }
-
-  return contextWindow - reservedTokensForSummary
+  return effectiveContextWindowSize(
+    contextWindow,
+    reservedTokensForSummary,
+    process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW,
+  )
 }
 
 export type AutoCompactTrackingState = {
