@@ -258,6 +258,7 @@ import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 import { truncateAtCodeUnitBoundary } from '../../utils/truncateAtCodeUnitBoundary.mjs'
+import { elicitationCompletionBuffer } from '../../utils/mcp/elicitationCompletionBuffer.mjs'
 
 const MCP_AUTH_CACHE_TTL_MS = 15 * 60 * 1000 // 15 min
 
@@ -3093,6 +3094,16 @@ export async function callMCPToolWithUrlElicitationRetry({
             }
             signal.addEventListener('abort', onAbort, { once: true })
 
+            // A completion notification can arrive during runElicitationHooks
+            // (above), before this entry exists — the handler buffers it; consume
+            // it now so the entry is born `completed` and the dialog auto-retries
+            // instead of waiting for a manual "Retry now".
+            const bufferedComplete =
+              elicitationCompletionBuffer.consumeCompleted(
+                serverName,
+                elicitationId,
+              )
+
             setAppState(prev => ({
               ...prev,
               elicitation: {
@@ -3104,6 +3115,7 @@ export async function callMCPToolWithUrlElicitationRetry({
                     params: elicitation,
                     signal,
                     waitingState,
+                    ...(bufferedComplete && { completed: true }),
                     respond: result => {
                       // Phase 1 consent: accept is a no-op (doesn't resolve retry Promise)
                       if (result.action === 'accept') {

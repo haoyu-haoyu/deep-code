@@ -13,6 +13,7 @@ import {
 } from '../../utils/hooks.js'
 import { logMCPDebug, logMCPError } from '../../utils/log.js'
 import { removeElicitationFromQueue } from '../../utils/mcp/removeElicitationFromQueue.mjs'
+import { elicitationCompletionBuffer } from '../../utils/mcp/elicitationCompletionBuffer.mjs'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -139,6 +140,14 @@ export function registerElicitationHandler(
           const waitingState: ElicitationWaitingState | undefined =
             elicitationId ? { actionLabel: 'Skip confirmation' } : undefined
 
+          // A completion notification can arrive during runElicitationHooks
+          // above, before this entry exists — the handler buffers it; consume it
+          // now so the entry is born `completed` and the dialog auto-dismisses.
+          const bufferedComplete = elicitationCompletionBuffer.consumeCompleted(
+            serverName,
+            elicitationId,
+          )
+
           setAppState(prev => ({
             ...prev,
             elicitation: {
@@ -150,6 +159,7 @@ export function registerElicitationHandler(
                   params: request.params,
                   signal: extra.signal,
                   waitingState,
+                  ...(bufferedComplete && { completed: true }),
                   respond: (result: ElicitResult) => {
                     extra.signal.removeEventListener('abort', onAbort)
                     logEvent('tengu_mcp_elicitation_response', {
@@ -213,9 +223,15 @@ export function registerElicitationHandler(
           return { ...prev, elicitation: { queue } }
         })
         if (!found) {
+          // No queue entry yet: in both elicitation paths the entry is added
+          // AFTER an await, so a fast server completion lands first. Buffer it
+          // (instead of dropping) so the entry is born `completed` when it
+          // registers — otherwise the dialog never auto-dismisses and the user
+          // must retry manually.
+          elicitationCompletionBuffer.markCompleted(serverName, elicitationId)
           logMCPDebug(
             serverName,
-            `Ignoring completion notification for unknown elicitation: ${elicitationId}`,
+            `Buffered completion for not-yet-queued elicitation: ${elicitationId}`,
           )
         }
       },

@@ -87,6 +87,7 @@ jobs:
             test/pre-tool-use-hook-timed-out.test.mjs \
             test/release-tool-decision.test.mjs \
             test/drain-batch-chunks.test.mjs \
+            test/elicitation-completion-buffer.test.mjs \
             test/s2-streaming-text.test.mjs \
             test/a2-bash-polling.test.mjs \
             test/a2-bash-polling-core.test.mjs \
