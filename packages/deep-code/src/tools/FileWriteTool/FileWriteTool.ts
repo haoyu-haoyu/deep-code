@@ -41,6 +41,7 @@ import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../FileEditTool/constants.js'
 import { gitDiffSchema, hunkSchema } from '../FileEditTool/types.js'
 import { FILE_WRITE_TOOL_NAME, getWriteToolDescription } from './prompt.js'
+import { readStateContentForWrite } from './readStateContentForWrite.mjs'
 import {
   getToolUseSummary,
   isResultTruncated,
@@ -317,9 +318,13 @@ export const FileWriteTool = buildTool({
     // Notify VSCode about the file change for diff view
     notifyVscodeFileUpdated(fullFilePath, oldContent, content)
 
-    // Update read timestamp, to invalidate stale writes
+    // Update read timestamp, to invalidate stale writes. Record the
+    // LF-normalized content (not the raw `content`, which may carry CRLF that
+    // was written to disk as-is): the staleness guard compares this against a
+    // freshly read file, and the read path normalizes CRLF -> LF, so an
+    // un-normalized record would falsely flag an unmodified file as changed.
     readFileState.set(fullFilePath, {
-      content,
+      content: readStateContentForWrite(content),
       timestamp: getFileModificationTime(fullFilePath),
       offset: undefined,
       limit: undefined,
