@@ -235,6 +235,22 @@ test('stripSafeWrappers: benign scheduler wrappers strip; dangerous/injection do
   }
 })
 
+test('stripSafeWrappers: chrt with a SIGNED priority is stripped (drift with the argv layer)', () => {
+  // skipChrtFlags (argvWrapperStripping.mjs) accepts a signed priority /^-?\d+$/,
+  // and the `nice` string patterns accept -?\d+ too, but the chrt string pattern
+  // only matched an unsigned \d+. So `chrt -5 rm /x` fell through UNSTRIPPED here
+  // → baseCmd='chrt' → not a path-restricted command → validateSinglePathCommand
+  // returns passthrough → the wrapped command's path args were never validated,
+  // even though the AST path (stripWrappersFromArgv) did strip it. Align them.
+  assert.equal(stripSafeWrappers('chrt -5 curl x'), 'curl x')
+  assert.equal(stripSafeWrappers('chrt -f -5 curl x'), 'curl x')
+  assert.equal(stripSafeWrappers('chrt --rr -1 curl x'), 'curl x')
+  // The command-name lookahead still fails closed when the priority is followed
+  // by a flag (no clean inner command name) or by pid-mode / no priority.
+  assert.equal(stripSafeWrappers('chrt -5 -rf /x'), 'chrt -5 -rf /x')
+  assert.equal(stripSafeWrappers('chrt -p 50 1234'), 'chrt -p 50 1234')
+})
+
 // --- stripEnvCommandPrefix: the `env <denied>` deny-bypass fix ----------------
 
 test('stripEnvCommandPrefix: strips a leading env wrapper + its safe flags', () => {

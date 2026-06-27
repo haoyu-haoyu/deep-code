@@ -30,9 +30,15 @@ const IONICE_WRAPPER_RE = new RegExp(
     `|-t|--(?:${IONICE_FLAG_PREFIXES})))*[ \\t]+(?=[A-Za-z0-9_])`,
 )
 // chrt: short policy/verbose flags + long policy/--verbose flags (no value — the
-// priority is the positional \d+), then the priority, then the command.
+// priority is the positional -?\d+), then the priority, then the command.
+// SECURITY: the priority is -?\d+ (signed), matching skipChrtFlags' /^-?\d+$/ in
+// argvWrapperStripping.mjs and the `nice` patterns above. An unsigned \d+ here
+// let `chrt -5 rm /x` fall through unstripped → baseCmd='chrt' → not a
+// path-restricted command → validateSinglePathCommand passthrough → the wrapped
+// command's paths were never validated (a drift from the argv layer, which is
+// the only other place that strips this wrapper).
 const CHRT_WRAPPER_RE = new RegExp(
-  `^chrt(?:[ \\t]+(?:-f|-r|-b|-o|-i|-d|-R|-a|-v|--(?:${CHRT_FLAG_PREFIXES})))*[ \\t]+\\d+[ \\t]+(?=[A-Za-z0-9_])`,
+  `^chrt(?:[ \\t]+(?:-f|-r|-b|-o|-i|-d|-R|-a|-v|--(?:${CHRT_FLAG_PREFIXES})))*[ \\t]+-?\\d+[ \\t]+(?=[A-Za-z0-9_])`,
 )
 
 /**
