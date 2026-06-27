@@ -18,6 +18,7 @@ import { getErrnoCode } from '../../utils/errors.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { logError } from '../../utils/log.js'
+import { mcpPolicyUrlCandidates } from '../../utils/mcp/mcpPolicyUrlCandidates.mjs'
 import { getPluginMcpServers } from '../../utils/plugins/mcpPluginIntegration.js'
 import { loadAllPluginsCacheOnly } from '../../utils/plugins/pluginLoader.js'
 import { isSettingSourceEnabled } from '../../utils/settings/constants.js'
@@ -392,10 +393,17 @@ function isMcpServerDenied(
 
     const serverUrl = getServerUrl(config)
     if (serverUrl) {
+      // Match both the raw URL and the unwrapped CCR-proxy vendor URL, so a
+      // denied vendor that arrives wrapped in a proxy URL can't slip the
+      // denylist. unwrapCcrProxyUrl already backs signature-based dedup.
+      const urlCandidates = mcpPolicyUrlCandidates(
+        serverUrl,
+        unwrapCcrProxyUrl(serverUrl),
+      )
       for (const entry of settings.deniedMcpServers) {
         if (
           isMcpServerUrlEntry(entry) &&
-          urlMatchesPattern(serverUrl, entry.serverUrl)
+          urlCandidates.some(url => urlMatchesPattern(url, entry.serverUrl))
         ) {
           return true
         }
