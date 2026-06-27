@@ -1,6 +1,8 @@
+import { mcpInfoFromString } from '../../services/mcp/mcpStringUtils.js'
 import type { ToolPermissionContext } from '../../Tool.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import type { PermissionRule, PermissionRuleSource } from './PermissionRule.js'
+import { toolWideRuleNameMatches } from './toolWideRuleNameMatches.mjs'
 import {
   getAllowRules,
   getAskRules,
@@ -121,11 +123,18 @@ function isAllowRuleShadowedByAskRule(
     return { shadowed: false }
   }
 
-  // Find any tool-wide ask rule for the same tool
+  // Find any tool-wide ask rule for the same tool. Use the SAME name matching as
+  // enforcement (toolMatchesRule) so an MCP server-level ask rule (e.g.
+  // "mcp__server1") is correctly seen to shadow a tool-specific allow rule (e.g.
+  // "mcp__server1__tool1(...)"), not just an exactly-named one.
   const shadowingAskRule = askRules.find(
     askRule =>
-      askRule.ruleValue.toolName === toolName &&
-      askRule.ruleValue.ruleContent === undefined,
+      askRule.ruleValue.ruleContent === undefined &&
+      toolWideRuleNameMatches(
+        askRule.ruleValue.toolName,
+        toolName,
+        mcpInfoFromString,
+      ),
   )
 
   if (!shadowingAskRule) {
@@ -169,11 +178,18 @@ function isAllowRuleShadowedByDenyRule(
     return { shadowed: false }
   }
 
-  // Find any tool-wide deny rule for the same tool
+  // Find any tool-wide deny rule for the same tool. Use the SAME name matching as
+  // enforcement (toolMatchesRule) so an MCP server-level deny rule (e.g.
+  // "mcp__server1") is correctly seen to shadow a tool-specific allow rule (e.g.
+  // "mcp__server1__tool1(...)"), not just an exactly-named one.
   const shadowingDenyRule = denyRules.find(
     denyRule =>
-      denyRule.ruleValue.toolName === toolName &&
-      denyRule.ruleValue.ruleContent === undefined,
+      denyRule.ruleValue.ruleContent === undefined &&
+      toolWideRuleNameMatches(
+        denyRule.ruleValue.toolName,
+        toolName,
+        mcpInfoFromString,
+      ),
   )
 
   if (!shadowingDenyRule) {

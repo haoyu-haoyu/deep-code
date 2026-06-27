@@ -27,6 +27,7 @@ import { resolvePermissionPrecedence } from './resolvePermissionPrecedence.mjs'
 import { compoundAskIsBypassImmune } from './compoundAskBypassImmune.mjs'
 import { permittedRuleSourcesUnderLockdown } from './permittedRuleSourcesUnderLockdown.mjs'
 import { lockdownPermissionClears } from './lockdownPermissionClears.mjs'
+import { toolWideRuleNameMatches } from './toolWideRuleNameMatches.mjs'
 import type {
   PermissionAskDecision,
   PermissionDecision,
@@ -268,21 +269,13 @@ function toolMatchesRule(
   // builtins should not match their MCP replacements.
   const nameForRuleMatch = getToolNameForPermissionCheck(tool)
 
-  // Direct tool name match
-  if (rule.ruleValue.toolName === nameForRuleMatch) {
-    return true
-  }
-
-  // MCP server-level permission: rule "mcp__server1" matches tool "mcp__server1__tool1"
-  // Also supports wildcard: rule "mcp__server1__*" matches all tools from server1
-  const ruleInfo = mcpInfoFromString(rule.ruleValue.toolName)
-  const toolInfo = mcpInfoFromString(nameForRuleMatch)
-
-  return (
-    ruleInfo !== null &&
-    toolInfo !== null &&
-    (ruleInfo.toolName === undefined || ruleInfo.toolName === '*') &&
-    ruleInfo.serverName === toolInfo.serverName
+  // Direct name match, plus MCP server-level ("mcp__server1") and server-wildcard
+  // ("mcp__server1__*") matching. Shared with shadowedRuleDetection so the
+  // unreachable-rule diagnostic uses the SAME name-matching as enforcement.
+  return toolWideRuleNameMatches(
+    rule.ruleValue.toolName,
+    nameForRuleMatch,
+    mcpInfoFromString,
   )
 }
 
