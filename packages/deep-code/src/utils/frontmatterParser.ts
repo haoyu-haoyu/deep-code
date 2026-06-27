@@ -4,6 +4,7 @@
  */
 
 import { logForDebugging } from './debug.js'
+import { normalizeBooleanFrontmatter } from './normalizeBooleanFrontmatter.mjs'
 import type { HooksSettings } from './settings/types.js'
 import { parseYaml } from './yaml.js'
 
@@ -327,10 +328,12 @@ export function coerceDescriptionToString(
 
 /**
  * Parse a boolean frontmatter value.
- * Only returns true for literal true or "true" string.
+ * Returns true for a literal `true` or a string that trims/lower-cases to
+ * "true" (so a padded/cased `" true "` / `"True"` still applies). See
+ * {@link normalizeBooleanFrontmatter} for why the normalization matters.
  */
 export function parseBooleanFrontmatter(value: unknown): boolean {
-  return value === true || value === 'true'
+  return normalizeBooleanFrontmatter(value)
 }
 
 /**
