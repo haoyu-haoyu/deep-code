@@ -1,6 +1,10 @@
 import type { ZodError } from 'zod/v4'
 import { AbortError, ShellError } from './errors.js'
 import { INTERRUPT_MESSAGE_FOR_TOOL_USE } from './messages.js'
+import {
+  truncateAtCodeUnitBoundary,
+  truncateEndAtCodeUnitBoundary,
+} from './truncateAtCodeUnitBoundary.mjs'
 
 export function formatError(error: unknown): string {
   if (error instanceof AbortError) {
@@ -16,8 +20,12 @@ export function formatError(error: unknown): string {
     return fullMessage
   }
   const halfLength = 5000
-  const start = fullMessage.slice(0, halfLength)
-  const end = fullMessage.slice(-halfLength)
+  // Truncate on code-unit boundaries (head AND tail) so neither the kept head
+  // ends in a lone high surrogate nor the kept tail begins on a lone low surrogate
+  // from a split pair — this error text is returned to the model and JSON-encoded
+  // for the API, where an unpaired surrogate can't be UTF-8 encoded.
+  const start = truncateAtCodeUnitBoundary(fullMessage, halfLength)
+  const end = truncateEndAtCodeUnitBoundary(fullMessage, halfLength)
   return `${start}\n\n... [${fullMessage.length - 10000} characters truncated] ...\n\n${end}`
 }
 

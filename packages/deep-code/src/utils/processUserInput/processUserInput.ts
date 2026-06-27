@@ -39,6 +39,7 @@ import {
 import type { PastedContent } from '../config.js'
 import type { EffortValue } from '../effort.js'
 import { toArray } from '../generators.js'
+import { truncateAtCodeUnitBoundary } from '../truncateAtCodeUnitBoundary.mjs'
 import {
   executeUserPromptSubmitHooks,
   getUserPromptSubmitHookBlockingMessage,
@@ -278,7 +279,10 @@ const MAX_HOOK_OUTPUT_LENGTH = 10000
 
 function applyTruncation(content: string): string {
   if (content.length > MAX_HOOK_OUTPUT_LENGTH) {
-    return `${content.substring(0, MAX_HOOK_OUTPUT_LENGTH)}… [output truncated - exceeded ${MAX_HOOK_OUTPUT_LENGTH} characters]`
+    // Truncate on a code-unit boundary so the cut can't split a surrogate pair
+    // into a lone surrogate — this hook output enters the model context and is
+    // JSON-encoded for the API, where an unpaired surrogate can't be UTF-8 encoded.
+    return `${truncateAtCodeUnitBoundary(content, MAX_HOOK_OUTPUT_LENGTH)}… [output truncated - exceeded ${MAX_HOOK_OUTPUT_LENGTH} characters]`
   }
   return content
 }

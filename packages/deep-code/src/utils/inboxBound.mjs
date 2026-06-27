@@ -19,6 +19,8 @@
  * is an oversized non-protected message, but the message itself is retained).
  */
 
+import { truncateAtCodeUnitBoundary } from './truncateAtCodeUnitBoundary.mjs'
+
 const DEFAULT_TRUNCATION_MARKER =
   '\n[... message truncated: exceeded the per-message size limit ...]'
 
@@ -74,7 +76,13 @@ export function boundInboxMessages(
       m.text.length > maxMessageChars
     ) {
       truncatedCount++
-      return { ...m, text: m.text.slice(0, maxMessageChars) + marker }
+      // Truncate on a code-unit boundary so the cut can't split a surrogate pair
+      // into a lone surrogate — this text enters a peer/leader inbox and the model
+      // context, where an unpaired surrogate can't be UTF-8/JSON encoded.
+      return {
+        ...m,
+        text: truncateAtCodeUnitBoundary(m.text, maxMessageChars) + marker,
+      }
     }
     return m
   })

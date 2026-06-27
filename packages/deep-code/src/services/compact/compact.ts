@@ -42,6 +42,7 @@ import { getMemoryPath } from '../../utils/config.js'
 import { getMessage } from '../../i18n/index.js'
 import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
 import { resolveWireEffortValue } from '../../utils/effort.js'
+import { truncateAtCodeUnitBoundary } from '../../utils/truncateAtCodeUnitBoundary.mjs'
 import {
   analyzeContext,
   tokenStatsToStatsigMetrics,
@@ -1694,7 +1695,10 @@ function truncateToTokens(content: string, maxTokens: number): string {
     return content
   }
   const charBudget = maxTokens * 4 - SKILL_TRUNCATION_MARKER.length
-  return content.slice(0, charBudget) + SKILL_TRUNCATION_MARKER
+  // Truncate on a code-unit boundary so the head can't end in a lone surrogate
+  // (a split pair): this skill content is restored into the model context and
+  // JSON-encoded for the API, where an unpaired surrogate can't be UTF-8 encoded.
+  return truncateAtCodeUnitBoundary(content, charBudget) + SKILL_TRUNCATION_MARKER
 }
 
 function shouldExcludeFromPostCompactRestore(
