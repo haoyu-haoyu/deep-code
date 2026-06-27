@@ -28,6 +28,7 @@ import {
 import { writeToMailbox } from '../../utils/teammateMailbox.js'
 import { VERIFICATION_AGENT_TYPE } from '../AgentTool/constants.js'
 import { TASK_UPDATE_TOOL_NAME } from './constants.js'
+import { shouldFireCompletionHooks } from './shouldFireCompletionHooks.mjs'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 
 const inputSchema = lazySchema(() => {
@@ -230,36 +231,57 @@ export const TaskUpdateTool = buildTool({
       if (status !== existingTask.status) {
         // Run TaskCompleted hooks when marking a task as completed
         if (status === 'completed') {
-          const blockingErrors: string[] = []
-
-          const generator = executeTaskCompletedHooks(
-            taskId,
-            existingTask.subject,
-            existingTask.description,
-            getAgentName(),
-            getTeamName(),
-            undefined,
-            context?.abortController?.signal,
-            undefined,
-            context,
-          )
-
-          for await (const result of generator) {
-            if (result.blockingError) {
-              blockingErrors.push(
-                getTaskCompletedHookMessage(result.blockingError),
-              )
-            }
-          }
-
-          if (blockingErrors.length > 0) {
+          // Re-read the LIVE status before firing. existingTask is a lock-free
+          // snapshot from the top of call(); a concurrent TaskUpdate may have
+          // already completed (or deleted) the task. Gating the blocking,
+          // side-effecting hooks on the live value stops a stale "pending"
+          // snapshot from re-running them after a concurrent completion, and a
+          // task deleted mid-call is reported not-found instead of running its
+          // completion hooks. See shouldFireCompletionHooks.
+          const live = await getTask(taskListId, taskId)
+          if (!live) {
             return {
               data: {
                 success: false,
                 taskId,
                 updatedFields: [],
-                error: blockingErrors.join('\n'),
+                error: 'Task not found',
               },
+            }
+          }
+
+          if (shouldFireCompletionHooks(live.status)) {
+            const blockingErrors: string[] = []
+
+            const generator = executeTaskCompletedHooks(
+              taskId,
+              existingTask.subject,
+              existingTask.description,
+              getAgentName(),
+              getTeamName(),
+              undefined,
+              context?.abortController?.signal,
+              undefined,
+              context,
+            )
+
+            for await (const result of generator) {
+              if (result.blockingError) {
+                blockingErrors.push(
+                  getTaskCompletedHookMessage(result.blockingError),
+                )
+              }
+            }
+
+            if (blockingErrors.length > 0) {
+              return {
+                data: {
+                  success: false,
+                  taskId,
+                  updatedFields: [],
+                  error: blockingErrors.join('\n'),
+                },
+              }
             }
           }
         }
