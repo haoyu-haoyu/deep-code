@@ -6,6 +6,7 @@ import type { ToolResultBlockParam } from '../types/sdk-shim.js'
 import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getOriginalCwd, getSessionId } from '../bootstrap/state.js'
+import { truncateAtCodeUnitBoundary } from './truncateAtCodeUnitBoundary.mjs'
 import {
   BYTES_PER_TOKEN,
   DEFAULT_MAX_RESULT_SIZE_CHARS,
@@ -358,7 +359,14 @@ export function generatePreview(
   // Otherwise fall back to the exact limit
   const cutPoint = lastNewline > maxBytes * 0.5 ? lastNewline : maxBytes
 
-  return { preview: content.slice(0, cutPoint), hasMore: true }
+  // Truncate on a code-unit boundary so a maxBytes cut can't split a surrogate
+  // pair into a lone surrogate (a newline cutPoint is already on a BMP boundary):
+  // this preview is shown to the model and JSON-encoded for the API, where an
+  // unpaired surrogate can't be UTF-8 encoded.
+  return {
+    preview: truncateAtCodeUnitBoundary(content, cutPoint),
+    hasMore: true,
+  }
 }
 
 /**

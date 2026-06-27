@@ -20,6 +20,8 @@
 // Pure value-in/value-out so the cap + block shape is node-testable (messages.ts,
 // the sole caller, is bun-tainted).
 
+import { truncateAtCodeUnitBoundary } from './truncateAtCodeUnitBoundary.mjs'
+
 // A server-controlled blob mimeType is clamped to this length in its placeholder
 // so it can't be an uncapped injection channel (a real mimeType is short).
 const MAX_MIME_TYPE_CHARS = 80
@@ -52,13 +54,19 @@ export function buildMcpResourceTextBlocks(contents, maxChars) {
         budget -= text.length
       } else {
         const kept = budget > 0 ? budget : 0
-        const omitted = text.length - kept
+        // Truncate on a code-unit boundary so a surrogate pair at the cut isn't
+        // split into a lone surrogate — this text enters the model context and is
+        // JSON-encoded for the API, where an unpaired surrogate cannot be UTF-8
+        // encoded. `omitted` is computed from the ACTUAL kept length (the boundary
+        // back-off can drop one extra code unit) so the count stays exact.
+        const head = truncateAtCodeUnitBoundary(text, kept)
+        const omitted = text.length - head.length
         blocks.push(
           { type: 'text', text: 'Full contents of resource (truncated):' },
           {
             type: 'text',
             text:
-              text.slice(0, kept) +
+              head +
               `\n... (truncated; ${omitted} of ${text.length} chars omitted — use the ReadMcpResourceTool to read the full resource)`,
           },
         )
@@ -73,7 +81,7 @@ export function buildMcpResourceTextBlocks(contents, maxChars) {
         'mimeType' in item ? String(item.mimeType) : 'application/octet-stream'
       const mimeType =
         rawMimeType.length > MAX_MIME_TYPE_CHARS
-          ? rawMimeType.slice(0, MAX_MIME_TYPE_CHARS) + '…'
+          ? truncateAtCodeUnitBoundary(rawMimeType, MAX_MIME_TYPE_CHARS) + '…'
           : rawMimeType
       blocks.push({ type: 'text', text: `[Binary content: ${mimeType}]` })
     }

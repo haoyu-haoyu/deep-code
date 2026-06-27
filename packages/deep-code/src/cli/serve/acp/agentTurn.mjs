@@ -20,6 +20,7 @@ import { createDeepSeekLocalTools } from '../../../deepcode/local-toolchain.mjs'
 import { providerSupports } from '../../../deepcode/provider-capabilities.mjs'
 import { createDeepSeekStreamError } from '../../../services/providers/deepseek.mjs'
 import { resolveRuntimeModelProvider } from '../../../services/providers/runtime-provider.mjs'
+import { truncateAtCodeUnitBoundary } from '../../../utils/truncateAtCodeUnitBoundary.mjs'
 
 export const ACP_AGENT_SYSTEM_PROMPT = [
   'You are Deep Code, a DeepSeek-native coding assistant driving an editor over the Agent Client Protocol.',
@@ -31,7 +32,11 @@ export const ACP_AGENT_SYSTEM_PROMPT = [
 const MAX_TOOL_RESULT_CHARS = 2000
 
 function truncate(text, max) {
-  return text.length > max ? `${text.slice(0, max)}… (+${text.length - max} chars)` : text
+  // Truncate on a code-unit boundary: a lone surrogate from a split pair can't be
+  // UTF-8/JSON-encoded for the ACP (JSON-RPC) session/update sent to the editor.
+  return text.length > max
+    ? `${truncateAtCodeUnitBoundary(text, max)}… (+${text.length - max} chars)`
+    : text
 }
 
 function safeParseArgs(raw) {
