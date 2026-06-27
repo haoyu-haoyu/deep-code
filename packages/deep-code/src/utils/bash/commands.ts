@@ -7,6 +7,7 @@ import {
   createSubcommandPrefixExtractor,
 } from '../shell/prefix.js'
 import { extractHeredocs, restoreHeredocs } from './heredoc.js'
+import { isSimpleHelpCommandTokens } from './isSimpleHelpCommandTokens.mjs'
 import { quote, tryParseShellCommand } from './shellQuote.js'
 
 /**
@@ -404,35 +405,9 @@ export function isHelpCommand(command: string): boolean {
     return false
   }
 
-  const tokens = parseResult.tokens
-  let foundHelp = false
-
-  // Only allow alphanumeric tokens (besides --help)
-  const alphanumericPattern = /^[a-zA-Z0-9]+$/
-
-  for (const token of tokens) {
-    if (typeof token === 'string') {
-      // Check if this token is a flag (starts with -)
-      if (token.startsWith('-')) {
-        // Only allow --help
-        if (token === '--help') {
-          foundHelp = true
-        } else {
-          // Found another flag, not a simple help command
-          return false
-        }
-      } else {
-        // Non-flag token - must be alphanumeric only
-        // Reject paths, special characters, etc.
-        if (!alphanumericPattern.test(token)) {
-          return false
-        }
-      }
-    }
-  }
-
-  // If we found a help flag and no other flags, it's a help command
-  return foundHelp
+  // A non-string token (a shell operator or comment) means the command does
+  // more than ask for help (e.g. `git && log --help`), so it does not qualify.
+  return isSimpleHelpCommandTokens(parseResult.tokens)
 }
 
 const BASH_POLICY_SPEC = `<policy_spec>
