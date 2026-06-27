@@ -194,6 +194,7 @@ jobs:
             test/resolve-notebook-cell-index.test.mjs \
             test/normalize-rule-tool-name.test.mjs \
             test/normalize-boolean-frontmatter.test.mjs \
+            test/truncate-description.test.mjs \
             test/tasks-reset-atomic.test.mjs \
             test/task-cycle-detect.test.mjs \
             test/prune-agent-name-registry.test.mjs \

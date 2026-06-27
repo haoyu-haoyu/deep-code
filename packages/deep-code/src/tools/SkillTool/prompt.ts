@@ -16,6 +16,7 @@ import { logForDebugging } from '../../utils/debug.js'
 import { toError } from '../../utils/errors.js'
 import { truncate } from '../../utils/format.js'
 import { logError } from '../../utils/log.js'
+import { truncateAtCodeUnitBoundary } from '../../utils/truncateAtCodeUnitBoundary.mjs'
 
 // Skill listing gets 1% of the context window (in characters)
 export const SKILL_BUDGET_CONTEXT_PERCENT = 0.01
@@ -44,8 +45,11 @@ function getCommandDescription(cmd: Command): string {
   const desc = cmd.whenToUse
     ? `${cmd.description} - ${cmd.whenToUse}`
     : cmd.description
+  // Code-unit-safe cut: a raw slice could split a surrogate pair and put a lone
+  // surrogate into this model-facing listing (sent to the API). Same family as
+  // truncateDescription / the #655/#666/#670 truncation fixes.
   return desc.length > MAX_LISTING_DESC_CHARS
-    ? desc.slice(0, MAX_LISTING_DESC_CHARS - 1) + '\u2026'
+    ? truncateAtCodeUnitBoundary(desc, MAX_LISTING_DESC_CHARS - 1) + '\u2026'
     : desc
 }
 
