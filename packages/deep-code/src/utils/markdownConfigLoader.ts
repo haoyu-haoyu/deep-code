@@ -32,6 +32,7 @@ import {
 } from './settings/constants.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import { isRestrictedToPluginOnly } from './settings/pluginOnlyPolicy.js'
+import { truncateDescription } from './truncateDescription.mjs'
 
 // Claude configuration directory names
 export const CLAUDE_CONFIG_DIRECTORIES = [
@@ -106,8 +107,9 @@ export function extractDescriptionFromMarkdown(
       const headerMatch = trimmed.match(/^#+\s+(.+)$/)
       const text = headerMatch?.[1] ?? trimmed
 
-      // Return the text, limited to reasonable length
-      return text.length > 100 ? text.substring(0, 97) + '...' : text
+      // Return the text, capped to a reasonable length without splitting a
+      // surrogate pair (the description is model-facing — see truncateDescription).
+      return truncateDescription(text)
     }
   }
   return defaultDescription
