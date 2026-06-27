@@ -7,6 +7,8 @@
 // No L, W, ?, or name aliases. All times are interpreted in the process's
 // local timezone — "0 9 * * *" means 9am wherever the CLI is running.
 
+import { nextCronRun } from './nextCronRun.mjs'
+
 export type CronFields = {
   minute: number[]
   hour: number[]
@@ -109,75 +111,16 @@ export function parseCronExpression(expr: string): CronFields | null {
  * Standard cron semantics: when both dayOfMonth and dayOfWeek are constrained
  * (neither is the full range), a date matches if EITHER matches.
  *
- * DST: fixed-hour crons targeting a spring-forward gap (e.g. `30 2 * * *`
- * in a US timezone) skip the transition day — the gap hour never appears
- * in local time, so the hour-set check fails and the loop moves on.
- * Wildcard-hour crons (`30 * * * *`) fire at the first valid minute after
- * the gap. Fall-back repeats fire once (the step-forward logic jumps past
- * the second occurrence). This matches vixie-cron behavior.
+ * DST (delegated to {@link nextCronRun}): a fixed-hour job whose target falls
+ * in a spring-forward gap (e.g. `30 2 * * *` in a US timezone) is forward-mapped
+ * to the first existing instant (02:30 → 03:30) and RUNS — it is no longer
+ * skipped for the whole day — and a fall-back-ambiguous time fires once.
  */
 export function computeNextCronRun(
   fields: CronFields,
   from: Date,
 ): Date | null {
-  const minuteSet = new Set(fields.minute)
-  const hourSet = new Set(fields.hour)
-  const domSet = new Set(fields.dayOfMonth)
-  const monthSet = new Set(fields.month)
-  const dowSet = new Set(fields.dayOfWeek)
-
-  // Is the field wildcarded (full range)?
-  const domWild = fields.dayOfMonth.length === 31
-  const dowWild = fields.dayOfWeek.length === 7
-
-  // Round up to the next whole minute (strictly after `from`)
-  const t = new Date(from.getTime())
-  t.setSeconds(0, 0)
-  t.setMinutes(t.getMinutes() + 1)
-
-  const maxIter = 366 * 24 * 60
-  for (let i = 0; i < maxIter; i++) {
-    const month = t.getMonth() + 1
-    if (!monthSet.has(month)) {
-      // Jump to start of next month
-      t.setMonth(t.getMonth() + 1, 1)
-      t.setHours(0, 0, 0, 0)
-      continue
-    }
-
-    const dom = t.getDate()
-    const dow = t.getDay()
-    // When both dom/dow are constrained, either match is sufficient (OR semantics)
-    const dayMatches =
-      domWild && dowWild
-        ? true
-        : domWild
-          ? dowSet.has(dow)
-          : dowWild
-            ? domSet.has(dom)
-            : domSet.has(dom) || dowSet.has(dow)
-
-    if (!dayMatches) {
-      // Jump to start of next day
-      t.setDate(t.getDate() + 1)
-      t.setHours(0, 0, 0, 0)
-      continue
-    }
-
-    if (!hourSet.has(t.getHours())) {
-      t.setHours(t.getHours() + 1, 0, 0, 0)
-      continue
-    }
-
-    if (!minuteSet.has(t.getMinutes())) {
-      t.setMinutes(t.getMinutes() + 1)
-      continue
-    }
-
-    return t
-  }
-
-  return null
+  return nextCronRun(fields, from)
 }
 
 // --- cronToHuman ------------------------------------------------------------

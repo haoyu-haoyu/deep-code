@@ -199,6 +199,7 @@ jobs:
             test/mcp-policy-url-candidates.test.mjs \
             test/import-is-external.test.mjs \
             test/sort-dirents-by-name.test.mjs \
+            test/next-cron-run.test.mjs \
             test/tasks-reset-atomic.test.mjs \
             test/task-cycle-detect.test.mjs \
             test/prune-agent-name-registry.test.mjs \
