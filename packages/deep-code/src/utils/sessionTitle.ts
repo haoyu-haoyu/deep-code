@@ -20,6 +20,7 @@ import type { Message } from '../types/message.js'
 import { logForDebugging } from './debug.js'
 import { safeParseJSON } from './json.js'
 import { lazySchema } from './lazySchema.js'
+import { truncateEndAtCodeUnitBoundary } from './truncateAtCodeUnitBoundary.mjs'
 import { extractTextContent } from './messages.js'
 import { asSystemPrompt } from './systemPromptType.js'
 
@@ -48,8 +49,12 @@ export function extractConversationText(messages: Message[]): string {
     }
   }
   const text = parts.join('\n')
+  // Keep the tail on a code-unit boundary so the kept window can't begin on a lone
+  // low surrogate from a split pair — this text is sent to Haiku as the title-gen
+  // prompt input and JSON-encoded for the API, where an unpaired surrogate can't be
+  // UTF-8 encoded.
   return text.length > MAX_CONVERSATION_TEXT
-    ? text.slice(-MAX_CONVERSATION_TEXT)
+    ? truncateEndAtCodeUnitBoundary(text, MAX_CONVERSATION_TEXT)
     : text
 }
 
