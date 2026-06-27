@@ -2042,8 +2042,13 @@ export const fetchResourcesForClient = memoizeWithLRU(
         { onTruncated: info => logMcpListTruncation(client.name, 'resources', info) },
       )
 
+      // Sanitize resource data from MCP server (parity with tools and prompts:
+      // strips hidden/format Unicode an untrusted server could smuggle into a
+      // uri/name/description that then reaches the model as a tool result).
+      const resourcesToProcess = recursivelySanitizeUnicode(resources)
+
       // Add server name to each resource
-      return resources.map(resource => ({
+      return resourcesToProcess.map(resource => ({
         ...resource,
         server: client.name,
       }))
