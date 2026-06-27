@@ -84,6 +84,7 @@ import {
   type InstructionsLoadReason,
   type InstructionsMemoryType,
 } from './hooks.js'
+import { importIsExternal, symlinkEscapesProject } from './importIsExternal.mjs'
 import type { MemoryType } from './memory/types.js'
 import { expandPath } from './path.js'
 import { pathInWorkingPath } from './permissions/filesystem.js'
@@ -718,6 +719,19 @@ export async function processMemoryFile(
     processedPaths.add(normalizePathForComparison(resolvedPath))
   }
 
+  // A directly-discovered file (top-level DEEPCODE.md/CLAUDE.md or a rules entry)
+  // can itself be a committed in-project symlink to an external target. The
+  // @-import loop below guards imports, but the file passed in here is not an
+  // import — so apply the same external-include approval gate to a symlink that
+  // escapes the project. Files whose lexical path is already external (User,
+  // Managed, --add-dir) are intentionally loaded and are NOT flagged here.
+  if (
+    !includeExternal &&
+    symlinkEscapesProject(filePath, resolvedPath, pathInOriginalCwd)
+  ) {
+    return []
+  }
+
   const { info: memoryFile, includePaths: resolvedIncludePaths } =
     await safelyReadMemoryFileAsync(filePath, type, resolvedPath)
   if (!memoryFile || !memoryFile.content.trim()) {
@@ -735,7 +749,20 @@ export async function processMemoryFile(
   result.push(memoryFile)
 
   for (const resolvedIncludePath of resolvedIncludePaths) {
-    const isExternal = !pathInOriginalCwd(resolvedIncludePath)
+    // Resolve symlinks before the containment check. Checking only the lexical
+    // path let a committed in-project symlink (link.md -> /etc/passwd) bypass
+    // the external-include approval gate and load an arbitrary external file
+    // into model context. safeResolvePath returns the lexical path unchanged on
+    // a broken/unresolvable symlink, so this degrades to the old check.
+    const { resolvedPath: realIncludePath } = safeResolvePath(
+      getFsImplementation(),
+      resolvedIncludePath,
+    )
+    const isExternal = importIsExternal(
+      resolvedIncludePath,
+      realIncludePath,
+      pathInOriginalCwd,
+    )
     if (isExternal && !includeExternal) {
       continue
     }
@@ -815,6 +842,18 @@ export async function processMdRules({
         fs,
         entryPath,
       )
+
+      // A rules entry (file or subdir) whose in-project lexical path is a
+      // symlink escaping the project is gated by the same external-include
+      // approval as @-imports. entryPath is the lexical (join-from-rulesDir)
+      // path, so legitimately-external rules dirs (Managed, User, --add-dir)
+      // are not flagged here; only an in-project symlink that escapes is.
+      if (
+        !includeExternal &&
+        symlinkEscapesProject(entryPath, resolvedEntryPath, pathInOriginalCwd)
+      ) {
+        continue
+      }
 
       // Use Dirent methods for non-symlinks to avoid extra stat calls.
       // For symlinks, we need stat to determine what the target is.
