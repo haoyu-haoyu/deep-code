@@ -85,6 +85,7 @@ import {
   type InstructionsMemoryType,
 } from './hooks.js'
 import { importIsExternal, symlinkEscapesProject } from './importIsExternal.mjs'
+import { sortDirentsByName } from './sortDirentsByName.mjs'
 import type { MemoryType } from './memory/types.js'
 import { expandPath } from './path.js'
 import { pathInWorkingPath } from './permissions/filesystem.js'
@@ -827,7 +828,9 @@ export async function processMdRules({
     const result: MemoryFileInfo[] = []
     let entries: import('fs').Dirent[]
     try {
-      entries = await fs.readdir(resolvedRulesDir)
+      // Sort by name: fs.readdir order is filesystem-dependent, and the load
+      // order is the precedence order the model sees, so leave it deterministic.
+      entries = sortDirentsByName(await fs.readdir(resolvedRulesDir))
     } catch (e: unknown) {
       const code = getErrnoCode(e)
       if (code === 'ENOENT' || code === 'EACCES' || code === 'ENOTDIR') {
