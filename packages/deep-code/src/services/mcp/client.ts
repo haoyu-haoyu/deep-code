@@ -63,6 +63,7 @@ import {
   type ToolCallProgress,
   toolMatchesName,
 } from '../../Tool.js'
+import { getImageProcessor } from '../../tools/FileReadTool/imageProcessor.js'
 import { ListMcpResourcesTool } from '../../tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
 import { type MCPProgress, MCPTool } from '../../tools/MCPTool/MCPTool.js'
 import { createMcpAuthTool } from '../../tools/McpAuthTool/McpAuthTool.js'
@@ -80,7 +81,12 @@ import {
 } from '../../utils/errors.js'
 import { getMCPUserAgent } from '../../utils/http.js'
 import { maybeNotifyIDEConnected } from '../../utils/ide.js'
-import { maybeResizeAndDownsampleImageBuffer } from '../../utils/imageResizer.js'
+import { isApiSupportedImageFormat } from '../../utils/imageFormatSupport.mjs'
+import {
+  detectImageFormatFromBuffer,
+  maybeResizeAndDownsampleImageBuffer,
+} from '../../utils/imageResizer.js'
+import { toApiSafeImageBlock } from '../../utils/toApiSafeImageBlock.mjs'
 import { logMCPDebug, logMCPError } from '../../utils/log.js'
 import {
   getBinaryBlobSavedMessage,
@@ -2589,21 +2595,27 @@ export async function transformResultContent(
       )
     }
     case 'image': {
-      // Resize and compress image data, enforcing API dimension limits
+      // Resize/compress, enforcing API dimension limits, AND guarantee an
+      // API-accepted media_type. sharp decodes formats the API rejects (tiff/
+      // svg/avif/heif/...); emitting `image/<that>` would 400 the whole request
+      // and discard valid sibling blocks. toApiSafeImageBlock transcodes any
+      // non-API format to PNG and derives the media_type from the final bytes.
       const imageBuffer = Buffer.from(String(resultContent.data), 'base64')
       const ext = resultContent.mimeType?.split('/')[1] || 'png'
-      const resized = await maybeResizeAndDownsampleImageBuffer(
-        imageBuffer,
-        imageBuffer.length,
+      const safe = await toApiSafeImageBlock({
+        buffer: imageBuffer,
         ext,
-      )
+        maybeResize: maybeResizeAndDownsampleImageBuffer,
+        isApiSupportedImageFormat,
+        detectImageFormat: detectImageFormatFromBuffer,
+        getImageProcessor,
+      })
       return [
         {
           type: 'image',
           source: {
-            data: resized.buffer.toString('base64'),
-            media_type:
-              `image/${resized.mediaType}` as Base64ImageSource['media_type'],
+            data: safe.base64,
+            media_type: safe.mediaType as Base64ImageSource['media_type'],
             type: 'base64',
           },
         },
@@ -2624,14 +2636,21 @@ export async function transformResultContent(
         const isImage = IMAGE_MIME_TYPES.has(resource.mimeType ?? '')
 
         if (isImage) {
-          // Resize and compress image blob, enforcing API dimension limits
+          // Resize/compress, enforcing API dimension limits, AND guarantee an
+          // API-accepted media_type. The IMAGE_MIME_TYPES gate above trusts the
+          // server's CLAIMED mimeType, but the bytes may be a different format
+          // sharp detects (e.g. mimeType image/png over actual TIFF bytes), so
+          // normalize the OUTPUT media_type from the final bytes here too.
           const imageBuffer = Buffer.from(resource.blob, 'base64')
           const ext = resource.mimeType?.split('/')[1] || 'png'
-          const resized = await maybeResizeAndDownsampleImageBuffer(
-            imageBuffer,
-            imageBuffer.length,
+          const safe = await toApiSafeImageBlock({
+            buffer: imageBuffer,
             ext,
-          )
+            maybeResize: maybeResizeAndDownsampleImageBuffer,
+            isApiSupportedImageFormat,
+            detectImageFormat: detectImageFormatFromBuffer,
+            getImageProcessor,
+          })
           const content: MessageParam['content'] = []
           if (prefix) {
             content.push({
@@ -2642,9 +2661,8 @@ export async function transformResultContent(
           content.push({
             type: 'image',
             source: {
-              data: resized.buffer.toString('base64'),
-              media_type:
-                `image/${resized.mediaType}` as Base64ImageSource['media_type'],
+              data: safe.base64,
+              media_type: safe.mediaType as Base64ImageSource['media_type'],
               type: 'base64',
             },
           })
