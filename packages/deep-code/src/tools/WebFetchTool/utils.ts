@@ -23,6 +23,7 @@ import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { isPathScopedPreapprovedHost, isPreapprovedHost } from './preapproved.js'
 import { makeSecondaryModelPrompt } from './prompt.js'
 import { redirectPreservesPreapproval } from './redirectPreservesPreapproval.mjs'
+import { decodeHttpBody, isHtmlContentType } from './webContentDecode.mjs'
 
 // Custom error classes for domain blocking
 class DomainBlockedError extends Error {
@@ -498,20 +499,25 @@ export async function getURLMarkdownContent(
   }
 
   const bytes = rawBuffer.length
-  const htmlContent = rawBuffer.toString('utf-8')
+  // Decode using the body's DECLARED encoding (Content-Type charset / <meta charset>
+  // / BOM), not a hard-coded utf-8 — otherwise every UTF-16/Latin-1/Shift-JIS/GBK/
+  // Big5 page reaches the model as mojibake.
+  const decodedContent = decodeHttpBody(rawBuffer, contentType)
 
   let markdownContent: string
   let contentBytes: number
-  if (contentType.includes('text/html')) {
-    markdownContent = (await getTurndownService()).turndown(htmlContent)
+  if (isHtmlContentType(contentType)) {
+    // Match the BARE media type (split on ';'), so a parameter like
+    // `application/json; x=text/html` doesn't get force-fed to turndown.
+    markdownContent = (await getTurndownService()).turndown(decodedContent)
     contentBytes = Buffer.byteLength(markdownContent)
   } else {
-    // It's not HTML - just use it raw. The decoded string's UTF-8 byte
-    // length equals rawBuffer.length (modulo U+FFFD replacement on invalid
-    // bytes — negligible for cache eviction accounting), so skip the O(n)
-    // Buffer.byteLength scan.
-    markdownContent = htmlContent
-    contentBytes = bytes
+    // Not HTML — use the decoded text as-is. Account the cache size by the actual
+    // UTF-8 footprint of the STORED string: it diverges from rawBuffer.length once
+    // the body is non-UTF-8 or has invalid bytes (each U+FFFD is 3 bytes), so using
+    // the raw byte count would under-count and let the cache exceed its 50MB bound.
+    markdownContent = decodedContent
+    contentBytes = Buffer.byteLength(markdownContent)
   }
 
   // Store the fetched content in cache. Note that it's stored under
