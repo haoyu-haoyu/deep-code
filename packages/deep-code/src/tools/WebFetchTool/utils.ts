@@ -20,8 +20,9 @@ import {
 } from '../../utils/mcpOutputStorage.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
-import { isPreapprovedHost } from './preapproved.js'
+import { isPathScopedPreapprovedHost, isPreapprovedHost } from './preapproved.js'
 import { makeSecondaryModelPrompt } from './prompt.js'
+import { redirectPreservesPreapproval } from './redirectPreservesPreapproval.mjs'
 
 // Custom error classes for domain blocking
 class DomainBlockedError extends Error {
@@ -143,6 +144,14 @@ export function isPreapprovedUrl(url: string): boolean {
     return isPreapprovedHost(parsedUrl.hostname, parsedUrl.pathname)
   } catch {
     return false
+  }
+}
+
+function hostnameOf(url: string): string | null {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return null
   }
 }
 
@@ -444,10 +453,20 @@ export async function getURLMarkdownContent(
     logError(e)
   }
 
+  // A same-host redirect is auto-followed only if it ALSO keeps any path-scoped
+  // preapproval intact — otherwise a path-scoped auto-allow (github.com/anthropics)
+  // could silently escape to an untrusted same-host page with no user prompt. A
+  // disallowed redirect is surfaced to the user like a cross-host one.
   const response = await getWithPermittedRedirects(
     upgradedUrl,
     abortController.signal,
-    isPermittedRedirect,
+    (currentUrl, redirectUrl) =>
+      isPermittedRedirect(currentUrl, redirectUrl) &&
+      redirectPreservesPreapproval(currentUrl, redirectUrl, {
+        isPreapprovedUrl,
+        isPathScopedPreapprovedHost,
+        hostnameOf,
+      }),
   )
 
   // Check if we got a redirect response

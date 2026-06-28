@@ -266,6 +266,7 @@ jobs:
             test/project-mcp-approval.test.mjs \
             test/mcp-reconcile-pending-update.test.mjs \
             test/ssrf-blocked-address.test.mjs \
+            test/redirect-preserves-preapproval.test.mjs \
             test/image-format-support.test.mjs \
             test/to-api-safe-image-block.test.mjs \
             test/image-decode-pixel-guard.test.mjs \
