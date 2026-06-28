@@ -6,6 +6,7 @@ import {
   createCommandPrefixExtractor,
   createSubcommandPrefixExtractor,
 } from '../shell/prefix.js'
+import { collapseSplitParts } from './collapseSplitParts.mjs'
 import { extractHeredocs, restoreHeredocs } from './heredoc.js'
 import { isSimpleHelpCommandTokens } from './isSimpleHelpCommandTokens.mjs'
 import { quote, tryParseShellCommand } from './shellQuote.js'
@@ -84,8 +85,6 @@ function isStaticRedirectTarget(target: string): boolean {
 export type { CommandPrefixResult, CommandSubcommandPrefixResult }
 
 export function splitCommandWithOperators(command: string): string[] {
-  const parts: (ParseEntry | null)[] = []
-
   // Generate unique placeholders for this parse to prevent injection attacks
   // Security: Using random salt prevents malicious commands from containing
   // literal placeholder strings that would be replaced during parsing
@@ -169,27 +168,12 @@ export function splitCommandWithOperators(command: string): string[] {
   }
 
   try {
-    // 1. Collapse adjacent strings and globs
-    for (const part of parsed) {
-      if (typeof part === 'string') {
-        if (parts.length > 0 && typeof parts[parts.length - 1] === 'string') {
-          if (part === placeholders.NEW_LINE) {
-            // If the part is NEW_LINE, we want to terminate the previous string and start a new command
-            parts.push(null)
-          } else {
-            parts[parts.length - 1] += ' ' + part
-          }
-          continue
-        }
-      } else if ('op' in part && part.op === 'glob') {
-        // If the previous part is a string (not an operator), collapse the glob with it
-        if (parts.length > 0 && typeof parts[parts.length - 1] === 'string') {
-          parts[parts.length - 1] += ' ' + part.pattern
-          continue
-        }
-      }
-      parts.push(part)
-    }
+    // 1. Collapse adjacent strings and globs, and turn unquoted newlines into
+    // command boundaries (extracted to a pure, node-testable leaf).
+    const parts: (ParseEntry | null)[] = collapseSplitParts(
+      parsed,
+      placeholders.NEW_LINE,
+    )
 
     // 2. Map tokens to strings
     const stringParts = parts
