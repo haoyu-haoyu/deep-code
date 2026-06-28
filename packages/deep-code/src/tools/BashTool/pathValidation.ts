@@ -24,6 +24,7 @@ import type { BashTool } from './BashTool.js'
 import { stripSafeWrappers } from './bashPermissions.js'
 import { sedCommandIsAllowedByAllowlist } from './sedValidation.js'
 import { stripWrappersFromArgv } from './argvWrapperStripping.mjs'
+import { extractDdPathOperands } from './ddPathOperands.mjs'
 
 // stripWrappersFromArgv stays publicly exported (back-compat) from the core.
 // The skip* helpers it composes are internal to the .mjs (tested directly there).
@@ -66,6 +67,11 @@ export type PathCommand =
   | 'sha256sum'
   | 'sha1sum'
   | 'md5sum'
+  | 'tee'
+  | 'dd'
+  | 'truncate'
+  | 'shred'
+  | 'unlink'
 
 /**
  * Checks if an rm/rmdir command targets dangerous paths that should always
@@ -301,6 +307,23 @@ export const PATH_EXTRACTORS: Record<
   sha256sum: filterOutFlags,
   sha1sum: filterOutFlags,
   md5sum: filterOutFlags,
+
+  // File-writing / destroying commands whose WRITE/DELETE target is a positional
+  // arg (not a path-bearing flag). filterOutFlags extracts those positionals;
+  // over-extracting a non-path flag VALUE (shred's `-n 3`, truncate's `-s 100M`)
+  // is harmless — it resolves inside cwd and is allowed. (Without these, an
+  // out-of-dir `tee`/`truncate`/`shred`/`unlink` write/delete escaped the
+  // path-confinement gate that already covers cp/mv/rm.) NOTE: read-only
+  // reference flags (`truncate -r REF`, `shred --random-source=F`) are not
+  // extracted — they leak a READ of an out-of-dir reference at most, never a
+  // write. `install` (its `-t`/`--target-directory` redirects the WRITE dest and
+  // needs a dedicated extractor) and `ln` are intentionally left for a follow-up.
+  tee: filterOutFlags,
+  truncate: filterOutFlags,
+  shred: filterOutFlags,
+  unlink: filterOutFlags,
+  // dd uses `key=value` operands (no dash-flags); pull the if=/of= file operands.
+  dd: extractDdPathOperands,
 
   // tr: special case - skip character sets
   tr: args => {
@@ -552,6 +575,11 @@ const ACTION_VERBS: Record<PathCommand, string> = {
   sha256sum: 'compute SHA-256 checksums for files in',
   sha1sum: 'compute SHA-1 checksums for files in',
   md5sum: 'compute MD5 checksums for files in',
+  tee: 'write output to files in',
+  truncate: 'truncate or extend files in',
+  shred: 'securely erase files in',
+  unlink: 'remove files from',
+  dd: 'write data to files in',
 }
 
 export const COMMAND_OPERATION_TYPE: Record<PathCommand, FileOperationType> = {
@@ -591,6 +619,11 @@ export const COMMAND_OPERATION_TYPE: Record<PathCommand, FileOperationType> = {
   sha256sum: 'read',
   sha1sum: 'read',
   md5sum: 'read',
+  tee: 'write',
+  truncate: 'write',
+  shred: 'write',
+  unlink: 'write',
+  dd: 'write',
 }
 
 /**
