@@ -7,6 +7,7 @@ import type { PermissionDecision } from '../../utils/permissions/PermissionResul
 import { getRuleByContentsForTool } from '../../utils/permissions/permissions.js'
 import { isPreapprovedHost } from './preapproved.js'
 import { DESCRIPTION, WEB_FETCH_TOOL_NAME } from './prompt.js'
+import { parseContentType } from './webContentDecode.mjs'
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -264,7 +265,7 @@ To complete your request, I need to fetch content from the redirected URL. Pleas
     let result: string
     if (
       isPreapproved &&
-      contentType.includes('text/markdown') &&
+      parseContentType(contentType).mediaType === 'text/markdown' &&
       content.length < MAX_MARKDOWN_LENGTH
     ) {
       result = content
