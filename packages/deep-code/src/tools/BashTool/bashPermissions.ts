@@ -77,6 +77,7 @@ import {
   stripEnvCommandPrefix,
   stripPrecommandModifiers,
   stripSafeWrappers,
+  stripTransparentRunner,
 } from './commandStripping.mjs'
 export { BINARY_HIJACK_VARS, stripAllLeadingEnvVars, stripSafeWrappers }
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js'
@@ -447,6 +448,17 @@ function filterRulesByContentsMatchingInput(
         if (!seen.has(modifierStripped)) {
           commandsToTry.push(modifierStripped)
           seen.add(modifierStripped)
+        }
+        // Try stripping a leading transparent-runner wrapper (`xargs [flags]`/
+        // `watch [flags]`/`coproc`). SECURITY: deny/ask ONLY — these EXECUTE the
+        // wrapped command, so a denied command run as `xargs -n1 rm` / `watch rm` /
+        // `coproc rm` must still match its deny rule. The matcher's bare-`xargs <prefix>`
+        // special-case only catches FLAGLESS xargs; this catches every flag form (and
+        // watch/coproc, which no other stripper touches). Fails closed on injection.
+        const runnerStripped = stripTransparentRunner(cmd)
+        if (!seen.has(runnerStripped)) {
+          commandsToTry.push(runnerStripped)
+          seen.add(runnerStripped)
         }
       }
       startIdx = endIdx
