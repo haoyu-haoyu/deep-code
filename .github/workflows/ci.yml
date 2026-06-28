@@ -273,6 +273,7 @@ jobs:
             test/strip-transparent-runner.test.mjs \
             test/strip-control-flow-lead-in.test.mjs \
             test/collapse-split-parts.test.mjs \
+            test/subcommands-for-deny-check.test.mjs \
             test/image-format-support.test.mjs \
             test/to-api-safe-image-block.test.mjs \
             test/image-decode-pixel-guard.test.mjs \

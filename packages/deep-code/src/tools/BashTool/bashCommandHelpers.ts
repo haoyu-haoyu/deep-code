@@ -14,6 +14,7 @@ import type { PermissionUpdate } from '../../utils/permissions/PermissionUpdateS
 import { createPermissionRequestMessage } from '../../utils/permissions/permissions.js'
 import { BashTool } from './BashTool.js'
 import { bashCommandIsSafeAsync_DEPRECATED } from './bashSecurity.js'
+import { subcommandsForDenyCheck } from './subcommandsForDenyCheck.mjs'
 
 export type CommandIdentityCheckers = {
   isNormalizedCdCommand: (command: string) => boolean
@@ -220,6 +221,25 @@ async function bashToolCheckCommandOperatorPermissions(
       tsAnalysis.compoundStructure.hasCommandGroup
     : isUnsafeCompoundCommand_DEPRECATED(input.command)
   if (isUnsafeCompound) {
+    // SECURITY: a hard deny must still fire for a denied command wrapped in an
+    // unsafe compound. A background list (`rm &` / `a & rm` / `a |& rm`) or a
+    // subshell (`(rm)`) is not a COMMAND_LIST_SEPARATOR list, so it reaches this
+    // branch — which otherwise returns a blanket `ask` with no rule lookup,
+    // silently downgrading e.g. `Bash(rm:*)` from deny to ask (the per-subcommand
+    // deny loop in bashToolHasPermission is never reached once we return here).
+    // splitCommand still cleanly exposes the wrapped commands, so mirror the pipe
+    // path (segmentedCommandPermissionResult): deny if any subcommand is denied.
+    // Strictly tightening — an un-denied unsafe compound still gets the ask below.
+    for (const sub of subcommandsForDenyCheck(
+      input.command,
+      splitCommand_DEPRECATED,
+    )) {
+      const subResult = await bashToolHasPermissionFn({ ...input, command: sub })
+      if (subResult.behavior === 'deny') {
+        return subResult
+      }
+    }
+
     // This command contains an operator like `>` that we don't support as a subcommand separator
     // Check if bashCommandIsSafe_DEPRECATED has a more specific message
     const safetyResult = await bashCommandIsSafeAsync_DEPRECATED(input.command)
