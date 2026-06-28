@@ -12,6 +12,7 @@ import {
 } from 'path'
 import {
   getAdditionalDirectoriesForClaudeMd,
+  getOriginalCwd,
   getSessionId,
 } from '../bootstrap/state.js'
 import {
@@ -50,7 +51,7 @@ import {
   parseShellFrontmatter,
   splitPathInFrontmatter,
 } from '../utils/frontmatterParser.js'
-import { getFsImplementation } from '../utils/fsOperations.js'
+import { getFsImplementation, safeResolvePath } from '../utils/fsOperations.js'
 import { isPathGitignored } from '../utils/git/gitignore.js'
 import { logError } from '../utils/log.js'
 import {
@@ -60,7 +61,9 @@ import {
   type MarkdownFile,
   parseSlashCommandToolsFromFrontmatter,
 } from '../utils/markdownConfigLoader.js'
+import { markdownFileEscapesProject } from '../utils/markdownSymlinkContainment.mjs'
 import { parseUserSpecifiedModel } from '../utils/model/model.js'
+import { pathInWorkingPath } from '../utils/permissions/filesystem.js'
 import { resolveFrontmatterModel } from '../utils/frontmatterModel.mjs'
 import { executeShellCommandsInPrompt } from '../utils/promptShellExecution.js'
 import type { SettingSource } from '../utils/settings/constants.js'
@@ -471,6 +474,27 @@ async function loadSkillsFromSkillsDir(
 
         const skillDirPath = join(basePath, entry.name)
         const skillFilePath = join(skillDirPath, 'SKILL.md')
+
+        // This loader follows symlinks (the entry may itself be a symlinked dir,
+        // and readFile follows a symlinked SKILL.md), so a committed in-project
+        // skill that escapes the project (e.g. `.deepcode/skills/x` -> an
+        // external dir, or `x/SKILL.md` -> `~/.ssh/id_rsa`) would load an
+        // out-of-project file into the model context as the skill body with no
+        // permission prompt. Apply the same containment claudemd.ts/loadMarkdownFiles
+        // use; self-guarded so managed/user/--add-dir (lexical path outside the
+        // project) and within-project symlinks are unaffected.
+        if (
+          markdownFileEscapesProject(
+            skillFilePath,
+            fp => safeResolvePath(fs, fp).resolvedPath,
+            fp => pathInWorkingPath(fp, getOriginalCwd()),
+          )
+        ) {
+          logForDebugging(
+            `[skills] skipping skill that symlinks outside the project: ${skillFilePath}`,
+          )
+          return null
+        }
 
         let content: string
         try {

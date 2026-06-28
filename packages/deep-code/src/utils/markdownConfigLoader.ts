@@ -8,7 +8,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from 'src/services/analytics/index.js'
-import { getProjectRoot } from '../bootstrap/state.js'
+import { getOriginalCwd, getProjectRoot } from '../bootstrap/state.js'
 import {
   DEEPCODE_PROJECT_DIR,
   LEGACY_CLAUDE_PROJECT_DIR,
@@ -23,7 +23,10 @@ import { isFsInaccessible } from './errors.js'
 import { normalizePathForComparison } from './file.js'
 import type { FrontmatterData } from './frontmatterParser.js'
 import { parseFrontmatter } from './frontmatterParser.js'
+import { getFsImplementation, safeResolvePath } from './fsOperations.js'
 import { findCanonicalGitRoot, findGitRoot } from './git.js'
+import { filterProjectEscapingMarkdownFiles } from './markdownSymlinkContainment.mjs'
+import { pathInWorkingPath } from './permissions/filesystem.js'
 import { parseToolListFromCLI } from './permissions/permissionSetup.js'
 import { ripGrep } from './ripgrep.js'
 import {
@@ -620,8 +623,26 @@ async function loadMarkdownFiles(dir: string): Promise<
     throw e
   }
 
+  // Discovery follows symlinks (native walker stat()-follows, ripGrep `--follow`),
+  // so a committed in-project symlink (e.g. `.deepcode/commands/notes.md` ->
+  // `~/.ssh/id_rsa`) would be read below and its EXTERNAL target loaded into the
+  // model context as a command/agent/skill body with no permission prompt. Drop
+  // any in-project file whose symlink target escapes the project — the same
+  // containment claudemd.ts applies to CLAUDE.md/DEEPCODE.md (symlinkEscapesProject).
+  // Self-guarded: managed/user/ancestor dirs (lexical path outside the project)
+  // and within-project symlinks are not affected.
+  const containedFiles = filterProjectEscapingMarkdownFiles(
+    files,
+    filePath => safeResolvePath(getFsImplementation(), filePath).resolvedPath,
+    filePath => pathInWorkingPath(filePath, getOriginalCwd()),
+    filePath =>
+      logForDebugging(
+        `Skipping markdown config file that symlinks outside the project: ${filePath}`,
+      ),
+  )
+
   const results = await Promise.all(
-    files.map(async filePath => {
+    containedFiles.map(async filePath => {
       try {
         const rawContent = await readFile(filePath, { encoding: 'utf-8' })
         const { frontmatter, content } = parseFrontmatter(rawContent, filePath)
