@@ -75,6 +75,7 @@ import {
   stripAllLeadingEnvVars,
   stripCommentLines,
   stripEnvCommandPrefix,
+  stripControlFlowLeadIn,
   stripPrecommandModifiers,
   stripSafeWrappers,
   stripTransparentRunner,
@@ -459,6 +460,19 @@ function filterRulesByContentsMatchingInput(
         if (!seen.has(runnerStripped)) {
           commandsToTry.push(runnerStripped)
           seen.add(runnerStripped)
+        }
+        // Try stripping a leading compound/control-flow lead-in (`{`/`if`/`elif`/
+        // `while`/`until`/`then`/`do`/`else`). SECURITY: deny/ask ONLY — splitCommand
+        // glues these to the wrapped command (`{ rm; }` → `{ rm`, `if x; then rm; fi`
+        // → `then rm`, `… do rm; done` → `do rm`), so a denied command run inside a
+        // brace group or control-flow body must still match its deny rule. Strictly
+        // tightening: only ADDS candidates, so ALLOW rules are unaffected. The
+        // tree-sitter path already descends these bodies; this restores the
+        // protection for the legacy path (TREE_SITTER_BASH off by default).
+        const leadInStripped = stripControlFlowLeadIn(cmd)
+        if (!seen.has(leadInStripped)) {
+          commandsToTry.push(leadInStripped)
+          seen.add(leadInStripped)
         }
       }
       startIdx = endIdx

@@ -627,3 +627,42 @@ export function stripTransparentRunner(command) {
   }
   return command
 }
+
+// The compound/control-flow lead-in keywords (and the brace-group open) that
+// PRECEDE a command position in a `;`/operator-split subcommand. `splitCommand`
+// glues these to the wrapped command — `{ rm; }` → subcommand `"{ rm"`,
+// `if true; then rm; fi` → `"then rm"`, `while/for … do rm; done` → `"do rm"` —
+// so a `Bash(rm:*)` prefix deny never matches and the wrapped command runs.
+// Condition-position (`if`/`elif`/`while`/`until <cmd>`) and body-position
+// (`then`/`do`/`else <cmd>`) both run their command, so both are peeled. The
+// `[ \t\n\r]+` boundary keeps these WHOLE words (`iffy`, `done`, `doc` are not
+// matched) and the brace requires the bash-mandated space (`{ ` group, never
+// `{}`/`${x}`). `for`/`case`/`select`/`function` headers are intentionally NOT
+// peeled — their next token is a loop var/word, not a command.
+const CONTROL_FLOW_LEAD_IN =
+  /^(?:\{|if|elif|while|until|then|do|else)[ \t\n\r]+/
+
+/**
+ * Strip a single leading compound/control-flow lead-in (`{`/`if`/`elif`/`while`/
+ * `until`/`then`/`do`/`else`) so a denied command run inside a brace group or
+ * control-flow body — `{ rm -rf /; }`, `if true; then rm -rf /; fi`,
+ * `while true; do rm -rf /; done` — still matches its deny rule. Returns the
+ * wrapped command, or the input unchanged when there is no such lead-in.
+ *
+ * DENY/ASK PATH ONLY — like stripTransparentRunner/stripPrecommandModifiers,
+ * peeled one-at-a-time inside the deny/ask fixed-point (so the ORIGINAL is also
+ * still checked, and nesting like `{ if x; then rm; fi; }` resolves across
+ * iterations). Strictly tightening: it only ADDS deny/ask match candidates, so
+ * it can never satisfy an ALLOW rule or over-allow. Mirrors the tree-sitter
+ * path, which already descends compound_statement/if/while/for bodies — a
+ * protection that otherwise exists only when TREE_SITTER_BASH is on (off by
+ * default, so the legacy string path is the live gate).
+ *
+ * @param {string} command
+ * @returns {string}
+ */
+export function stripControlFlowLeadIn(command) {
+  const m = command.match(CONTROL_FLOW_LEAD_IN)
+  if (!m) return command
+  return strippedOrOriginal(command.slice(m[0].length), command)
+}

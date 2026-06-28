@@ -271,6 +271,7 @@ jobs:
             test/throughput-watchdog.test.mjs \
             test/command-prefix-suggestion.test.mjs \
             test/strip-transparent-runner.test.mjs \
+            test/strip-control-flow-lead-in.test.mjs \
             test/image-format-support.test.mjs \
             test/to-api-safe-image-block.test.mjs \
             test/image-decode-pixel-guard.test.mjs \
