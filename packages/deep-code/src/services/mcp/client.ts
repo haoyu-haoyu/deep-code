@@ -2133,38 +2133,19 @@ export const fetchCommandsForClient = memoizeWithLRU(
                 name: prompt.name,
                 arguments: zipObject(argNames, argsArray),
               })
-              // Same DoS gate as transformMCPResult: result.messages is
-              // server-controlled and each message.content can be an image/audio/blob
-              // that runs the sharp/disk decode. Cap the media count, reject any
-              // oversized single block (by base64 length, before allocation), and
-              // bound the decode concurrency so a hostile prompt server can't OOM the
-              // client or fill its disk.
+              // result.messages is server-controlled and each message.content can
+              // be an image/audio/blob that runs the sharp/disk decode. Route it
+              // through the SAME shared transform the tool path uses, so a hostile
+              // prompt server can't OOM the client AND one bad block degrades to a
+              // placeholder instead of failing the whole slash command (discarding
+              // the valid prompt text the model needs).
               const promptBlocks = result.messages.map(
                 message => message.content,
               )
-              const overBudget = overBudgetMediaIndices(
+              return await transformServerContentBlocks(
                 promptBlocks,
-                API_MAX_MEDIA_PER_REQUEST,
-                MCP_MEDIA_BLOCK_MAX_DECODED_BYTES,
+                connectedClient.name,
               )
-              const transformed = await pMap(
-                promptBlocks,
-                (content, i) =>
-                  overBudget.has(i)
-                    ? Promise.resolve([
-                        {
-                          type: 'text' as const,
-                          text: `[media block from ${connectedClient.name} omitted: ${mediaBudgetRejectionReason(
-                            overBudget.get(i),
-                            API_MAX_MEDIA_PER_REQUEST,
-                            formatFileSize(MCP_MEDIA_BLOCK_MAX_DECODED_BYTES),
-                          )}]`,
-                        },
-                      ])
-                    : transformResultContent(content, connectedClient.name),
-                { concurrency: MCP_MEDIA_DECODE_CONCURRENCY },
-              )
-              return transformed.flat()
             } catch (error) {
               logMCPError(
                 client.name,
@@ -2797,6 +2778,63 @@ export function inferCompactSchema(value: unknown, depth = 2): string {
   return typeof value
 }
 
+/**
+ * Transform an array of server-controlled MCP content blocks (a tool result's
+ * `content`, or an MCP prompt's per-message content) into API content blocks.
+ *
+ * SSOT shared by transformMCPResult (tool path) and getPromptForCommand (prompt
+ * path) so the hardening can't drift between them:
+ *  (1) the per-result media budget (count + per-block decoded-byte size) skips
+ *      over-budget blocks before any base64 decode / sharp / disk write;
+ *  (2) each remaining block is transformed under its OWN try/catch, so one
+ *      throwing block (e.g. an empty/corrupt image the resizer rejects) degrades
+ *      to a text placeholder via flattenSettledBlocks instead of rejecting the
+ *      whole batch and discarding every VALID sibling block (the text answer the
+ *      model actually needs);
+ *  (3) decodes run with bounded concurrency, capping peak memory.
+ */
+async function transformServerContentBlocks(
+  blocks: PromptMessage['content'][],
+  serverName: string,
+): Promise<ContentBlockParam[]> {
+  const overBudget = overBudgetMediaIndices(
+    blocks,
+    API_MAX_MEDIA_PER_REQUEST,
+    MCP_MEDIA_BLOCK_MAX_DECODED_BYTES,
+  )
+  const settled = await pMap(
+    blocks,
+    async (item, i) => {
+      if (overBudget.has(i)) {
+        return {
+          status: 'rejected' as const,
+          reason: new Error(
+            mediaBudgetRejectionReason(
+              overBudget.get(i),
+              API_MAX_MEDIA_PER_REQUEST,
+              formatFileSize(MCP_MEDIA_BLOCK_MAX_DECODED_BYTES),
+            ),
+          ),
+        }
+      }
+      try {
+        return {
+          status: 'fulfilled' as const,
+          value: await transformResultContent(item, serverName),
+        }
+      } catch (reason) {
+        return { status: 'rejected' as const, reason }
+      }
+    },
+    { concurrency: MCP_MEDIA_DECODE_CONCURRENCY },
+  )
+  const { content, rejected } = flattenSettledBlocks(settled, blocks, serverName)
+  for (const { blockType, reason } of rejected) {
+    logMCPError(serverName, `failed to transform ${blockType} block: ${reason}`)
+  }
+  return content as ContentBlockParam[]
+}
+
 export async function transformMCPResult(
   result: unknown,
   tool: string, // Tool name for validation (e.g., "search")
@@ -2822,62 +2860,17 @@ export async function transformMCPResult(
     }
 
     if ('content' in result && Array.isArray(result.content)) {
-      // Transform each block independently. A single bad block (e.g. an empty or
-      // oversized image that the resizer throws on) must NOT reject the whole
-      // result via Promise.all and discard every VALID sibling block — degrade
-      // just that block to a text placeholder so the model still gets the text
-      // answer sitting in a perfectly good neighbour.
-      const blocks = result.content
       // A server-controlled result.content array is decoded here (base64 → sharp
-      // pixel buffer / blob disk write). Bound all three axes so a hostile server
-      // can't OOM the client or fill its disk: (1) only the first
-      // API_MAX_MEDIA_PER_REQUEST media blocks are decoded; (2) any single media
-      // block whose decoded size exceeds MCP_MEDIA_BLOCK_MAX_DECODED_BYTES is
-      // rejected from its base64 length before any allocation — the rest degrade to
-      // a text placeholder via the rejected path; and (3) decodes run with bounded
-      // concurrency (pMap), capping peak memory regardless of block count. The
-      // per-block try/catch preserves the degrade-one-bad-block semantics.
-      const overBudget = overBudgetMediaIndices(
-        blocks,
-        API_MAX_MEDIA_PER_REQUEST,
-        MCP_MEDIA_BLOCK_MAX_DECODED_BYTES,
-      )
-      const settled = await pMap(
-        blocks,
-        async (item, i) => {
-          if (overBudget.has(i)) {
-            return {
-              status: 'rejected' as const,
-              reason: new Error(
-                mediaBudgetRejectionReason(
-                  overBudget.get(i),
-                  API_MAX_MEDIA_PER_REQUEST,
-                  formatFileSize(MCP_MEDIA_BLOCK_MAX_DECODED_BYTES),
-                ),
-              ),
-            }
-          }
-          try {
-            return {
-              status: 'fulfilled' as const,
-              value: await transformResultContent(item, name),
-            }
-          } catch (reason) {
-            return { status: 'rejected' as const, reason }
-          }
-        },
-        { concurrency: MCP_MEDIA_DECODE_CONCURRENCY },
-      )
-      const { content: transformedContent, rejected } = flattenSettledBlocks(
-        settled,
-        blocks,
+      // pixel buffer / blob disk write). transformServerContentBlocks bounds the
+      // media budget, degrades any single bad/over-budget block to a text
+      // placeholder (so a valid sibling text answer is never discarded), and runs
+      // decodes with bounded concurrency. Shared with the MCP prompt path.
+      const transformedContent = await transformServerContentBlocks(
+        result.content,
         name,
       )
-      for (const { blockType, reason } of rejected) {
-        logMCPError(name, `failed to transform ${blockType} block: ${reason}`)
-      }
       return {
-        content: transformedContent as ContentBlockParam[],
+        content: transformedContent,
         type: 'contentArray',
         schema: inferCompactSchema(transformedContent),
       }
