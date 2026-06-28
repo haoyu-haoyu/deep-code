@@ -275,6 +275,7 @@ jobs:
             test/collapse-split-parts.test.mjs \
             test/subcommands-for-deny-check.test.mjs \
             test/dd-path-operands.test.mjs \
+            test/physical-path-resolution.test.mjs \
             test/image-format-support.test.mjs \
             test/to-api-safe-image-block.test.mjs \
             test/image-decode-pixel-guard.test.mjs \
