@@ -5,6 +5,7 @@ import {
   getToolNameForPermissionCheck,
   mcpInfoFromString,
 } from '../../services/mcp/mcpStringUtils.js'
+import { normalizeNameForMCP } from '../../services/mcp/normalization.js'
 import type { Tool, ToolPermissionContext, ToolUseContext } from '../../Tool.js'
 import { AGENT_TOOL_NAME } from '../../tools/AgentTool/constants.js'
 import { shouldUseSandbox } from '../../tools/BashTool/shouldUseSandbox.js'
@@ -276,6 +277,7 @@ function toolMatchesRule(
     rule.ruleValue.toolName,
     nameForRuleMatch,
     mcpInfoFromString,
+    normalizeNameForMCP,
   )
 }
 
