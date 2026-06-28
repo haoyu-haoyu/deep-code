@@ -23,6 +23,11 @@ import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { isPathScopedPreapprovedHost, isPreapprovedHost } from './preapproved.js'
 import { makeSecondaryModelPrompt } from './prompt.js'
 import { redirectPreservesPreapproval } from './redirectPreservesPreapproval.mjs'
+import {
+  isStalled,
+  makeWatchdogState,
+  recordProgress,
+} from './throughputWatchdog.mjs'
 import { decodeHttpBody, isHtmlContentType } from './webContentDecode.mjs'
 
 // Custom error classes for domain blocking
@@ -135,6 +140,27 @@ const webFetchSsrfLookup = makeSsrfGuardedLookup({ blockLoopback: true })
 // resets on every hop, hanging the tool until user interrupt. 10 matches
 // common client defaults (axios=5, follow-redirects=21, Chrome=20).
 const MAX_REDIRECTS = 10
+
+// Minimum-throughput (anti-slowloris) guard for the response BODY. axios `timeout`
+// is a per-CHUNK inactivity timer and maxContentLength only fires past the cap, so a
+// server can dribble a few bytes per minute and hold the socket forever. Once the
+// body starts, require at least STALL_MIN_BYTES of progress every STALL_WINDOW_MS or
+// abort. The floor is intentionally tiny (~17 B/s) so it never trips a real
+// slow-but-progressing download — only a genuine trickle. Slow response HEADERS are
+// unaffected (the watchdog arms on the first body byte) and stay bounded by the
+// per-request FETCH_TIMEOUT_MS.
+const STALL_WINDOW_MS = 60_000
+const STALL_MIN_BYTES = 1024
+const STALL_CHECK_MS = 5_000
+
+class StalledDownloadError extends Error {
+  constructor() {
+    super(
+      `Download stalled: fewer than ${STALL_MIN_BYTES} bytes received in ${STALL_WINDOW_MS / 1000}s`,
+    )
+    this.name = 'StalledDownloadError'
+  }
+}
 
 // Truncate to not spend too many tokens
 export const MAX_MARKDOWN_LENGTH = 100_000
@@ -292,18 +318,35 @@ type RedirectInfo = {
   statusCode: number
 }
 
-export async function getWithPermittedRedirects(
+// One HTTP GET with the response-body stall guard wired in. The watchdog arms on
+// the first download-progress event and aborts (via an internal AbortController
+// combined with the caller's signal) if the body fails to advance; the interval is
+// always cleared. Kept per-request so each redirect hop gets a fresh guard.
+async function fetchOnceWithStallGuard(
   url: string,
   signal: AbortSignal,
-  redirectChecker: (originalUrl: string, redirectUrl: string) => boolean,
-  depth = 0,
-): Promise<AxiosResponse<ArrayBuffer> | RedirectInfo> {
-  if (depth > MAX_REDIRECTS) {
-    throw new Error(`Too many redirects (exceeded ${MAX_REDIRECTS})`)
-  }
+): Promise<AxiosResponse<ArrayBuffer>> {
+  const stallController = new AbortController()
+  let watchdog = makeWatchdogState()
+  const interval = setInterval(() => {
+    if (isStalled(watchdog, Date.now(), STALL_WINDOW_MS)) {
+      stallController.abort(new StalledDownloadError())
+    }
+  }, STALL_CHECK_MS)
+  // Don't keep the event loop alive just for the watchdog.
+  if (typeof interval.unref === 'function') interval.unref()
+
+  // AbortSignal.any is Node >=20.3; degrade gracefully on older runtimes (the
+  // stall guard becomes a no-op there — the per-request FETCH_TIMEOUT_MS still
+  // bounds inactivity) rather than crashing.
+  const combinedSignal =
+    typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([signal, stallController.signal])
+      : signal
+
   try {
     return await axios.get(url, {
-      signal,
+      signal: combinedSignal,
       timeout: FETCH_TIMEOUT_MS,
       maxRedirects: 0,
       responseType: 'arraybuffer',
@@ -315,11 +358,44 @@ export async function getWithPermittedRedirects(
       // skipWebFetchPreflight. WebFetch URLs are model-controlled, so loopback is
       // blocked too.
       lookup: webFetchSsrfLookup,
+      onDownloadProgress: e => {
+        watchdog = recordProgress(
+          watchdog,
+          e.loaded,
+          e.total,
+          Date.now(),
+          STALL_MIN_BYTES,
+        )
+      },
       headers: {
         Accept: 'text/markdown, text/html, */*',
         'User-Agent': getWebFetchUserAgent(),
       },
     })
+  } catch (error) {
+    // Surface a clear stall error rather than axios's generic "canceled".
+    if (stallController.signal.aborted) {
+      throw stallController.signal.reason instanceof Error
+        ? stallController.signal.reason
+        : new StalledDownloadError()
+    }
+    throw error
+  } finally {
+    clearInterval(interval)
+  }
+}
+
+export async function getWithPermittedRedirects(
+  url: string,
+  signal: AbortSignal,
+  redirectChecker: (originalUrl: string, redirectUrl: string) => boolean,
+  depth = 0,
+): Promise<AxiosResponse<ArrayBuffer> | RedirectInfo> {
+  if (depth > MAX_REDIRECTS) {
+    throw new Error(`Too many redirects (exceeded ${MAX_REDIRECTS})`)
+  }
+  try {
+    return await fetchOnceWithStallGuard(url, signal)
   } catch (error) {
     if (
       axios.isAxiosError(error) &&
