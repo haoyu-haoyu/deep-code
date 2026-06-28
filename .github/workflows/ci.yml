@@ -269,6 +269,7 @@ jobs:
             test/redirect-preserves-preapproval.test.mjs \
             test/web-content-decode.test.mjs \
             test/throughput-watchdog.test.mjs \
+            test/command-prefix-suggestion.test.mjs \
             test/image-format-support.test.mjs \
             test/to-api-safe-image-block.test.mjs \
             test/image-decode-pixel-guard.test.mjs \
