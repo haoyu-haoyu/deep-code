@@ -1,4 +1,5 @@
 import { mcpInfoFromString } from '../../services/mcp/mcpStringUtils.js'
+import { normalizeNameForMCP } from '../../services/mcp/normalization.js'
 import type { ToolPermissionContext } from '../../Tool.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import type { PermissionRule, PermissionRuleSource } from './PermissionRule.js'
@@ -134,6 +135,7 @@ function isAllowRuleShadowedByAskRule(
         askRule.ruleValue.toolName,
         toolName,
         mcpInfoFromString,
+        normalizeNameForMCP,
       ),
   )
 
@@ -189,6 +191,7 @@ function isAllowRuleShadowedByDenyRule(
         denyRule.ruleValue.toolName,
         toolName,
         mcpInfoFromString,
+        normalizeNameForMCP,
       ),
   )
 
