@@ -10,6 +10,10 @@ import {
 } from '../fsOperations.js'
 import { containsPathTraversal } from '../path.js'
 import { firstChainDenyMatch } from './firstChainDenyMatch.mjs'
+import {
+  hasParentTraversalSegment,
+  resolvePhysicalLanding,
+} from './physicalPathResolution.mjs'
 import { SandboxManager } from '../sandbox/sandbox-adapter.js'
 import { containsVulnerableUncPath } from '../shell/readOnlyCommandValidation.js'
 import {
@@ -463,10 +467,27 @@ export function validatePath(
     )
   }
 
-  // Resolve path
-  const absolutePath = isAbsolute(cleanPath)
-    ? cleanPath
-    : resolve(cwd, cleanPath)
+  // Resolve path. Both path.resolve AND Node's fs.realpathSync collapse a `..`
+  // segment LEXICALLY — they delete the immediately-preceding component as a
+  // STRING before following it. When that component is an in-cwd symlink, the
+  // collapse strips it: `link/../x` (link -> an external dir) resolves to the
+  // in-cwd `cwd/x` here, while bash (and the OS open()) follow `link` physically
+  // and write OUTSIDE the working dir — so the containment check below would
+  // validate the wrong, in-cwd location. When the path has a `..` segment,
+  // re-resolve it PHYSICALLY (resolvePhysicalLanding walks components, realpathing
+  // each non-`..` component so symlinks are followed but no `..` reaches Node's
+  // realpath, and applies `..` to the physical accumulator). Non-`..` paths skip
+  // this entirely and are byte-for-byte unchanged.
+  let absolutePath = isAbsolute(cleanPath) ? cleanPath : resolve(cwd, cleanPath)
+  if (hasParentTraversalSegment(cleanPath)) {
+    const fs = getFsImplementation()
+    // Start from the symlink-resolved cwd so a leading `..` lands at the real
+    // parent.
+    const physicalCwd = safeResolvePath(fs, cwd).resolvedPath
+    absolutePath = resolvePhysicalLanding(physicalCwd, cleanPath, candidate =>
+      safeResolvePath(fs, candidate),
+    )
+  }
   const { resolvedPath, isCanonical, isSymlink } = safeResolvePath(
     getFsImplementation(),
     absolutePath,
