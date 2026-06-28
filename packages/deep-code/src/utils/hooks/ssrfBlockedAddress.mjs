@@ -9,8 +9,9 @@ import { isIP } from 'net'
  *
  * Blocked IPv4: 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10 (CGNAT — some cloud metadata),
  *   169.254.0.0/16 (link-local, cloud metadata), 172.16.0.0/12, 192.168.0.0/16.
- * Blocked IPv6: :: (unspecified), fc00::/7 (ULA), fe80::/10 (link-local),
- *   ::ffff:<v4> mapped into a blocked range.
+ * Blocked IPv6: :: (unspecified), fc00::/7 (ULA), fe80::/10 (link-local), and any
+ *   form that EMBEDS a blocked IPv4 — IPv4-mapped (::ffff:v4), IPv4-compatible
+ *   (::v4), NAT64 (64:ff9b::/96), and 6to4 (2002:v4::/16).
  * Loopback (127.0.0.0/8, ::1) is allowed UNLESS options.blockLoopback — HTTP
  *   hooks allow it (local dev policy servers); WebFetch, whose URL is
  *   model-controlled, blocks it too.
@@ -60,11 +61,13 @@ function isBlockedV6(address, options = {}) {
 
   if (lower === '::') return true // unspecified
 
-  // IPv4-mapped IPv6 (::ffff:a.b.c.d, ::ffff:XXXX:YYYY, expanded, …). Extract the
-  // embedded IPv4 and delegate, so hex-form mapped addresses (e.g.
-  // ::ffff:a9fe:a9fe = 169.254.169.254) cannot bypass the guard.
-  const mappedV4 = extractMappedIPv4(lower)
-  if (mappedV4 !== null) return isBlockedV4(mappedV4, options)
+  // Any IPv6 form that EMBEDS an IPv4 — mapped (::ffff:v4), compatible (::v4),
+  // NAT64 (64:ff9b::v4), 6to4 (2002:v4::) — extract the embedded IPv4 and delegate,
+  // so e.g. ::ffff:a9fe:a9fe / ::169.254.169.254 / 64:ff9b::a9fe:a9fe /
+  // 2002:a9fe:a9fe:: (all 169.254.169.254) cannot bypass the guard. Only an embedded
+  // BLOCKED v4 is blocked — a public 6to4/NAT64 target stays reachable.
+  const embeddedV4 = extractEmbeddedIPv4(lower)
+  if (embeddedV4 !== null) return isBlockedV4(embeddedV4, options)
 
   // fc00::/7 unique-local (fc.. / fd..)
   if (lower.startsWith('fc') || lower.startsWith('fd')) return true
@@ -89,19 +92,26 @@ function isBlockedV6(address, options = {}) {
  * @param {string} addr @returns {number[] | null}
  */
 function expandIPv6Groups(addr) {
-  let tailHextets = []
   if (addr.includes('.')) {
     const lastColon = addr.lastIndexOf(':')
-    const v4 = addr.slice(lastColon + 1)
-    addr = addr.slice(0, lastColon)
-    const octets = v4.split('.').map(Number)
+    if (lastColon === -1) return null
+    const octets = addr
+      .slice(lastColon + 1)
+      .split('.')
+      .map(Number)
     if (
       octets.length !== 4 ||
       octets.some(n => !Number.isInteger(n) || n < 0 || n > 255)
     ) {
       return null
     }
-    tailHextets = [(octets[0] << 8) | octets[1], (octets[2] << 8) | octets[3]]
+    // Rewrite a trailing dotted-decimal v4 as its two hex hextets in place, keeping
+    // the preceding colon. This works whether the v4 followed "::" (e.g.
+    // ::169.254.169.254 -> ::a9fe:a9fe) or a normal ":" (::ffff:169.254.169.254 ->
+    // ::ffff:a9fe:a9fe), so the all-hex expansion below handles every form uniformly.
+    const hi = ((octets[0] << 8) | octets[1]).toString(16)
+    const lo = ((octets[2] << 8) | octets[3]).toString(16)
+    addr = `${addr.slice(0, lastColon + 1)}${hi}:${lo}`
   }
 
   const dbl = addr.indexOf('::')
@@ -117,36 +127,41 @@ function expandIPv6Groups(addr) {
     tail = tailStr === '' ? [] : tailStr.split(':')
   }
 
-  const target = 8 - tailHextets.length
-  const fill = target - head.length - tail.length
+  const fill = 8 - head.length - tail.length
   if (fill < 0) return null
 
   const hex = [...head, ...new Array(fill).fill('0'), ...tail]
   const nums = hex.map(h => parseInt(h, 16))
   if (nums.some(n => Number.isNaN(n) || n < 0 || n > 0xffff)) return null
-  nums.push(...tailHextets)
   return nums.length === 8 ? nums : null
 }
 
 /**
- * Extract the embedded IPv4 from an IPv4-mapped IPv6 (0:0:0:0:0:ffff:X:Y), in any
- * representation. Returns null if not an IPv4-mapped address.
+ * Extract the embedded IPv4 (dotted-decimal) from any IPv6 form that carries one,
+ * in any representation. Covers:
+ *   - IPv4-mapped     ::ffff:a.b.c.d   (g0..4=0, g5=ffff; v4 in g6,g7)
+ *   - IPv4-compatible ::a.b.c.d        (g0..5=0;          v4 in g6,g7)  [::/96]
+ *   - NAT64           64:ff9b::a.b.c.d (g0=0064,g1=ff9b,g2..5=0; v4 in g6,g7)
+ *   - 6to4            2002:a.b.c.d::    (g0=2002;          v4 in g1,g2)
+ * Returns null if the address embeds no IPv4. `::` and `::1` are handled by the
+ * caller before this runs. Only the EMBEDDED v4 is returned — the caller decides
+ * whether that v4 is in a blocked range, so public 6to4/NAT64 targets stay allowed.
  * @param {string} addr @returns {string | null}
  */
-function extractMappedIPv4(addr) {
+function extractEmbeddedIPv4(addr) {
   const g = expandIPv6Groups(addr)
   if (!g) return null
-  if (
-    g[0] === 0 &&
-    g[1] === 0 &&
-    g[2] === 0 &&
-    g[3] === 0 &&
-    g[4] === 0 &&
-    g[5] === 0xffff
-  ) {
-    const hi = g[6]
-    const lo = g[7]
-    return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`
+  const v4 = (hi, lo) => `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`
+  const top96Zero = g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0
+  // IPv4-mapped: ::ffff:v4
+  if (g[0] === 0 && top96Zero && g[5] === 0xffff) return v4(g[6], g[7])
+  // IPv4-compatible: ::v4  (the whole ::/96 block; :: and ::1 already handled)
+  if (g[0] === 0 && top96Zero && g[5] === 0) return v4(g[6], g[7])
+  // NAT64 well-known prefix: 64:ff9b::/96
+  if (g[0] === 0x0064 && g[1] === 0xff9b && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0) {
+    return v4(g[6], g[7])
   }
+  // 6to4: 2002:v4::/16 (embedded v4 is the next 32 bits, g1,g2)
+  if (g[0] === 0x2002) return v4(g[1], g[2])
   return null
 }
