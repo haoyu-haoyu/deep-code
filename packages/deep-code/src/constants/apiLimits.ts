@@ -111,3 +111,15 @@ export const API_MAX_MEDIA_PER_REQUEST = 100
  * of how many blocks a (server-controlled) result carries.
  */
 export const MCP_MEDIA_DECODE_CONCURRENCY = 3
+
+/**
+ * Max DECODED byte size of a single MCP media block (image/audio/blob) we will
+ * Buffer.from(base64)-decode and then sharp-decode or write to disk. The block's
+ * base64 payload is fully server-controlled, the image pixel-bomb gate runs only
+ * AFTER the base64->Buffer allocation, and audio / non-image blobs have no gate at
+ * all — so a single multi-GB block could spike RSS or fill the disk. Reject from the
+ * base64 string length before any allocation. Generous enough for legitimately large
+ * media (e.g. a ~100MB PDF blob, matching PDF_MAX_EXTRACT_SIZE); only egregious
+ * payloads are degraded to a text placeholder.
+ */
+export const MCP_MEDIA_BLOCK_MAX_DECODED_BYTES = 100 * 1024 * 1024 // 100 MB
