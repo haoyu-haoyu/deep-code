@@ -213,7 +213,8 @@ ${DESCRIPTION}`
 
     const response = await getURLMarkdownContent(url, abortController)
 
-    // Check if we got a redirect to a different host
+    // A redirect that wasn't auto-followed — either to a different host, or one
+    // that would escape a path-scoped preapproval. Surface it for explicit re-fetch.
     if ('type' in response && response.type === 'redirect') {
       const statusText =
         response.statusCode === 301
@@ -224,7 +225,7 @@ ${DESCRIPTION}`
               ? 'Temporary Redirect'
               : 'Found'
 
-      const message = `REDIRECT DETECTED: The URL redirects to a different host.
+      const message = `REDIRECT DETECTED: The URL redirects to a location that requires explicit approval.
 
 Original URL: ${response.originalUrl}
 Redirect URL: ${response.redirectUrl}

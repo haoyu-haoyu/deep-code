@@ -164,3 +164,10 @@ export function isPreapprovedHost(hostname: string, pathname: string): boolean {
   }
   return false
 }
+
+// Whether a host is preapproved ONLY for a path prefix (e.g. "github.com/anthropics"),
+// as opposed to a host-only entry that trusts the whole host. Used to keep a
+// path-scoped auto-allow from being escaped by a same-host redirect.
+export function isPathScopedPreapprovedHost(hostname: string): boolean {
+  return PATH_PREFIXES.has(hostname)
+}
