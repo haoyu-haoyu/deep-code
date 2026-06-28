@@ -46,11 +46,16 @@ import pMap from 'p-map'
 import { parseArguments } from '../../utils/argumentSubstitution.js'
 import { describeUnknownContentBlock } from './describeUnknownContentBlock.mjs'
 import { flattenSettledBlocks } from './flattenSettledBlocks.mjs'
-import { overBudgetMediaIndices } from './mcpMediaBudget.mjs'
+import {
+  mediaBudgetRejectionReason,
+  overBudgetMediaIndices,
+} from './mcpMediaBudget.mjs'
 import {
   API_MAX_MEDIA_PER_REQUEST,
+  MCP_MEDIA_BLOCK_MAX_DECODED_BYTES,
   MCP_MEDIA_DECODE_CONCURRENCY,
 } from '../../constants/apiLimits.js'
+import { formatFileSize } from '../../utils/fileSize.mjs'
 import { isStdioTransportConfig } from './isStdioTransportConfig.mjs'
 import { paginateMcpList } from './paginateMcpList.mjs'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
@@ -2130,14 +2135,17 @@ export const fetchCommandsForClient = memoizeWithLRU(
               })
               // Same DoS gate as transformMCPResult: result.messages is
               // server-controlled and each message.content can be an image/audio/blob
-              // that runs the sharp/disk decode. Cap the media count and bound the
-              // decode concurrency so a hostile prompt server can't OOM the client.
+              // that runs the sharp/disk decode. Cap the media count, reject any
+              // oversized single block (by base64 length, before allocation), and
+              // bound the decode concurrency so a hostile prompt server can't OOM the
+              // client or fill its disk.
               const promptBlocks = result.messages.map(
                 message => message.content,
               )
               const overBudget = overBudgetMediaIndices(
                 promptBlocks,
                 API_MAX_MEDIA_PER_REQUEST,
+                MCP_MEDIA_BLOCK_MAX_DECODED_BYTES,
               )
               const transformed = await pMap(
                 promptBlocks,
@@ -2146,7 +2154,11 @@ export const fetchCommandsForClient = memoizeWithLRU(
                     ? Promise.resolve([
                         {
                           type: 'text' as const,
-                          text: `[media block from ${connectedClient.name} omitted: exceeds the per-result media budget of ${API_MAX_MEDIA_PER_REQUEST}]`,
+                          text: `[media block from ${connectedClient.name} omitted: ${mediaBudgetRejectionReason(
+                            overBudget.get(i),
+                            API_MAX_MEDIA_PER_REQUEST,
+                            formatFileSize(MCP_MEDIA_BLOCK_MAX_DECODED_BYTES),
+                          )}]`,
                         },
                       ])
                     : transformResultContent(content, connectedClient.name),
@@ -2817,13 +2829,19 @@ export async function transformMCPResult(
       // answer sitting in a perfectly good neighbour.
       const blocks = result.content
       // A server-controlled result.content array is decoded here (base64 → sharp
-      // pixel buffer / blob disk write). Bound BOTH axes so a hostile server can't
-      // OOM the client: (1) only the first API_MAX_MEDIA_PER_REQUEST media blocks are
-      // decoded — the rest degrade to a text placeholder via the rejected path; and
-      // (2) decodes run with bounded concurrency (pMap) instead of an unbounded
-      // Promise.allSettled, capping peak memory regardless of block count. The
+      // pixel buffer / blob disk write). Bound all three axes so a hostile server
+      // can't OOM the client or fill its disk: (1) only the first
+      // API_MAX_MEDIA_PER_REQUEST media blocks are decoded; (2) any single media
+      // block whose decoded size exceeds MCP_MEDIA_BLOCK_MAX_DECODED_BYTES is
+      // rejected from its base64 length before any allocation — the rest degrade to
+      // a text placeholder via the rejected path; and (3) decodes run with bounded
+      // concurrency (pMap), capping peak memory regardless of block count. The
       // per-block try/catch preserves the degrade-one-bad-block semantics.
-      const overBudget = overBudgetMediaIndices(blocks, API_MAX_MEDIA_PER_REQUEST)
+      const overBudget = overBudgetMediaIndices(
+        blocks,
+        API_MAX_MEDIA_PER_REQUEST,
+        MCP_MEDIA_BLOCK_MAX_DECODED_BYTES,
+      )
       const settled = await pMap(
         blocks,
         async (item, i) => {
@@ -2831,7 +2849,11 @@ export async function transformMCPResult(
             return {
               status: 'rejected' as const,
               reason: new Error(
-                `exceeds the per-result media budget of ${API_MAX_MEDIA_PER_REQUEST}`,
+                mediaBudgetRejectionReason(
+                  overBudget.get(i),
+                  API_MAX_MEDIA_PER_REQUEST,
+                  formatFileSize(MCP_MEDIA_BLOCK_MAX_DECODED_BYTES),
+                ),
               ),
             }
           }
