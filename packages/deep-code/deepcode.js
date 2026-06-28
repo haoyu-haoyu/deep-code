@@ -37,6 +37,7 @@ import {
   formatDeepCodeTextPanel,
   formatDeepCodeWelcome,
 } from './src/deepcode/welcome.mjs'
+import { resolveCompileCacheDir } from './src/deepcode/compileCacheDir.mjs'
 import {
   formatDeepCodeHarnessStatus,
   resolveDeepCodeHarnessConfig,
@@ -212,6 +213,12 @@ async function delegateToFullCli(env, cli) {
     env: {
       ...env,
       DEEPCODE_PROVIDER: env.DEEPCODE_PROVIDER ?? 'deepseek',
+      // Persist V8's compile cache for the ~15MB full-CLI bundle so a cold start
+      // reuses compiled bytecode instead of re-parsing it (measured ~0.21s ->
+      // ~0.08s top-level eval on Node 22). NODE_COMPILE_CACHE is read by Node
+      // >=22.1 and a silent no-op below; entries are content+version keyed by
+      // Node so an upgrade can't serve a stale cache. A user-set value wins.
+      NODE_COMPILE_CACHE: resolveCompileCacheDir({ env }),
       ...(shouldLaunchFullTui({ cli, env, input: process.stdin })
         ? { DEEPCODE_FULL_TUI_SKIP_SETUP: env.DEEPCODE_FULL_TUI_SKIP_SETUP ?? '1' }
         : {}),

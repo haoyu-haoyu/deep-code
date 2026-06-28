@@ -204,6 +204,7 @@ jobs:
             test/is-simple-help-command-tokens.test.mjs \
             test/tool-wide-rule-name-matches.test.mjs \
             test/code-unit-truncation-sinks.test.mjs \
+            test/compile-cache-dir.test.mjs \
             test/tasks-reset-atomic.test.mjs \
             test/task-cycle-detect.test.mjs \
             test/prune-agent-name-registry.test.mjs \
