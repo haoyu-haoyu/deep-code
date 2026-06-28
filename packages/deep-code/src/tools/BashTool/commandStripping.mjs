@@ -497,3 +497,133 @@ export function stripPrecommandModifiers(command) {
 
   return command
 }
+
+// Short flags (single letter) that consume a SEPARATE value argument, by runner —
+// used to find the wrapped command after the runner's own options.
+const XARGS_SHORT_VALUE = new Set(['a', 'd', 'E', 'I', 'L', 'n', 'P', 's'])
+// Long options (spelled WITHOUT `=`) that consume a separate value via getopt_long.
+// Optional-value longs (--replace/--eof/--max-lines, value via `=` only) are
+// intentionally absent — they do NOT take a space-separated value.
+const XARGS_LONG_VALUE = new Set([
+  'arg-file',
+  'delimiter',
+  'max-args',
+  'max-procs',
+  'max-chars',
+  'process-slot-var',
+])
+const WATCH_SHORT_VALUE = new Set(['n'])
+const WATCH_LONG_VALUE = new Set(['interval'])
+
+// Shell metacharacters that must not be crossed while peeling a runner's flags: at an
+// option/value position they would be a substitution/operator/quote bash expands or
+// splits BEFORE the runner executes, so peeling past them is unsafe — fail closed.
+const RUNNER_META_RE = /[$`;|&()<>'"\\]/
+
+// Given `command` and an offset `start` just past `<runner> `, skip the runner's own
+// option flags (handling fused `-n1`, separate `-n 1`, clusters `-rn 1`, long
+// `--max-args=1` and `--max-args 1`) and return the substring at the WRAPPED command,
+// or null if the flags/command are unparseable or an injection char is encountered.
+function peelRunnerFlags(command, start, shortValue, longValue) {
+  let pos = start
+  const n = command.length
+  const isWs = i => command[i] === ' ' || command[i] === '\t'
+  const skipWs = () => {
+    while (pos < n && isWs(pos)) pos++
+  }
+  const readToken = () => {
+    const s = pos
+    while (pos < n && !/[ \t\n\r]/.test(command[pos])) pos++
+    return command.slice(s, pos)
+  }
+
+  for (;;) {
+    skipWs()
+    if (pos >= n) return null // ran out of tokens → no wrapped command
+    const ch = command[pos]
+    if (ch === '\n' || ch === '\r') return null // command separator → don't cross
+    if (RUNNER_META_RE.test(ch)) return null // injection at option position
+    if (ch !== '-') break // first non-option token = the wrapped command
+
+    const flag = readToken()
+    if (RUNNER_META_RE.test(flag) || /[\n\r]/.test(flag)) return null
+
+    let consumesSeparate = false
+    if (flag.startsWith('--')) {
+      // long option: `--name=value` carries its value; bare `--name` of a
+      // required-value option consumes the next token.
+      if (!flag.includes('=') && longValue.has(flag.slice(2))) {
+        consumesSeparate = true
+      }
+    } else {
+      // short cluster `-XYZ`: the first value-flag char ends it — if it is the LAST
+      // char, the value is the next token; otherwise the rest of the cluster is the
+      // fused value.
+      const chars = flag.slice(1)
+      for (let k = 0; k < chars.length; k++) {
+        if (shortValue.has(chars[k])) {
+          if (k === chars.length - 1) consumesSeparate = true
+          break
+        }
+      }
+    }
+
+    if (consumesSeparate) {
+      skipWs()
+      if (pos >= n) return null
+      const v = command[pos]
+      if (v === '\n' || v === '\r' || RUNNER_META_RE.test(v)) return null
+      readToken() // consume the value token
+    }
+  }
+
+  // `pos` is at the wrapped command word; require a real command-name start so dash
+  // forms / groups / leftover injection fail closed (matching the other strippers).
+  return /[A-Za-z0-9_]/.test(command[pos]) ? command.slice(pos) : null
+}
+
+/**
+ * Strip a leading TRANSPARENT-RUNNER wrapper — `xargs [flags] <cmd>`,
+ * `watch [flags] <cmd>`, or `coproc <cmd>` — that EXECUTES the wrapped command, so a
+ * denied command run as `xargs -n1 rm` / `watch rm` / `coproc rm` still matches its
+ * deny rule. Returns the wrapped command, or the input unchanged if there is no such
+ * prefix or the flags/command are unparseable.
+ *
+ * DENY/ASK PATH ONLY — like stripEnvCommandPrefix / stripPrecommandModifiers, these
+ * are deliberately absent from stripSafeWrappers' ALLOW safe-list: a denied command
+ * must stay denied under any wrapper, but an allow rule must NOT become satisfiable by
+ * wrapping (`xargs grep` must not auto-satisfy Bash(grep:*) beyond the existing bare
+ * special-case). Applied only inside filterRulesByContentsMatchingInput's
+ * stripAllEnvVars fixed-point loop.
+ *
+ * SECURITY: fails closed (leaves the command unstripped) on shell metacharacters at an
+ * option/value position — `xargs -d $(evil) rm` is left intact for the injection /
+ * AST-too-complex gates rather than peeled. coproc only strips when a bareword command
+ * follows (a NAME precedes only a COMPOUND command, which we leave for the AST path).
+ * KEEP IN SYNC with any future argv/AST handling of these runners.
+ *
+ * @param {string} command
+ * @returns {string}
+ */
+export function stripTransparentRunner(command) {
+  const coproc = command.match(/^coproc[ \t]+/)
+  if (coproc) {
+    const rest = command.slice(coproc[0].length)
+    return /^[A-Za-z0-9_]/.test(rest) ? rest : command
+  }
+  const xargs = command.match(/^xargs[ \t]+/)
+  if (xargs) {
+    return (
+      peelRunnerFlags(command, xargs[0].length, XARGS_SHORT_VALUE, XARGS_LONG_VALUE) ??
+      command
+    )
+  }
+  const watch = command.match(/^watch[ \t]+/)
+  if (watch) {
+    return (
+      peelRunnerFlags(command, watch[0].length, WATCH_SHORT_VALUE, WATCH_LONG_VALUE) ??
+      command
+    )
+  }
+  return command
+}
