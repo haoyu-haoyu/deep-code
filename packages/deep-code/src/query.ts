@@ -1520,6 +1520,10 @@ async function* queryLoop(
       return cmd.mode === 'task-notification' && cmd.agentId === currentAgentId
     })
 
+    // Counted on the RAW attachment stream — the push below normalizes
+    // edited_text_file to a type:'user' message, so counting toolResults after
+    // the fact would always see 0.
+    let fileChangeAttachmentCount = 0
     for await (const attachment of getAttachmentMessages(
       null,
       updatedToolUseContext,
@@ -1529,7 +1533,26 @@ async function* queryLoop(
       querySource,
     )) {
       yield attachment
-      toolResults.push(attachment)
+      if (
+        attachment.type === 'attachment' &&
+        attachment.attachment.type === 'edited_text_file'
+      ) {
+        fileChangeAttachmentCount++
+      }
+      // Normalize per-turn attachments to request-ready user messages BEFORE
+      // they enter toolResults. The DeepSeek request mapper (mapMessagesToDeepSeek)
+      // only dispatches on role / type:'user' / type:'assistant', so a RAW
+      // type:'attachment' message matches nothing and is SILENTLY DROPPED — file
+      // change notices, IDE diagnostics, memory, queued prompts and todo/task
+      // reminders would never reach the model. normalizeMessagesForAPI converts
+      // each attachment to a type:'user' system-reminder, exactly as the
+      // tool-result paths above already do.
+      toolResults.push(
+        ...normalizeMessagesForAPI(
+          [attachment],
+          updatedToolUseContext.options.tools,
+        ).filter(_ => _.type === 'user'),
+      )
     }
 
     // Memory prefetch consume: only if settled and not already consumed on
@@ -1551,7 +1574,14 @@ async function* queryLoop(
       for (const memAttachment of memoryAttachments) {
         const msg = createAttachmentMessage(memAttachment)
         yield msg
-        toolResults.push(msg)
+        // Normalize before pushing — see the getAttachmentMessages loop above:
+        // a raw type:'attachment' message is dropped by mapMessagesToDeepSeek.
+        toolResults.push(
+          ...normalizeMessagesForAPI(
+            [msg],
+            toolUseContext.options.tools,
+          ).filter(_ => _.type === 'user'),
+        )
       }
       pendingMemoryPrefetch.consumedOnIteration = turnCount - 1
     }
@@ -1566,7 +1596,14 @@ async function* queryLoop(
       for (const att of skillAttachments) {
         const msg = createAttachmentMessage(att)
         yield msg
-        toolResults.push(msg)
+        // Normalize before pushing — see the getAttachmentMessages loop above:
+        // a raw type:'attachment' message is dropped by mapMessagesToDeepSeek.
+        toolResults.push(
+          ...normalizeMessagesForAPI(
+            [msg],
+            toolUseContext.options.tools,
+          ).filter(_ => _.type === 'user'),
+        )
       }
     }
 
@@ -1585,13 +1622,7 @@ async function* queryLoop(
       removeFromQueue(consumedCommands)
     }
 
-    // Instrumentation: Track file change attachments after they're added
-    const fileChangeAttachmentCount = count(
-      toolResults,
-      tr =>
-        tr.type === 'attachment' && tr.attachment.type === 'edited_text_file',
-    )
-
+    // Instrumentation: file change attachments (counted on the raw stream above).
     logEvent('tengu_query_after_attachments', {
       totalToolResultsCount: toolResults.length,
       fileChangeAttachmentCount,
