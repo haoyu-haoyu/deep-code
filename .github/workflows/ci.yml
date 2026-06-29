@@ -261,6 +261,7 @@ jobs:
             test/word-diff-guard.test.mjs \
             test/escape-for-diff.test.mjs \
             test/prepare-display-contents.test.mjs \
+            test/recover-quote-normalized-edit.test.mjs \
             test/strip-osc-control-chars.test.mjs \
             test/rel-path-within-base.test.mjs \
             test/paste-id.test.mjs \
