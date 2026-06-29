@@ -7,6 +7,7 @@ import {
   streamDeepSeekResponseBody as streamChatCompletionsBody,
 } from './deepseek.mjs'
 import { byteCompare } from '../../cache/byte-order.mjs'
+import { coerceTokenCount } from './coerceTokenCount.mjs'
 import { mapMessagesToDeepSeek } from '../../messages/deepseek-normalizer.mjs'
 import { toolToDeepSeekFunctionSchema } from '../../tools/deepseek-schema.mjs'
 import { omitUndefined } from '../../utils/omitUndefined.mjs'
@@ -299,9 +300,13 @@ export function parseOpenAICompatibleStreamChunk(chunk) {
 }
 
 export function mapOpenAICompatibleUsage(raw = {}) {
+  // Coerce token fields to finite numbers — a non-strict gateway can emit a
+  // string ("200") that would otherwise turn the downstream token sum into string
+  // concatenation. See coerceTokenCount.mjs. (coerceTokenCount maps a missing
+  // field to 0, subsuming the old `?? 0`.)
   return {
-    input_tokens: raw?.prompt_tokens ?? 0,
-    output_tokens: raw?.completion_tokens ?? 0,
+    input_tokens: coerceTokenCount(raw?.prompt_tokens),
+    output_tokens: coerceTokenCount(raw?.completion_tokens),
     cache_creation_input_tokens: 0,
     cache_read_input_tokens: 0,
     server_tool_use: { web_search_requests: 0, web_fetch_requests: 0 },

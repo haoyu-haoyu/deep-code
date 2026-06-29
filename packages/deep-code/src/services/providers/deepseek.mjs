@@ -8,6 +8,7 @@ import {
 } from '../../cache/deepseek-cache.mjs'
 import { byteCompare } from '../../cache/byte-order.mjs'
 import { omitUndefined } from '../../utils/omitUndefined.mjs'
+import { coerceTokenCount } from './coerceTokenCount.mjs'
 import { resolveToolCallIndex } from '../toolCallIndex.mjs'
 import { firstNonEmpty } from '../../utils/configValue.mjs'
 import { isAutoModelSetting } from '../../utils/model/autoModelSetting.mjs'
@@ -829,24 +830,30 @@ export function createDeepSeekStreamError(error) {
 }
 
 export function mapDeepSeekUsage(usage = {}) {
+  // Coerce each token field to a finite number at this wire boundary — a
+  // non-strict gateway can emit a string ("200") that would otherwise turn the
+  // downstream token sum into string concatenation. See coerceTokenCount.mjs.
+  // A conformant integer usage maps byte-identically.
   return {
     ...(usage.prompt_cache_hit_tokens !== undefined && {
-      prompt_cache_hit_tokens: usage.prompt_cache_hit_tokens,
+      prompt_cache_hit_tokens: coerceTokenCount(usage.prompt_cache_hit_tokens),
     }),
     ...(usage.prompt_cache_miss_tokens !== undefined && {
-      prompt_cache_miss_tokens: usage.prompt_cache_miss_tokens,
+      prompt_cache_miss_tokens: coerceTokenCount(usage.prompt_cache_miss_tokens),
     }),
     ...(usage.prompt_tokens !== undefined && {
-      prompt_tokens: usage.prompt_tokens,
+      prompt_tokens: coerceTokenCount(usage.prompt_tokens),
     }),
     ...(usage.completion_tokens !== undefined && {
-      completion_tokens: usage.completion_tokens,
+      completion_tokens: coerceTokenCount(usage.completion_tokens),
     }),
     ...(usage.total_tokens !== undefined && {
-      total_tokens: usage.total_tokens,
+      total_tokens: coerceTokenCount(usage.total_tokens),
     }),
     ...(usage.completion_tokens_details?.reasoning_tokens !== undefined && {
-      reasoning_tokens: usage.completion_tokens_details.reasoning_tokens,
+      reasoning_tokens: coerceTokenCount(
+        usage.completion_tokens_details.reasoning_tokens,
+      ),
     }),
   }
 }
