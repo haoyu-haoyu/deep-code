@@ -10,6 +10,7 @@ import { adjustHunkLineNumbers, CONTEXT_LINES, getPatchForDisplay } from '../uti
 import { logError } from '../utils/log.js';
 import { CHUNK_SIZE, openForScan, readCapped, scanForContext } from '../utils/readEditContext.js';
 import { firstLineOf } from '../utils/stringUtils.js';
+import { recoverQuoteNormalizedEdit } from '../utils/recoverQuoteNormalizedEdit.mjs';
 import { StructuredDiffList } from './StructuredDiffList.js';
 type Props = {
   file_path: string;
@@ -136,8 +137,32 @@ async function loadDiffData(file_path: string, edits: FileEdit[]): Promise<DiffD
         };
       }
       const ctx = await scanForContext(handle, single.old_string, CONTEXT_LINES);
-      if (ctx.truncated || ctx.content === '') {
+      if (ctx.truncated) {
         return diffToolInputsOnly(file_path, [single]);
+      }
+      if (ctx.content === '') {
+        // scanForContext matches with a RAW byte indexOf, but the on-disk write
+        // resolves the match through findActualString's curly<->straight quote
+        // normalization, so a quote-mismatched old_string still applies. The file
+        // was fully scanned (not truncated ⇒ within MAX_SCAN_BYTES), so re-read it
+        // and recover the real (curly) before-state instead of diffing the literal
+        // old_string against itself (which also strands phantom no-newline markers).
+        const file = await readCapped(handle);
+        const recovered = file === null
+          ? null
+          : recoverQuoteNormalizedEdit(file, single, findActualString);
+        if (file === null || recovered === null) {
+          return diffToolInputsOnly(file_path, [single]);
+        }
+        return {
+          patch: getPatchForDisplay({
+            filePath: file_path,
+            fileContents: file,
+            edits: [recovered]
+          }),
+          firstLine: firstLineOf(file),
+          fileContent: file
+        };
       }
       const normalized = normalizeEdit(ctx.content, single);
       const hunks = getPatchForDisplay({
