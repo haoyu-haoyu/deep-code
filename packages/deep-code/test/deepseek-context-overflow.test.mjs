@@ -41,6 +41,28 @@ test('overflow detected even when token counts are not parseable', () => {
   assert.equal(r.limitTokens, undefined)
 })
 
+test('detects the thrown Error.message shape compact catches (DeepSeek API 400: {body})', () => {
+  // The compact streaming path catches the Error createDeepSeekApiError throws on a
+  // 400 (message = `DeepSeek API 400: {OpenAI body}`) and reuses this leaf to decide
+  // whether to surface 'Prompt is too long' so the truncate-head retry fires.
+  const thrown = new Error(
+    'DeepSeek API 400: {"error":{"message":"This model\'s maximum context length is 65536 tokens. However, your messages resulted in 90000 tokens.","code":"context_length_exceeded"}}',
+  )
+  const r = detectDeepSeekContextOverflow(thrown.message)
+  assert.equal(r.isOverflow, true)
+  assert.equal(r.actualTokens, 90000)
+  assert.equal(r.limitTokens, 65536)
+})
+
+test('a non-overflow compact error (500) / abort is NOT classified (re-thrown unchanged)', () => {
+  assert.equal(
+    detectDeepSeekContextOverflow('DeepSeek API 500: internal server error')
+      .isOverflow,
+    false,
+  )
+  assert.equal(detectDeepSeekContextOverflow('Request was aborted.').isOverflow, false)
+})
+
 test('does NOT classify an unrelated 400 / other status / empty input', () => {
   assert.equal(
     detectDeepSeekContextOverflow(

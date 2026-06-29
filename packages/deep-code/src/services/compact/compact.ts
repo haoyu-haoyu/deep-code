@@ -61,6 +61,7 @@ import {
 import { logError } from '../../utils/log.js'
 import { MEMORY_TYPE_VALUES } from '../../utils/memory/types.js'
 import {
+  createAssistantAPIErrorMessage,
   createCompactBoundaryMessage,
   createUserMessage,
   getAssistantMessageText,
@@ -69,6 +70,10 @@ import {
   isCompactBoundaryMessage,
   normalizeMessagesForAPI,
 } from '../../utils/messages.js'
+import {
+  detectDeepSeekContextOverflow,
+  formatContextOverflowMessage,
+} from '../runtime/deepSeekContextOverflow.mjs'
 import { expandPath } from '../../utils/path.js'
 import { getPlan, getPlanFilePath } from '../../utils/plans.js'
 import {
@@ -1352,35 +1357,63 @@ async function streamCompactSummary({
         },
       })
       const streamIter = streamingGen[Symbol.asyncIterator]()
-      let next = await streamIter.next()
+      try {
+        let next = await streamIter.next()
 
-      while (!next.done) {
-        const event = next.value
+        while (!next.done) {
+          const event = next.value
 
-        if (
-          !hasStartedStreaming &&
-          event.type === 'stream_event' &&
-          event.event.type === 'content_block_start' &&
-          event.event.content_block.type === 'text'
-        ) {
-          hasStartedStreaming = true
-          context.setStreamMode?.('responding')
+          if (
+            !hasStartedStreaming &&
+            event.type === 'stream_event' &&
+            event.event.type === 'content_block_start' &&
+            event.event.content_block.type === 'text'
+          ) {
+            hasStartedStreaming = true
+            context.setStreamMode?.('responding')
+          }
+
+          if (
+            event.type === 'stream_event' &&
+            event.event.type === 'content_block_delta' &&
+            event.event.delta.type === 'text_delta'
+          ) {
+            const charactersStreamed = event.event.delta.text.length
+            context.setResponseLength?.(length => length + charactersStreamed)
+          }
+
+          if (event.type === 'assistant') {
+            response = event
+          }
+
+          next = await streamIter.next()
         }
-
-        if (
-          event.type === 'stream_event' &&
-          event.event.type === 'content_block_delta' &&
-          event.event.delta.type === 'text_delta'
-        ) {
-          const charactersStreamed = event.event.delta.text.length
-          context.setResponseLength?.(length => length + charactersStreamed)
+      } catch (error) {
+        // The compaction request ITSELF overflowed the model's context window.
+        // On the DeepSeek runtime createDeepSeekCallModel THROWS the 400 (it is
+        // non-retryable), and queryRuntimeModelWithStreaming propagates it — so
+        // without this catch the whole compact throws instead of recovering, and
+        // a user whose conversation outgrew the context is permanently stuck.
+        // Surface it as the canonical prompt-too-long message so the caller's
+        // truncate-head PTL-retry loop fires (the DeepSeek error text begins with
+        // 'DeepSeek API 400', which that loop's literal match would otherwise miss
+        // — the same fork-convention divergence fixed for the main loop in #717).
+        const overflow = detectDeepSeekContextOverflow(
+          error instanceof Error ? error.message : String(error),
+        )
+        if (overflow.isOverflow) {
+          // Bare literal as content (the caller matches it by startsWith); the
+          // token counts go in errorDetails so getPromptTooLongTokenGap can size
+          // the head-truncation precisely instead of the 20% fallback.
+          return createAssistantAPIErrorMessage({
+            content: PROMPT_TOO_LONG_ERROR_MESSAGE,
+            errorDetails: formatContextOverflowMessage(
+              overflow,
+              PROMPT_TOO_LONG_ERROR_MESSAGE,
+            ),
+          })
         }
-
-        if (event.type === 'assistant') {
-          response = event
-        }
-
-        next = await streamIter.next()
+        throw error
       }
 
       if (response) {
