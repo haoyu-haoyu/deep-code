@@ -242,6 +242,7 @@ jobs:
             test/cluster-styled-chars-core.test.mjs \
             test/ripgrep-decode.test.mjs \
             test/edit-delete-occurrences.test.mjs \
+            test/non-atomic-write-fallback.test.mjs \
             test/edit-quote-variant-underreplace.test.mjs \
             test/reconcile-patch-edits.test.mjs \
             test/utf8-tail.test.mjs \
