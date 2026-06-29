@@ -233,6 +233,7 @@ jobs:
             test/compound-ask-bypass-immune.test.mjs \
             test/path-safety-reason.test.mjs \
             test/max-output-tokens-truncation.test.mjs \
+            test/normal-completion-stop-reason.test.mjs \
             test/escape-gitignore-pattern.test.mjs \
             test/glob-search-dir.test.mjs \
             test/first-chain-deny-match.test.mjs \
