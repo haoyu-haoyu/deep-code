@@ -19,6 +19,7 @@ import { getCwd } from '../utils/cwd.js'
 import { logForDebugging } from './debug.js'
 import { isENOENT, isFsInaccessible } from './errors.js'
 import { nonAtomicWriteFallback } from './nonAtomicWriteFallback.mjs'
+import { resolveSymlinkWriteTarget } from './resolveSymlinkWriteTarget.mjs'
 import {
   detectEncodingForResolvedPath,
   detectLineEndingsForString,
@@ -379,20 +380,28 @@ export function writeFileSyncAndFlush_DEPRECATED(
 ): void {
   const fs = getFsImplementation()
 
-  // Check if the target file is a symlink to preserve it for all users
-  // Note: We don't use safeResolvePath here because we need to manually handle
-  // symlinks to ensure we write to the target while preserving the symlink itself
-  let targetPath = filePath
-  try {
-    // Try to read the symlink - if successful, it's a symlink
-    const linkTarget = fs.readlinkSync(filePath)
-    // Resolve to absolute path
-    targetPath = isAbsolute(linkTarget)
-      ? linkTarget
-      : resolve(dirname(filePath), linkTarget)
+  // Resolve the symlink chain to the canonical target so we write THROUGH every
+  // link and preserve them all. We don't use safeResolvePath/realpathSync here:
+  // realpathSync throws on a dangling link (whose target we want to create) and
+  // resolves directory-component symlinks the rename already handles. We follow
+  // FILE symlinks hop by hop instead — one hop at a time, each relative target
+  // resolved against its own link's directory. Resolving only ONE hop would land
+  // the write on an intermediate link in a multi-hop chain, replacing that link
+  // with a regular file and leaving the canonical file stale — a silent fork.
+  const targetPath = resolveSymlinkWriteTarget(filePath, p => {
+    try {
+      const linkTarget = fs.readlinkSync(p)
+      return isAbsolute(linkTarget)
+        ? linkTarget
+        : resolve(dirname(p), linkTarget)
+    } catch {
+      // EINVAL (not a symlink) / ENOENT (target doesn't exist) / unreadable —
+      // `p` itself is the entry to write over.
+      return null
+    }
+  })
+  if (targetPath !== filePath) {
     logForDebugging(`Writing through symlink: ${filePath} -> ${targetPath}`)
-  } catch {
-    // ENOENT (doesn't exist) or EINVAL (not a symlink) — keep targetPath = filePath
   }
 
   // Try atomic write first
