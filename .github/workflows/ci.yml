@@ -244,6 +244,7 @@ jobs:
             test/edit-delete-occurrences.test.mjs \
             test/non-atomic-write-fallback.test.mjs \
             test/resolve-symlink-write-target.test.mjs \
+            test/unparseable-tool-args.test.mjs \
             test/edit-quote-variant-underreplace.test.mjs \
             test/reconcile-patch-edits.test.mjs \
             test/utf8-tail.test.mjs \

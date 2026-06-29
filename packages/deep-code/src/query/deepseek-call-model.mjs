@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mapDeepSeekFinishReason } from '../deepcode/deepseek-native.mjs'
 import { resolveToolCallIndex } from '../services/toolCallIndex.mjs'
+import { markUnparseableToolArgs } from '../services/tools/unparseableToolArgs.mjs'
 import { uncachedInputRemainder } from '../deepcode/usageInputRemainder.mjs'
 import {
   isDeepSeekProvider,
@@ -496,6 +497,10 @@ function parseToolArguments(rawArguments) {
   try {
     return JSON.parse(rawArguments)
   } catch {
-    return { _raw: rawArguments }
+    // Unparseable arguments must never reach a tool — least of all an MCP tool,
+    // whose passthrough schema would forward this verbatim to the remote server.
+    // Tag a sentinel the tool-execution gate rejects uniformly (see
+    // unparseableToolArgs.mjs).
+    return markUnparseableToolArgs(rawArguments)
   }
 }

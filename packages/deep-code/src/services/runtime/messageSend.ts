@@ -8,6 +8,7 @@ import {
 } from '../providers/deepseek.mjs'
 import { resolveProviderConfig } from '../providers/provider-config.mjs'
 import { resolveToolCallIndex } from '../toolCallIndex.mjs'
+import { markUnparseableToolArgs } from '../tools/unparseableToolArgs.mjs'
 import { resolveModelProvider } from '../providers/registry.mjs'
 import {
   isDeepSeekProvider,
@@ -612,7 +613,11 @@ function parseToolInput(partialJson: string): unknown {
   try {
     return JSON.parse(partialJson)
   } catch {
-    return { _raw: partialJson }
+    // Unparseable arguments must never reach a tool — least of all an MCP tool,
+    // whose passthrough schema would forward this verbatim to the remote server.
+    // Tag a sentinel the tool-execution gate rejects uniformly (see
+    // unparseableToolArgs.mjs).
+    return markUnparseableToolArgs(partialJson)
   }
 }
 
