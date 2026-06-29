@@ -1688,6 +1688,9 @@ function checkPathConstraintsForStatement(
       firstAsk ??= {
         behavior: 'ask',
         message: `${canonical} receives its path from a pipeline expression source that cannot be statically validated and requires manual approval`,
+        decisionReason: unresolvablePathSafetyAskReason(
+          'Pipeline expression source cannot be statically validated and requires manual approval',
+        ),
       }
       // Don't continue — fall through to path loop so deny rules on
       // extracted paths are still checked.
@@ -1703,6 +1706,9 @@ function checkPathConstraintsForStatement(
       firstAsk ??= {
         behavior: 'ask',
         message: `${canonical} uses a parameter or complex path expression (array literal, subexpression, unknown parameter, etc.) that cannot be statically validated and requires manual approval`,
+        decisionReason: unresolvablePathSafetyAskReason(
+          'Parameter or complex path expression cannot be statically validated and requires manual approval',
+        ),
       }
       // Don't continue — fall through to path loop so deny rules on
       // extracted paths are still checked.
@@ -1729,6 +1735,9 @@ function checkPathConstraintsForStatement(
       firstAsk ??= {
         behavior: 'ask',
         message: `${canonical} is a write operation but no target path could be determined; requires manual approval`,
+        decisionReason: unresolvablePathSafetyAskReason(
+          'Write operation with no determinable target path requires manual approval',
+        ),
       }
       continue
     }
@@ -1832,6 +1841,9 @@ function checkPathConstraintsForStatement(
         firstAsk ??= {
           behavior: 'ask',
           message: `${canonical} uses a parameter or complex path expression (array literal, subexpression, unknown parameter, etc.) that cannot be statically validated and requires manual approval`,
+          decisionReason: unresolvablePathSafetyAskReason(
+            'Parameter or complex path expression cannot be statically validated and requires manual approval',
+          ),
         }
         // Don't continue — fall through to path loop for deny checks.
       }
@@ -1848,6 +1860,9 @@ function checkPathConstraintsForStatement(
         firstAsk ??= {
           behavior: 'ask',
           message: `${canonical} is a write operation but no target path could be determined; requires manual approval`,
+          decisionReason: unresolvablePathSafetyAskReason(
+            'Write operation with no determinable target path requires manual approval',
+          ),
         }
         continue
       }
@@ -1942,6 +1957,9 @@ function checkPathConstraintsForStatement(
         firstAsk ??= {
           behavior: 'ask',
           message: `${resolveToCanonical(cmd.name)} appears inside a control-flow or chain statement where piped expression sources cannot be statically validated and requires manual approval`,
+          decisionReason: unresolvablePathSafetyAskReason(
+            'Control-flow piped expression source cannot be statically validated and requires manual approval',
+          ),
         }
       }
     }
