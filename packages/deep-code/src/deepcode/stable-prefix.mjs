@@ -4,7 +4,7 @@ import {
   stableJsonStringify,
 } from '../cache/deepseek-cache.mjs'
 import { byteCompare } from '../cache/byte-order.mjs'
-import { toolToDeepSeekFunctionSchema } from '../tools/deepseek-schema.mjs'
+import { cachedToolToDeepSeekFunctionSchema } from '../services/providers/deepseek-tool-manifest-cache.mjs'
 import { resolveStrictToolNames } from '../tools/resolveStrictToolNames.mjs'
 import { resolveStrictMode } from '../services/providers/resolveStrictMode.mjs'
 import { providerSupports } from './provider-capabilities.mjs'
@@ -129,14 +129,21 @@ async function createStableToolManifest(
   toolSchemaOptions = {},
   strictMode = 'off',
 ) {
-  // Render each tool under the SAME per-tool strict selection the wire applies
-  // (deepseek.mjs buildDeepSeekRequest), so prefixHash/componentHashes.tools
-  // fingerprint the exact bytes sent. 'off' (the default) selects no tool, so the
-  // strict:undefined per tool is byte-identical to the prior no-strict render.
+  // Render each tool through the SAME memoized renderer the wire uses
+  // (cachedToolToDeepSeekFunctionSchema in deepseek.mjs buildDeepSeekRequest), under
+  // the SAME per-tool strict selection, so prefixHash/componentHashes.tools
+  // fingerprint the EXACT bytes sent. The manifest cache locks each tool's rendered
+  // schema (description included) at first render; using the un-cached renderer here
+  // re-ran tool.prompt() fresh every turn, so a mid-session description drift (an
+  // agent-list change, an MCP server connecting, a feature-gate flip) changed the
+  // recorded prefixHash while the wire bytes — served from the lock — stayed
+  // identical, falsely reporting the warm prefix as "changed (tools)". Same SSOT the
+  // strict-mode unification already established (resolveStrictMode.mjs). 'off' (the
+  // default) selects no tool, so strict:undefined per tool is byte-identical.
   const strictToolNames = resolveStrictToolNames(strictMode, tools)
   const manifest = []
   for (const tool of tools) {
-    const schema = await toolToDeepSeekFunctionSchema(tool, {
+    const schema = await cachedToolToDeepSeekFunctionSchema(tool, {
       ...toolSchemaOptions,
       strict: strictToolNames.has(tool.name ?? tool.function?.name)
         ? strictMode
