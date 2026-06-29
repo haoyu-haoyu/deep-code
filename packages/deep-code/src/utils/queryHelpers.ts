@@ -1,6 +1,7 @@
 import type { ToolUseBlock } from '../types/sdk-shim.js'
 import last from 'lodash-es/last.js'
 import { isNormalCompletionStopReason } from './normalCompletionStopReason.mjs'
+import { isRefusalStopReason } from './refusalStopReason.mjs'
 import {
   getSessionId,
   isSessionPersistenceDisabled,
@@ -107,7 +108,16 @@ export function isResultSuccessful(
   // error_during_execution with errors[] = the entire process's
   // accumulated logError() buffer. Covers both string-content and
   // text-block-content user prompts, and any other non-passing shape.
-  return isNormalCompletionStopReason(stopReason)
+  //
+  // A content-free REFUSAL (DeepSeek stop_reason 'content_filter') is likewise a
+  // legitimate terminal — the model declined and said nothing — not an internal
+  // error, so it is accepted here too (mirroring the ACP adapter, which maps it
+  // to a clean 'refusal' turn end). Without this a safety refusal surfaced as a
+  // spurious error_during_execution with the turn's logError buffer dumped. See
+  // refusalStopReason.mjs (insufficient_system_resource stays an error).
+  return (
+    isNormalCompletionStopReason(stopReason) || isRefusalStopReason(stopReason)
+  )
 }
 
 // Track last sent time for tool progress messages per tool use ID
