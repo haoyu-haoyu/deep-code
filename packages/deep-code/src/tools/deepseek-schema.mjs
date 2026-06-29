@@ -99,14 +99,7 @@ export function sanitizeSchemaForDeepSeekStrict(schema) {
     out[key] = sanitizeSchemaForDeepSeekStrict(value)
   }
 
-  if (out.type === 'object' || out.properties) {
-    const propertyNames = Object.keys(out.properties ?? {}).sort()
-    out.type = out.type ?? 'object'
-    out.required = propertyNames
-    out.additionalProperties = false
-  }
-
-  return out
+  return finalizeObjectNode(out)
 }
 
 // Strict-mode sanitizer variant that keeps required = ALL properties (so DeepSeek
@@ -166,13 +159,36 @@ export function sanitizeSchemaForDeepSeekNullable(schema) {
     out[key] = sanitizeSchemaForDeepSeekNullable(value)
   }
 
-  if (out.type === 'object' || out.properties) {
-    const propertyNames = Object.keys(out.properties ?? {}).sort()
-    out.type = out.type ?? 'object'
-    out.required = propertyNames
-    out.additionalProperties = false
-  }
+  return finalizeObjectNode(out)
+}
 
+// Apply the /beta strict object contract to a node the sanitizer judges to be an
+// object: required = every declared property (sorted) and additionalProperties:false.
+//
+// Two things this gets right that the inline tail did not:
+//   1. It gates on the node's ACTUAL type, NOT merely the presence of a `properties`
+//      key. A non-object node that happens to carry a stray `properties` (e.g.
+//      `{type:'string', properties:{…}}` from a hand-authored / MCP schema) is left
+//      alone instead of being rewritten into a self-contradictory object — string
+//      typed yet carrying required-property + additionalProperties:false constraints.
+//   2. It normalizes the type to a BARE 'object'. DeepSeek /beta strict 400s on
+//      'object' inside a `type` array (probe-documented; see NULLABLE_SCALAR_TYPES),
+//      so a `type:['object','null']` node (a hand-authored / MCP nullable object)
+//      would otherwise reach the wire as `type:['object','null']` + additionalProperties
+//      :false and 400 the WHOLE request. Collapsing it to a plain object here avoids
+//      that. An OPTIONAL property's nullability is reinstated downstream by
+//      makeNullable in nullable mode (it anyOf-wraps the object, the server-accepted
+//      encoding); strict mode keeps an object non-null by design.
+function finalizeObjectNode(out) {
+  const t = out.type
+  const isObject =
+    t === 'object' ||
+    (Array.isArray(t) && t.includes('object')) ||
+    (t === undefined && Boolean(out.properties))
+  if (!isObject) return out
+  out.type = 'object'
+  out.required = Object.keys(out.properties ?? {}).sort()
+  out.additionalProperties = false
   return out
 }
 
