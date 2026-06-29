@@ -133,7 +133,24 @@ export function schemaClosesAnOpenMap(schema) {
   ) {
     return true
   }
-  // Recurse every nested value (properties, items, anyOf, $defs, …); non-schema
-  // values (strings, the required[] array) simply never match.
-  return Object.keys(schema).some(key => schemaClosesAnOpenMap(schema[key]))
+  // Recurse every nested value. A `properties` / `$defs` value is a name->subschema
+  // MAP whose KEYS are user-chosen (a parameter literally named `additionalProperties`
+  // or `patternProperties` must NOT be mistaken for the keyword of that name), so
+  // descend into the map's VALUES — the subschemas — never the map object itself as
+  // if it were a schema node. Every other value (items, anyOf, the required[] array,
+  // scalars) recurses generically; non-schema values simply never match.
+  for (const key of Object.keys(schema)) {
+    const value = schema[key]
+    if (
+      (key === 'properties' || key === '$defs' || key === '$def') &&
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    ) {
+      if (Object.values(value).some(schemaClosesAnOpenMap)) return true
+      continue
+    }
+    if (schemaClosesAnOpenMap(value)) return true
+  }
+  return false
 }
