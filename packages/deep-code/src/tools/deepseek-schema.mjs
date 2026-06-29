@@ -296,10 +296,20 @@ function isEmptySchema(schema) {
     'const',
     'anyOf',
     'oneOf',
+    'allOf',
+    'not',
     '$ref',
     'properties',
     'items',
   ]
+  // `allOf`/`not` carry a real constraint (a bare `{allOf:[…]}` is a zod
+  // intersection, a `{not:…}` an exclusion) — they are NOT the z.any/unknown
+  // "empty" schema this function exists to skip. Without them here, makeNullable
+  // treated a bare allOf/not optional as empty and returned it UNCHANGED, so the
+  // property was forced into required[] with a non-nullable shape (e.g. an allOf
+  // of objects that null can't satisfy) — the "force an optional to a value"
+  // regression nullable mode exists to prevent. Listing them lets makeNullable
+  // fall through to its anyOf+null wrap, restoring optionality.
   return !meaningful.some(key => key in schema)
 }
 

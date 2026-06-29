@@ -116,6 +116,7 @@ jobs:
             test/deepseek-nullable-strict.test.mjs \
             test/deepseek-schema-object-detection.test.mjs \
             test/deepseek-schema-data-position.test.mjs \
+            test/deepseek-nullable-allof.test.mjs \
             test/compact-warning-bands.test.mjs \
             test/p2-2-providers.test.mjs \
             test/openai-compatible-stream.test.mjs \
