@@ -46,6 +46,10 @@ import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   isPromptTooLongMessage,
 } from './services/runtime/errors.js'
+import {
+  detectDeepSeekContextOverflow,
+  formatContextOverflowMessage,
+} from './services/runtime/deepSeekContextOverflow.mjs'
 import { logAntError, logForDebugging } from './utils/debug.js'
 import {
   createUserMessage,
@@ -916,12 +920,39 @@ async function* queryLoop(
       // a tool_use block but will stop before emitting the tool_result.
       yield* yieldMissingToolResultBlocks(assistantMessages, errorMessage)
 
+      // Re-surface a DeepSeek server-side context-overflow 400 with the canonical
+      // 'Prompt is too long' literal. The DeepSeek error mapper emits
+      // 'DeepSeek API 400: {body}', which none of the prompt-too-long consumers
+      // recognize (isPromptTooLongMessage, the UI "Context limit reached" case,
+      // the compact PTL-retry) — so a real overflow would render the raw provider
+      // JSON to the user instead of the friendly message. This mirrors the
+      // client-side preempt above, which already emits the literal.
+      const contextOverflow = detectDeepSeekContextOverflow(errorMessage)
+
       // Surface the real error instead of a misleading "[Request interrupted
       // by user]" — this path is a model/runtime failure, not a user action.
       // SDK consumers were seeing phantom interrupts on e.g. Node 18's missing
       // Array.prototype.with(), masking the actual cause.
+      //
+      // For an overflow, the CONTENT is the BARE literal — the UI's "Context
+      // limit reached" case (AssistantTextMessage) switches on the content with
+      // EXACT equality, and isPromptTooLongMessage matches it by startsWith; this
+      // mirrors the client-side preempt above, which emits the bare literal too.
+      // The token counts (when known) go in errorDetails, which
+      // getPromptTooLongTokenGap parses — keeping the gap available without
+      // breaking the UI's exact match.
       yield createAssistantAPIErrorMessage({
-        content: errorMessage,
+        content: contextOverflow.isOverflow
+          ? PROMPT_TOO_LONG_ERROR_MESSAGE
+          : errorMessage,
+        ...(contextOverflow.isOverflow
+          ? {
+              errorDetails: formatContextOverflowMessage(
+                contextOverflow,
+                PROMPT_TOO_LONG_ERROR_MESSAGE,
+              ),
+            }
+          : {}),
       })
 
       // To help track down bugs, log loudly for ants
