@@ -10,6 +10,7 @@ import {
 } from '../fsOperations.js'
 import { containsPathTraversal } from '../path.js'
 import { firstChainDenyMatch } from './firstChainDenyMatch.mjs'
+import { unresolvablePathSafetyAskReason } from './pathSafetyReason.mjs'
 import {
   hasParentTraversalSegment,
   resolvePhysicalLanding,
@@ -389,10 +390,9 @@ export function validatePath(
     return {
       allowed: false,
       resolvedPath: cleanPath,
-      decisionReason: {
-        type: 'other',
-        reason: 'UNC network paths require manual approval',
-      },
+      decisionReason: unresolvablePathSafetyAskReason(
+        'UNC network paths require manual approval',
+      ),
     }
   }
 
@@ -407,11 +407,9 @@ export function validatePath(
     return {
       allowed: false,
       resolvedPath: cleanPath,
-      decisionReason: {
-        type: 'other',
-        reason:
-          'Tilde expansion variants (~user, ~+, ~-) in paths require manual approval',
-      },
+      decisionReason: unresolvablePathSafetyAskReason(
+        'Tilde expansion variants (~user, ~+, ~-) in paths require manual approval',
+      ),
     }
   }
 
@@ -433,10 +431,9 @@ export function validatePath(
     return {
       allowed: false,
       resolvedPath: cleanPath,
-      decisionReason: {
-        type: 'other',
-        reason: 'Shell expansion syntax in paths requires manual approval',
-      },
+      decisionReason: unresolvablePathSafetyAskReason(
+        'Shell expansion syntax in paths requires manual approval',
+      ),
     }
   }
 
@@ -450,11 +447,9 @@ export function validatePath(
       return {
         allowed: false,
         resolvedPath: cleanPath,
-        decisionReason: {
-          type: 'other',
-          reason:
-            'Glob patterns are not allowed in write operations. Please specify an exact file path.',
-        },
+        decisionReason: unresolvablePathSafetyAskReason(
+          'Glob patterns are not allowed in write operations. Please specify an exact file path.',
+        ),
       }
     }
 
