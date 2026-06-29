@@ -114,6 +114,15 @@ export function createDeepSeekCallModel({
         if (!providerSupports(provider, 'reasoning_content')) continue
         state.reasoning += event.text
         if (!state.thinkingOpen) {
+          // Close an open TEXT block before opening thinking at this index. On a
+          // content->reasoning interleave (a non-conformant proxy reordering the
+          // stream; native DeepSeek and the in-chunk parser emit all
+          // reasoning_content before content) opening here without closing would
+          // collide a thinking and a text block on the SAME content_block index
+          // and strand the text block (its stop, and the next text_delta, would
+          // then target an index that was never opened). Mirrors the runtime
+          // sibling applyProviderEventToStream (messageSend.ts).
+          for (const closed of closeTextIfOpen(state)) yield closed
           yield streamEvent({
             type: 'content_block_start',
             index: state.blockIndex,
@@ -310,8 +319,7 @@ function* closeThinkingIfOpen(state) {
   }
 }
 
-function* closeOpenInlineBlocks(state) {
-  yield* closeThinkingIfOpen(state)
+function* closeTextIfOpen(state) {
   if (state.textOpen) {
     yield streamEvent({
       type: 'content_block_stop',
@@ -320,6 +328,11 @@ function* closeOpenInlineBlocks(state) {
     state.textOpen = false
     state.blockIndex += 1
   }
+}
+
+function* closeOpenInlineBlocks(state) {
+  yield* closeThinkingIfOpen(state)
+  yield* closeTextIfOpen(state)
 }
 
 function* closeAllOpenBlocks(state) {
