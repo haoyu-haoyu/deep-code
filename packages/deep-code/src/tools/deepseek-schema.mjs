@@ -74,6 +74,23 @@ export function sanitizeSchemaForDeepSeekStrict(schema) {
   for (const key of Object.keys(schema).sort()) {
     if (UNSUPPORTED_STRICT_SCHEMA_KEYS.has(key)) continue
     const value = schema[key]
+    // const/enum/default/examples/example are INSTANCE DATA, not subschemas — copy them
+    // verbatim. Recursing lets the keyword special-cases and the object finalizer
+    // below corrupt a DATA object that merely contains a key named like a schema
+    // keyword (e.g. a const value {properties:[]} becomes properties:{} with an
+    // injected type/required/additionalProperties), so the model's correct
+    // emission no longer matches the const under /beta strict. stableClone keeps
+    // the bytes deterministic (key-sorted), like the rest of the renderer.
+    if (
+      key === 'const' ||
+      key === 'enum' ||
+      key === 'default' ||
+      key === 'examples' ||
+      key === 'example'
+    ) {
+      out[key] = stableClone(value)
+      continue
+    }
     if (key === 'properties' && value && typeof value === 'object') {
       out.properties = {}
       for (const prop of Object.keys(value).sort()) {
@@ -131,6 +148,23 @@ export function sanitizeSchemaForDeepSeekNullable(schema) {
   for (const key of Object.keys(schema).sort()) {
     if (UNSUPPORTED_STRICT_SCHEMA_KEYS.has(key)) continue
     const value = schema[key]
+    // const/enum/default/examples/example are INSTANCE DATA, not subschemas — copy them
+    // verbatim. Recursing lets the keyword special-cases and the object finalizer
+    // below corrupt a DATA object that merely contains a key named like a schema
+    // keyword (e.g. a const value {properties:[]} becomes properties:{} with an
+    // injected type/required/additionalProperties), so the model's correct
+    // emission no longer matches the const under /beta strict. stableClone keeps
+    // the bytes deterministic (key-sorted), like the rest of the renderer.
+    if (
+      key === 'const' ||
+      key === 'enum' ||
+      key === 'default' ||
+      key === 'examples' ||
+      key === 'example'
+    ) {
+      out[key] = stableClone(value)
+      continue
+    }
     if (key === 'properties' && value && typeof value === 'object') {
       out.properties = {}
       for (const prop of Object.keys(value).sort()) {
