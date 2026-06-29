@@ -24,6 +24,10 @@ import {
 } from 'src/services/analytics/index.js'
 import { ImageSizeError } from './utils/imageValidation.js'
 import { ImageResizeError } from './utils/imageResizer.js'
+import {
+  isMaxOutputTokensTruncation,
+  isMaxOutputTokensWithheld,
+} from './query/maxOutputTokensTruncation.mjs'
 import { findToolByName, type ToolUseContext } from './Tool.js'
 import { asSystemPrompt, type SystemPrompt } from './utils/systemPromptType.js'
 import { resolveWireEffortValue } from './utils/effort.js'
@@ -161,18 +165,42 @@ function* yieldMissingToolResultBlocks(
 const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3
 
 /**
- * Is this a max_output_tokens error message? If so, the streaming loop should
- * withhold it from SDK callers until we know whether the recovery loop can
- * continue. Yielding early leaks an intermediate error to SDK callers (e.g.
- * cowork/desktop) that terminate the session on any `error` field — the
- * recovery loop keeps running but nobody is listening.
+ * Is this the WITHHELD max_output_tokens error-bubble? Only the synthetic
+ * API-error form (apiError === 'max_output_tokens', upstream Claude Code) is
+ * withheld from SDK callers until we know whether the recovery loop can
+ * continue — yielding early leaks an intermediate error to SDK callers (e.g.
+ * cowork/desktop) that terminate the session on any `error` field. The DeepSeek
+ * runtime's truncation is a REAL content message (see isMaxOutputTokensTruncated)
+ * and is NOT withheld — it streams and persists normally.
  *
  * Mirrors reactiveCompact.isWithheldPromptTooLong.
  */
 function isWithheldMaxOutputTokens(
   msg: Message | StreamEvent | undefined,
 ): msg is AssistantMessage {
-  return msg?.type === 'assistant' && msg.apiError === 'max_output_tokens'
+  return msg?.type === 'assistant' && isMaxOutputTokensWithheld(msg)
+}
+
+/**
+ * Did the model get cut off at the output-token cap (so the recovery loop should
+ * escalate + resume)? Covers BOTH runtime conventions: the upstream synthetic
+ * apiError form AND the DeepSeek runtime's real assistant message, which maps a
+ * 'length' finishReason to message.stop_reason 'max_tokens' with no apiError. A
+ * truncation carrying a (partial) tool_use is excluded — that flows through the
+ * tool-execution path, not text recovery. See query/maxOutputTokensTruncation.mjs.
+ */
+function isMaxOutputTokensTruncated(
+  msg: Message | StreamEvent | undefined,
+): msg is AssistantMessage {
+  return (
+    msg?.type === 'assistant' &&
+    isMaxOutputTokensTruncation({
+      apiError: msg.apiError,
+      stopReason: msg.message?.stop_reason,
+      hasToolUse:
+        msg.message?.content?.some(block => block.type === 'tool_use') ?? false,
+    })
+  )
 }
 
 export type QueryParams = {
@@ -748,10 +776,14 @@ async function* queryLoop(
                 }
               }
             }
-            // Withhold recoverable errors (prompt-too-long, max-output-tokens)
-            // until we know whether recovery (collapse drain / reactive
-            // compact / truncation retry) can succeed. Still pushed to
-            // assistantMessages so the recovery checks below find them.
+            // Withhold recoverable error-bubbles (prompt-too-long, and the
+            // upstream apiError max_output_tokens form) until we know whether
+            // recovery (collapse drain / reactive compact / truncation retry)
+            // can succeed. NB the DeepSeek max_tokens truncation is real content,
+            // not an error-bubble — it is NOT withheld here (see
+            // isMaxOutputTokensTruncated); only its recovery dispatch fires below.
+            // Withheld messages are still pushed to assistantMessages so the
+            // recovery checks below find them.
             // Either subsystem's withhold is sufficient — they're
             // independent so turning one off doesn't break the other's
             // recovery path.
@@ -1083,10 +1115,12 @@ async function* queryLoop(
         return { reason: 'prompt_too_long' }
       }
 
-      // Check for max_output_tokens and inject recovery message. The error
-      // was withheld from the stream above; only surface it if recovery
-      // exhausts.
-      if (isWithheldMaxOutputTokens(lastMessage)) {
+      // Check for an output-token-cap truncation and inject a recovery message.
+      // Covers the upstream withheld error-bubble AND the DeepSeek runtime's real
+      // truncated content (stop_reason 'max_tokens', no apiError) — without this
+      // the entire escalate/resume recovery was dead on the DeepSeek path and a
+      // cut-off answer was silently committed as a finished turn.
+      if (isMaxOutputTokensTruncated(lastMessage)) {
         // Escalating retry: if we used the capped 8k default and hit the
         // limit, retry the SAME request at 64k — no meta message, no
         // multi-turn dance. This fires once per turn (guarded by the
@@ -1155,8 +1189,13 @@ async function* queryLoop(
           continue
         }
 
-        // Recovery exhausted — surface the withheld error now.
-        yield lastMessage
+        // Recovery exhausted. Surface the message only if it was WITHHELD from
+        // the stream above (the apiError error-bubble). The DeepSeek truncation
+        // was real content already yielded at the stream loop, so re-yielding it
+        // here would duplicate it.
+        if (isWithheldMaxOutputTokens(lastMessage)) {
+          yield lastMessage
+        }
       }
 
       // Skip stop hooks when the last message is an API error (rate limit,
