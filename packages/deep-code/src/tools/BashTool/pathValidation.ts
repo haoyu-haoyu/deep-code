@@ -10,6 +10,10 @@ import {
 import { tryParseShellCommand } from '../../utils/bash/shellQuote.js'
 import { getDirectoryForPath } from '../../utils/path.js'
 import { allWorkingDirectories } from '../../utils/permissions/filesystem.js'
+import {
+  bashPathSafetyAskReason,
+  bashUnresolvableSafetyAskReason,
+} from '../../utils/permissions/bashPathSafetyReason.mjs'
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js'
 import { createReadRuleSuggestion } from '../../utils/permissions/PermissionUpdate.js'
 import type { PermissionUpdate } from '../../utils/permissions/PermissionUpdateSchema.js'
@@ -101,10 +105,9 @@ function checkDangerousRemovalPaths(
       return {
         behavior: 'ask',
         message: `Dangerous ${command} operation detected: '${absolutePath}'\n\nThis command would remove a critical system directory. This requires explicit approval and cannot be auto-allowed by permission rules.`,
-        decisionReason: {
-          type: 'other',
-          reason: `Dangerous ${command} operation on critical path: ${absolutePath}`,
-        },
+        decisionReason: bashUnresolvableSafetyAskReason(
+          `Dangerous ${command} operation on critical path: ${absolutePath}`,
+        ),
         // Don't provide suggestions - we don't want to encourage saving dangerous commands
         suggestions: [],
       }
@@ -658,10 +661,9 @@ function validateCommandPaths(
     return {
       behavior: 'ask',
       message: `${command} with flags requires manual approval to ensure path safety. For security, DeepCode cannot automatically validate ${command} commands that use flags, as some flags like --target-directory=PATH can bypass path validation.`,
-      decisionReason: {
-        type: 'other',
-        reason: `${command} command with flags requires manual approval`,
-      },
+      decisionReason: bashPathSafetyAskReason(
+        `${command} command with flags requires manual approval`,
+      ),
     }
   }
 
@@ -684,11 +686,9 @@ function validateCommandPaths(
     return {
       behavior: 'ask',
       message: `Commands that change directories and perform write operations require explicit approval to ensure paths are evaluated correctly. For security, DeepCode cannot automatically determine the final working directory when 'cd' is used in compound commands.`,
-      decisionReason: {
-        type: 'other',
-        reason:
-          'Compound command contains cd with write operation - manual approval required to prevent path resolution bypass',
-      },
+      decisionReason: bashPathSafetyAskReason(
+        'Compound command contains cd with write operation - manual approval required to prevent path resolution bypass',
+      ),
     }
   }
 
@@ -974,11 +974,9 @@ function validateOutputRedirections(
     return {
       behavior: 'ask',
       message: `Commands that change directories and write via output redirection require explicit approval to ensure paths are evaluated correctly. For security, DeepCode cannot automatically determine the final working directory when 'cd' is used in compound commands.`,
-      decisionReason: {
-        type: 'other',
-        reason:
-          'Compound command contains cd with output redirection - manual approval required to prevent path resolution bypass',
-      },
+      decisionReason: bashPathSafetyAskReason(
+        'Compound command contains cd with output redirection - manual approval required to prevent path resolution bypass',
+      ),
     }
   }
   for (const { target } of redirections) {
@@ -1068,10 +1066,9 @@ export function checkPathConstraints(
       behavior: 'ask',
       message:
         'Process substitution (>(...) or <(...)) can execute arbitrary commands and requires manual approval',
-      decisionReason: {
-        type: 'other',
-        reason: 'Process substitution requires manual approval',
-      },
+      decisionReason: bashUnresolvableSafetyAskReason(
+        'Process substitution requires manual approval',
+      ),
     }
   }
 
@@ -1091,10 +1088,9 @@ export function checkPathConstraints(
     return {
       behavior: 'ask',
       message: 'Shell expansion syntax in paths requires manual approval',
-      decisionReason: {
-        type: 'other',
-        reason: 'Shell expansion syntax in paths requires manual approval',
-      },
+      decisionReason: bashUnresolvableSafetyAskReason(
+        'Shell expansion syntax in paths requires manual approval',
+      ),
     }
   }
   const redirectionResult = validateOutputRedirections(
