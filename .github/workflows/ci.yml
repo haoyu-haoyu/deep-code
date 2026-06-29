@@ -43,6 +43,7 @@ jobs:
             test/deepcode-native.test.mjs \
             test/resolve-strict-tool-names.test.mjs \
             test/strict-keyword-named-property.test.mjs \
+            test/strict-allof-intersection.test.mjs \
             test/strict-tools-wiring.test.mjs \
             test/deepcode-package.test.mjs \
             test/perf-baseline.test.mjs \
