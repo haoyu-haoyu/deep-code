@@ -16,10 +16,12 @@ function oldDelete(content, oldString, replaceAll) {
 
 // An INDEPENDENT (split-based) implementation of the intended contract: remove
 // each (or, single-mode, the first) non-overlapping occurrence, consuming one
-// leading newline of the following segment when oldString isn't newline-terminated.
+// leading newline of the following segment ONLY when oldString is content-only
+// (neither newline-terminated NOR newline-led — a newline-led oldString already
+// removed its leading newline, so eating the trailing one would glue the next line).
 function refDelete(content, oldString, replaceAll) {
   if (oldString === '') return content
-  const consume = !oldString.endsWith('\n')
+  const consume = !oldString.endsWith('\n') && !oldString.startsWith('\n')
   const parts = content.split(oldString)
   if (parts.length === 1) return content
   if (!replaceAll) {
@@ -78,9 +80,31 @@ test('empty oldString is a no-op', () => {
   assert.equal(deleteOccurrences('anything', '', true), 'anything')
 })
 
+test('newline-LED oldString preserves the next line (no glue, no stranded match)', () => {
+  // adjacent identical lines, replace_all: the OLD impl ate the second match's
+  // leading newline → left it stranded AND glued ("code// X\nmore"); refDelete's
+  // consume-on-led rule glued the tail ("codemore"). Correct: both removed,
+  // structure preserved.
+  assert.equal(
+    deleteOccurrences('code\n// X\n// X\nmore', '\n// X', true),
+    'code\nmore',
+  )
+  // single newline-led delete: keep the following line's leading newline.
+  assert.equal(deleteOccurrences('a\nDEBUG\nb', '\nDEBUG', false), 'a\nb')
+  // a blank line that was already there must survive (we only deleted the line).
+  assert.equal(deleteOccurrences('a\nfoo\n\nb', '\nfoo', false), 'a\n\nb')
+  // three adjacent newline-led lines all removed.
+  assert.equal(
+    deleteOccurrences('x\n-\n-\n-\ny', '\n-', true),
+    'x\ny',
+  )
+})
+
 test('differential vs an independent split-based reference (2000 random inputs)', () => {
-  const alphabet = ['a', 'b', 'D', 'E', 'B', 'U', 'G', ' ', '\n', '\n']
-  const tokens = ['a', 'D', 'DE', 'DEBUG', 'ab', '\n', 'a\n', ' ']
+  const alphabet = ['a', 'b', 'D', 'E', 'B', 'U', 'G', ' ', '\n', '\n', '-']
+  // Includes multi-char newline-LED tokens (\nD, \nDEBUG, \n-) — the shape the
+  // previous token set omitted, which hid the adjacent-occurrence under-deletion.
+  const tokens = ['a', 'D', 'DE', 'DEBUG', 'ab', '\n', 'a\n', ' ', '\nD', '\nDEBUG', '\n-', '-']
   for (let i = 0; i < 2000; i++) {
     const len = 1 + Math.floor(Math.random() * 40)
     let content = ''
