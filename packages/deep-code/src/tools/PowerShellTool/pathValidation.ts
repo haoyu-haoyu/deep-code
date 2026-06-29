@@ -19,6 +19,10 @@ import {
 import { containsPathTraversal, getDirectoryForPath } from '../../utils/path.js'
 import { firstChainDenyMatch } from '../../utils/permissions/firstChainDenyMatch.mjs'
 import {
+  pathSafetyAskReason,
+  unresolvablePathSafetyAskReason,
+} from '../../utils/permissions/pathSafetyReason.mjs'
+import {
   allWorkingDirectories,
   checkEditableInternalPath,
   checkPathSafetyForAutoEdit,
@@ -1054,11 +1058,9 @@ function validatePath(
     return {
       allowed: false,
       resolvedPath: normalizedPath,
-      decisionReason: {
-        type: 'other',
-        reason:
-          'Backtick escape characters in paths cannot be statically validated and require manual approval',
-      },
+      decisionReason: unresolvablePathSafetyAskReason(
+        'Backtick escape characters in paths cannot be statically validated and require manual approval',
+      ),
     }
   }
 
@@ -1089,11 +1091,9 @@ function validatePath(
     return {
       allowed: false,
       resolvedPath: normalizedPath,
-      decisionReason: {
-        type: 'other',
-        reason:
-          'Module-qualified provider paths (::) cannot be statically validated and require manual approval',
-      },
+      decisionReason: unresolvablePathSafetyAskReason(
+        'Module-qualified provider paths (::) cannot be statically validated and require manual approval',
+      ),
     }
   }
 
@@ -1107,11 +1107,9 @@ function validatePath(
     return {
       allowed: false,
       resolvedPath: normalizedPath,
-      decisionReason: {
-        type: 'other',
-        reason:
-          'UNC paths are blocked because they can trigger network requests and credential leakage',
-      },
+      decisionReason: unresolvablePathSafetyAskReason(
+        'UNC paths are blocked because they can trigger network requests and credential leakage',
+      ),
     }
   }
 
@@ -1120,10 +1118,9 @@ function validatePath(
     return {
       allowed: false,
       resolvedPath: normalizedPath,
-      decisionReason: {
-        type: 'other',
-        reason: 'Variable expansion syntax in paths requires manual approval',
-      },
+      decisionReason: unresolvablePathSafetyAskReason(
+        'Variable expansion syntax in paths requires manual approval',
+      ),
     }
   }
 
@@ -1153,10 +1150,9 @@ function validatePath(
     return {
       allowed: false,
       resolvedPath: normalizedPath,
-      decisionReason: {
-        type: 'other',
-        reason: `Path '${normalizedPath}' uses a non-filesystem provider and requires manual approval`,
-      },
+      decisionReason: unresolvablePathSafetyAskReason(
+        `Path '${normalizedPath}' uses a non-filesystem provider and requires manual approval`,
+      ),
     }
   }
 
@@ -1166,11 +1162,9 @@ function validatePath(
       return {
         allowed: false,
         resolvedPath: normalizedPath,
-        decisionReason: {
-          type: 'other',
-          reason:
-            'Glob patterns are not allowed in write operations. Please specify an exact file path.',
-        },
+        decisionReason: unresolvablePathSafetyAskReason(
+          'Glob patterns are not allowed in write operations. Please specify an exact file path.',
+        ),
       }
     }
 
@@ -1235,11 +1229,9 @@ function validatePath(
     return {
       allowed: false,
       resolvedPath,
-      decisionReason: {
-        type: 'other',
-        reason:
-          'Glob patterns in paths cannot be statically validated — symlinks inside the glob expansion are not examined. Requires manual approval.',
-      },
+      decisionReason: unresolvablePathSafetyAskReason(
+        'Glob patterns in paths cannot be statically validated — symlinks inside the glob expansion are not examined. Requires manual approval.',
+      ),
     }
   }
 
@@ -1631,11 +1623,9 @@ function checkPathConstraintsForStatement(
       behavior: 'ask',
       message:
         'Compound command changes working directory (Set-Location/Push-Location/Pop-Location/New-PSDrive) — relative paths cannot be validated against the original cwd and require manual approval',
-      decisionReason: {
-        type: 'other',
-        reason:
-          'Compound command contains cd with path operation — manual approval required to prevent path resolution bypass',
-      },
+      decisionReason: pathSafetyAskReason(
+        'Compound command contains cd with path operation — manual approval required to prevent path resolution bypass',
+      ),
     }
   }
 
