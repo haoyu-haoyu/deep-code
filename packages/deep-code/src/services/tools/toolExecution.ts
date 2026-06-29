@@ -107,6 +107,10 @@ import {
   processToolResultBlock,
 } from '../../utils/toolResultStorage.js'
 import {
+  isUnparseableToolArgs,
+  UNPARSEABLE_TOOL_ARGS_MESSAGE,
+} from './unparseableToolArgs.mjs'
+import {
   extractDiscoveredToolNames,
   isToolSearchEnabledOptimistic,
   isToolSearchToolAvailable,
@@ -614,20 +618,36 @@ async function checkPermissionsAndCallTool(
 ): Promise<MessageUpdateLazy[]> {
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
   const parsedInput = tool.inputSchema.safeParse(input)
-  if (!parsedInput.success) {
-    let errorContent = formatZodValidationError(tool.name, parsedInput.error)
+  // Tool-call arguments that failed to parse as JSON arrive as a self-identifying
+  // sentinel (unparseableToolArgs.mjs). A built-in tool's concrete schema already
+  // rejects it, but an MCP tool's z.object({}).passthrough() schema accepts any
+  // object and would forward the sentinel to the remote server as a phantom `_raw`
+  // argument with every intended parameter missing — so reject it for EVERY tool
+  // here, before the per-tool schema's verdict, with a clean InputValidationError
+  // the model can self-correct.
+  const argsUnparseable = isUnparseableToolArgs(input)
+  if (!parsedInput.success || argsUnparseable) {
+    let errorContent = argsUnparseable
+      ? UNPARSEABLE_TOOL_ARGS_MESSAGE
+      : parsedInput.success
+        ? ''
+        : formatZodValidationError(tool.name, parsedInput.error)
 
-    const schemaHint = buildSchemaNotSentHint(
-      tool,
-      toolUseContext.messages,
-      toolUseContext.options.tools,
-    )
-    if (schemaHint) {
-      logEvent('tengu_deferred_tool_schema_not_sent', {
-        toolName: sanitizeToolNameForAnalytics(tool.name),
-        isMcp: tool.isMcp ?? false,
-      })
-      errorContent += schemaHint
+    // A schema hint only makes sense for a genuine schema mismatch, not for
+    // arguments that never parsed.
+    if (!argsUnparseable && !parsedInput.success) {
+      const schemaHint = buildSchemaNotSentHint(
+        tool,
+        toolUseContext.messages,
+        toolUseContext.options.tools,
+      )
+      if (schemaHint) {
+        logEvent('tengu_deferred_tool_schema_not_sent', {
+          toolName: sanitizeToolNameForAnalytics(tool.name),
+          isMcp: tool.isMcp ?? false,
+        })
+        errorContent += schemaHint
+      }
     }
 
     logForDebugging(
@@ -678,7 +698,7 @@ async function checkPermissionsAndCallTool(
               tool_use_id: toolUseID,
             },
           ],
-          toolUseResult: `InputValidationError: ${parsedInput.error.message}`,
+          toolUseResult: `InputValidationError: ${argsUnparseable ? UNPARSEABLE_TOOL_ARGS_MESSAGE : parsedInput.success ? '' : parsedInput.error.message}`,
           sourceToolAssistantUUID: assistantMessage.uuid,
         }),
       },
