@@ -18,6 +18,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from './featureFlags.js'
 import { getCwd } from '../utils/cwd.js'
 import { logForDebugging } from './debug.js'
 import { isENOENT, isFsInaccessible } from './errors.js'
+import { nonAtomicWriteFallback } from './nonAtomicWriteFallback.mjs'
 import {
   detectEncodingForResolvedPath,
   detectLineEndingsForString,
@@ -462,30 +463,36 @@ export function writeFileSyncAndFlush_DEPRECATED(
       logForDebugging(`Failed to clean up temp file: ${cleanupError}`)
     }
 
-    // Fallback to non-atomic write
+    // Fallback to non-atomic write — but NEVER truncate an existing file. The
+    // direct fsWriteFileSync uses O_TRUNC, which empties the target before
+    // writing, so on ENOSPC / a mid-write failure it would destroy the original
+    // (intact moments ago) and write nothing — total data loss. So for an
+    // existing target this re-throws the atomic error, leaving the file untouched
+    // for the caller's read-then-write retry; only a NEW file (nothing to lose)
+    // takes the direct create.
     logForDebugging(`Falling back to non-atomic write for ${targetPath}`)
-    try {
-      const fallbackOptions: {
-        encoding: BufferEncoding
-        flush: boolean
-        mode?: number
-      } = {
-        encoding: options.encoding,
-        flush: true,
-      }
-      // Only set mode for new files
-      if (!targetExists && options.mode !== undefined) {
-        fallbackOptions.mode = options.mode
-      }
+    nonAtomicWriteFallback({
+      targetExists,
+      atomicError,
+      writeInPlace: () => {
+        const fallbackOptions: {
+          encoding: BufferEncoding
+          flush: boolean
+          mode?: number
+        } = {
+          encoding: options.encoding,
+          flush: true,
+        }
+        if (options.mode !== undefined) {
+          fallbackOptions.mode = options.mode
+        }
 
-      fsWriteFileSync(targetPath, content, fallbackOptions)
-      logForDebugging(
-        `File ${targetPath} written successfully with non-atomic fallback`,
-      )
-    } catch (fallbackError) {
-      logForDebugging(`Non-atomic write also failed: ${fallbackError}`)
-      throw fallbackError
-    }
+        fsWriteFileSync(targetPath, content, fallbackOptions)
+        logForDebugging(
+          `File ${targetPath} written successfully with non-atomic fallback`,
+        )
+      },
+    })
   }
 }
 
