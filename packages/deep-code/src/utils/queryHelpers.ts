@@ -1,5 +1,6 @@
 import type { ToolUseBlock } from '../types/sdk-shim.js'
 import last from 'lodash-es/last.js'
+import { isNormalCompletionStopReason } from './normalCompletionStopReason.mjs'
 import {
   getSessionId,
   isSessionPersistenceDisabled,
@@ -61,11 +62,24 @@ export function isResultSuccessful(
 
   if (message.type === 'assistant') {
     const lastContent = last(message.message.content)
-    return (
+    if (
       lastContent?.type === 'text' ||
       lastContent?.type === 'thinking' ||
       lastContent?.type === 'redacted_thinking'
-    )
+    ) {
+      return true
+    }
+    // A non-empty assistant message ending in some other block (e.g. a dangling
+    // tool_use) is not a clean text terminal — keep it a failure. But a
+    // CONTENT-FREE assistant message (zero blocks) is the no-content-turn shape
+    // on the DeepSeek runtime: deepSeekResponseToAssistantMessage always yields a
+    // final assistant message, so a "nothing to add" turn produces an EMPTY one
+    // here (where Anthropic yields none, leaving the user prompt as last). Fall
+    // through to the normal-completion carve-out below so it isn't a spurious
+    // error_during_execution.
+    if (message.message.content.length > 0) {
+      return false
+    }
   }
 
   if (message.type === 'user') {
@@ -81,16 +95,19 @@ export function isResultSuccessful(
   }
 
   // Carve-out: API completed (message_delta set stop_reason) but yielded
-  // no assistant content — last(messages) is still this turn's prompt.
+  // no assistant content — last(messages) is still this turn's prompt
+  // (Anthropic) or an empty assistant message (DeepSeek, see above).
   // claude.ts:2026 recognizes end_turn-with-zero-content-blocks as
   // legitimate and passes through without throwing. Observed on
   // task_notification drain turns: model returns stop_reason=end_turn,
   // outputTokens=4, textContentLength=0 — it saw the subagent result
-  // and decided nothing needed saying. Without this, QueryEngine emits
+  // and decided nothing needed saying. The DeepSeek runtime signals the same
+  // "completed normally" turn with stop_reason 'stop' (it never emits
+  // 'end_turn'), so accept both markers. Without this, QueryEngine emits
   // error_during_execution with errors[] = the entire process's
   // accumulated logError() buffer. Covers both string-content and
   // text-block-content user prompts, and any other non-passing shape.
-  return stopReason === 'end_turn'
+  return isNormalCompletionStopReason(stopReason)
 }
 
 // Track last sent time for tool progress messages per tool use ID
