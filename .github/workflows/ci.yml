@@ -234,6 +234,7 @@ jobs:
             test/path-safety-reason.test.mjs \
             test/max-output-tokens-truncation.test.mjs \
             test/normal-completion-stop-reason.test.mjs \
+            test/refusal-stop-reason.test.mjs \
             test/deepseek-attachment-normalization.test.mjs \
             test/deepseek-context-overflow.test.mjs \
             test/escape-gitignore-pattern.test.mjs \
