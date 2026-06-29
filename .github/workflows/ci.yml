@@ -231,6 +231,7 @@ jobs:
             test/worktree-prunable-orphans.test.mjs \
             test/gitdiff-args.test.mjs \
             test/gitdiff-header.test.mjs \
+            test/unified-diff-body-line.test.mjs \
             test/settings-source-order.test.mjs \
             test/coerce-policy-scalars.test.mjs \
             test/resolve-command-by-name.test.mjs \

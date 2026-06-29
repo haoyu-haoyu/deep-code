@@ -10,6 +10,7 @@ import {
   gitDiffShortstatArgs,
 } from './gitDiffArgs.mjs'
 import { extractDiffFilePath } from './gitDiffHeader.mjs'
+import { isUnifiedDiffBodyLine } from './isUnifiedDiffBodyLine.mjs'
 import { unquoteGitPath } from './unquoteGitPath.mjs'
 import { isFileWithinReadSizeLimit } from './file.js'
 import {
@@ -272,14 +273,10 @@ export function parseGitDiff(
         continue
       }
 
-      // Add diff lines to current hunk (with line limit)
-      if (
-        currentHunk &&
-        (line.startsWith('+') ||
-          line.startsWith('-') ||
-          line.startsWith(' ') ||
-          line === '')
-      ) {
+      // Add diff lines to current hunk (with line limit). A real blank context
+      // line is ' ' (space-prefixed); the trailing '' from splitting git's final
+      // newline is NOT a body line and must not become a phantom hunk row.
+      if (currentHunk && isUnifiedDiffBodyLine(line)) {
         // Stop adding lines once we hit the limit
         if (lineCount >= MAX_LINES_PER_FILE) {
           continue
