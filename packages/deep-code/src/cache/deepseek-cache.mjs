@@ -109,8 +109,17 @@ export function getWarmModels({ minHitRate = WARM_HIT_RATE } = {}) {
   const warm = new Set()
   const seen = new Set()
   for (let i = liveTurns.length - 1; i >= 0; i--) {
-    const { model, hitRate } = liveTurns[i]
+    const { model, hitTokens, missTokens, hitRate } = liveTurns[i]
     if (!model || seen.has(model)) continue
+    // A turn with no cache signal (hitTokens + missTokens === 0 — a non-strict
+    // gateway omitted the prompt_cache_* fields, or a genuinely tokenless turn)
+    // carries no warmth information: its hitRate is 0 only because cacheHitRatio
+    // guards 0/0, NOT because the lane went cold. Skip it WITHOUT marking the model
+    // seen, so warmth is read from the model's most recent turn that ACTUALLY
+    // carried a cache signal — otherwise one fieldless turn demotes a genuinely-warm
+    // lane and silently drops a valid warm-model tie-break. A real cold turn
+    // (hit < miss, but hit + miss > 0) is NOT skipped — that is a true demotion.
+    if (hitTokens + missTokens === 0) continue
     seen.add(model)
     if (hitRate >= minHitRate) warm.add(model)
   }

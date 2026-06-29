@@ -114,6 +114,7 @@ jobs:
             test/agent-synthesis.test.mjs \
             test/deepseek-auto-model-guard.test.mjs \
             test/warm-model-tiebreak.test.mjs \
+            test/warm-model-no-signal.test.mjs \
             test/deepseek-nullable-strict.test.mjs \
             test/deepseek-schema-object-detection.test.mjs \
             test/deepseek-schema-data-position.test.mjs \
