@@ -6,6 +6,7 @@ import type { FileEdit } from '../tools/FileEditTool/types.js'
 import { count } from './array.js'
 import { escapeForDiff, unescapeFromDiff } from './escapeForDiff.mjs'
 import { convertLeadingTabsToSpaces } from './file.js'
+import { prepareDisplayContents } from './prepareDisplayContents.mjs'
 
 export const CONTEXT_LINES = 3
 export const DIFF_TIMEOUT_MS = 5_000
@@ -123,29 +124,20 @@ export function getPatchForDisplay({
   edits: FileEdit[]
   ignoreWhitespace?: boolean
 }): StructuredPatchHunk[] {
-  const preparedFileContents = escapeForDiff(
-    convertLeadingTabsToSpaces(fileContents),
+  // Apply the edits through the SAME applySequentialEdits the on-disk write uses
+  // (the SSOT), then diff the escaped/tab-converted real before/after — so the
+  // previewed hunk is byte-identical to what the write produces. This mirrors
+  // getPatchForEdits, which already abandoned the old escaped-space reduce here.
+  const { prepared, preparedNew } = prepareDisplayContents(
+    fileContents,
+    edits,
+    convertLeadingTabsToSpaces,
   )
   const result = structuredPatch(
     filePath,
     filePath,
-    preparedFileContents,
-    edits.reduce((p, edit) => {
-      const { old_string, new_string } = edit
-      const replace_all = 'replace_all' in edit ? edit.replace_all : false
-      const escapedOldString = escapeForDiff(
-        convertLeadingTabsToSpaces(old_string),
-      )
-      const escapedNewString = escapeForDiff(
-        convertLeadingTabsToSpaces(new_string),
-      )
-
-      if (replace_all) {
-        return p.replaceAll(escapedOldString, () => escapedNewString)
-      } else {
-        return p.replace(escapedOldString, () => escapedNewString)
-      }
-    }, preparedFileContents),
+    prepared,
+    preparedNew,
     undefined,
     undefined,
     {
