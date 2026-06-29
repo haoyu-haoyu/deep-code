@@ -98,6 +98,20 @@ function isStrictNoOpSchema(schema) {
 // is NOT closed in general — it is only closeable on an object that ALSO declares
 // `properties` (there strict's "reject undeclared extras" is the intended job);
 // an object with NO declared properties is a free-form map and must stay open.
+// Would the strict sanitizer treat this allOf branch as an object node — and so
+// force `additionalProperties:false` onto it? Mirrors finalizeObjectNode's object
+// detection (deepseek-schema.mjs): a bare `type:'object'`, a type array including
+// 'object', or an untyped node carrying `properties`.
+function isObjectBranch(node) {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return false
+  const t = node.type
+  return (
+    t === 'object' ||
+    (Array.isArray(t) && t.includes('object')) ||
+    (t === undefined && Boolean(node.properties && typeof node.properties === 'object'))
+  )
+}
+
 export function schemaClosesAnOpenMap(schema) {
   if (Array.isArray(schema)) return schema.some(schemaClosesAnOpenMap)
   if (!schema || typeof schema !== 'object') return false
@@ -130,6 +144,22 @@ export function schemaClosesAnOpenMap(schema) {
       typeof schema.properties === 'object' &&
       Object.keys(schema.properties).length > 0
     )
+  ) {
+    return true
+  }
+  // An `allOf` (intersection) whose branches the strict sanitizer would each force
+  // to `additionalProperties:false` is UNSATISFIABLE under /beta strict: with two or
+  // more object branches, every branch then rejects the OTHER branches' declared
+  // keys (and required=all forces all of them), so no object satisfies the
+  // conjunction. Worse, when an author's intersection branches are OPEN (the normal,
+  // satisfiable case — {a,b} accepted by both), the sanitizer ACTIVELY closes them,
+  // turning a working schema into an unsatisfiable one — the #523 accept-any->
+  // accept-none inversion, via allOf. Exclude such a tool so it falls back to the
+  // non-strict path (the intersection keeps working, just without /beta enforcement).
+  // A single-branch allOf, or branches with no object node, stay selectable.
+  if (
+    Array.isArray(schema.allOf) &&
+    schema.allOf.filter(isObjectBranch).length >= 2
   ) {
     return true
   }
