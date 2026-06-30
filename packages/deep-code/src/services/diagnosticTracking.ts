@@ -2,6 +2,8 @@ import figures from 'figures'
 import { logError } from 'src/utils/log.js'
 import { callIdeRpc } from '../services/mcp/client.js'
 import { selectNewDiagnostics } from './diagnosticDedup.mjs'
+import { diagnosticFileLabel } from './diagnosticFileLabel.mjs'
+import { getCwd } from '../utils/cwd.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import { ClaudeError } from '../utils/errors.js'
 import { normalizePathForComparison, pathsEqual } from '../utils/file.js'
@@ -313,9 +315,12 @@ export class DiagnosticTrackingService {
    */
   static formatDiagnosticsSummary(files: DiagnosticFile[]): string {
     const truncationMarker = '…[truncated]'
+    const cwd = getCwd()
     const result = files
       .map(file => {
-        const filename = file.uri.split('/').pop() || file.uri
+        // The cwd-relative path (not the bare basename) so the model can tell
+        // same-basename files apart; also decodes %20 / Windows paths.
+        const filename = diagnosticFileLabel(file.uri, cwd)
         const diagnostics = file.diagnostics
           .map(d => {
             const severitySymbol = DiagnosticTrackingService.getSeveritySymbol(
