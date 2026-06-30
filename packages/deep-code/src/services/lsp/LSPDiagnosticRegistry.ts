@@ -7,6 +7,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 import type { DiagnosticFile } from '../diagnosticTracking.js'
 import { capDiagnosticsByGlobalSeverity } from './capDiagnosticsByGlobalSeverity.mjs'
 import { dedupeDiagnosticFiles } from './dedupeDiagnosticFiles.mjs'
+import { pendingDiagnosticsClearPlan } from './pendingDiagnosticsClearPlan.mjs'
 
 /**
  * Pending LSP diagnostic notification
@@ -318,6 +319,29 @@ export function clearDeliveredDiagnosticsForFile(fileKey: string): void {
       `LSP Diagnostics: Clearing delivered diagnostics for ${fileKey}`,
     )
     deliveredDiagnostics.delete(fileKey)
+  }
+}
+
+/**
+ * Drop any still-PENDING (registered but not yet delivered) diagnostics for a file
+ * the server just declared clean (empty publish). Without this, an undelivered stale
+ * diagnostic survives the file-is-clean signal and is delivered next turn, telling the
+ * model an already-resolved error is current. Companion to
+ * clearDeliveredDiagnosticsForFile, which only clears the cross-turn dedup cache.
+ */
+export function clearPendingDiagnosticsForFile(fileKey: string): void {
+  const plan = pendingDiagnosticsClearPlan(pendingDiagnostics, fileKey)
+  for (const id of plan.delete) {
+    pendingDiagnostics.delete(id)
+  }
+  for (const { id, files } of plan.update) {
+    const entry = pendingDiagnostics.get(id)
+    if (entry) entry.files = files
+  }
+  if (plan.delete.length > 0 || plan.update.length > 0) {
+    logForDebugging(
+      `LSP Diagnostics: Clearing pending diagnostics for ${fileKey}`,
+    )
   }
 }
 

@@ -7,6 +7,7 @@ import type { DiagnosticFile } from '../diagnosticTracking.js'
 import { emptyDiagnosticsClearKey } from './emptyDiagnosticsClearKey.mjs'
 import {
   clearDeliveredDiagnosticsForFile,
+  clearPendingDiagnosticsForFile,
   registerPendingLSPDiagnostic,
 } from './LSPDiagnosticRegistry.js'
 import type { LSPServerManager } from './LSPServerManager.js'
@@ -209,6 +210,9 @@ export function registerLSPNotificationHandlers(
               const clearKey = emptyDiagnosticsClearKey(diagnosticFiles)
               if (clearKey) {
                 clearDeliveredDiagnosticsForFile(clearKey)
+                // Also drop a still-undelivered diagnostic for this now-clean file,
+                // otherwise it is delivered next turn as a stale, already-resolved error.
+                clearPendingDiagnosticsForFile(clearKey)
               }
               logForDebugging(
                 `Skipping empty diagnostics from ${serverName} for ${diagnosticParams.uri}`,
