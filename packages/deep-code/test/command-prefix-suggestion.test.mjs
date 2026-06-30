@@ -92,6 +92,34 @@ test('eval and source ARE in the blocklist (arbitrary code / sourcing)', () => {
   assert.ok(BARE_SHELL_PREFIXES.has('xargs'))
 })
 
+test('THE FIX: precommand modifiers stripPrecommandModifiers peels are blocked from suggestion', () => {
+  // command/exec/builtin/noglob/nocorrect all RUN their argument (stripPrecommandModifiers
+  // peels them on the deny path) — suggesting Bash(<mod>:*) auto-approves arbitrary code:
+  // `exec ./deploy.sh` would save Bash(exec:*) which then matches `exec rm -rf /`, and
+  // `command bash -c …` would save Bash(command bash:*). Block them like env/xargs.
+  for (const m of ['command', 'exec', 'builtin', 'noglob', 'nocorrect']) {
+    assert.ok(BARE_SHELL_PREFIXES.has(m), `${m} must be blocked`)
+  }
+  // first-word path: a saved Bash(<mod>:*) would be ≈ Bash(*).
+  for (const c of [
+    'exec ./deploy.sh',
+    'exec rm -rf /',
+    'command rm -rf /',
+    'builtin eval x',
+    'noglob rm -rf x',
+    'nocorrect rm -rf x',
+  ]) {
+    assert.equal(first(c), null, `getFirstWordPrefix should decline: ${c}`)
+  }
+  // two-word path: `<mod> <shell|cmd>` must not become a Bash(<mod> <x>:*) suggestion.
+  for (const c of ['exec bash -c evil', 'command bash -c evil', 'builtin eval rm']) {
+    assert.equal(simple(c), null, `getSimpleCommandPrefix should decline: ${c}`)
+  }
+  // NO over-block: `commander` (not `command`) is a real tool and still gets a prefix.
+  assert.equal(first('commander deploy'), 'commander')
+  assert.equal(simple('commander deploy prod'), 'commander deploy')
+})
+
 test('THE FIX: scheduler wrappers stripSafeWrappers strips are blocked from suggestion', () => {
   // setsid/ionice/chrt/taskset are transparent wrappers stripSafeWrappers
   // reduces to the inner command — so suggesting Bash(<wrapper>:*) is ≈ Bash(*):
