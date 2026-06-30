@@ -1,5 +1,6 @@
 import type { Anthropic } from '../types/sdk-shim.js'
 import type { Attachment } from './attachments.js'
+import { estimateStrippedMediaTokens } from './estimateStrippedMediaTokens.mjs'
 import { normalizeAttachmentForAPI } from './messages.js'
 import { jsonStringify } from './slowOperations.js'
 
@@ -120,12 +121,12 @@ function roughTokenCountEstimationForBlock(
     return roughTokenCountEstimation(block.text)
   }
   if (block.type === 'image' || block.type === 'document') {
-    // Images are resized to max 2000x2000 (5333 tokens). Use a conservative
-    // estimate that matches microCompact's IMAGE_MAX_TOKEN_SIZE to avoid
-    // underestimating and triggering auto-compact too late. Same constant
-    // applies to documents (base64 PDF in source.data) - must NOT reach the
-    // jsonStringify catch-all because a 1MB PDF would balloon the estimate.
-    return 2000
+    // DeepSeek is text-only: the wire mapper strips an image/document to a compact
+    // placeholder string, so the real on-wire cost is that placeholder (~13 tokens),
+    // not the fixed 2000 inherited from Anthropic (which actually sent the image).
+    // 2000 over-counts by ~1985 and biases autocompact to fire too early. This also
+    // keeps a 1MB base64 PDF off the jsonStringify catch-all (placeholder is bounded).
+    return estimateStrippedMediaTokens(block, roughTokenCountEstimation)
   }
   if (block.type === 'tool_result') {
     return roughTokenCountEstimationForContent(block.content)

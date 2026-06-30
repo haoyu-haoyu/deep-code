@@ -85,7 +85,9 @@ test('roughTokenCountEstimationForMessage handles content block arrays with text
   })
   expect(result).toBe(
     roughTokenCountEstimation('first block') +
-      2000 +
+      // DeepSeek strips the image to a wire placeholder; it is estimated at that
+      // placeholder's token cost, not the old fixed 2000 (an Anthropic-era over-count).
+      roughTokenCountEstimation('[image omitted: DeepSeek has no vision; image/png]') +
       roughTokenCountEstimation('second'),
   )
 })
