@@ -3,6 +3,8 @@ import { logError } from 'src/utils/log.js'
 import { callIdeRpc } from '../services/mcp/client.js'
 import { selectNewDiagnostics } from './diagnosticDedup.mjs'
 import { diagnosticFileLabel } from './diagnosticFileLabel.mjs'
+import { joinDiagnosticBlocksWithinBudget } from './diagnosticSummaryBudget.mjs'
+import { diagnosticSeverityRank } from './lsp/diagnosticSeverityRank.mjs'
 import { getCwd } from '../utils/cwd.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
 import { ClaudeError } from '../utils/errors.js'
@@ -314,36 +316,39 @@ export class DiagnosticTrackingService {
    * @returns Formatted string representation of the diagnostics
    */
   static formatDiagnosticsSummary(files: DiagnosticFile[]): string {
-    const truncationMarker = '…[truncated]'
     const cwd = getCwd()
-    const result = files
-      .map(file => {
-        // The cwd-relative path (not the bare basename) so the model can tell
-        // same-basename files apart; also decodes %20 / Windows paths.
-        const filename = diagnosticFileLabel(file.uri, cwd)
-        const diagnostics = file.diagnostics
-          .map(d => {
-            const severitySymbol = DiagnosticTrackingService.getSeveritySymbol(
-              d.severity,
-            )
-
-            return `  ${severitySymbol} [Line ${d.range.start.line + 1}:${d.range.start.character + 1}] ${d.message}${d.code ? ` [${d.code}]` : ''}${d.source ? ` (${d.source})` : ''}`
-          })
-          .join('\n')
-
-        return `${filename}:\n${diagnostics}`
-      })
-      .join('\n\n')
-
-    if (result.length > MAX_DIAGNOSTICS_SUMMARY_CHARS) {
-      return (
-        result.slice(
-          0,
-          MAX_DIAGNOSTICS_SUMMARY_CHARS - truncationMarker.length,
-        ) + truncationMarker
+    const blocks = files.map(file => {
+      // Severity-sort within the file so errors render first (idempotent with the
+      // registry's global cap; also orders the IDE/MCP path, which is not capped).
+      const sorted = [...file.diagnostics].sort(
+        (a, b) =>
+          diagnosticSeverityRank(a.severity) - diagnosticSeverityRank(b.severity),
       )
-    }
-    return result
+      // The cwd-relative path (not the bare basename) so the model can tell
+      // same-basename files apart; also decodes %20 / Windows paths.
+      const filename = diagnosticFileLabel(file.uri, cwd)
+      const diagnostics = sorted
+        .map(d => {
+          const severitySymbol = DiagnosticTrackingService.getSeveritySymbol(
+            d.severity,
+          )
+
+          return `  ${severitySymbol} [Line ${d.range.start.line + 1}:${d.range.start.character + 1}] ${d.message}${d.code ? ` [${d.code}]` : ''}${d.source ? ` (${d.source})` : ''}`
+        })
+        .join('\n')
+
+      return {
+        text: `${filename}:\n${diagnostics}`,
+        // The block's highest-severity rank (errors render first within the block),
+        // so error-bearing files are kept ahead of warning-only files under the budget.
+        severityRank: sorted.length
+          ? diagnosticSeverityRank(sorted[0]!.severity)
+          : 4,
+        count: file.diagnostics.length,
+      }
+    })
+
+    return joinDiagnosticBlocksWithinBudget(blocks, MAX_DIAGNOSTICS_SUMMARY_CHARS)
   }
 
   /**

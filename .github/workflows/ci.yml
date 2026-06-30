@@ -235,6 +235,7 @@ jobs:
             test/estimate-stripped-media-tokens.test.mjs \
             test/compact-overflow-retry.test.mjs \
             test/diagnostic-file-label.test.mjs \
+            test/diagnostic-severity-truncation.test.mjs \
             test/settings-source-order.test.mjs \
             test/coerce-policy-scalars.test.mjs \
             test/resolve-command-by-name.test.mjs \

@@ -5,6 +5,7 @@ import { toError } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import type { DiagnosticFile } from '../diagnosticTracking.js'
+import { capDiagnosticsByGlobalSeverity } from './capDiagnosticsByGlobalSeverity.mjs'
 import { dedupeDiagnosticFiles } from './dedupeDiagnosticFiles.mjs'
 
 /**
@@ -89,20 +90,6 @@ export function registerPendingLSPDiagnostic({
  * Maps severity string to numeric value for sorting.
  * Error=1, Warning=2, Info=3, Hint=4
  */
-function severityToNumber(severity: string | undefined): number {
-  switch (severity) {
-    case 'Error':
-      return 1
-    case 'Warning':
-      return 2
-    case 'Info':
-      return 3
-    case 'Hint':
-      return 4
-    default:
-      return 4
-  }
-}
 
 /**
  * Creates a unique key for a diagnostic based on its content.
@@ -223,33 +210,16 @@ export function checkForLSPDiagnostics(): Array<{
     )
   }
 
-  // Apply volume limiting: cap per file and total
-  let totalDiagnostics = 0
-  let truncatedCount = 0
-  for (const file of dedupedFiles) {
-    // Sort by severity (Error=1 < Warning=2 < Info=3 < Hint=4) to prioritize errors
-    file.diagnostics.sort(
-      (a, b) => severityToNumber(a.severity) - severityToNumber(b.severity),
-    )
-
-    // Cap per file
-    if (file.diagnostics.length > MAX_DIAGNOSTICS_PER_FILE) {
-      truncatedCount += file.diagnostics.length - MAX_DIAGNOSTICS_PER_FILE
-      file.diagnostics = file.diagnostics.slice(0, MAX_DIAGNOSTICS_PER_FILE)
-    }
-
-    // Cap total
-    const remainingCapacity = MAX_TOTAL_DIAGNOSTICS - totalDiagnostics
-    if (file.diagnostics.length > remainingCapacity) {
-      truncatedCount += file.diagnostics.length - remainingCapacity
-      file.diagnostics = file.diagnostics.slice(0, remainingCapacity)
-    }
-
-    totalDiagnostics += file.diagnostics.length
-  }
-
-  // Filter out files that ended up with no diagnostics after limiting
-  dedupedFiles = dedupedFiles.filter(f => f.diagnostics.length > 0)
+  // Apply volume limiting: cap per file, and globally by SEVERITY (not file-arrival
+  // order) so an earlier file's Warnings/Hints can never fill the total budget and
+  // drop a later file's real Errors before the model sees them.
+  const capped = capDiagnosticsByGlobalSeverity(
+    dedupedFiles,
+    MAX_DIAGNOSTICS_PER_FILE,
+    MAX_TOTAL_DIAGNOSTICS,
+  )
+  dedupedFiles = capped.files
+  const truncatedCount = capped.truncatedCount
 
   if (truncatedCount > 0) {
     logForDebugging(
