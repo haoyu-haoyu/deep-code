@@ -9,6 +9,7 @@ import { createDeepCodeStablePrefix } from './stable-prefix.mjs'
 import { providerSupports } from './provider-capabilities.mjs'
 import { omitUndefined } from '../utils/omitUndefined.mjs'
 import { parsePositiveIntOr } from '../utils/configValue.mjs'
+import { planCompactOverflowRetry } from './planCompactOverflowRetry.mjs'
 
 export async function compactDeepCodeConversation({
   messages = [],
@@ -23,39 +24,61 @@ export async function compactDeepCodeConversation({
   const prefix =
     stablePrefix ?? (await createDeepCodeStablePrefix({ provider: modelProvider }))
   const config = resolveDeepSeekConfig({ env, cwd })
-  const requestContext = omitUndefined({
-    systemPrompt: prefix.systemPrompt,
-    messages: [
-      {
-        role: 'user',
-        content: buildCompactPrompt(messages),
-      },
-    ],
-    env,
-    cwd,
-    model: config.smallModel,
-    // parsePositiveIntOr (not bare Number): Number('') === 0 and Number('lots') === NaN would
-    // reach the request as a broken max_tokens; a non-positive-integer env value falls back to
-    // 1024 instead. Unset env → 1024, identical to the old `?? 1024` default.
-    maxTokens: parsePositiveIntOr(
-      maxTokens ??
-        env.DEEPCODE_COMPACT_MAX_TOKENS ??
-        env.DEEPSEEK_COMPACT_MAX_TOKENS,
-      1024,
-    ),
-    thinking: providerSupports(modelProvider, 'extended_thinking')
-      ? 'disabled'
-      : undefined,
-  })
-  const request =
-    typeof modelProvider.buildRequest === 'function'
-      ? await modelProvider.buildRequest(requestContext)
-      : await buildDeepSeekRequest(requestContext)
-  const response = await collectDeepSeekStreamEvents(
-    // Thread the abort signal so a mid-turn Ctrl-C can cancel /compact's
-    // streaming call (streamQuery reads context.signal; undefined is a no-op).
-    modelProvider.streamQuery({ ...request, signal }),
-  )
+  const requestContextFor = tail =>
+    omitUndefined({
+      systemPrompt: prefix.systemPrompt,
+      messages: [
+        {
+          role: 'user',
+          content: buildCompactPrompt(tail),
+        },
+      ],
+      env,
+      cwd,
+      model: config.smallModel,
+      // parsePositiveIntOr (not bare Number): Number('') === 0 and Number('lots') === NaN would
+      // reach the request as a broken max_tokens; a non-positive-integer env value falls back to
+      // 1024 instead. Unset env → 1024, identical to the old `?? 1024` default.
+      maxTokens: parsePositiveIntOr(
+        maxTokens ??
+          env.DEEPCODE_COMPACT_MAX_TOKENS ??
+          env.DEEPSEEK_COMPACT_MAX_TOKENS,
+        1024,
+      ),
+      thinking: providerSupports(modelProvider, 'extended_thinking')
+        ? 'disabled'
+        : undefined,
+    })
+
+  // The whole conversation tail is serialized into ONE small-model request with no
+  // per-message bound, so a large conversation overflows the small model's context
+  // window → a 400. Without recovery the error propagated, history was left
+  // unchanged, and every re-/compact rebuilt the identical oversized request — a
+  // permanent wedge exactly when compaction is most needed. On a context-overflow
+  // 400, drop the older half of the tail and retry (mirrors the upstream
+  // truncate-head PTL retry the native path never shared). A non-overflow error /
+  // abort is re-thrown unchanged.
+  let tail = messages
+  let request
+  let response
+  for (let attempt = 0; ; attempt++) {
+    request =
+      typeof modelProvider.buildRequest === 'function'
+        ? await modelProvider.buildRequest(requestContextFor(tail))
+        : await buildDeepSeekRequest(requestContextFor(tail))
+    try {
+      response = await collectDeepSeekStreamEvents(
+        // Thread the abort signal so a mid-turn Ctrl-C can cancel /compact's
+        // streaming call (streamQuery reads context.signal; undefined is a no-op).
+        modelProvider.streamQuery({ ...request, signal }),
+      )
+      break
+    } catch (err) {
+      const retryTail = planCompactOverflowRetry(err, tail, attempt)
+      if (!retryTail) throw err
+      tail = retryTail
+    }
+  }
 
   // An empty/whitespace-only summary is a FAILURE, not a "compact to nothing"
   // result. The stream can complete successfully with no content (a reasoning-only
