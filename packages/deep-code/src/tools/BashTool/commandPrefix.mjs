@@ -56,6 +56,17 @@ export const BARE_SHELL_PREFIXES = new Set([
   'nohup',
   'timeout',
   'time',
+  // Scheduler wrappers stripSafeWrappers (commandStripping.mjs) ADDED LATER as
+  // transparent but which never made it into this guard — the same ≈`Bash(*)`
+  // escalation as nice/timeout above: `ionice -c2 npm test` would suggest
+  // `Bash(ionice:*)`, then `ionice rm -rf /` strips to `rm -rf /` for the deny
+  // gate while the saved allow-rule still prefix-matches the raw `ionice …`.
+  // KEEP IN SYNC with the setsid/ionice/chrt/taskset patterns in
+  // stripSafeWrappers (commandStripping.mjs) + checkSemantics (ast.ts).
+  'setsid',
+  'ionice',
+  'chrt',
+  'taskset',
   // privilege escalation / execution-context change — `Bash(sudo:*)` from
   // `sudo -u foo ...` would auto-approve any future sudo invocation; su/runuser/
   // setpriv/chroot/unshare likewise run a wrapped command with elevated or changed

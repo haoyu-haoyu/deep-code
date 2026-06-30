@@ -91,3 +91,23 @@ test('eval and source ARE in the blocklist (arbitrary code / sourcing)', () => {
   assert.ok(BARE_SHELL_PREFIXES.has('env'))
   assert.ok(BARE_SHELL_PREFIXES.has('xargs'))
 })
+
+test('THE FIX: scheduler wrappers stripSafeWrappers strips are blocked from suggestion', () => {
+  // setsid/ionice/chrt/taskset are transparent wrappers stripSafeWrappers
+  // reduces to the inner command — so suggesting Bash(<wrapper>:*) is ≈ Bash(*):
+  // approving one benign `ionice -c2 npm test` would then auto-approve
+  // `ionice rm -rf /`. They must be in the blocklist alongside nice/timeout.
+  for (const w of ['setsid', 'ionice', 'chrt', 'taskset']) {
+    assert.ok(BARE_SHELL_PREFIXES.has(w), `${w} must be blocked`)
+  }
+  // Realistic flagged forms a user would actually run must decline from BOTH.
+  for (const c of [
+    'ionice -c2 npm test',
+    'chrt -b 0 make',
+    'taskset 0x1 ./build',
+    'setsid -f some-daemon',
+  ]) {
+    assert.equal(simple(c), null, `getSimpleCommandPrefix should decline: ${c}`)
+    assert.equal(first(c), null, `getFirstWordPrefix should decline: ${c}`)
+  }
+})
