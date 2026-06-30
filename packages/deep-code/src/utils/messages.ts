@@ -28,6 +28,7 @@ import { DEFAULT_MAX_RESULT_SIZE_CHARS } from '../constants/toolLimits.js'
 import { buildMcpResourceTextBlocks } from './mcpResourceBlocks.mjs'
 import { applyToolInputDelta } from './applyToolInputDelta.mjs'
 import { buildTodoReminderBlock } from './todoReminder.mjs'
+import { formatSelectedLineRange } from './formatSelectedLineRange.mjs'
 import { truncateAtCodeUnitBoundary } from './truncateAtCodeUnitBoundary.mjs'
 import { isAutoMemoryEnabled } from '../memdir/paths.js'
 import {
@@ -3517,7 +3518,7 @@ Read the team config to discover your teammates' names. Check the task list peri
 
       return wrapMessagesInSystemReminder([
         createUserMessage({
-          content: `The user selected the lines ${attachment.lineStart} to ${attachment.lineEnd} from ${attachment.filename}:\n${content}\n\nThis may or may not be related to the current task.`,
+          content: `The user selected the lines ${formatSelectedLineRange(attachment.lineStart, attachment.lineEnd)} from ${attachment.filename}:\n${content}\n\nThis may or may not be related to the current task.`,
           isMeta: true,
         }),
       ])
