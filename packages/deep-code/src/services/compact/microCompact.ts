@@ -24,6 +24,7 @@ import {
   logEvent,
 } from '../analytics/index.js'
 import { roughTokenCountEstimation } from '../../utils/charEstimation.js'
+import { estimateStrippedMediaTokens } from '../../utils/estimateStrippedMediaTokens.mjs'
 import {
   clearCompactWarningSuppression,
   suppressCompactWarning,
@@ -38,8 +39,6 @@ import {
 // circular-deps loop back through this file via promptCacheBreakDetection.
 // Drift is caught by a test asserting equality with the source-of-truth.
 export const TIME_BASED_MC_CLEARED_MESSAGE = '[Old tool result content cleared]'
-
-const IMAGE_MAX_TOKEN_SIZE = 2000
 
 // Only compact these tools
 const COMPACTABLE_TOOLS = new Set<string>([
@@ -153,8 +152,9 @@ function calculateToolResultTokens(block: ToolResultBlockParam): number {
     if (item.type === 'text') {
       return sum + roughTokenCountEstimation(item.text)
     } else if (item.type === 'image' || item.type === 'document') {
-      // Images/documents are approximately 2000 tokens regardless of format
-      return sum + IMAGE_MAX_TOKEN_SIZE
+      // DeepSeek strips image/document to a compact wire placeholder; count that,
+      // not a fixed 2000 (an over-count inherited from Anthropic's image sends).
+      return sum + estimateStrippedMediaTokens(item, roughTokenCountEstimation)
     }
     return sum
   }, 0)
@@ -183,7 +183,9 @@ export function estimateMessageTokens(messages: Message[]): number {
       } else if (block.type === 'tool_result') {
         totalTokens += calculateToolResultTokens(block)
       } else if (block.type === 'image' || block.type === 'document') {
-        totalTokens += IMAGE_MAX_TOKEN_SIZE
+        // DeepSeek strips image/document to a compact wire placeholder; count that,
+        // not a fixed 2000 (an over-count inherited from Anthropic's image sends).
+        totalTokens += estimateStrippedMediaTokens(block, roughTokenCountEstimation)
       } else if (block.type === 'thinking') {
         // Match roughTokenCountEstimationForBlock: count only the thinking
         // text, not the JSON wrapper or signature (signature is metadata,
