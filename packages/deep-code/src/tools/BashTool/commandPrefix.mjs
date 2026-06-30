@@ -46,6 +46,17 @@ export const BARE_SHELL_PREFIXES = new Set([
   'source',
   'watch',
   'coproc',
+  // Precommand modifiers stripPrecommandModifiers (commandStripping.mjs) peels on
+  // the deny/ask path — `command`/`exec`/`builtin`/`noglob`/`nocorrect` all RUN
+  // their argument, so a saved `Bash(exec:*)` (from `exec ./deploy.sh`) or
+  // `Bash(command bash:*)` (from `command bash -c …`) would auto-approve arbitrary
+  // code, exactly the env/xargs hazard above. KEEP IN SYNC with PRECOMMAND_MODIFIER
+  // + the exec/command handling in stripPrecommandModifiers (commandStripping.mjs).
+  'command',
+  'exec',
+  'builtin',
+  'noglob',
+  'nocorrect',
   // SECURITY: checkSemantics (ast.ts) strips these wrappers to check the
   // wrapped command. Suggesting `Bash(nice:*)` would be ≈ `Bash(*)` — users
   // would add it after a prompt, then `nice rm -rf /` passes semantics while
