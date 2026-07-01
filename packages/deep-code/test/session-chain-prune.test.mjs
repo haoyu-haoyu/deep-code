@@ -1,7 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { walkChainBeforeParse } from '../src/utils/sessionChainPrune.mjs'
+import {
+  walkChainBeforeParse,
+  fileOrderLeafIsNewest,
+} from '../src/utils/sessionChainPrune.mjs'
 
 // --- jsonl line builders (mimic the transcript byte format the pruner scans) ---
 
@@ -9,7 +12,14 @@ const mkUuid = n => '00000000-0000-0000-0000-' + String(n).padStart(12, '0')
 
 // A transcript message line MUST start with `{"parentUuid":` and contain
 // `"uuid":"<36>","timestamp":"`. Optional: a tool_result marker, padding bytes.
-function msg({ uuid, parent, toolResult = false, sidechain = false, pad = 0 }) {
+function msg({
+  uuid,
+  parent,
+  toolResult = false,
+  sidechain = false,
+  pad = 0,
+  ts = '2026-01-01T00:00:00.000Z',
+}) {
   const p = parent === null ? 'null' : `"${parent}"`
   const tr = toolResult
     ? '"message":{"role":"user","content":[{"type":"tool_result"}]},'
@@ -17,7 +27,7 @@ function msg({ uuid, parent, toolResult = false, sidechain = false, pad = 0 }) {
   const sc = sidechain ? '"isSidechain":true,' : ''
   const padField = pad > 0 ? `,"pad":"${'q'.repeat(pad)}"` : ''
   return (
-    `{"parentUuid":${p},${sc}${tr}"uuid":"${uuid}","timestamp":"2026-01-01T00:00:00.000Z"${padField}}\n`
+    `{"parentUuid":${p},${sc}${tr}"uuid":"${uuid}","timestamp":"${ts}"${padField}}\n`
   )
 }
 
@@ -196,6 +206,67 @@ test('metadata lines (no parentUuid prefix) are always preserved', () => {
   assert.ok(out.includes('"type":"summary"'), 'summary metadata kept')
   assert.ok(out.includes('"type":"file-history-snapshot"'), 'snapshot metadata kept')
   assert.ok(!out.includes(dead), 'dead message still pruned')
+})
+
+// --- the max-timestamp leaf contract: bail when the file-order leaf isn't newest -
+
+const TS = n => `2026-01-01T00:00:0${n}.000Z` // n in 0..9 → strictly increasing
+
+test('BAILS when the last-in-file leaf is OLDER than an earlier branch (non-monotonic clock)', () => {
+  // A backward wall-clock step: a long NEWER branchA (max timestamps) is written
+  // FIRST, then a short OLDER branchB is appended LAST. The file-order leaf (B2) is
+  // physically last but NOT the newest — selectResumeLeaf (max timestamp) would
+  // resume branchA. Without the timestamp guard the pruner would anchor on B2, walk
+  // B2->B1->R, and drop the big padded branchA (>50% → prune) = silent wrong-branch
+  // resume + lost newest turns. The guard detects the out-of-order newer entry and
+  // BAILS to the full buffer so the parse path anchors branchA correctly.
+  const R = mkUuid(0)
+  const A1 = mkUuid(1)
+  const A2 = mkUuid(2) // branchA leaf — NEWEST (ts 4), written first
+  const B1 = mkUuid(3)
+  const B2 = mkUuid(4) // branchB leaf — OLDER (ts 2), written LAST
+  const b = buf([
+    msg({ uuid: R, parent: null, ts: TS(0) }),
+    msg({ uuid: A1, parent: R, ts: TS(3), pad: 4000 }),
+    msg({ uuid: A2, parent: A1, ts: TS(4), pad: 4000 }), // newest, but earlier in file
+    msg({ uuid: B1, parent: R, ts: TS(1) }),
+    msg({ uuid: B2, parent: B1, ts: TS(2) }), // file-order-last, older
+  ])
+  const out = walkChainBeforeParse(b)
+  assert.equal(out, b, 'a non-newest file-order leaf must force a full-buffer bail')
+  const kept = uuidsIn(out)
+  for (const u of [R, A1, A2, B1, B2]) assert.ok(kept.has(u), `${u} preserved by the bail`)
+})
+
+test('PRUNES when the last-in-file leaf IS the newest (monotonic clock, dead fork dropped)', () => {
+  // Same shape but append-time-ordered: the dead fork has the OLDEST timestamps and
+  // the live leaf is genuinely newest, so the guard permits the prune — the fix does
+  // not over-bail a normal session.
+  const R = mkUuid(0)
+  const D1 = mkUuid(10)
+  const D2 = mkUuid(11)
+  const A = mkUuid(1)
+  const B = mkUuid(2) // live leaf, newest (ts 4), last in file
+  const b = buf([
+    msg({ uuid: R, parent: null, ts: TS(0) }),
+    msg({ uuid: D1, parent: R, ts: TS(1), pad: 4000 }), // dead fork, older
+    msg({ uuid: D2, parent: D1, ts: TS(2), pad: 4000 }),
+    msg({ uuid: A, parent: R, ts: TS(3) }),
+    msg({ uuid: B, parent: A, ts: TS(4) }), // newest leaf
+  ])
+  const kept = uuidsIn(walkChainBeforeParse(b))
+  assert.deepEqual([...kept].sort(), [R, A, B].sort(), 'dead fork dropped, live chain kept')
+})
+
+test('fileOrderLeafIsNewest: strict-latest rule (ties allowed, sidechain/NaN ignored)', () => {
+  const F = false
+  assert.equal(fileOrderLeafIsNewest([0, 1, 2], [F, F, F], 2), true) // newest is last
+  assert.equal(fileOrderLeafIsNewest([0, 2, 1], [F, F, F], 2), false) // earlier is newer → bail
+  assert.equal(fileOrderLeafIsNewest([0, 1, NaN], [F, F, F], 2), false) // NaN leaf → bail
+  assert.equal(fileOrderLeafIsNewest([5, 5, 5], [F, F, F], 2), true) // ties → no bail
+  assert.equal(fileOrderLeafIsNewest([0, 9, 1], [F, true, F], 2), true) // newer entry is sidechain → ignored
+  assert.equal(fileOrderLeafIsNewest([0, NaN, 1], [F, F, F], 2), true) // NaN earlier entry → ignored
+  assert.equal(fileOrderLeafIsNewest([3], [F], 0), true) // single entry
 })
 
 // --- fuzz: the bail contract + subset/chain invariants never violated ---------
