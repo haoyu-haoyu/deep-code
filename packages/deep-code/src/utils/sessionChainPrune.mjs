@@ -56,6 +56,12 @@ export function walkChainBeforeParse(buf) {
   // Parallel to msgIdx entries, keyed by the entry's base index (msgIdx.length at
   // push time): whether the line is a tool_result.
   const entryIsToolResult = new Map()
+  // Parallel arrays over msgIdx entries (entry number = msgIdx slot / 3): the
+  // top-level Date.parse(timestamp) (NaN if absent/unparseable) and whether the
+  // line is a sidechain entry. Used to verify the file-order leaf is also the
+  // newest — the rule the parse path's selectResumeLeaf enforces (max timestamp).
+  const entryTs = []
+  const entrySidechain = []
 
   let pos = 0
   const len = buf.length
@@ -109,6 +115,25 @@ export function walkChainBeforeParse(buf) {
           base,
           buf.subarray(pos, lineEnd).indexOf(TOOL_RESULT_MARKER) >= 0,
         )
+        // Top-level timestamp: the chosen uuid is followed by `","timestamp":"`
+        // in user/assistant/attachment entries. Parse the value (to the next
+        // quote) so the leaf pick can be checked against the max-timestamp rule.
+        let ts = NaN
+        const tsSuffixAt = uuidStart + UUID_LEN
+        if (
+          tsSuffixAt + TS_SUFFIX_LEN <= lineEnd &&
+          buf.compare(TS_SUFFIX, 0, TS_SUFFIX_LEN, tsSuffixAt, tsSuffixAt + TS_SUFFIX_LEN) === 0
+        ) {
+          const valStart = tsSuffixAt + TS_SUFFIX_LEN
+          const valEnd = buf.indexOf(QUOTE, valStart)
+          if (valEnd >= valStart && valEnd < lineEnd) {
+            ts = Date.parse(buf.toString('latin1', valStart, valEnd))
+          }
+        }
+        entryTs.push(ts)
+        entrySidechain.push(
+          buf.subarray(pos, lineEnd).indexOf(SIDECHAIN_TRUE) >= 0,
+        )
         msgIdx.push(pos, lineEnd, parentStart)
       } else {
         metaRanges.push(pos, lineEnd)
@@ -119,7 +144,7 @@ export function walkChainBeforeParse(buf) {
     pos = lineEnd
   }
 
-  // Leaf = last non-sidechain entry.
+  // Leaf = last non-sidechain entry (file order).
   let leafSlot = -1
   for (let i = msgIdx.length - 3; i >= 0; i -= 3) {
     const sc = buf.indexOf(SIDECHAIN_TRUE, msgIdx[i])
@@ -129,6 +154,16 @@ export function walkChainBeforeParse(buf) {
     }
   }
   if (leafSlot < 0) return buf
+
+  // The file-order leaf is a sound resume anchor ONLY when it is also the newest
+  // by timestamp — the rule the parse path's selectResumeLeaf enforces (max
+  // Date.parse(timestamp)). Under a non-monotonic wall clock (NTP step, laptop
+  // sleep/resume, VM skew) an OLDER-timestamp branch can be appended last; the
+  // file-order pick would then keep the wrong branch and physically drop the
+  // newest turns. If the leaf is not the strict-latest non-sidechain entry, BAIL
+  // to the full buffer so the parse-path selectResumeLeaf anchors correctly —
+  // forgoing only the speedup, never correctness (mirrors the parallel-tool bail).
+  if (!fileOrderLeafIsNewest(entryTs, entrySidechain, leafSlot / 3)) return buf
 
   // Walk parentUuid to root. Collect kept-message line starts and the kept byte
   // total. A dangling parent (uuid not in file) is the normal termination for
@@ -177,6 +212,34 @@ export function walkChainBeforeParse(buf) {
     m += 2
   }
   return Buffer.concat(parts)
+}
+
+/**
+ * True iff `timestamps[leafIndex]` is the strict-latest timestamp among all
+ * non-sidechain entries — i.e. the file-order-last leaf is also the newest, so a
+ * byte prune anchored on it keeps the same chain the parse path's selectResumeLeaf
+ * (max Date.parse(timestamp)) would. Returns false (→ the pruner must bail) when
+ * the leaf timestamp is unparseable (NaN), or ANY other non-sidechain entry is
+ * STRICTLY newer. Strict `>` deliberately does NOT bail on equal timestamps: a
+ * coarse-clock session where several entries share a millisecond still prunes (the
+ * last entry is a valid tie-winner), and only a genuinely out-of-order (newer)
+ * earlier entry — the non-monotonic-clock hazard — forces the safe full-buffer bail.
+ *
+ * @param {number[]} timestamps  Date.parse per entry (NaN if absent)
+ * @param {boolean[]} sidechain  whether each entry is a sidechain line
+ * @param {number} leafIndex     the chosen leaf's entry index
+ * @returns {boolean}
+ */
+export function fileOrderLeafIsNewest(timestamps, sidechain, leafIndex) {
+  const leafTs = timestamps[leafIndex]
+  if (Number.isNaN(leafTs)) return false
+  for (let i = 0; i < timestamps.length; i++) {
+    if (i === leafIndex || sidechain[i]) continue
+    // NaN > leafTs is false, so unparseable earlier entries never force a bail
+    // (they could not be selectResumeLeaf's max-timestamp pick either).
+    if (timestamps[i] > leafTs) return false
+  }
+  return true
 }
 
 // Of several `"uuid":"` matches in one line that each carry the `","timestamp":"`
