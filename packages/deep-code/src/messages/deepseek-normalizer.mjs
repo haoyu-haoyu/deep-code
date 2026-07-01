@@ -1,4 +1,5 @@
 import { omitUndefined } from '../utils/omitUndefined.mjs'
+import { mergeSiblingAssistantMessages } from './mergeSiblingAssistantMessages.mjs'
 
 export function mapMessagesToDeepSeek(messages, options = {}) {
   // reasoningReplay: whether to re-send assistant reasoning_content on tool-call
@@ -7,7 +8,11 @@ export function mapMessagesToDeepSeek(messages, options = {}) {
   // a live cost probe justifies it — gated by the config knob, never flipped blind.
   const reasoningReplay = options.reasoningReplay ?? true
   const mapped = []
-  for (const message of messages) {
+  // Merge same-message.id sibling assistant fragments (a resumed parallel-tool turn)
+  // into one BEFORE mapping, else they map to assistant|assistant|tool|tool which
+  // DeepSeek 400-rejects → permanent resume wedge. No-op for a normal live session
+  // (one assistant per turn → nothing adjacent shares an id).
+  for (const message of mergeSiblingAssistantMessages(messages)) {
     if (!message) continue
 
     if (message.role) {
