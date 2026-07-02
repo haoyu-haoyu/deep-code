@@ -14,7 +14,22 @@
 // legacy marker), so the wildcard test must ALSO consult hasWildcards(prefix) —
 // the part before `:*` — to detect a mixed rule.
 export function classifyPermissionRule(rule, extractPrefix, hasWildcards) {
-  const prefix = extractPrefix(rule)
+  // Normalize surrounding whitespace ONCE, before routing. The match side always
+  // works on trimmed text — matchWildcardPattern trims the pattern, and both shell
+  // tools compare against `input.command.trim()` (bashPermissions / powershell) —
+  // but classification ran on the RAW rule content (permissionRuleValueFromString
+  // does not trim, and the rule Map is keyed by the raw string). A rule authored
+  // with a stray leading/trailing space was therefore mis-routed: the end-anchored
+  // extractPrefix regex (`/^(.+):\*$/`) fails to see the `:*` marker on
+  // `npm:* `, so it becomes a wildcard `^npm:.*$` that never matches a colon-free
+  // `npm install`; and an exact rule like `rm -rf ` can never equal the trimmed
+  // command. Either way the rule is SILENTLY inert — and for a deny rule that is a
+  // permission bypass. Trimming here makes routing agree with matching. It is
+  // safe (strictly re-activating): because the command is ALWAYS trimmed, no rule
+  // could ever have matched a real command via surrounding whitespace, so trimming
+  // can only revive an otherwise-dead rule, never loosen a working one.
+  const trimmed = rule.trim()
+  const prefix = extractPrefix(trimmed)
 
   // Legacy `:*` prefix syntax — but ONLY when the part before `:*` has no
   // unescaped wildcard. `npm:*` / `git status:*` stay prefix; `docker run -v *:*`
@@ -25,9 +40,9 @@ export function classifyPermissionRule(rule, extractPrefix, hasWildcards) {
 
   // Wildcard if the rule has an unescaped `*` anywhere. hasWildcards(rule) is
   // false for a `:*`-suffixed rule, so the prefix part carries the signal there.
-  if (hasWildcards(rule) || (prefix !== null && hasWildcards(prefix))) {
-    return { type: 'wildcard', pattern: rule }
+  if (hasWildcards(trimmed) || (prefix !== null && hasWildcards(prefix))) {
+    return { type: 'wildcard', pattern: trimmed }
   }
 
-  return { type: 'exact', command: rule }
+  return { type: 'exact', command: trimmed }
 }
