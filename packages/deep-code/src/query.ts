@@ -65,6 +65,7 @@ import { generateToolUseSummary } from './services/toolUseSummary/toolUseSummary
 import { prependUserContext, appendSystemContext } from './utils/api.js'
 import { SandboxManager } from './utils/sandbox/sandbox-adapter.js'
 import { appendViolationFeedbackTail } from './deepcode/violation-feedback-tail.mjs'
+import { appendHarnessRuntimeTail } from './deepcode/harnessRuntimeTail.mjs'
 import {
   createAttachmentMessage,
   filterDuplicateMemoryAttachments,
@@ -679,18 +680,29 @@ async function* queryLoop(
     queryCheckpoint('query_api_loop_start')
     try {
       queryCheckpoint('query_api_streaming_start')
+      // The per-turn DeepSeek harness-runtime context is recomputed from THIS turn's
+      // prompt, so it must ride the volatile TAIL (like the fortress feedback and the
+      // date-change reminder), NOT prependUserContext's message[0] — a per-turn-varying
+      // message[0] busts DeepSeek's prefix cache for the whole conversation. Strip it
+      // out of userContext so message[0] stays byte-stable, then append it at the tail.
+      const { deepCodeHarnessRuntime, ...stablePrefixUserContext } = userContext
       // Surface the fortress violation-feedback aggregate as a transient TAIL reminder,
       // once per NEW violation (count-delta gated). Append-only + default-inert: with no
       // violations it returns the same array → request byte-identical (cache moat intact).
       const fortressFeedback = appendViolationFeedbackTail(
-        prependUserContext(messagesForQuery, userContext),
+        prependUserContext(messagesForQuery, stablePrefixUserContext),
         SandboxManager,
         lastViolationCountSurfaced,
         text => createUserMessage({ content: wrapInSystemReminder(text), isMeta: true }),
       )
       lastViolationCountSurfaced = fortressFeedback.surfacedCount
+      const requestMessages = appendHarnessRuntimeTail(
+        fortressFeedback.messages,
+        deepCodeHarnessRuntime,
+        text => createUserMessage({ content: wrapInSystemReminder(text), isMeta: true }),
+      )
       for await (const message of deps.callModel({
-          messages: fortressFeedback.messages,
+          messages: requestMessages,
           systemPrompt: fullSystemPrompt,
           thinkingConfig: toolUseContext.options.thinkingConfig,
           tools: toolUseContext.options.tools,

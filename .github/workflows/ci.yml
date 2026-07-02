@@ -300,6 +300,7 @@ jobs:
             test/merge-sibling-assistant-messages.test.mjs \
             test/is-usable-tool-call-id.test.mjs \
             test/context-sizing-model.test.mjs \
+            test/harness-runtime-tail.test.mjs \
             test/strip-transparent-runner.test.mjs \
             test/strip-control-flow-lead-in.test.mjs \
             test/collapse-split-parts.test.mjs \
