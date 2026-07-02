@@ -12,6 +12,7 @@ import {
 } from './utils/claudemd.js'
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js'
 import { truncateAtCodeUnitBoundary } from './utils/truncateAtCodeUnitBoundary.mjs'
+import { formatGitStatusBody } from './context/gitStatusBody.mjs'
 import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
 import { execFileNoThrow } from './utils/execFileNoThrow.js'
 import { getBranch, getDefaultBranch, getIsGit, gitExe } from './utils/git.js'
@@ -64,7 +65,9 @@ export const getGitStatus = memoize(async (): Promise<string | null> => {
       getDefaultBranch(),
       execFileNoThrow(gitExe(), ['--no-optional-locks', 'status', '--short'], {
         preserveOutputOnError: false,
-      }).then(({ stdout }) => stdout.trim()),
+        // Keep the exit code: an empty status must not be reported as "(clean)"
+        // when the command actually FAILED (see formatGitStatusBody).
+      }).then(({ stdout, code }) => ({ text: stdout.trim(), code })),
       execFileNoThrow(
         gitExe(),
         ['--no-optional-locks', 'log', '--oneline', '-n', '5'],
@@ -79,19 +82,19 @@ export const getGitStatus = memoize(async (): Promise<string | null> => {
 
     logForDiagnosticsNoPII('info', 'git_commands_completed', {
       duration_ms: Date.now() - gitCmdsStart,
-      status_length: status.length,
+      status_length: status.text.length,
     })
 
     // Check if status exceeds character limit
     const truncatedStatus =
-      status.length > MAX_STATUS_CHARS
-        ? truncateAtCodeUnitBoundary(status, MAX_STATUS_CHARS) +
+      status.text.length > MAX_STATUS_CHARS
+        ? truncateAtCodeUnitBoundary(status.text, MAX_STATUS_CHARS) +
           '\n... (truncated because it exceeds 2k characters. If you need more information, run "git status" using BashTool)'
-        : status
+        : status.text
 
     logForDiagnosticsNoPII('info', 'git_status_completed', {
       duration_ms: Date.now() - startTime,
-      truncated: status.length > MAX_STATUS_CHARS,
+      truncated: status.text.length > MAX_STATUS_CHARS,
     })
 
     return [
@@ -99,7 +102,7 @@ export const getGitStatus = memoize(async (): Promise<string | null> => {
       `Current branch: ${branch}`,
       `Main branch (you will usually use this for PRs): ${mainBranch}`,
       ...(userName ? [`Git user: ${userName}`] : []),
-      `Status:\n${truncatedStatus || '(clean)'}`,
+      `Status:\n${formatGitStatusBody(truncatedStatus, status.code)}`,
       `Recent commits:\n${log}`,
     ].join('\n\n')
   } catch (error) {
