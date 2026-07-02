@@ -60,6 +60,52 @@ test('an escaped \\* in the prefix is NOT a wildcard → stays prefix', () => {
   assert.deepEqual(classify(rule), { type: 'prefix', prefix: 'echo \\*' })
 })
 
+test('surrounding whitespace no longer inerts a rule: it is trimmed before routing', () => {
+  // A stray trailing space used to defeat the end-anchored `:*` prefix regex,
+  // mis-routing prefix → wildcard so a colon-free command never matched.
+  assert.deepEqual(classify('npm:* '), { type: 'prefix', prefix: 'npm' })
+  // A leading space used to produce a wrong prefix (' npm') that startsWith could
+  // never satisfy against a trimmed command.
+  assert.deepEqual(classify(' npm:*'), { type: 'prefix', prefix: 'npm' })
+  // An exact rule with a trailing space could never equal the trimmed command.
+  assert.deepEqual(classify('rm -rf '), { type: 'exact', command: 'rm -rf' })
+  // Whitespace-only variants of the mixed/wildcard cases still route to wildcard.
+  assert.deepEqual(classify(' docker run --rm -v *:* '), {
+    type: 'wildcard',
+    pattern: 'docker run --rm -v *:*',
+  })
+})
+
+test('END-TO-END: a trailing-space deny rule now actually matches the command it names', () => {
+  // Faithful ports of the shell match side (bashPermissions exact/prefix + the
+  // shared matchWildcardPattern trim) to prove trimming the rule re-activates the
+  // deny that a stray space had silently disabled.
+  const matchWildcard = (pattern, command) => {
+    const p = pattern.trim().replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
+    return new RegExp(`^${p}$`, 's').test(command)
+  }
+  const ruleMatches = (ruleContent, command) => {
+    const r = classify(ruleContent)
+    const cmd = command.trim() // both shell tools trim input.command
+    switch (r.type) {
+      case 'exact':
+        return r.command === cmd
+      case 'prefix':
+        return cmd === r.prefix || cmd.startsWith(r.prefix + ' ')
+      case 'wildcard':
+        return matchWildcard(r.pattern, cmd)
+    }
+  }
+  // The bug: 'Bash(npm:* )' failed to deny 'npm install'. Now it matches.
+  assert.equal(ruleMatches('npm:* ', 'npm install'), true)
+  assert.equal(ruleMatches(' npm:*', 'npm install'), true)
+  assert.equal(ruleMatches('rm -rf ', 'rm -rf'), true)
+  // A clean rule is unaffected (still matches).
+  assert.equal(ruleMatches('npm:*', 'npm install'), true)
+  // Trimming does not over-match a different command.
+  assert.equal(ruleMatches('npm:* ', 'npmfoo bar'), false)
+})
+
 test('the routing differs from the buggy original only on mixed rules', () => {
   // Original always took the prefix branch for any `:*`-suffixed rule.
   const buggyOriginal = rule => {
