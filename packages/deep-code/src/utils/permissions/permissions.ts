@@ -28,6 +28,7 @@ import { resolvePermissionPrecedence } from './resolvePermissionPrecedence.mjs'
 import { compoundAskIsBypassImmune } from './compoundAskBypassImmune.mjs'
 import { permittedRuleSourcesUnderLockdown } from './permittedRuleSourcesUnderLockdown.mjs'
 import { lockdownPermissionClears } from './lockdownPermissionClears.mjs'
+import { permissionSyncManagedClearSources } from './permissionSyncManagedClearSources.mjs'
 import { toolWideRuleNameMatches } from './toolWideRuleNameMatches.mjs'
 import type {
   PermissionAskDecision,
@@ -1467,6 +1468,27 @@ export function syncPermissionRulesFromDisk(
         rules: [],
         behavior,
         destination: diskSource,
+      })
+    }
+  }
+
+  // The managed sources (policySettings always; flagSettings only off-lockdown)
+  // are ALSO re-loaded by loadAllPermissionRulesFromDisk into `rules` below, but
+  // were never cleared here — so fully removing their last allow/ask/deny rule on
+  // disk left the OLD (revoked) rule stale in the context and still enforced at
+  // runtime, a fail-open toward the admin's intent. Clear them too, but only the
+  // ones that will be re-applied (under lockdown flagSettings is not re-loaded, so
+  // clearing it would permanently drop the launch-time --settings grant). Same
+  // clear-set-vs-reapply-set drift #661 fixed for the editable disk sources.
+  for (const managedSource of permissionSyncManagedClearSources(
+    shouldAllowManagedPermissionRulesOnly(),
+  )) {
+    for (const behavior of ['allow', 'deny', 'ask'] as PermissionBehavior[]) {
+      context = applyPermissionUpdate(context, {
+        type: 'replaceRules',
+        rules: [],
+        behavior,
+        destination: managedSource as PermissionUpdateDestination,
       })
     }
   }
