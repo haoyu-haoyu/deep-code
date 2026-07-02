@@ -5,6 +5,7 @@ import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
 import { computeContextPercent } from './computeContextPercent.mjs'
+import { resolveContextSizingModel } from './model/contextSizingModel.mjs'
 // @ts-expect-error Deep Code context policy is JS while this legacy module remains TypeScript.
 import {
   isDeepCode1mContextDisabled,
@@ -52,10 +53,11 @@ export function modelSupports1M(model: string): boolean {
   if (is1mContextDisabled()) {
     return false
   }
-  if (isDeepSeekModelName(model)) {
+  const sizingModel = resolveContextSizingModel(model)
+  if (isDeepSeekModelName(sizingModel)) {
     return resolveDeepCodeContextPolicy({
       env: process.env,
-      model,
+      model: sizingModel,
     }).supportsOneMillionContext
   }
   const canonical = getCanonicalName(model)
@@ -77,10 +79,11 @@ export function getContextWindowForModel(
     }
   }
 
-  if (isDeepSeekModelName(model)) {
+  const sizingModel = resolveContextSizingModel(model)
+  if (isDeepSeekModelName(sizingModel)) {
     return resolveDeepCodeContextPolicy({
       env: process.env,
-      model,
+      model: sizingModel,
     }).contextWindowTokens
   }
 
@@ -165,10 +168,11 @@ export function getModelMaxOutputTokens(model: string): {
   default: number
   upperLimit: number
 } {
-  if (isDeepSeekModelName(model)) {
+  const sizingModel = resolveContextSizingModel(model)
+  if (isDeepSeekModelName(sizingModel)) {
     return resolveDeepCodeMaxOutputTokens({
       env: process.env,
-      model,
+      model: sizingModel,
     })
   }
 
