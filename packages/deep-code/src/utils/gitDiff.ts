@@ -10,7 +10,7 @@ import {
   gitDiffShortstatArgs,
 } from './gitDiffArgs.mjs'
 import { extractDiffFilePath } from './gitDiffHeader.mjs'
-import { isUnifiedDiffBodyLine } from './isUnifiedDiffBodyLine.mjs'
+import { parseGitDiffHunks } from './parseGitDiffHunks.mjs'
 import { unquoteGitPath } from './unquoteGitPath.mjs'
 import { isFileWithinReadSizeLimit } from './file.js'
 import {
@@ -233,68 +233,13 @@ export function parseGitDiff(
     const filePath = extractDiffFilePath(lines)
     if (filePath == null) continue
 
-    // Find and parse hunks
-    const fileHunks: StructuredPatchHunk[] = []
-    let currentHunk: StructuredPatchHunk | null = null
-    let lineCount = 0
-
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i] ?? ''
-
-      // StructuredPatchHunk header: @@ -oldStart,oldLines +newStart,newLines @@
-      const hunkMatch = line.match(
-        /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/,
-      )
-      if (hunkMatch) {
-        if (currentHunk) {
-          fileHunks.push(currentHunk)
-        }
-        currentHunk = {
-          oldStart: parseInt(hunkMatch[1] ?? '0', 10),
-          oldLines: parseInt(hunkMatch[2] ?? '1', 10),
-          newStart: parseInt(hunkMatch[3] ?? '0', 10),
-          newLines: parseInt(hunkMatch[4] ?? '1', 10),
-          lines: [],
-        }
-        continue
-      }
-
-      // Skip binary file markers and other metadata
-      if (
-        line.startsWith('index ') ||
-        line.startsWith('---') ||
-        line.startsWith('+++') ||
-        line.startsWith('new file') ||
-        line.startsWith('deleted file') ||
-        line.startsWith('old mode') ||
-        line.startsWith('new mode') ||
-        line.startsWith('Binary files')
-      ) {
-        continue
-      }
-
-      // Add diff lines to current hunk (with line limit). A real blank context
-      // line is ' ' (space-prefixed); the trailing '' from splitting git's final
-      // newline is NOT a body line and must not become a phantom hunk row.
-      if (currentHunk && isUnifiedDiffBodyLine(line)) {
-        // Stop adding lines once we hit the limit
-        if (lineCount >= MAX_LINES_PER_FILE) {
-          continue
-        }
-        // Force a flat string copy to break V8 sliced string references.
-        // When split() creates lines, V8 creates "sliced strings" that reference
-        // the parent. This keeps the entire parent string (~MBs) alive as long as
-        // any line is retained. Using '' + line forces a new flat string allocation,
-        // unlike slice(0) which V8 may optimize to return the same reference.
-        currentHunk.lines.push('' + line)
-        lineCount++
-      }
-    }
-
-    // Don't forget the last hunk
-    if (currentHunk) {
-      fileHunks.push(currentHunk)
-    }
+    // Find and parse hunks. The per-file hunk loop lives in a node-testable leaf;
+    // its ordering fixes a body-line drop (a removed '--…' or added '++…' line was
+    // mistaken for a '---'/'+++' file header and dropped, mis-numbering the rest).
+    const fileHunks = parseGitDiffHunks(
+      lines,
+      MAX_LINES_PER_FILE,
+    ) as StructuredPatchHunk[]
 
     if (fileHunks.length > 0) {
       result.set(filePath, fileHunks)

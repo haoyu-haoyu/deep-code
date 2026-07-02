@@ -305,6 +305,7 @@ jobs:
             test/permission-sync-managed-clear-sources.test.mjs \
             test/worktree-change-count.test.mjs \
             test/git-status-body.test.mjs \
+            test/parse-git-diff-hunks.test.mjs \
             test/strip-transparent-runner.test.mjs \
             test/strip-control-flow-lead-in.test.mjs \
             test/collapse-split-parts.test.mjs \
