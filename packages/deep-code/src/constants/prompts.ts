@@ -7,6 +7,7 @@ import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { getCurrentWorktreeSession } from '../utils/worktree.js'
 import { getSessionStartDate } from './common.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
+import { shouldEmitDeepSeekLanguagePolicy } from './deepSeekLanguagePolicy.mjs'
 import {
   AGENT_TOOL_NAME,
   VERIFICATION_AGENT_TYPE,
@@ -566,7 +567,15 @@ ${CYBER_RISK_INSTRUCTION}`,
     getSimpleIntroSection(outputStyleConfig),
     getDeepSeekReasoningSection(),
     getDeepSeekToolHarnessSection(),
-    getDeepSeekLanguagePolicySection(),
+    // Suppress the "reply in the language of the user's most recent message"
+    // policy when the user has explicitly configured a response language
+    // (getLanguageSection below emits "Always respond in <lang>"), so the
+    // explicit preference wins instead of the two colliding. The gate mirrors
+    // getLanguageSection's own `!languagePreference` truthiness check, so
+    // exactly one reply-language directive is ever emitted.
+    shouldEmitDeepSeekLanguagePolicy(settings.language)
+      ? getDeepSeekLanguagePolicySection()
+      : null,
     getSimpleSystemSection(),
     outputStyleConfig === null ||
     outputStyleConfig.keepCodingInstructions === true
