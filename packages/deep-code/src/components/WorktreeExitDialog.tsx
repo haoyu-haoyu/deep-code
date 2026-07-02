@@ -8,6 +8,7 @@ import { getPlansDirectory } from '../utils/plans.js';
 import { setCwd } from '../utils/Shell.js';
 import { useTranslation } from '../i18n/useTranslation.js';
 import { cleanupWorktree, getCurrentWorktreeSession, keepWorktree, killTmuxSession } from '../utils/worktree.js';
+import { countWorktreeChanges } from '../utils/worktreeChangeCount.mjs';
 import { Select } from './CustomSelect/select.js';
 import { Dialog } from './design-system/Dialog.js';
 import { Spinner } from './Spinner.js';
@@ -32,51 +33,62 @@ export function WorktreeExitDialog({
   onCancel
 }: Props): React.ReactNode {
   const [status, setStatus] = useState<'loading' | 'asking' | 'keeping' | 'removing' | 'done'>('loading');
-  const [changes, setChanges] = useState<string[]>([]);
+  const [changedFiles, setChangedFiles] = useState<number>(0);
   const [commitCount, setCommitCount] = useState<number>(0);
+  // True when the worktree's state could not be reliably determined (git error /
+  // no baseline). In that case we must NEVER silently force-remove — we ask, and
+  // warn that removal is lossy.
+  const [stateUnknown, setStateUnknown] = useState<boolean>(false);
   const [resultMessage, setResultMessage] = useState<string | undefined>();
   const { t } = useTranslation();
   const worktreeSession = getCurrentWorktreeSession();
   useEffect(() => {
     async function loadChanges() {
-      let changeLines: string[] = [];
-      const gitStatus = await execFileNoThrow('git', ['status', '--porcelain']);
-      if (gitStatus.stdout) {
-        changeLines = gitStatus.stdout.split('\n').filter(_ => _.trim() !== '');
-        setChanges(changeLines);
+      if (!worktreeSession) return;
+
+      // Use the SHARED fail-closed counter (same gate as ExitWorktreeTool).
+      // A null summary means git status/rev-list failed or there is no baseline
+      // commit — the worktree's state is UNKNOWN, so we must NOT treat it as
+      // clean. The previous inline version read only stdout and ignored the exit
+      // code, so a `git status` error (index.lock, corrupt index, failing hook)
+      // looked identical to a clean tree and triggered a silent
+      // `git worktree remove --force`, destroying uncommitted work.
+      const summary = await countWorktreeChanges(
+        worktreeSession.worktreePath,
+        worktreeSession.originalHeadCommit,
+        execFileNoThrow,
+      );
+
+      if (summary === null) {
+        // Fail-closed: never auto-remove when the state can't be verified.
+        setStateUnknown(true);
+        setStatus('asking');
+        return;
       }
 
-      // Check for commits to eject
-      if (worktreeSession) {
-        // Get commits in worktree that are not in original branch
-        const {
-          stdout: commitsStr
-        } = await execFileNoThrow('git', ['rev-list', '--count', `${worktreeSession.originalHeadCommit}..HEAD`]);
-        const count = parseInt(commitsStr.trim()) || 0;
-        setCommitCount(count);
+      setChangedFiles(summary.changedFiles);
+      setCommitCount(summary.commits);
 
-        // If no changes and no commits, clean up silently
-        if (changeLines.length === 0 && count === 0) {
-          setStatus('removing');
-          void cleanupWorktree().then(() => {
-            process.chdir(worktreeSession.originalCwd);
-            setCwd(worktreeSession.originalCwd);
-            recordWorktreeExit();
-            getPlansDirectory.cache.clear?.();
-            setResultMessage(t('worktree.exit.removedNoChanges'));
-          }).catch(error => {
-            logForDebugging(`Failed to clean up worktree: ${error}`, {
-              level: 'error'
-            });
-            setResultMessage(t('worktree.exit.cleanupFailed'));
-          }).then(() => {
-            setStatus('done');
+      // Only clean up silently when the tree is PROVABLY clean (0 changes, 0 commits).
+      if (summary.changedFiles === 0 && summary.commits === 0) {
+        setStatus('removing');
+        void cleanupWorktree().then(() => {
+          process.chdir(worktreeSession.originalCwd);
+          setCwd(worktreeSession.originalCwd);
+          recordWorktreeExit();
+          getPlansDirectory.cache.clear?.();
+          setResultMessage(t('worktree.exit.removedNoChanges'));
+        }).catch(error => {
+          logForDebugging(`Failed to clean up worktree: ${error}`, {
+            level: 'error'
           });
-          return;
-        } else {
-          setStatus('asking');
-        }
+          setResultMessage(t('worktree.exit.cleanupFailed'));
+        }).then(() => {
+          setStatus('done');
+        });
+        return;
       }
+      setStatus('asking');
     }
     void loadChanges();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,7 +115,7 @@ export function WorktreeExitDialog({
       setStatus('keeping');
       logEvent('tengu_worktree_kept', {
         commits: commitCount,
-        changed_files: changes.length
+        changed_files: changedFiles
       });
       await keepWorktree();
       process.chdir(worktreeSession.originalCwd);
@@ -127,7 +139,7 @@ export function WorktreeExitDialog({
       setStatus('keeping');
       logEvent('tengu_worktree_kept', {
         commits: commitCount,
-        changed_files: changes.length
+        changed_files: changedFiles
       });
       if (worktreeSession.tmuxSessionName) {
         await killTmuxSession(worktreeSession.tmuxSessionName);
@@ -146,7 +158,7 @@ export function WorktreeExitDialog({
       setStatus('removing');
       logEvent('tengu_worktree_removed', {
         commits: commitCount,
-        changed_files: changes.length
+        changed_files: changedFiles
       });
       if (worktreeSession.tmuxSessionName) {
         await killTmuxSession(worktreeSession.tmuxSessionName);
@@ -166,7 +178,7 @@ export function WorktreeExitDialog({
         return;
       }
       const tmuxNote = hasTmux ? t('worktree.exit.tmuxNote') : '';
-      if (commitCount > 0 && changes.length > 0) {
+      if (commitCount > 0 && changedFiles > 0) {
         setResultMessage(t('worktree.exit.removedCommitsAndChanges', {
           count: commitCount,
           commitWord: commitCount === 1 ? t('worktree.exit.commitWord') : t('worktree.exit.commitsWord'),
@@ -180,7 +192,7 @@ export function WorktreeExitDialog({
           wasWord: commitCount === 1 ? t('worktree.exit.wasWord') : t('worktree.exit.wereWord'),
           tmuxNote
         }));
-      } else if (changes.length > 0) {
+      } else if (changedFiles > 0) {
         setResultMessage(t('worktree.exit.removedChanges', {
           tmuxNote
         }));
@@ -205,21 +217,21 @@ export function WorktreeExitDialog({
       </Box>;
   }
   const branchName = worktreeSession.worktreeBranch;
-  const hasUncommitted = changes.length > 0;
+  const hasUncommitted = changedFiles > 0;
   const hasCommits = commitCount > 0;
   let subtitle = '';
   if (hasUncommitted && hasCommits) {
     subtitle = t('worktree.exit.subtitle.uncommittedAndCommits', {
-      count: changes.length,
-      fileWord: changes.length === 1 ? t('worktree.exit.fileWord') : t('worktree.exit.filesWord'),
+      count: changedFiles,
+      fileWord: changedFiles === 1 ? t('worktree.exit.fileWord') : t('worktree.exit.filesWord'),
       commitCount,
       commitWord: commitCount === 1 ? t('worktree.exit.commitWord') : t('worktree.exit.commitsWord'),
       branch: branchName
     });
   } else if (hasUncommitted) {
     subtitle = t('worktree.exit.subtitle.uncommitted', {
-      count: changes.length,
-      fileWord: changes.length === 1 ? t('worktree.exit.fileWord') : t('worktree.exit.filesWord')
+      count: changedFiles,
+      fileWord: changedFiles === 1 ? t('worktree.exit.fileWord') : t('worktree.exit.filesWord')
     });
   } else if (hasCommits) {
     subtitle = t('worktree.exit.subtitle.commits', {
@@ -239,7 +251,9 @@ export function WorktreeExitDialog({
     // Fallback: treat Escape as "keep" if no onCancel provided
     void handleSelect('keep');
   }
-  const removeDescription = hasUncommitted || hasCommits ? t('worktree.exit.removeDescription.lossy') : t('worktree.exit.removeDescription.clean');
+  // When the state is unknown, warn that removal is lossy — we could not prove
+  // the tree is clean, so treat removal as potentially destructive.
+  const removeDescription = hasUncommitted || hasCommits || stateUnknown ? t('worktree.exit.removeDescription.lossy') : t('worktree.exit.removeDescription.clean');
   const hasTmuxSession = Boolean(worktreeSession.tmuxSessionName);
   const options = hasTmuxSession ? [{
     label: t('worktree.exit.option.keepWithTmux'),
