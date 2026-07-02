@@ -180,14 +180,56 @@ test('a non-array tool_calls / choices is tolerated (coerced to empty)', () => {
   assert.deepEqual(parseDeepSeekSSELines(['data: {"choices":{"not":"an array"}}']), [])
 })
 
-test('finish still fires when the only tool_calls entry was null (no delta carried it)', () => {
-  // toolCalls.length counts the raw array, matching the prior `delta.tool_calls?.length`
-  // semantics: a present (even if all-null) tool_calls array suppresses the synthetic
-  // finish, exactly as before — the happy path is byte-identical.
+test('a real tool_call delta carries finishReason; no redundant synthetic finish', () => {
+  // A real tool_call element emits a tool_call_delta that ALREADY carries
+  // finishReason, so the separate synthetic finish is correctly suppressed (no
+  // double-finish). Happy path byte-identical.
   const events = parseDeepSeekSSELines([
     'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"t","function":{"name":"f"}}]},"finish_reason":"tool_calls"}]}',
   ])
   assert.deepEqual(events, [
     { type: 'tool_call_delta', index: 0, id: 't', name: 'f', finishReason: 'tool_calls' },
+  ])
+})
+
+test('THE FIX: an all-garbage tool_calls array does NOT swallow a bundled finish_reason', () => {
+  // A non-conformant gateway bundles finish_reason:'length' with a tool_calls array
+  // whose only element(s) are null/garbage. The element is skipped (no real
+  // tool_call_delta emitted), so nothing carries the finishReason — the synthetic
+  // finish MUST fire. The old guard keyed on the RAW toolCalls.length (> 0 here),
+  // suppressing the finish → finishReason dropped → stop_reason null → the
+  // output-token-truncation recovery (needs 'max_tokens') was silently skipped.
+  for (const garbage of ['[null]', '[5]', '["x"]', '[null,null]']) {
+    const events = parseDeepSeekSSELines([
+      `data: {"choices":[{"delta":{"content":"partial","tool_calls":${garbage}},"finish_reason":"length"}]}`,
+    ])
+    assert.deepEqual(
+      events,
+      [
+        { type: 'content_delta', text: 'partial' },
+        { type: 'finish', finishReason: 'length' },
+      ],
+      `garbage ${garbage}`,
+    )
+  }
+})
+
+test('THE FIX end-to-end: collectDeepSeekStreamEvents records the bundled finishReason', async () => {
+  const events = parseDeepSeekSSELines([
+    'data: {"choices":[{"delta":{"content":"partial","tool_calls":[null]},"finish_reason":"length"}]}',
+    'data: [DONE]',
+  ])
+  const result = await collectDeepSeekStreamEvents(eventsOf(...events))
+  assert.equal(result.content, 'partial')
+  // was null before the fix → isMaxOutputTokensTruncation false → recovery skipped
+  assert.equal(result.finishReason, 'length')
+})
+
+test('a mix of a garbage and a real tool_call element: the real delta carries finish (no double)', () => {
+  const events = parseDeepSeekSSELines([
+    'data: {"choices":[{"delta":{"tool_calls":[null,{"index":0,"id":"t","function":{"name":"f","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}',
+  ])
+  assert.deepEqual(events, [
+    { type: 'tool_call_delta', index: 0, id: 't', name: 'f', argumentsDelta: '{}', finishReason: 'tool_calls' },
   ])
 })
