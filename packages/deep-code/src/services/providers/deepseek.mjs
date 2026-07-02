@@ -10,6 +10,7 @@ import { byteCompare } from '../../cache/byte-order.mjs'
 import { omitUndefined } from '../../utils/omitUndefined.mjs'
 import { coerceTokenCount } from './coerceTokenCount.mjs'
 import { resolveToolCallIndex } from '../toolCallIndex.mjs'
+import { isUsableToolCallId } from '../isUsableToolCallId.mjs'
 import { firstNonEmpty } from '../../utils/configValue.mjs'
 import { isAutoModelSetting } from '../../utils/model/autoModelSetting.mjs'
 import { abortableDelay, abortReason } from '../../utils/abortableDelay.mjs'
@@ -695,11 +696,11 @@ export function mergeDeepSeekToolCallDelta(toolCalls, event, makeId = randomUUID
       // call and DeepSeek rejects the next request with a 400. The id only needs to
       // be unique within the turn; once set it is fixed in the assembled message
       // (so the conformant path, where event.id is present, stays byte-identical).
-      id: event.id ?? `toolu_deepseek_${makeId()}`,
+      id: isUsableToolCallId(event.id) ? event.id : `toolu_deepseek_${makeId()}`,
       type: 'function',
       function: { name: event.name, arguments: '' },
     }
-  if (event.id) existing.id = event.id
+  if (isUsableToolCallId(event.id)) existing.id = event.id
   if (event.name) existing.function.name = event.name
   if (event.argumentsDelta) existing.function.arguments += event.argumentsDelta
   toolCalls.set(index, existing)

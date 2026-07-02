@@ -8,6 +8,7 @@ import {
 } from '../providers/deepseek.mjs'
 import { resolveProviderConfig } from '../providers/provider-config.mjs'
 import { resolveToolCallIndex } from '../toolCallIndex.mjs'
+import { isUsableToolCallId } from '../isUsableToolCallId.mjs'
 import { markUnparseableToolArgs } from '../tools/unparseableToolArgs.mjs'
 import { resolveModelProvider } from '../providers/registry.mjs'
 import {
@@ -530,17 +531,16 @@ function getToolState(
   if (!tool) {
     tool = {
       blockIndex: state.blockIndex,
-      id:
-        typeof event.id === 'string'
-          ? event.id
-          : `toolu_runtime_${randomUUID()}`,
+      id: isUsableToolCallId(event.id)
+        ? event.id
+        : `toolu_runtime_${randomUUID()}`,
       name: typeof event.name === 'string' ? event.name : '',
       partialJson: '',
     }
     state.toolCalls.set(index, tool)
     state.blockIndex += 1
   }
-  if (typeof event.id === 'string') tool.id = event.id
+  if (isUsableToolCallId(event.id)) tool.id = event.id
   if (typeof event.name === 'string') tool.name = event.name
   if (typeof event.argumentsDelta === 'string') {
     tool.partialJson += event.argumentsDelta
