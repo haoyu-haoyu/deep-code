@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mapDeepSeekFinishReason } from '../deepcode/deepseek-native.mjs'
 import { resolveToolCallIndex } from '../services/toolCallIndex.mjs'
+import { isUsableToolCallId } from '../services/isUsableToolCallId.mjs'
 import { markUnparseableToolArgs } from '../services/tools/unparseableToolArgs.mjs'
 import { uncachedInputRemainder } from '../deepcode/usageInputRemainder.mjs'
 import {
@@ -164,7 +165,9 @@ export function createDeepSeekCallModel({
           for (const closed of closeOpenInlineBlocks(state)) yield closed
           entry = {
             blockIndex: state.blockIndex,
-            id: event.id ?? `toolu_deepseek_${uuid()}`,
+            id: isUsableToolCallId(event.id)
+              ? event.id
+              : `toolu_deepseek_${uuid()}`,
             name: event.name ?? '',
             args: '',
           }
@@ -182,7 +185,7 @@ export function createDeepSeekCallModel({
           state.openToolBlockIndices.add(entry.blockIndex)
           state.blockIndex += 1
         }
-        if (event.id) entry.id = event.id
+        if (isUsableToolCallId(event.id)) entry.id = event.id
         if (event.name) entry.name = event.name
         if (event.argumentsDelta) {
           entry.args += event.argumentsDelta
