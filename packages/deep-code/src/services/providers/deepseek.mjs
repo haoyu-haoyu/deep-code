@@ -761,6 +761,13 @@ export function parseDeepSeekSSELines(lines) {
         events.push({ type: 'content_delta', text: delta.content })
       }
       const toolCalls = Array.isArray(delta.tool_calls) ? delta.tool_calls : []
+      // Track whether a REAL tool_call_delta was emitted — NOT the raw array
+      // length. A non-conformant gateway can pad tool_calls with null/garbage
+      // elements (the same padding the choices/element guards above anticipate);
+      // those are skipped below, so a chunk can have toolCalls.length > 0 yet emit
+      // zero deltas. The synthetic-finish guard must key on emission, else a
+      // bundled finish_reason on such a chunk is dropped (see below).
+      let emittedToolCallDelta = false
       for (const toolCall of toolCalls) {
         if (!toolCall || typeof toolCall !== 'object') continue
         const event = omitUndefined({
@@ -772,6 +779,7 @@ export function parseDeepSeekSSELines(lines) {
           finishReason: choice.finish_reason ?? undefined,
         })
         events.push(event)
+        emittedToolCallDelta = true
       }
       // Emit a synthetic finish whenever a choice carries finish_reason and is NOT
       // a tool-call chunk (tool_call_delta already carries finishReason, so a
@@ -783,8 +791,14 @@ export function parseDeepSeekSSELines(lines) {
       // stop_reason:null. The finish is pushed AFTER the content_delta above, so
       // consumers see content first, then finish (the agent loop only records
       // finishReason on finish; blocks close after the stream drains).
-      const hasToolCallDeltas = toolCalls.length > 0
-      if (choice.finish_reason && !hasToolCallDeltas) {
+      // Suppress the synthetic finish ONLY when a real tool_call_delta was emitted
+      // (each already carries finishReason above). Key on emittedToolCallDelta, NOT
+      // the raw toolCalls.length: an all-garbage tool_calls array (length > 0 but
+      // zero deltas emitted) with a bundled finish_reason would otherwise drop the
+      // finish → stop_reason stays null → the output-token-truncation recovery
+      // (isMaxOutputTokensTruncation needs 'max_tokens') is silently skipped and a
+      // truncated turn commits as finished.
+      if (choice.finish_reason && !emittedToolCallDelta) {
         events.push({ type: 'finish', finishReason: choice.finish_reason })
       }
     }
